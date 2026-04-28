@@ -1,0 +1,33 @@
+# Backend (excluded from this frontend-only repo)
+backend/
+backend_leftover.md
+
+# Internal planning / team docs
+team/
+
+# Root-level workspace orchestration (backend-coupled)
+/package.json
+/package-lock.json
+
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Build output
+frontend/dist/
+frontend/build/
+
+# Backups
+frontend/src_backup_*/
+
+# Env / local
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
