@@ -6,22 +6,18 @@ import {
   Image,
   Calendar,
   FileText,
-  ClipboardList,
   Settings,
   LogOut,
   Building2,
-  DollarSign,
 } from 'lucide-react';
 import { clsx } from 'clsx';
-import type { UserRole, Permission, User } from '../../types';
-import { canViewFinance } from '../../lib/permissions';
+import type { UserRole, User } from '../../types';
 
 type NavItem = {
   label: string;
   icon: typeof LayoutDashboard;
   path: string;
   roles?: readonly UserRole[];
-  requiresPermission?: Permission;
 };
 
 const navItems: NavItem[] = [
@@ -29,15 +25,11 @@ const navItems: NavItem[] = [
   { label: 'Upload Photos', icon: Upload, path: '/upload', roles: ['admin', 'supervisor'] },
   { label: 'Photo Gallery', icon: Image, path: '/gallery', roles: ['admin', 'supervisor', 'stakeholder', 'inspector'] },
   { label: 'Gantt Chart', icon: Calendar, path: '/gantt', roles: ['admin', 'supervisor', 'stakeholder', 'inspector'] },
-  { label: 'Reports', icon: FileText, path: '/reports', roles: ['admin', 'supervisor', 'stakeholder'] },
-  { label: 'Finance', icon: DollarSign, path: '/finance', requiresPermission: 'finance' },
-  { label: 'Audit Trail', icon: ClipboardList, path: '/audit', roles: ['admin', 'inspector'] },
+  { label: 'Reports & Audit', icon: FileText, path: '/reports', roles: ['admin', 'supervisor', 'stakeholder', 'inspector'] },
   { label: 'Settings', icon: Settings, path: '/settings', roles: ['admin'] },
 ];
 
 function isVisible(item: NavItem, user: User): boolean {
-  if (item.requiresPermission === 'finance') return canViewFinance(user);
-  if (item.requiresPermission) return !!user.permissions?.includes(item.requiresPermission);
   return !item.roles || item.roles.includes(user.role);
 }
 

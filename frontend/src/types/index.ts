@@ -136,7 +136,7 @@ export interface Comment {
 export interface Report {
   id: string;
   projectId: string;
-  reportType: 'daily' | 'weekly' | 'milestone';
+  reportType: 'daily' | 'weekly' | 'monthly';
   generatedBy: string;
   generatedAt: string;
   dateFrom: string;

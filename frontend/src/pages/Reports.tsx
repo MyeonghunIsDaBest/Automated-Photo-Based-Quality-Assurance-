@@ -1,303 +1,742 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useMemo, useState } from 'react';
+import { format } from 'date-fns';
+import {
+  Activity,
+  ArrowUpRight,
+  BarChart3,
+  Calendar,
+  CalendarDays,
+  CalendarRange,
+  ChevronDown,
+  Download,
+  Eye,
+  FileText,
+  Filter,
+  FolderKanban,
+  Lock,
+  Plus,
+  Printer,
+  Search,
+  Shield,
+  Sparkles,
+  TrendingUp,
+  Users,
+  X,
+} from 'lucide-react';
 import { useAppStore } from '../store';
 import { useFeatureStore } from '../store/features';
+import { useFinanceStore, InvoiceStatus } from '../store/finance';
+import { useProjectsListStore } from './projects/store';
 import { canViewFinance } from '../lib/permissions';
-import { FileText, Download, Calendar, Clock, Eye, FileUp, Printer, BarChart3, TrendingUp, Users, Shield, DollarSign, Activity, ArrowUpRight, Lock } from 'lucide-react';
-import { format } from 'date-fns';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
-import { Button } from '../components/ui/button';
-import { Badge } from '../components/ui/badge';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import { GanttChart } from '../components/ui/GanttChart';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { ScrollArea } from '../components/ui/scroll-area';
-import { Separator } from '../components/ui/separator';
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from 'recharts';
+import { AuditLog, Report } from '../types';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tokens & helpers
+
+type ReportTab = 'progress' | 'financial' | 'audit' | 'safety';
+type ReportType = Report['reportType']; // 'daily' | 'weekly' | 'monthly'
+type EntityFilter = 'all' | AuditLog['entityType'];
+
+interface SafetyFlag {
+  id: string;
+  task: string;
+  flag: string;
+  date: string;
+  status: 'open' | 'resolved';
+}
+
+const SAFETY_FLAGS: SafetyFlag[] = [
+  { id: 'sf_1', task: 'Gymnasium Roofing',  flag: 'Workers at height — verify harness use',  date: '2024-02-28', status: 'open' },
+  { id: 'sf_2', task: 'Roof Replacement',   flag: 'Debris falling zone — ensure barriers',   date: '2024-02-28', status: 'open' },
+  { id: 'sf_3', task: 'North Wing Framing', flag: 'Verify safety equipment usage',           date: '2024-02-27', status: 'resolved' },
+  { id: 'sf_4', task: 'Electrical Rough-in',flag: 'Lockout/tagout procedure verified',       date: '2024-02-26', status: 'resolved' },
+  { id: 'sf_5', task: 'Excavation',         flag: 'Trench shoring inspection due',           date: '2024-02-25', status: 'open' },
+];
+
+const REPORT_TYPE_META: Record<ReportType, { label: string; window: string; Icon: typeof CalendarDays; accent: string }> = {
+  daily:   { label: 'Daily',   window: 'Last 24 hours',     Icon: CalendarDays,  accent: '#0369A1' },
+  weekly:  { label: 'Weekly',  window: 'Last 7 days',       Icon: CalendarRange, accent: '#0F766E' },
+  monthly: { label: 'Monthly', window: 'Last 30 days',      Icon: Calendar,      accent: '#6D28D9' },
+};
+
+const ENTITY_FILTERS: { value: EntityFilter; label: string }[] = [
+  { value: 'all',     label: 'All' },
+  { value: 'project', label: 'Project' },
+  { value: 'task',    label: 'Task' },
+  { value: 'photo',   label: 'Photo' },
+  { value: 'user',    label: 'User' },
+];
+
+const STATUS_BADGE: Record<InvoiceStatus, string> = {
+  paid:    'border-emerald-200 bg-emerald-50 text-emerald-700',
+  pending: 'border-amber-200 bg-amber-50 text-amber-700',
+  overdue: 'border-red-200 bg-red-50 text-red-700',
+  draft:   'border-slate-200 bg-slate-50 text-slate-600',
+};
+
+const fmtCurrency = (n: number) =>
+  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
+
+// ─── Fonts (mirrors Files page) ──────────────────────────────────────────────
+
+const FONT_STYLES = `
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=DM+Sans:wght@400;500;600;700&display=swap');
+  .reports-root { font-family: 'DM Sans', system-ui, sans-serif; }
+  .reports-root .display { font-family: 'Fraunces', Georgia, serif; font-feature-settings: 'ss01'; letter-spacing: -0.02em; }
+  .reports-root .num     { font-family: 'Fraunces', Georgia, serif; font-variant-numeric: tabular-nums; letter-spacing: -0.04em; }
+  .reports-root .grid-bg {
+    background-image:
+      linear-gradient(to right, rgba(15, 23, 42, 0.04) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(15, 23, 42, 0.04) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+`;
+
+const TABS: { key: ReportTab; label: string; Icon: typeof BarChart3 }[] = [
+  { key: 'progress',  label: 'Progress',  Icon: BarChart3 },
+  { key: 'financial', label: 'Financial', Icon: FileText  },
+  { key: 'audit',     label: 'Audit',     Icon: Activity  },
+  { key: 'safety',    label: 'Safety',    Icon: Shield    },
+];
+
+// ═════════════════════════════════════════════════════════════════════════════
 
 export default function Reports() {
-  const navigate = useNavigate();
   const { project, auditLogs, users, currentUser } = useAppStore();
+  const projectsList = useProjectsListStore((s) => s.projects);
   const tasks = useFeatureStore((s) => s.tasks);
   const progressTrend = useFeatureStore((s) => s.progressHistory);
-  const { reports, generateWeeklyReport } = useFeatureStore();
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [reportType, setReportType] = useState<'daily' | 'weekly' | 'milestone'>('weekly');
-  const [showPreview, setShowPreview] = useState(false);
-  const [selectedReport, setSelectedReport] = useState<typeof reports[0] | null>(null);
-  const [activeTab, setActiveTab] = useState<'progress' | 'financial' | 'audit' | 'safety'>('progress');
+  const reports = useFeatureStore((s) => s.reports);
+  const generateReport = useFeatureStore((s) => s.generateReport);
+  const budgets = useFinanceStore((s) => s.budgets);
+  const invoices = useFinanceStore((s) => s.invoices);
+
+  const [activeTab, setActiveTab] = useState<ReportTab>('progress');
+
+  // Per-tab project selection (independent of the global active project)
+  const [progressProjectId, setProgressProjectId] = useState<string | null>(project.id);
+  const [financialProjectId, setFinancialProjectId] = useState<string | null>(null);
+
+  // Generate / preview state
+  const [generating, setGenerating] = useState<ReportType | null>(null);
+  const [previewReport, setPreviewReport] = useState<Report | null>(null);
+
+  // Audit filters
+  const [entityFilter, setEntityFilter] = useState<EntityFilter>('all');
+  const [userFilter, setUserFilter] = useState<string>('all');
+  const [auditSearch, setAuditSearch] = useState('');
+
   const userCanViewFinance = canViewFinance(currentUser);
 
-  const handleGenerateReport = async () => {
-    setIsGenerating(true);
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    generateWeeklyReport(project.id);
-    setIsGenerating(false);
+  // ── Derived ─────────────────────────────────────────────────────────────────
+
+  const projectName = (id: string | null) =>
+    !id ? '' : projectsList.find((p) => p.id === id)?.name ?? (id === project.id ? project.name : id);
+
+  const progressReports = useMemo(
+    () => reports.filter((r) => !progressProjectId || r.projectId === progressProjectId),
+    [reports, progressProjectId]
+  );
+
+  const financeBudget = financialProjectId ? budgets[financialProjectId] : undefined;
+  const financeInvoices = useMemo(
+    () => (financialProjectId ? invoices.filter((i) => i.projectId === financialProjectId) : []),
+    [invoices, financialProjectId]
+  );
+
+  const financeTotals = useMemo(() => {
+    const paid    = financeInvoices.filter((i) => i.status === 'paid').reduce((s, i) => s + i.amount, 0);
+    const pending = financeInvoices.filter((i) => i.status === 'pending').reduce((s, i) => s + i.amount, 0);
+    const overdue = financeInvoices.filter((i) => i.status === 'overdue').reduce((s, i) => s + i.amount, 0);
+    return { paid, pending, overdue };
+  }, [financeInvoices]);
+
+  const remaining = financeBudget ? financeBudget.total - financeBudget.spent - financeBudget.committed : 0;
+  const spentPct = financeBudget && financeBudget.total > 0 ? Math.round((financeBudget.spent / financeBudget.total) * 100) : 0;
+  const committedPct = financeBudget && financeBudget.total > 0 ? Math.round((financeBudget.committed / financeBudget.total) * 100) : 0;
+
+  const auditUsers = useMemo(() => Array.from(new Set(auditLogs.map((l) => l.userId))), [auditLogs]);
+  const filteredAudit = useMemo(() => {
+    const q = auditSearch.trim().toLowerCase();
+    return auditLogs.filter((log) => {
+      if (entityFilter !== 'all' && log.entityType !== entityFilter) return false;
+      if (userFilter !== 'all' && log.userId !== userFilter) return false;
+      if (q) {
+        const haystack = `${log.action} ${log.notes ?? ''}`.toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [auditLogs, entityFilter, userFilter, auditSearch]);
+
+  const safetyStats = useMemo(() => {
+    const open = SAFETY_FLAGS.filter((f) => f.status === 'open').length;
+    const resolved = SAFETY_FLAGS.filter((f) => f.status === 'resolved').length;
+    return { open, resolved, total: SAFETY_FLAGS.length };
+  }, []);
+
+  // Header stat strip values
+  const totalSpend = useMemo(() => {
+    return Object.values(budgets).reduce((s, b) => s + (b?.spent ?? 0), 0);
+  }, [budgets]);
+
+  // ── Handlers ────────────────────────────────────────────────────────────────
+
+  const userName = (id: string) => {
+    if (id === 'system') return 'System';
+    return users.find((u) => u.id === id)?.fullName ?? 'Unknown';
   };
 
-  const handleViewReport = (report: typeof reports[0]) => {
-    setSelectedReport(report);
-    setShowPreview(true);
+  const handleGenerate = async (type: ReportType) => {
+    if (!progressProjectId) return;
+    setGenerating(type);
+    await new Promise((r) => setTimeout(r, 900));
+    generateReport(progressProjectId, type);
+    setGenerating(null);
   };
 
-  const handlePrint = () => {
-    window.print();
-  };
+  const handlePrint = () => window.print();
+  const handleDownload = (type: ReportType) =>
+    alert(`${REPORT_TYPE_META[type].label} report PDF downloaded.`);
 
-  const handleDownload = () => {
-    alert('PDF report downloaded!');
-  };
-
-  const getReportTypeLabel = (type: string) => {
-    switch (type) {
-      case 'daily': return 'Daily Report';
-      case 'weekly': return 'Weekly Report';
-      case 'milestone': return 'Milestone Report';
-      default: return 'Report';
-    }
-  };
-
-  const getReportTypeVariant = (type: string): 'default' | 'blue' | 'purple' | 'secondary' => {
-    switch (type) {
-      case 'daily': return 'blue';
-      case 'weekly': return 'default';
-      case 'milestone': return 'purple';
-      default: return 'secondary';
-    }
-  };
-
-  const getActionIcon = (action: string) => {
-    if (action.includes('photo')) return '📷';
-    if (action.includes('ai')) return '🤖';
-    if (action.includes('task')) return '📋';
+  const actionIcon = (action: string) => {
+    if (action.includes('photo'))   return '📷';
+    if (action.includes('ai'))      return '🤖';
+    if (action.includes('task'))    return '📋';
     if (action.includes('comment')) return '💬';
-    if (action.includes('report')) return '📄';
+    if (action.includes('report'))  return '📄';
+    if (action.includes('project')) return '🏗️';
     return '📌';
   };
 
-  const getUserName = (userId: string) => {
-    if (userId === 'system') return 'System';
-    return users.find(u => u.id === userId)?.fullName || 'Unknown';
-  };
-
-  // Audit log statistics
-  const auditStats = {
-    total: auditLogs.length,
-    photos: auditLogs.filter(l => l.action === 'photo_uploaded').length,
-    aiAnalysis: auditLogs.filter(l => l.action === 'ai_analysis_completed').length,
-    taskUpdates: auditLogs.filter(l => l.action === 'task_progress_updated').length,
-  };
+  // ═══════════════════════════════════════════════════════════════════════════
 
   return (
-    <div className="p-6">
-      {/* Page Header */}
-      <div className="mb-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-slate-900">Reports & Audit</h1>
-            <p className="text-slate-500">Generate reports and view project audit trail</p>
+    <div className="reports-root min-h-full bg-[#FAFAF7]">
+      <style>{FONT_STYLES}</style>
+
+      {/* ─── Editorial Header ─── */}
+      <header className="relative overflow-hidden border-b border-slate-200/70 bg-white">
+        <div className="grid-bg absolute inset-0 opacity-50" />
+        <div className="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-emerald-100/40 blur-3xl" />
+
+        <div className="relative px-8 pt-10 pb-6">
+          <div className="flex flex-wrap items-end justify-between gap-6">
+            <div>
+              <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
+                <span className="inline-block h-px w-6 bg-slate-400" />
+                Workspace · Reports & Audit
+              </div>
+              <h1 className="display text-5xl font-medium leading-none text-slate-900">
+                The <em className="font-normal italic text-emerald-700">record</em>.
+              </h1>
+              <p className="mt-3 max-w-md text-[15px] leading-relaxed text-slate-500">
+                Progress, finance, and the audit trail — every shovel of dirt, every dollar spent,
+                every safety flag, in one ledger.
+              </p>
+            </div>
+
+            <button
+              onClick={() => handleGenerate('weekly')}
+              disabled={!progressProjectId || generating !== null}
+              className="group flex items-center gap-2.5 rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white transition-all hover:-translate-y-0.5 hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-700/20 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:bg-slate-900 disabled:hover:shadow-none"
+            >
+              <Sparkles className="h-4 w-4 transition-transform group-hover:-translate-y-px" />
+              {generating === 'weekly' ? 'Generating…' : 'Quick weekly report'}
+              <ArrowUpRight className="h-3.5 w-3.5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+            </button>
+          </div>
+
+          <div className="mt-10 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200 md:grid-cols-4">
+            <StatCell
+              label="Reports"
+              value={reports.length.toString()}
+              caption={`${reports.filter((r) => r.reportType === 'weekly').length} weekly`}
+              accent="#0F172A"
+            />
+            <StatCell
+              label="Audit entries"
+              value={auditLogs.length.toString()}
+              caption={`${auditLogs.filter((l) => l.entityType === 'photo').length} from photos`}
+              accent="#0369A1"
+            />
+            <StatCell
+              label="Open safety flags"
+              value={safetyStats.open.toString()}
+              caption={`${safetyStats.resolved} resolved`}
+              accent="#BE123C"
+            />
+            <StatCell
+              label="Total spend"
+              value={fmtCurrency(totalSpend).replace('$', '$')}
+              caption={`${Object.keys(budgets).length} project budgets`}
+              accent="#6D28D9"
+            />
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* Main Tabs */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="mb-6">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="progress">
-            <BarChart3 className="mr-2 h-4 w-4" />
-            Progress Reports
-          </TabsTrigger>
-          <TabsTrigger value="financial">
-            <DollarSign className="mr-2 h-4 w-4" />
-            Financial
-          </TabsTrigger>
-          <TabsTrigger value="audit">
-            <Activity className="mr-2 h-4 w-4" />
-            Audit Trail
-          </TabsTrigger>
-          <TabsTrigger value="safety">
-            <Shield className="mr-2 h-4 w-4" />
-            Safety
-          </TabsTrigger>
-        </TabsList>
+      {/* ─── Body ─── */}
+      <div className="px-8 py-8">
+        {/* Round pill tabs */}
+        <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-1 rounded-full border border-slate-200 bg-white p-1 shadow-sm">
+            {TABS.map((t) => {
+              const isActive = activeTab === t.key;
+              return (
+                <button
+                  key={t.key}
+                  onClick={() => setActiveTab(t.key)}
+                  className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium transition-all ${
+                    isActive ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <t.Icon className="h-3.5 w-3.5" />
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
-        {/* Progress Reports Tab */}
-        <TabsContent value="progress" className="space-y-6">
-          {/* Generate New Report */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Generate Progress Report</CardTitle>
-              <CardDescription>Create comprehensive reports with Gantt chart visualization</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap items-end gap-4">
+        {/* ════════════ PROGRESS ════════════ */}
+        {activeTab === 'progress' && (
+          <div className="space-y-8">
+            <SectionHeader
+              eyebrow="Progress"
+              title="Project pulse."
+              subtitle="Pick a project to see its progress trajectory and generate dated reports."
+              right={
+                <ProjectSelectorPill
+                  projects={projectsList}
+                  value={progressProjectId}
+                  onChange={setProgressProjectId}
+                />
+              }
+            />
+
+            {!progressProjectId ? (
+              <BlankState
+                icon={FolderKanban}
+                title="Pick a project to begin."
+                body="Daily, weekly, and monthly progress reports are scoped per project. Choose one above to draw its progress curve."
+              />
+            ) : (
+              <>
+                {/* Progress trend graph */}
+                <div className="rounded-2xl border border-slate-200 bg-white p-6">
+                  <div className="mb-4 flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="display text-lg font-medium text-slate-900">Progress Trend</h3>
+                      <p className="text-sm text-slate-500">{projectName(progressProjectId)}</p>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                      <TrendingUp className="h-3.5 w-3.5 text-emerald-600" />
+                      <span className="num text-base text-slate-900">
+                        {progressTrend.length > 0 ? `${progressTrend[progressTrend.length - 1].progress}%` : '—'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={progressTrend}>
+                        <defs>
+                          <linearGradient id="reportProgressGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%"  stopColor="#10B981" stopOpacity={0.32} />
+                            <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                        <XAxis dataKey="date" tickFormatter={(d) => format(new Date(d), 'MMM d')} stroke="#64748b" fontSize={12} />
+                        <YAxis stroke="#64748b" fontSize={12} />
+                        <Tooltip contentStyle={{ backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: 12 }} />
+                        <Area type="monotone" dataKey="progress" stroke="#10B981" strokeWidth={2} fill="url(#reportProgressGradient)" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Three report-type cards */}
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">Report Type</label>
+                  <h3 className="display mb-4 text-lg font-medium text-slate-900">Generate a report</h3>
+                  <div className="grid gap-4 md:grid-cols-3">
+                    {(Object.keys(REPORT_TYPE_META) as ReportType[]).map((type) => {
+                      const meta = REPORT_TYPE_META[type];
+                      const isBusy = generating === type;
+                      const lastForType = progressReports.find((r) => r.reportType === type);
+                      return (
+                        <article
+                          key={type}
+                          className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-slate-200/60"
+                        >
+                          <div className="absolute left-0 top-0 h-px w-12" style={{ backgroundColor: meta.accent }} />
+                          <div className="flex items-start justify-between">
+                            <div
+                              className="flex h-10 w-10 items-center justify-center rounded-xl"
+                              style={{ backgroundColor: `${meta.accent}15`, color: meta.accent }}
+                            >
+                              <meta.Icon className="h-5 w-5" />
+                            </div>
+                            <span className="text-[10px] font-medium uppercase tracking-[0.15em] text-slate-400">
+                              {meta.window}
+                            </span>
+                          </div>
+                          <h4 className="display mt-4 text-2xl font-medium text-slate-900">{meta.label} report</h4>
+                          <p className="mt-1 text-sm text-slate-500">
+                            {lastForType
+                              ? `Last generated ${format(new Date(lastForType.generatedAt), 'MMM d, h:mm a')}`
+                              : 'Not yet generated for this project.'}
+                          </p>
+                          <div className="mt-5 flex items-center gap-2">
+                            <button
+                              onClick={() => handleGenerate(type)}
+                              disabled={isBusy || generating !== null}
+                              className="flex items-center gap-1.5 rounded-full bg-slate-900 px-3.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {isBusy ? 'Generating…' : <><Sparkles className="h-3 w-3" />Generate</>}
+                            </button>
+                            <button
+                              onClick={() => lastForType && setPreviewReport(lastForType)}
+                              disabled={!lastForType}
+                              className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              <Eye className="h-3 w-3" />
+                              Preview
+                            </button>
+                            <button
+                              onClick={() => handleDownload(type)}
+                              disabled={!lastForType}
+                              className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              <Download className="h-3 w-3" />
+                              PDF
+                            </button>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Recently generated list */}
+                <div className="rounded-2xl border border-slate-200 bg-white">
+                  <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+                    <div>
+                      <h3 className="display text-lg font-medium text-slate-900">Recently generated</h3>
+                      <p className="tabular-nums text-xs text-slate-500">
+                        {progressReports.length} report{progressReports.length === 1 ? '' : 's'} for this project
+                      </p>
+                    </div>
+                  </div>
+                  {progressReports.length === 0 ? (
+                    <div className="px-6 py-12 text-center">
+                      <FileText className="mx-auto h-10 w-10 text-slate-300" />
+                      <p className="mt-3 text-sm font-medium text-slate-900">No reports yet for this project.</p>
+                      <p className="mt-1 text-xs text-slate-500">Generate one above to see it here.</p>
+                    </div>
+                  ) : (
+                    <ul className="divide-y divide-slate-100">
+                      {progressReports.map((r) => {
+                        const meta = REPORT_TYPE_META[r.reportType];
+                        return (
+                          <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 px-6 py-4">
+                            <div className="flex items-center gap-4">
+                              <div
+                                className="flex h-10 w-10 items-center justify-center rounded-xl"
+                                style={{ backgroundColor: `${meta.accent}15`, color: meta.accent }}
+                              >
+                                <meta.Icon className="h-5 w-5" />
+                              </div>
+                              <div>
+                                <p className="font-medium text-slate-900">{meta.label} report</p>
+                                <p className="tabular-nums text-xs text-slate-500">
+                                  {format(new Date(r.dateFrom), 'MMM d')} – {format(new Date(r.dateTo), 'MMM d, yyyy')}
+                                  {' · '}
+                                  {format(new Date(r.generatedAt), 'h:mm a')}
+                                </p>
+                                <div className="mt-1 flex flex-wrap gap-3 text-xs text-slate-600">
+                                  <span><strong className="num text-slate-900">{r.summary.photosUploaded}</strong> photos</span>
+                                  <span><strong className="num text-slate-900">{r.summary.tasksUpdated}</strong> tasks</span>
+                                  <span><strong className="num text-slate-900">{r.summary.overallProgress}%</strong> progress</span>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => setPreviewReport(r)}
+                                className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-slate-400"
+                              >
+                                <Eye className="h-3 w-3" />
+                                Preview
+                              </button>
+                              <button
+                                onClick={() => handleDownload(r.reportType)}
+                                className="flex items-center gap-1.5 rounded-full bg-slate-900 px-3.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-emerald-700"
+                              >
+                                <Download className="h-3 w-3" />
+                                PDF
+                              </button>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ════════════ FINANCIAL ════════════ */}
+        {activeTab === 'financial' && (
+          <div className="space-y-8">
+            <SectionHeader
+              eyebrow="Financial"
+              title="Where the money goes."
+              subtitle="Pick the project you're working on. Budget, spend, and invoices live here — no redirects."
+              right={
+                <ProjectSelectorPill
+                  projects={projectsList}
+                  value={financialProjectId}
+                  onChange={setFinancialProjectId}
+                />
+              }
+            />
+
+            {!userCanViewFinance ? (
+              <BlankState
+                icon={Lock}
+                title="Finance access required."
+                body="Your account doesn't have the Finance permission. Ask an administrator to grant access."
+                accent="rose"
+              />
+            ) : !financialProjectId ? (
+              <BlankState
+                icon={FolderKanban}
+                title="Select a project to see its finances."
+                body="Each project carries its own budget and invoices. Pick one from the dropdown above and the numbers will appear here."
+              />
+            ) : !financeBudget ? (
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-white py-16 text-center">
+                <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50">
+                  <FileText className="h-7 w-7 text-slate-400" strokeWidth={1.5} />
+                </div>
+                <h3 className="display text-2xl font-medium text-slate-900">No budget set yet.</h3>
+                <p className="mx-auto mt-2 max-w-sm text-sm text-slate-500">
+                  Set a budget for {projectName(financialProjectId)} to begin tracking spend and recording invoices.
+                </p>
+                <button className="mt-6 inline-flex items-center gap-2 rounded-full bg-slate-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-700">
+                  <Plus className="h-4 w-4" />
+                  Set budget
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200 md:grid-cols-4">
+                  <StatCell
+                    label="Total budget"
+                    value={fmtCurrency(financeBudget.total)}
+                    caption={projectName(financialProjectId)}
+                    accent="#0F172A"
+                  />
+                  <StatCell
+                    label="Spent"
+                    value={fmtCurrency(financeBudget.spent)}
+                    caption={`${spentPct}% of budget`}
+                    accent="#0F766E"
+                  />
+                  <StatCell
+                    label="Committed"
+                    value={fmtCurrency(financeBudget.committed)}
+                    caption={`${committedPct}% pending`}
+                    accent="#0369A1"
+                  />
+                  <StatCell
+                    label="Remaining"
+                    value={fmtCurrency(remaining)}
+                    caption={remaining < 0 ? 'Over budget' : 'Available to allocate'}
+                    accent={remaining < 0 ? '#BE123C' : '#B45309'}
+                  />
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-white p-6">
+                  <div className="mb-3 flex items-center justify-between text-xs font-medium text-slate-500">
+                    <span className="display text-base font-medium text-slate-900">Budget utilisation</span>
+                    <span className="tabular-nums">{spentPct + committedPct}% allocated</span>
+                  </div>
+                  <div className="flex h-3 w-full overflow-hidden rounded-full bg-slate-100">
+                    <div className="h-full bg-emerald-500" style={{ width: `${Math.min(100, spentPct)}%` }} />
+                    <div className="h-full bg-amber-400"   style={{ width: `${Math.min(100, committedPct)}%` }} />
+                  </div>
+                  <div className="mt-3 flex flex-wrap justify-between gap-2 text-xs text-slate-500">
+                    <span className="flex items-center gap-1.5">
+                      <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" /> Spent {fmtCurrency(financeBudget.spent)}
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="inline-block h-2 w-2 rounded-full bg-amber-400" /> Committed {fmtCurrency(financeBudget.committed)}
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="inline-block h-2 w-2 rounded-full bg-slate-200" /> Remaining {fmtCurrency(remaining)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <InvoiceTotalCell label="Paid"    value={fmtCurrency(financeTotals.paid)}    color="bg-emerald-50 text-emerald-700 border-emerald-200" />
+                  <InvoiceTotalCell label="Pending" value={fmtCurrency(financeTotals.pending)} color="bg-amber-50 text-amber-700 border-amber-200" />
+                  <InvoiceTotalCell label="Overdue" value={fmtCurrency(financeTotals.overdue)} color="bg-red-50 text-red-700 border-red-200" />
+                </div>
+
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-6 py-4">
+                    <div>
+                      <h3 className="display text-lg font-medium text-slate-900">Invoices</h3>
+                      <p className="tabular-nums text-xs text-slate-500">
+                        {financeInvoices.length} vendor invoice{financeInvoices.length === 1 ? '' : 's'} for this project
+                      </p>
+                    </div>
+                    <button className="flex items-center gap-1.5 rounded-full bg-slate-900 px-4 py-1.5 text-xs font-medium text-white transition-colors hover:bg-emerald-700">
+                      <Plus className="h-3.5 w-3.5" />
+                      New invoice
+                    </button>
+                  </div>
+                  {financeInvoices.length === 0 ? (
+                    <div className="px-6 py-12 text-center">
+                      <FileText className="mx-auto h-10 w-10 text-slate-300" />
+                      <p className="mt-3 text-sm font-medium text-slate-900">No invoices yet</p>
+                      <p className="mt-1 text-xs text-slate-500">Vendor invoices for this project will appear here.</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="border-b border-slate-100 text-left text-[11px] font-medium uppercase tracking-wider text-slate-500">
+                          <tr>
+                            <th className="px-6 py-3">Reference</th>
+                            <th className="px-6 py-3">Vendor</th>
+                            <th className="px-6 py-3">Category</th>
+                            <th className="px-6 py-3">Issued</th>
+                            <th className="px-6 py-3">Due</th>
+                            <th className="px-6 py-3 text-right">Amount</th>
+                            <th className="px-6 py-3">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                          {financeInvoices.map((inv) => (
+                            <tr key={inv.id} className="hover:bg-slate-50/70">
+                              <td className="px-6 py-3 font-mono text-xs text-slate-500">{inv.reference ?? '—'}</td>
+                              <td className="px-6 py-3 font-medium text-slate-900">{inv.vendor}</td>
+                              <td className="px-6 py-3 text-slate-600">{inv.category}</td>
+                              <td className="px-6 py-3 tabular-nums text-slate-600">{format(new Date(inv.issuedAt), 'MMM d, yyyy')}</td>
+                              <td className="px-6 py-3 tabular-nums text-slate-600">{format(new Date(inv.dueAt),    'MMM d, yyyy')}</td>
+                              <td className="px-6 py-3 text-right font-medium tabular-nums text-slate-900">{fmtCurrency(inv.amount)}</td>
+                              <td className="px-6 py-3">
+                                <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize ${STATUS_BADGE[inv.status]}`}>
+                                  {inv.status}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ════════════ AUDIT ════════════ */}
+        {activeTab === 'audit' && (
+          <div className="space-y-6">
+            <SectionHeader
+              eyebrow="Audit"
+              title="Every change, every keystroke."
+              subtitle="Filter by entity, user, or text. Each line is the receipt of a change someone made."
+            />
+
+            <div className="rounded-2xl border border-slate-200 bg-white">
+              <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 p-4">
+                <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-slate-500">
+                  <Filter className="h-3.5 w-3.5" /> Filters
+                </div>
+                <div className="inline-flex rounded-full border border-slate-200 bg-white p-0.5">
+                  {ENTITY_FILTERS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setEntityFilter(opt.value)}
+                      className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                        entityFilter === opt.value ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="relative">
+                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                   <select
-                    value={reportType}
-                    onChange={(e) => setReportType(e.target.value as any)}
-                    className="rounded-lg border border-slate-200 px-4 py-2.5 focus:border-emerald-500 focus:outline-none"
+                    value={userFilter}
+                    onChange={(e) => setUserFilter(e.target.value)}
+                    className="h-8 appearance-none rounded-full border border-slate-200 bg-white pl-3 pr-8 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-1"
                   >
-                    <option value="daily">Daily Report</option>
-                    <option value="weekly">Weekly Report</option>
-                    <option value="milestone">Milestone Report</option>
+                    <option value="all">All users</option>
+                    {auditUsers.map((id) => (
+                      <option key={id} value={id}>{userName(id)}</option>
+                    ))}
                   </select>
                 </div>
-                <Button onClick={handleGenerateReport} disabled={isGenerating}>
-                  {isGenerating ? (
-                    <>
-                      <svg className="mr-2 h-4 w-4 animate-spin" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                      </svg>
-                      Generating...
-                    </>
-                  ) : (
-                    <>
-                      <FileUp className="mr-2 h-4 w-4" />
-                      Generate Report
-                    </>
-                  )}
-                </Button>
+                <div className="relative ml-auto">
+                  <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                  <input
+                    placeholder="Search action or notes…"
+                    value={auditSearch}
+                    onChange={(e) => setAuditSearch(e.target.value)}
+                    className="h-8 w-64 rounded-full border border-slate-200 bg-white pl-9 pr-3 text-xs focus:border-slate-400 focus:outline-none"
+                  />
+                </div>
               </div>
-            </CardContent>
-          </Card>
 
-          {/* Report List */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Generated Reports</CardTitle>
-              <CardDescription>Project: {project.name}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="divide-y divide-slate-100">
-                {reports.map((report) => (
-                  <div key={report.id} className="flex items-center justify-between py-6">
-                    <div className="flex items-center gap-4">
-                      <div className="rounded-xl bg-emerald-100 p-3">
-                        <FileText className="h-6 w-6 text-emerald-600" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-medium text-slate-900">{getReportTypeLabel(report.reportType)}</h4>
-                          <Badge variant={getReportTypeVariant(report.reportType)}>{report.reportType}</Badge>
-                        </div>
-                        <div className="mt-1 flex items-center gap-4 text-sm text-slate-500">
-                          <span className="flex items-center gap-1">
-                            <Calendar className="h-4 w-4" />
-                            {format(new Date(report.dateFrom), 'MMM d')} - {format(new Date(report.dateTo), 'MMM d, yyyy')}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-4 w-4" />
-                            Generated {format(new Date(report.generatedAt), 'MMM d, h:mm a')}
-                          </span>
-                        </div>
-                        <div className="mt-2 flex gap-4">
-                          <span className="text-sm text-slate-600">
-                            <strong className="font-medium text-slate-900">{report.summary.photosUploaded}</strong> photos
-                          </span>
-                          <span className="text-sm text-slate-600">
-                            <strong className="font-medium text-slate-900">{report.summary.tasksUpdated}</strong> tasks updated
-                          </span>
-                          <span className="text-sm text-slate-600">
-                            <strong className="font-medium text-slate-900">{report.summary.overallProgress}%</strong> progress
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm" onClick={() => handleViewReport(report)}>
-                        <Eye className="mr-2 h-4 w-4" />
-                        Preview
-                      </Button>
-                      <Button size="sm" onClick={handleDownload}>
-                        <Download className="mr-2 h-4 w-4" />
-                        PDF
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Financial Tab — single source of truth lives on /finance */}
-        <TabsContent value="financial">
-          <Card>
-            <CardHeader>
-              <CardTitle>Financial Reports</CardTitle>
-              <CardDescription>Budget, spend, and invoices live on the Finance page.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {userCanViewFinance ? (
-                <div className="flex flex-col items-center gap-4 py-10 text-center">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50">
-                    <DollarSign className="h-6 w-6 text-emerald-600" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-semibold text-slate-900">Open the Finance dashboard</h3>
-                    <p className="mt-1 text-sm text-slate-500 max-w-md">
-                      Budget breakdown, vendor invoices, and spend-to-date are managed in one place.
-                    </p>
-                  </div>
-                  <Button onClick={() => navigate('/finance')}>
-                    Go to Finance
-                    <ArrowUpRight className="ml-1.5 h-4 w-4" />
-                  </Button>
+              {filteredAudit.length === 0 ? (
+                <div className="px-6 py-16 text-center">
+                  <Activity className="mx-auto h-10 w-10 text-slate-300" />
+                  <p className="mt-3 text-sm font-medium text-slate-900">No entries match your filters.</p>
+                  <p className="mt-1 text-xs text-slate-500">Try widening the entity, user, or search criteria.</p>
                 </div>
               ) : (
-                <div className="flex flex-col items-center gap-3 py-10 text-center">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-50">
-                    <Lock className="h-6 w-6 text-red-500" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-slate-900">Finance access required</h3>
-                  <p className="text-sm text-slate-500 max-w-md">
-                    Your account doesn't have the Finance permission. Ask an administrator to grant access.
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Audit Trail Tab */}
-        <TabsContent value="audit">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Audit Trail</CardTitle>
-                  <CardDescription>Complete activity log for project accountability</CardDescription>
-                </div>
-                <div className="flex gap-2">
-                  <Badge variant="secondary">Total: {auditStats.total}</Badge>
-                  <Badge variant="blue">Photos: {auditStats.photos}</Badge>
-                  <Badge variant="purple">AI: {auditStats.aiAnalysis}</Badge>
-                  <Badge variant="default">Tasks: {auditStats.taskUpdates}</Badge>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <ScrollArea className="h-[600px]">
-                <div className="space-y-4">
-                  {auditLogs.map((log) => (
-                    <div key={log.id} className="flex items-start gap-4 rounded-lg border border-slate-100 p-4">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-xl">
-                        {getActionIcon(log.action)}
+                <ul className="max-h-[640px] divide-y divide-slate-50 overflow-y-auto">
+                  {filteredAudit.map((log) => (
+                    <li key={log.id} className="flex items-start gap-4 px-6 py-4 transition-colors hover:bg-slate-50/70">
+                      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-slate-100 text-xl">
+                        {actionIcon(log.action)}
                       </div>
-                      <div className="flex-1">
-                        <div className="flex items-center justify-between">
-                          <p className="font-medium text-slate-900">
-                            {log.action.replace(/_/g, ' ')}
-                          </p>
-                          <span className="text-xs text-slate-500">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium capitalize text-slate-900">{log.action.replace(/_/g, ' ')}</p>
+                            <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-slate-600">
+                              {log.entityType}
+                            </span>
+                          </div>
+                          <span className="tabular-nums text-xs text-slate-500">
                             {format(new Date(log.createdAt), 'MMM d, h:mm:ss a')}
                           </span>
                         </div>
                         <p className="mt-1 text-sm text-slate-600">{log.notes || 'No details'}</p>
                         <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
                           <Users className="h-3 w-3" />
-                          <span>{getUserName(log.userId)}</span>
+                          <span>{userName(log.userId)}</span>
                           {log.ipAddress && (
                             <>
                               <span>•</span>
@@ -305,183 +744,293 @@ export default function Reports() {
                             </>
                           )}
                         </div>
-                        {log.oldValue && log.newValue && (
-                          <div className="mt-2 rounded bg-slate-50 p-2 text-xs">
-                            <span className="text-red-500">Before: {JSON.stringify(log.oldValue)}</span>
-                            <span className="mx-2">→</span>
-                            <span className="text-emerald-500">After: {JSON.stringify(log.newValue)}</span>
-                          </div>
-                        )}
                       </div>
-                    </div>
+                    </li>
                   ))}
-                </div>
-              </ScrollArea>
-            </CardContent>
-          </Card>
-        </TabsContent>
+                </ul>
+              )}
+            </div>
+          </div>
+        )}
 
-        {/* Safety Tab */}
-        <TabsContent value="safety">
-          <Card>
-            <CardHeader>
-              <CardTitle>Safety Reports</CardTitle>
-              <CardDescription>Safety flags and compliance tracking</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-6 sm:grid-cols-3">
-                <div className="rounded-xl bg-red-50 p-6">
-                  <p className="text-sm text-red-700">Active Safety Flags</p>
-                  <p className="mt-2 text-3xl font-bold text-red-900">3</p>
-                  <p className="mt-1 text-sm text-red-600">Require immediate attention</p>
-                </div>
-                <div className="rounded-xl bg-amber-50 p-6">
-                  <p className="text-sm text-amber-700">Resolved This Week</p>
-                  <p className="mt-2 text-3xl font-bold text-amber-900">7</p>
-                  <p className="mt-1 text-sm text-amber-600">Successfully addressed</p>
-                </div>
-                <div className="rounded-xl bg-emerald-50 p-6">
-                  <p className="text-sm text-emerald-700">Days Without Incident</p>
-                  <p className="mt-2 text-3xl font-bold text-emerald-900">45</p>
-                  <p className="mt-1 text-sm text-emerald-600">Excellent safety record</p>
-                </div>
-              </div>
-              
-              <Separator className="my-6" />
-              
-              <h3 className="mb-4 text-lg font-semibold">Recent Safety Flags</h3>
-              <div className="space-y-3">
-                {[
-                  { task: 'Gymnasium Roofing', flag: 'Workers at height - verify harness use', date: '2024-02-28', status: 'open' },
-                  { task: 'Roof Replacement', flag: 'Debris falling zone - ensure barriers', date: '2024-02-28', status: 'open' },
-                  { task: 'North Wing Framing', flag: 'Verify safety equipment usage', date: '2024-02-27', status: 'resolved' },
-                ].map((item, i) => (
-                  <div key={i} className="flex items-center justify-between rounded-lg border border-slate-200 p-4">
-                    <div>
-                      <p className="font-medium text-slate-900">{item.task}</p>
-                      <p className="text-sm text-slate-600">{item.flag}</p>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <span className="text-sm text-slate-500">{format(new Date(item.date), 'MMM d')}</span>
-                      <Badge variant={item.status === 'open' ? 'destructive' : 'default'}>
-                        {item.status.toUpperCase()}
-                      </Badge>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+        {/* ════════════ SAFETY ════════════ */}
+        {activeTab === 'safety' && (
+          <div className="space-y-6">
+            <SectionHeader
+              eyebrow="Safety"
+              title="Eyes on the line."
+              subtitle="Open hazards, recent resolutions, and the streak we're trying to keep."
+            />
 
-      {/* Report Preview Modal */}
-      {showPreview && selectedReport && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-auto">
-          <div className="my-8 w-full max-w-6xl rounded-xl bg-white shadow-2xl">
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
-              <h3 className="text-lg font-semibold text-slate-900">Report Preview</h3>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={handlePrint}>
-                  <Printer className="mr-2 h-4 w-4" />
-                  Print
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => setShowPreview(false)}>
-                  Close
-                </Button>
-              </div>
+            <div className="grid grid-cols-1 gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200 md:grid-cols-3">
+              <StatCell label="Open flags"          value={safetyStats.open.toString()}     caption="Need attention"        accent="#BE123C" />
+              <StatCell label="Resolved"            value={safetyStats.resolved.toString()} caption="Successfully closed"   accent="#B45309" />
+              <StatCell label="Days w/o incident"   value="45"                              caption="Excellent streak"      accent="#0F766E" />
             </div>
 
-            <div className="max-h-[calc(100vh-200px)] overflow-auto p-8">
-              <div className="mb-8 border-b-2 border-emerald-600 pb-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h1 className="text-3xl font-bold text-slate-900">{getReportTypeLabel(selectedReport.reportType)}</h1>
-                    <p className="mt-1 text-lg text-slate-600">{project.name}</p>
-                    <p className="text-sm text-slate-500">{project.clientName}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-slate-700">
-                      {format(new Date(selectedReport.generatedAt), 'MMMM d, yyyy')}
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      {format(new Date(selectedReport.dateFrom), 'MMM d')} - {format(new Date(selectedReport.dateTo), 'MMM d, yyyy')}
-                    </p>
-                  </div>
-                </div>
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+              <div className="border-b border-slate-100 px-6 py-4">
+                <h3 className="display text-lg font-medium text-slate-900">Safety flags</h3>
+                <p className="tabular-nums text-xs text-slate-500">{SAFETY_FLAGS.length} flags on the books</p>
               </div>
-
-              <div className="mb-8">
-                <h2 className="mb-4 flex items-center gap-2 text-xl font-semibold text-slate-900">
-                  <BarChart3 className="h-6 w-6 text-emerald-600" />
-                  Executive Summary
-                </h2>
-                <div className="grid gap-4 sm:grid-cols-4">
-                  <div className="rounded-xl bg-emerald-50 p-6 text-center">
-                    <p className="text-4xl font-bold text-emerald-600">{selectedReport.summary.overallProgress}%</p>
-                    <p className="mt-1 text-sm text-slate-600">Overall Progress</p>
-                    <p className="mt-2 text-xs text-emerald-600">+{selectedReport.summary.progressChange}% this period</p>
-                  </div>
-                  <div className="rounded-xl bg-blue-50 p-6 text-center">
-                    <p className="text-4xl font-bold text-blue-600">{selectedReport.summary.photosUploaded}</p>
-                    <p className="mt-1 text-sm text-slate-600">Photos Uploaded</p>
-                  </div>
-                  <div className="rounded-xl bg-amber-50 p-6 text-center">
-                    <p className="text-4xl font-bold text-amber-600">{selectedReport.summary.tasksUpdated}</p>
-                    <p className="mt-1 text-sm text-slate-600">Tasks Updated</p>
-                  </div>
-                  <div className="rounded-xl bg-purple-50 p-6 text-center">
-                    <p className="text-4xl font-bold text-purple-600">{selectedReport.summary.safetyFlags}</p>
-                    <p className="mt-1 text-sm text-slate-600">Safety Flags</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mb-8">
-                <h2 className="mb-4 flex items-center gap-2 text-xl font-semibold text-slate-900">
-                  <TrendingUp className="h-6 w-6 text-emerald-600" />
-                  Progress Trend
-                </h2>
-                <Card>
-                  <CardContent className="p-6">
-                    <div className="h-64">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={progressTrend}>
-                          <defs>
-                            <linearGradient id="colorProgress" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#10B981" stopOpacity={0.3} />
-                              <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
-                            </linearGradient>
-                          </defs>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                          <XAxis dataKey="date" tickFormatter={(date) => format(new Date(date), 'MMM d')} stroke="#64748b" fontSize={12} />
-                          <YAxis stroke="#64748b" fontSize={12} />
-                          <Tooltip contentStyle={{ backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: '8px' }} />
-                          <Area type="monotone" dataKey="progress" stroke="#10B981" strokeWidth={2} fillOpacity={1} fill="url(#colorProgress)" />
-                        </AreaChart>
-                      </ResponsiveContainer>
+              <ul className="divide-y divide-slate-50">
+                {SAFETY_FLAGS.map((flag) => (
+                  <li key={flag.id} className="flex flex-wrap items-center justify-between gap-3 px-6 py-4">
+                    <div>
+                      <p className="font-medium text-slate-900">{flag.task}</p>
+                      <p className="text-sm text-slate-600">{flag.flag}</p>
                     </div>
-                  </CardContent>
-                </Card>
-              </div>
+                    <div className="flex items-center gap-3">
+                      <span className="tabular-nums text-xs text-slate-500">{format(new Date(flag.date), 'MMM d')}</span>
+                      <span
+                        className={`rounded-full border px-2.5 py-0.5 text-xs font-medium uppercase tracking-wider ${
+                          flag.status === 'open'
+                            ? 'border-red-200 bg-red-50 text-red-700'
+                            : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                        }`}
+                      >
+                        {flag.status}
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
+      </div>
 
-              <div className="mb-8">
-                <h2 className="mb-4 flex items-center gap-2 text-xl font-semibold text-slate-900">
-                  <Calendar className="h-6 w-6 text-emerald-600" />
-                  Project Timeline (Gantt Chart)
-                </h2>
-                <GanttChart tasks={tasks} startDate={project.startDate} endDate={project.endDate} compact={false} />
-              </div>
+      {/* ─── Report preview modal ─── */}
+      {previewReport && (
+        <ReportPreviewModal
+          report={previewReport}
+          tasks={tasks}
+          progressTrend={progressTrend}
+          projectName={projectName(previewReport.projectId)}
+          onClose={() => setPreviewReport(null)}
+          onPrint={handlePrint}
+          onDownload={() => handleDownload(previewReport.reportType)}
+        />
+      )}
+    </div>
+  );
+}
 
-              <div className="mt-12 border-t border-slate-200 pt-6 text-center text-sm text-slate-500">
-                <p className="font-medium text-slate-700">SiteProof - Automated Photo-Based QA System</p>
-                <p>Report ID: {selectedReport.id}</p>
-                <p>Generated on {format(new Date(selectedReport.generatedAt), 'MMMM d, yyyy \'at\' h:mm a')}</p>
+// ─── Subcomponents ───────────────────────────────────────────────────────────
+
+function StatCell({ label, value, caption, accent }: { label: string; value: string; caption: string; accent: string }) {
+  return (
+    <div className="relative overflow-hidden bg-white p-5">
+      <div className="absolute left-0 top-0 h-px w-8" style={{ backgroundColor: accent }} />
+      <p className="text-[11px] font-medium uppercase tracking-[0.15em] text-slate-500">{label}</p>
+      <p className="num mt-2 text-3xl font-medium text-slate-900">{value}</p>
+      <p className="mt-1 text-xs text-slate-400">{caption}</p>
+    </div>
+  );
+}
+
+function SectionHeader({
+  eyebrow,
+  title,
+  subtitle,
+  right,
+}: {
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  right?: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-700">{eyebrow}</p>
+        <h2 className="display mt-1 text-3xl font-medium leading-tight text-slate-900">{title}</h2>
+        <p className="mt-2 max-w-xl text-sm text-slate-500">{subtitle}</p>
+      </div>
+      {right}
+    </div>
+  );
+}
+
+function BlankState({
+  icon: Icon,
+  title,
+  body,
+  accent = 'slate',
+}: {
+  icon: typeof FolderKanban;
+  title: string;
+  body: string;
+  accent?: 'slate' | 'rose';
+}) {
+  const accentClasses =
+    accent === 'rose' ? 'bg-rose-50 text-rose-500 border-rose-100' : 'bg-slate-50 text-slate-400 border-slate-200';
+  return (
+    <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-white py-16 text-center">
+      <div className={`mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border ${accentClasses}`}>
+        <Icon className="h-7 w-7" strokeWidth={1.5} />
+      </div>
+      <h3 className="display text-2xl font-medium text-slate-900">{title}</h3>
+      <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">{body}</p>
+    </div>
+  );
+}
+
+function ProjectSelectorPill({
+  projects,
+  value,
+  onChange,
+}: {
+  projects: { id: string; name: string }[];
+  value: string | null;
+  onChange: (v: string | null) => void;
+}) {
+  return (
+    <div className="relative">
+      <FolderKanban className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      <select
+        value={value ?? ''}
+        onChange={(e) => onChange(e.target.value || null)}
+        className="h-10 w-72 appearance-none rounded-full border border-slate-200 bg-white pl-11 pr-9 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-1"
+      >
+        <option value="">Select a project…</option>
+        {projects.map((p) => (
+          <option key={p.id} value={p.id}>{p.name}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function InvoiceTotalCell({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div className={`rounded-2xl border px-5 py-4 ${color}`}>
+      <p className="text-[11px] font-medium uppercase tracking-[0.15em] opacity-80">{label}</p>
+      <p className="num mt-1 text-2xl font-medium">{value}</p>
+    </div>
+  );
+}
+
+// ─── Report preview modal ───────────────────────────────────────────────────
+
+interface ReportPreviewProps {
+  report: Report;
+  tasks: any[];
+  progressTrend: { date: string; progress: number }[];
+  projectName: string;
+  onClose: () => void;
+  onPrint: () => void;
+  onDownload: () => void;
+}
+
+function ReportPreviewModal({ report, tasks, progressTrend, projectName, onClose, onPrint, onDownload }: ReportPreviewProps) {
+  const meta = REPORT_TYPE_META[report.reportType];
+  return (
+    <div className="reports-root fixed inset-0 z-50 flex items-center justify-center overflow-auto bg-slate-900/50 p-4 backdrop-blur-sm">
+      <style>{FONT_STYLES}</style>
+      <div className="my-8 w-full max-w-6xl overflow-hidden rounded-3xl bg-white shadow-2xl">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white px-7 py-5">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-700">{meta.label} report</p>
+            <h3 className="display mt-0.5 text-2xl font-medium text-slate-900">{projectName || 'Report preview'}</h3>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onPrint}
+              className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-4 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-400"
+            >
+              <Printer className="h-3.5 w-3.5" />
+              Print
+            </button>
+            <button
+              onClick={onDownload}
+              className="flex items-center gap-1.5 rounded-full bg-slate-900 px-4 py-1.5 text-xs font-medium text-white hover:bg-emerald-700"
+            >
+              <Download className="h-3.5 w-3.5" />
+              PDF
+            </button>
+            <button onClick={onClose} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="max-h-[calc(100vh-200px)] overflow-auto p-8">
+          <div className="mb-8 border-b-2 border-emerald-600 pb-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h1 className="display text-3xl font-medium text-slate-900">{meta.label} progress report</h1>
+                <p className="mt-1 text-lg text-slate-600">{projectName}</p>
+              </div>
+              <div className="text-right">
+                <p className="num text-base text-slate-700">{format(new Date(report.generatedAt), 'MMMM d, yyyy')}</p>
+                <p className="tabular-nums text-xs text-slate-500">
+                  {format(new Date(report.dateFrom), 'MMM d')} – {format(new Date(report.dateTo), 'MMM d, yyyy')}
+                </p>
               </div>
             </div>
           </div>
+
+          <div className="mb-8 grid gap-4 sm:grid-cols-4">
+            <ReportKpi tone="emerald" label="Overall progress" value={`${report.summary.overallProgress}%`} hint={`+${report.summary.progressChange}% this period`} />
+            <ReportKpi tone="blue"    label="Photos uploaded" value={report.summary.photosUploaded.toString()} />
+            <ReportKpi tone="amber"   label="Tasks updated"   value={report.summary.tasksUpdated.toString()} />
+            <ReportKpi tone="violet"  label="Safety flags"    value={report.summary.safetyFlags.toString()} />
+          </div>
+
+          <div className="mb-8">
+            <h2 className="display mb-4 text-xl font-medium text-slate-900">Progress trend</h2>
+            <div className="rounded-2xl border border-slate-200 bg-white p-6">
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={progressTrend}>
+                    <defs>
+                      <linearGradient id="previewProgressGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%"  stopColor="#10B981" stopOpacity={0.32} />
+                        <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <XAxis dataKey="date" tickFormatter={(d) => format(new Date(d), 'MMM d')} stroke="#64748b" fontSize={12} />
+                    <YAxis stroke="#64748b" fontSize={12} />
+                    <Tooltip contentStyle={{ backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: 12 }} />
+                    <Area type="monotone" dataKey="progress" stroke="#10B981" strokeWidth={2} fill="url(#previewProgressGradient)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+
+          <div className="mb-8">
+            <h2 className="display mb-4 text-xl font-medium text-slate-900">Project timeline</h2>
+            <GanttChart tasks={tasks} startDate={report.dateFrom} endDate={report.dateTo} compact={false} />
+          </div>
+
+          <div className="mt-12 border-t border-slate-100 pt-6 text-center text-sm text-slate-500">
+            <p className="font-medium text-slate-700">SiteProof — Automated Photo-Based QA System</p>
+            <p className="tabular-nums">Report ID: {report.id}</p>
+            <p className="tabular-nums">Generated {format(new Date(report.generatedAt), "MMMM d, yyyy 'at' h:mm a")}</p>
+          </div>
         </div>
-      )}
+      </div>
+    </div>
+  );
+}
+
+const KPI_TONES: Record<string, string> = {
+  emerald: 'bg-emerald-50 text-emerald-700',
+  blue:    'bg-blue-50 text-blue-700',
+  amber:   'bg-amber-50 text-amber-700',
+  violet:  'bg-violet-50 text-violet-700',
+};
+
+function ReportKpi({ tone, label, value, hint }: { tone: string; label: string; value: string; hint?: string }) {
+  return (
+    <div className={`rounded-2xl p-6 text-center ${KPI_TONES[tone]}`}>
+      <p className="num text-4xl font-medium">{value}</p>
+      <p className="mt-1 text-sm">{label}</p>
+      {hint && <p className="mt-2 text-xs opacity-80">{hint}</p>}
     </div>
   );
 }

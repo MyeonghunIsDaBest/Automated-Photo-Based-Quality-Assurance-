@@ -82,6 +82,7 @@ interface FeatureState {
   // Reports
   reports: Report[];
   generateWeeklyReport: (projectId: string) => Report;
+  generateReport: (projectId: string, type: Report['reportType']) => Report;
   getReportsByType: (type: Report['reportType']) => Report[];
   
   // User Settings
@@ -340,44 +341,47 @@ export const useFeatureStore = create<FeatureState>((set, get) => ({
   // Reports
   reports: mockReports,
 
-  generateWeeklyReport: (projectId) => {
+  generateWeeklyReport: (projectId) => get().generateReport(projectId, 'weekly'),
+
+  generateReport: (projectId, type) => {
     const { tasks, calculateOverallProgress } = get();
     const currentProgress = calculateOverallProgress();
-    
-    // Get last week's progress
+
+    const windowMs =
+      type === 'daily'   ? 1  * 24 * 60 * 60 * 1000 :
+      type === 'weekly'  ? 7  * 24 * 60 * 60 * 1000 :
+                           30 * 24 * 60 * 60 * 1000;
+
     const progressHistory = get().progressHistory;
-    const lastWeekProgress = progressHistory.length > 1 
-      ? progressHistory[progressHistory.length - 2].progress 
+    const lastProgress = progressHistory.length > 1
+      ? progressHistory[progressHistory.length - 2].progress
       : 0;
-    const progressChange = currentProgress - lastWeekProgress;
+    const progressChange = currentProgress - lastProgress;
 
     const newReport: Report = {
       id: `report_${Date.now()}`,
       projectId,
-      reportType: 'weekly',
+      reportType: type,
       generatedBy: 'user_1',
       generatedAt: new Date().toISOString(),
-      dateFrom: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      dateFrom: new Date(Date.now() - windowMs).toISOString().split('T')[0],
       dateTo: new Date().toISOString().split('T')[0],
       summary: {
         photosUploaded: mockPhotos.length,
-        tasksUpdated: tasks.filter(t => 
-          new Date(t.lastUpdated) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-        ).length,
+        tasksUpdated: tasks.filter((t) => new Date(t.lastUpdated) > new Date(Date.now() - windowMs)).length,
         overallProgress: currentProgress,
         progressChange,
-        safetyFlags: mockPhotos.filter(p => 
-          p.aiAnalysis?.safetyFlags && p.aiAnalysis.safetyFlags.length > 0
-        ).length,
+        safetyFlags: mockPhotos.filter((p) => p.aiAnalysis?.safetyFlags && p.aiAnalysis.safetyFlags.length > 0).length,
       },
     };
 
     set((state) => ({ reports: [newReport, ...state.reports] }));
 
-    // Create notification
-    useNotificationStore.getState().addNotification(
-      createWeeklyReport(projectId, 'Lincoln Elementary School', currentProgress, progressChange)
-    );
+    if (type === 'weekly') {
+      useNotificationStore.getState().addNotification(
+        createWeeklyReport(projectId, 'Lincoln Elementary School', currentProgress, progressChange)
+      );
+    }
 
     return newReport;
   },

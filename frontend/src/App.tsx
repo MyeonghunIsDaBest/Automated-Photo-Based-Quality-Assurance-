@@ -35,6 +35,7 @@ function App() {
           <Route path="gantt" element={<Gantt />} />
           <Route path="messages" element={<Messages />} />
           <Route path="reports" element={<Reports />} />
+          <Route path="finance" element={<Navigate to="/reports" replace />} />
           <Route path="settings" element={<Settings />} />
         </Route>
         
