@@ -4,10 +4,12 @@ import { useAppStore } from '../store';
 import { Building2, Mail, ArrowRight, Users } from 'lucide-react';
 
 const demoUsers = [
-  { email: 'admin@siteproof.com', role: 'Admin', name: 'John Anderson' },
-  { email: 'supervisor@siteproof.com', role: 'Site Supervisor', name: 'Maria Garcia' },
-  { email: 'admin@school.edu', role: 'School Admin', name: 'Dr. Sarah Chen' },
-  { email: 'inspector@qa.com', role: 'QA Inspector', name: 'Mike Thompson' },
+  { email: 'admin@siteproof.com', role: 'Admin + Finance', name: 'John Anderson', summary: 'Full access incl. Finance' },
+  { email: 'supervisor@siteproof.com', role: 'Site Supervisor', name: 'Maria Garcia', summary: 'Edit Gantt, upload photos' },
+  { email: 'admin@school.edu', role: 'Client', name: 'Dr. Sarah Chen', summary: 'Read-only Gantt, can leave notes' },
+  { email: 'finance@school.edu', role: 'Client + Finance', name: 'Robert Lin', summary: 'Client view + Finance access' },
+  { email: 'inspector@qa.com', role: 'QA Inspector', name: 'Mike Thompson', summary: 'Read + accuracy notes' },
+  { email: 'finance@siteproof.com', role: 'Finance', name: 'Priya Patel', summary: 'Finance only' },
 ];
 
 export default function Login() {
@@ -112,11 +114,12 @@ export default function Login() {
                       : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
                   }`}
                 >
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="font-medium text-slate-900">{user.name}</p>
                     <p className="text-sm text-slate-500">{user.email}</p>
+                    <p className="mt-0.5 text-xs text-slate-400">{user.summary}</p>
                   </div>
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+                  <span className="ml-3 shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
                     {user.role}
                   </span>
                 </button>

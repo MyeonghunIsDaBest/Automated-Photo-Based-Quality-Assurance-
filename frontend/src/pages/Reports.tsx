@@ -1,7 +1,9 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { useFeatureStore } from '../store/features';
-import { FileText, Download, Calendar, Clock, Eye, FileUp, Printer, BarChart3, TrendingUp, Users, Shield, DollarSign, Activity } from 'lucide-react';
+import { canViewFinance } from '../lib/permissions';
+import { FileText, Download, Calendar, Clock, Eye, FileUp, Printer, BarChart3, TrendingUp, Users, Shield, DollarSign, Activity, ArrowUpRight, Lock } from 'lucide-react';
 import { format } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -9,20 +11,21 @@ import { Badge } from '../components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import { GanttChart } from '../components/ui/GanttChart';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { getProgressTrend } from '../data/mockData';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Separator } from '../components/ui/separator';
 
 export default function Reports() {
-  const { project, tasks, auditLogs, users } = useAppStore();
+  const navigate = useNavigate();
+  const { project, auditLogs, users, currentUser } = useAppStore();
+  const tasks = useFeatureStore((s) => s.tasks);
+  const progressTrend = useFeatureStore((s) => s.progressHistory);
   const { reports, generateWeeklyReport } = useFeatureStore();
   const [isGenerating, setIsGenerating] = useState(false);
   const [reportType, setReportType] = useState<'daily' | 'weekly' | 'milestone'>('weekly');
   const [showPreview, setShowPreview] = useState(false);
   const [selectedReport, setSelectedReport] = useState<typeof reports[0] | null>(null);
   const [activeTab, setActiveTab] = useState<'progress' | 'financial' | 'audit' | 'safety'>('progress');
-
-  const progressTrend = getProgressTrend();
+  const userCanViewFinance = canViewFinance(currentUser);
 
   const handleGenerateReport = async () => {
     setIsGenerating(true);
@@ -218,77 +221,41 @@ export default function Reports() {
           </Card>
         </TabsContent>
 
-        {/* Financial Tab */}
+        {/* Financial Tab — single source of truth lives on /finance */}
         <TabsContent value="financial">
           <Card>
             <CardHeader>
               <CardTitle>Financial Reports</CardTitle>
-              <CardDescription>Track project budget, expenses, and financial metrics</CardDescription>
+              <CardDescription>Budget, spend, and invoices live on the Finance page.</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid gap-6 sm:grid-cols-3">
-                <div className="rounded-xl bg-blue-50 p-6">
-                  <p className="text-sm text-blue-700">Total Budget</p>
-                  <p className="mt-2 text-3xl font-bold text-blue-900">$2,450,000</p>
-                  <p className="mt-1 text-sm text-blue-600">Approved budget for Phase 2</p>
+              {userCanViewFinance ? (
+                <div className="flex flex-col items-center gap-4 py-10 text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50">
+                    <DollarSign className="h-6 w-6 text-emerald-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-slate-900">Open the Finance dashboard</h3>
+                    <p className="mt-1 text-sm text-slate-500 max-w-md">
+                      Budget breakdown, vendor invoices, and spend-to-date are managed in one place.
+                    </p>
+                  </div>
+                  <Button onClick={() => navigate('/finance')}>
+                    Go to Finance
+                    <ArrowUpRight className="ml-1.5 h-4 w-4" />
+                  </Button>
                 </div>
-                <div className="rounded-xl bg-emerald-50 p-6">
-                  <p className="text-sm text-emerald-700">Spent to Date</p>
-                  <p className="mt-2 text-3xl font-bold text-emerald-900">$1,640,500</p>
-                  <p className="mt-1 text-sm text-emerald-600">67% of budget utilized</p>
+              ) : (
+                <div className="flex flex-col items-center gap-3 py-10 text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-50">
+                    <Lock className="h-6 w-6 text-red-500" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-slate-900">Finance access required</h3>
+                  <p className="text-sm text-slate-500 max-w-md">
+                    Your account doesn't have the Finance permission. Ask an administrator to grant access.
+                  </p>
                 </div>
-                <div className="rounded-xl bg-purple-50 p-6">
-                  <p className="text-sm text-purple-700">Remaining</p>
-                  <p className="mt-2 text-3xl font-bold text-purple-900">$809,500</p>
-                  <p className="mt-1 text-sm text-purple-600">33% available</p>
-                </div>
-              </div>
-              
-              <Separator className="my-6" />
-              
-              <div className="rounded-lg border border-slate-200">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left font-medium text-slate-700">Category</th>
-                      <th className="px-4 py-3 text-left font-medium text-slate-700">Budgeted</th>
-                      <th className="px-4 py-3 text-left font-medium text-slate-700">Spent</th>
-                      <th className="px-4 py-3 text-left font-medium text-slate-700">Remaining</th>
-                      <th className="px-4 py-3 text-left font-medium text-slate-700">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    <tr>
-                      <td className="px-4 py-3 font-medium">Foundation</td>
-                      <td className="px-4 py-3">$450,000</td>
-                      <td className="px-4 py-3">$450,000</td>
-                      <td className="px-4 py-3">$0</td>
-                      <td className="px-4 py-3"><Badge variant="default">Complete</Badge></td>
-                    </tr>
-                    <tr>
-                      <td className="px-4 py-3 font-medium">Framing</td>
-                      <td className="px-4 py-3">$680,000</td>
-                      <td className="px-4 py-3">$442,000</td>
-                      <td className="px-4 py-3">$238,000</td>
-                      <td className="px-4 py-3"><Badge variant="blue">In Progress</Badge></td>
-                    </tr>
-                    <tr>
-                      <td className="px-4 py-3 font-medium">Electrical</td>
-                      <td className="px-4 py-3">$320,000</td>
-                      <td className="px-4 py-3">$96,000</td>
-                      <td className="px-4 py-3">$224,000</td>
-                      <td className="px-4 py-3"><Badge variant="blue">In Progress</Badge></td>
-                    </tr>
-                    <tr>
-                      <td className="px-4 py-3 font-medium">Plumbing</td>
-                      <td className="px-4 py-3">$280,000</td>
-                      <td className="px-4 py-3">$42,000</td>
-                      <td className="px-4 py-3">$238,000</td>
-                      <td className="px-4 py-3"><Badge variant="blue">In Progress</Badge></td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

@@ -1,14 +1,15 @@
 import { create } from 'zustand';
-import { 
-  User, Project, Zone, Task, Photo, AIAnalysis, 
+import {
+  User, Project, Zone, Task, Photo, AIAnalysis,
   AuditLog, Comment, Report, DashboardStats, ActivityFeedItem,
-  TaskStatus, ConstructionPhase
+  TaskStatus, ConstructionPhase, NoteType
 } from '../types';
 import {
   mockUsers, mockProject, mockZones, mockTasks, mockPhotos,
   mockAuditLogs, mockComments, mockReports, mockDashboardStats,
   mockActivityFeed
 } from '../data/mockData';
+import { useFeatureStore } from './features';
 
 interface AppState {
   // Auth
@@ -32,7 +33,7 @@ interface AppState {
   // Actions
   addPhoto: (photo: Photo) => Promise<void>;
   updateTaskProgress: (taskId: string, newProgress: number, source: 'ai_auto' | 'manual') => void;
-  addComment: (taskId: string, content: string) => void;
+  addComment: (taskId: string, content: string, noteType?: NoteType) => void;
   addAuditLog: (log: Omit<AuditLog, 'id' | 'createdAt'>) => void;
   
   // UI State
@@ -82,11 +83,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   
   // Actions
   addPhoto: async (photo: Photo) => {
-    const { tasks, addAuditLog } = get();
-    
+    const { addAuditLog } = get();
+    const tasks = useFeatureStore.getState().tasks;
+
     // Add photo to state
     set(state => ({ photos: [photo, ...state.photos] }));
-    
+
     // Add audit log
     addAuditLog({
       projectId: photo.projectId,
@@ -97,12 +99,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       newValue: { filename: photo.filename, zoneId: photo.zoneId },
       notes: photo.notes || 'Photo uploaded',
     });
-    
-    // Update task photo count
+
+    // Update task photo count on the source-of-truth store; the subscription
+    // below mirrors it back into useAppStore.tasks for any consumer still
+    // reading from there.
     if (photo.taskId) {
-      set(state => ({
-        tasks: state.tasks.map(task => 
-          task.id === photo.taskId 
+      useFeatureStore.setState((state) => ({
+        tasks: state.tasks.map((task) =>
+          task.id === photo.taskId
             ? { ...task, photoCount: task.photoCount + 1 }
             : task
         ),
@@ -164,30 +168,22 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   
   updateTaskProgress: (taskId: string, newProgress: number, source: 'ai_auto' | 'manual') => {
-    const { tasks, addAuditLog, project } = get();
-    const task = tasks.find(t => t.id === taskId);
-    
-    if (task) {
-      const oldProgress = task.percentComplete;
-      
-      set(state => ({
-        tasks: state.tasks.map(t => 
-          t.id === taskId 
-            ? { 
-                ...t, 
-                percentComplete: newProgress,
-                status: newProgress >= 100 ? 'complete' : newProgress > 0 ? 'in_progress' : 'not_started',
-                lastUpdated: new Date().toISOString(),
-                updateSource: source,
-              }
-            : t
-        ),
-      }));
-      
-      // Add audit log
+    const { addAuditLog, project, currentUser } = get();
+    const featureState = useFeatureStore.getState();
+    const task = featureState.tasks.find((t) => t.id === taskId);
+    if (!task) return;
+
+    const oldProgress = task.percentComplete;
+
+    // Delegate mutation to the source-of-truth store. It also appends a
+    // point to the progress trend, fires task-update notifications, and
+    // raises any safety alerts surfaced from existing photo analyses.
+    featureState.updateTaskProgress(taskId, newProgress, source);
+
+    if (newProgress !== oldProgress) {
       addAuditLog({
         projectId: project.id,
-        userId: get().currentUser?.id || 'system',
+        userId: currentUser?.id || 'system',
         action: 'task_progress_updated',
         entityType: 'task',
         entityId: taskId,
@@ -195,43 +191,42 @@ export const useAppStore = create<AppState>((set, get) => ({
         newValue: { percentComplete: newProgress },
         notes: source === 'ai_auto' ? 'Auto-updated based on AI analysis' : 'Manual update',
       });
-      
-      set({ 
-        notification: { 
-          message: `Task progress updated to ${newProgress}%`, 
-          type: 'success' 
-        } 
+
+      set({
+        notification: {
+          message: `Task progress updated to ${newProgress}%`,
+          type: 'success',
+        },
       });
     }
   },
   
-  addComment: (taskId: string, content: string) => {
-    const { currentUser, comments } = get();
-    
-    if (currentUser) {
-      const newComment: Comment = {
-        id: `comment_${Date.now()}`,
-        taskId,
-        userId: currentUser.id,
-        userName: currentUser.fullName,
-        userAvatar: currentUser.avatar,
-        content,
-        createdAt: new Date().toISOString(),
-      };
-      
-      set({ comments: [...comments, newComment] });
-      
-      // Add audit log
-      get().addAuditLog({
-        projectId: get().project.id,
-        userId: currentUser.id,
-        action: 'comment_added',
-        entityType: 'task',
-        entityId: taskId,
-        newValue: { comment: content },
-        notes: 'Comment added to task',
-      });
-    }
+  addComment: (taskId: string, content: string, noteType: NoteType = 'general') => {
+    const { currentUser } = get();
+    if (!currentUser) return;
+
+    // Source-of-truth write goes to useFeatureStore; the subscription mirrors
+    // it back into useAppStore.comments so existing consumers stay unchanged.
+    useFeatureStore.getState().addComment({
+      taskId,
+      userId: currentUser.id,
+      userName: currentUser.fullName,
+      userAvatar: currentUser.avatar,
+      userRole: currentUser.role,
+      content,
+      noteType,
+      status: 'open',
+    });
+
+    get().addAuditLog({
+      projectId: get().project.id,
+      userId: currentUser.id,
+      action: 'comment_added',
+      entityType: 'task',
+      entityId: taskId,
+      newValue: { comment: content, noteType },
+      notes: `Note added (${noteType})`,
+    });
   },
   
   addAuditLog: (log: Omit<AuditLog, 'id' | 'createdAt'>) => {
@@ -260,6 +255,21 @@ export const useAppStore = create<AppState>((set, get) => ({
   notification: null,
   setNotification: (notification) => set({ notification }),
 }));
+
+// Mirror tasks/comments from useFeatureStore into useAppStore so the legacy
+// `tasks` and `comments` slices stay reactive without requiring every consumer
+// to switch stores. useFeatureStore is the source of truth — every mutation
+// goes through it (see updateTaskProgress / addComment / addPhoto above).
+useAppStore.setState({
+  tasks: useFeatureStore.getState().tasks,
+  comments: useFeatureStore.getState().comments,
+});
+useFeatureStore.subscribe((state, prevState) => {
+  const update: Partial<AppState> = {};
+  if (state.tasks !== prevState.tasks) update.tasks = state.tasks;
+  if (state.comments !== prevState.comments) update.comments = state.comments;
+  if (Object.keys(update).length > 0) useAppStore.setState(update);
+});
 
 // Helper selectors
 export const getPhotosForTask = (taskId: string) => {

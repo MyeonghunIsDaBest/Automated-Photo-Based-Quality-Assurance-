@@ -1,118 +1,65 @@
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { 
+import { useFeatureStore } from '../store/features';
+import { useDashboardStats, useActiveJobs, useUpcomingTasks } from '../store/dashboard';
+import {
   Image, CheckCircle2, Clock,
   ArrowUpRight, Briefcase, Users
 } from 'lucide-react';
-import { 
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, 
-  Tooltip, ResponsiveContainer 
+import {
+  AreaChart, Area, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer
 } from 'recharts';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
-import { getProgressTrend } from '../data/mockData';
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { dashboardStats, activityFeed, users } = useAppStore();
-  
-  const progressTrend = getProgressTrend();
+  const { activityFeed, users, zones } = useAppStore();
+  const stats = useDashboardStats();
+  const activeJobs = useActiveJobs(3);
+  const upcomingTasks = useUpcomingTasks(4);
+  const progressTrend = useFeatureStore((s) => s.progressHistory);
 
   const statCards = [
     {
-      title: 'Active Jobs',
-      value: '12',
-      change: '+2 from last month',
+      title: 'Tasks Complete',
+      value: `${stats.tasksComplete}/${stats.totalTasks}`,
+      change: `${stats.tasksInProgress} in progress`,
       trend: 'up',
       icon: Briefcase,
-      color: 'emerald',
       bgColor: 'bg-emerald-100',
       iconColor: 'text-emerald-600',
     },
     {
-      title: 'Pending Tasks',
-      value: '24',
-      change: '5 urgent',
-      trend: 'warning',
+      title: 'Overall Progress',
+      value: `${stats.overallProgress}%`,
+      change: stats.delayedTasks > 0 ? `${stats.delayedTasks} delayed` : 'On track',
+      trend: stats.delayedTasks > 0 ? 'down' : 'up',
       icon: CheckCircle2,
-      color: 'amber',
       bgColor: 'bg-amber-100',
       iconColor: 'text-amber-600',
     },
     {
       title: 'Photos This Week',
-      value: dashboardStats.photosThisWeek.toString(),
-      change: `+${dashboardStats.photosToday} today`,
+      value: stats.photosThisWeek.toString(),
+      change: `+${stats.photosToday} today`,
       trend: 'up',
       icon: Image,
-      color: 'blue',
       bgColor: 'bg-blue-100',
       iconColor: 'text-blue-600',
     },
     {
       title: 'Days Remaining',
-      value: dashboardStats.daysRemaining.toString(),
-      change: dashboardStats.delayedTasks > 0 ? `${dashboardStats.delayedTasks} delayed` : 'On track',
-      trend: dashboardStats.delayedTasks > 0 ? 'down' : 'neutral',
+      value: stats.daysRemaining.toString(),
+      change: stats.delayedTasks > 0 ? `${stats.delayedTasks} delayed` : 'On track',
+      trend: stats.delayedTasks > 0 ? 'down' : 'neutral',
       icon: Clock,
-      color: dashboardStats.delayedTasks > 0 ? 'red' : 'amber',
-      bgColor: dashboardStats.delayedTasks > 0 ? 'bg-red-100' : 'bg-amber-100',
-      iconColor: dashboardStats.delayedTasks > 0 ? 'text-red-600' : 'text-amber-600',
-    },
-  ];
-
-  const activeJobs = [
-    {
-      name: 'North Wing Construction',
-      address: 'Lincoln Elementary School',
-      progress: 65,
-      dueDate: '2024-06-30',
-      status: 'active',
-    },
-    {
-      name: 'Gymnasium Renovation',
-      address: 'South Building',
-      progress: 45,
-      dueDate: '2024-05-15',
-      status: 'delayed',
-    },
-    {
-      name: 'Parking Lot Expansion',
-      address: 'East Campus',
-      progress: 0,
-      dueDate: '2024-08-30',
-      status: 'pending',
-    },
-  ];
-
-  const upcomingTasks = [
-    {
-      title: 'Review AI analysis results',
-      assigned: 'Maria Garcia',
-      priority: 'high',
-      dueDate: '2024-04-25',
-    },
-    {
-      title: 'Approve framing inspection',
-      assigned: 'John Anderson',
-      priority: 'high',
-      dueDate: '2024-04-26',
-    },
-    {
-      title: 'Schedule site inspection',
-      assigned: 'Mike Thompson',
-      priority: 'medium',
-      dueDate: '2024-04-28',
-    },
-    {
-      title: 'Update project timeline',
-      assigned: 'You',
-      priority: 'medium',
-      dueDate: '2024-04-24',
-      completed: true,
+      bgColor: stats.delayedTasks > 0 ? 'bg-red-100' : 'bg-amber-100',
+      iconColor: stats.delayedTasks > 0 ? 'text-red-600' : 'text-amber-600',
     },
   ];
 
@@ -172,31 +119,37 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {activeJobs.map((job, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between rounded-lg border border-slate-100 p-4 transition-colors hover:bg-slate-50"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100">
-                        <Briefcase className="h-5 w-5 text-emerald-600" />
+                {activeJobs.length === 0 && (
+                  <p className="text-sm text-slate-500">No active tasks right now.</p>
+                )}
+                {activeJobs.map((job) => {
+                  const zone = zones.find((z) => z.id === job.zoneId);
+                  return (
+                    <div
+                      key={job.id}
+                      className="flex items-center justify-between rounded-lg border border-slate-100 p-4 transition-colors hover:bg-slate-50"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100">
+                          <Briefcase className="h-5 w-5 text-emerald-600" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-slate-900">{job.name}</p>
+                          <p className="text-sm text-slate-500">{zone?.name ?? 'No zone'}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-medium text-slate-900">{job.name}</p>
-                        <p className="text-sm text-slate-500">{job.address}</p>
+                      <div className="flex items-center gap-4">
+                        <div className="text-right">
+                          <p className="text-sm font-medium text-slate-900">{job.percentComplete}% Complete</p>
+                          <p className="text-xs text-slate-500">Due: {format(parseISO(job.endDate), 'MMM d, yyyy')}</p>
+                        </div>
+                        <Badge variant={job.status === 'delayed' ? 'destructive' : 'default'}>
+                          {job.status.replace('_', ' ').toUpperCase()}
+                        </Badge>
                       </div>
                     </div>
-                    <div className="flex items-center gap-4">
-                      <div className="text-right">
-                        <p className="text-sm font-medium text-slate-900">{job.progress}% Complete</p>
-                        <p className="text-xs text-slate-500">Due: {format(new Date(job.dueDate), 'MMM d, yyyy')}</p>
-                      </div>
-                      <Badge variant={job.status === 'active' ? 'default' : job.status === 'delayed' ? 'destructive' : 'secondary'}>
-                        {job.status.toUpperCase()}
-                      </Badge>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
@@ -267,42 +220,34 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {upcomingTasks.map((task, index) => (
-                  <div
-                    key={index}
-                    className={`flex items-center justify-between rounded-lg border p-4 transition-colors ${
-                      task.completed 
-                        ? 'border-slate-100 bg-slate-50' 
-                        : 'border-slate-100 hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`flex h-8 w-8 items-center justify-center rounded ${
-                        task.completed ? 'bg-emerald-100' : 'border border-slate-200'
-                      }`}>
-                        {task.completed ? (
-                          <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                        ) : (
+                {upcomingTasks.length === 0 && (
+                  <p className="text-sm text-slate-500">No upcoming tasks.</p>
+                )}
+                {upcomingTasks.map((task) => {
+                  const zone = zones.find((z) => z.id === task.zoneId);
+                  return (
+                    <div
+                      key={task.id}
+                      className="flex items-center justify-between rounded-lg border border-slate-100 p-4 transition-colors hover:bg-slate-50"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-8 w-8 items-center justify-center rounded border border-slate-200">
                           <div className="h-4 w-4 rounded border-2 border-slate-300" />
-                        )}
+                        </div>
+                        <div>
+                          <p className="font-medium text-slate-900">{task.name}</p>
+                          <p className="text-sm text-slate-500">{zone?.name ?? 'No zone'} · {task.phase}</p>
+                        </div>
                       </div>
-                      <div className={task.completed ? 'opacity-60' : ''}>
-                        <p className={`font-medium ${task.completed ? 'text-slate-500 line-through' : 'text-slate-900'}`}>
-                          {task.title}
-                        </p>
-                        <p className="text-sm text-slate-500">Assigned to: {task.assigned}</p>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary">{task.phase}</Badge>
+                        <span className="text-sm text-slate-500">
+                          Starts {format(parseISO(task.startDate), 'MMM d')}
+                        </span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={task.priority === 'high' ? 'destructive' : 'warning'}>
-                        {task.priority.toUpperCase()}
-                      </Badge>
-                      <span className="text-sm text-slate-500">
-                        {format(new Date(task.dueDate), 'MMM d')}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </CardContent>
           </Card>

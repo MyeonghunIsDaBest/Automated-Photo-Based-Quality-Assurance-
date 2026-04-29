@@ -10,6 +10,7 @@ import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import Messages from './pages/Messages';
 import Files from './pages/Files';
+import Projects from './pages/Projects';
 import QuickActionsSidebar from './components/layout/QuickActionsSidebar';
 import { Toaster } from './components/ui/Toaster';
 
@@ -30,6 +31,7 @@ function App() {
           <Route path="upload" element={<Upload />} />
           <Route path="gallery" element={<Gallery />} />
           <Route path="files" element={<Files />} />
+          <Route path="projects" element={<Projects />} />
           <Route path="gantt" element={<Gantt />} />
           <Route path="messages" element={<Messages />} />
           <Route path="reports" element={<Reports />} />

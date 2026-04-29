@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { Search, Filter, MapPin, Eye, X, Grid, List } from 'lucide-react';
+import { Search, Filter, MapPin, Eye, X, Grid, List, Upload as UploadIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { Photo } from '../types';
 import { Card, CardContent } from '../components/ui/card';
@@ -11,6 +12,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
 
 export default function Gallery() {
+  const navigate = useNavigate();
   const { photos, zones, users } = useAppStore();
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
   const [filterZone, setFilterZone] = useState('');
@@ -41,13 +43,11 @@ export default function Gallery() {
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-slate-900">Files & Documents</h1>
-            <p className="text-slate-500">Manage project files, photos, and videos</p>
+            <h1 className="text-2xl font-semibold text-slate-900">Photo Gallery</h1>
+            <p className="text-slate-500">Browse and filter all project photos</p>
           </div>
-          <Button>
-            <svg className="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-            </svg>
+          <Button onClick={() => navigate('/upload')}>
+            <UploadIcon className="mr-2 h-4 w-4" />
             Upload
           </Button>
         </div>

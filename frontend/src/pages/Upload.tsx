@@ -102,8 +102,8 @@ export default function Upload() {
       <div className="mx-auto max-w-5xl">
         {/* Page Header */}
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-slate-900">Files & Documents</h1>
-          <p className="text-slate-500">Manage project files, photos, and videos</p>
+          <h1 className="text-2xl font-semibold text-slate-900">Upload Photos</h1>
+          <p className="text-slate-500">Add site progress photos for AI analysis</p>
         </div>
 
         {/* AI Analysis Result */}

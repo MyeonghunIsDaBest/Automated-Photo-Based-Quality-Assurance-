@@ -1,11 +1,17 @@
 // User Roles
 export type UserRole = 'admin' | 'supervisor' | 'stakeholder' | 'inspector' | 'subcontractor';
 
+// Permissions are layered on top of role — orthogonal to it. A `stakeholder`
+// (external client) can hold `finance` if the company chooses to grant it.
+export type Permission = 'finance' | 'export' | 'audit_export' | 'user_management';
+
 export interface User {
   id: string;
   email: string;
   fullName: string;
   role: UserRole;
+  permissions?: Permission[];
+  organization?: 'company' | 'client';
   projectId?: string;
   zoneAccess?: string[];
   avatar?: string;
@@ -108,7 +114,10 @@ export interface AuditLog {
   ipAddress?: string;
 }
 
-// Comments
+// Comments / Notes
+export type NoteType = 'issue' | 'accuracy_check' | 'general';
+export type NoteStatus = 'open' | 'resolved';
+
 export interface Comment {
   id: string;
   taskId?: string;
@@ -116,7 +125,10 @@ export interface Comment {
   userId: string;
   userName: string;
   userAvatar?: string;
+  userRole?: UserRole;
   content: string;
+  noteType?: NoteType;
+  status?: NoteStatus;
   createdAt: string;
 }
 

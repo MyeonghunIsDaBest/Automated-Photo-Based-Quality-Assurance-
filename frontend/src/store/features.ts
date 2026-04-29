@@ -172,12 +172,31 @@ export const useFeatureStore = create<FeatureState>((set, get) => ({
       ),
     });
 
-    // Update progress history if task completed
-    if (oldProgress < 100 && newProgress >= 100) {
-      get().addProgressData({
-        progress: get().calculateOverallProgress(),
-        photosUploaded: mockPhotos.length,
-        tasksCompleted: tasks.filter(t => t.percentComplete >= 100).length + 1,
+    // Append a point to the progress trend on EVERY change (deduped by day —
+    // the latest write of the day wins). The Dashboard/Reports chart subscribes
+    // to this so each update visibly extends the curve.
+    if (newProgress !== oldProgress) {
+      const today = new Date().toISOString().split('T')[0];
+      const updatedTasks = get().tasks;
+      const overall = updatedTasks.length
+        ? Math.round(updatedTasks.reduce((s, t) => s + t.percentComplete, 0) / updatedTasks.length)
+        : 0;
+      const completed = updatedTasks.filter((t) => t.percentComplete >= 100).length;
+      set((state) => {
+        const lastIndex = state.progressHistory.length - 1;
+        const lastEntry = state.progressHistory[lastIndex];
+        const newPoint = {
+          date: today,
+          progress: overall,
+          photosUploaded: mockPhotos.length,
+          tasksCompleted: completed,
+        };
+        if (lastEntry?.date === today) {
+          // Replace today's entry with the latest snapshot.
+          const next = state.progressHistory.slice(0, lastIndex);
+          return { progressHistory: [...next, newPoint] };
+        }
+        return { progressHistory: [...state.progressHistory, newPoint] };
       });
     }
   },

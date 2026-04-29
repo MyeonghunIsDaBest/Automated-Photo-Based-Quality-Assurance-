@@ -1,19 +1,22 @@
 import { useState } from 'react';
 import { useAppStore } from '../store';
 import { useFeatureStore } from '../store/features';
-import { Filter, Plus, Edit2 } from 'lucide-react';
+import { Filter, Plus, Edit2, Eye, Lock } from 'lucide-react';
 import { format, differenceInDays, parseISO } from 'date-fns';
 import { Task, TaskStatus } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { getPhaseIcon } from '../store';
+import { canEditTasks, canDeleteTasks } from '../lib/permissions';
 import TaskModal from '../components/tasks/TaskModal';
 import CreateTaskModal from '../components/tasks/CreateTaskModal';
 
 export default function Gantt() {
-  const { tasks, zones, project } = useAppStore();
+  const { tasks, zones, project, currentUser } = useAppStore();
   const { updateTaskProgress, addTask, deleteTask } = useFeatureStore();
+  const canEdit = canEditTasks(currentUser);
+  const canDelete = canDeleteTasks(currentUser);
   const [filterZone, setFilterZone] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -118,12 +121,21 @@ export default function Gantt() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-slate-900">Project Management</h1>
-            <p className="text-slate-500">Track and manage project activities</p>
+            <p className="text-slate-500">
+              {canEdit ? 'Track and manage project activities' : 'Read-only view — you can leave notes but not modify the schedule.'}
+            </p>
           </div>
-          <Button onClick={() => setIsCreateModalOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            New Task
-          </Button>
+          {canEdit ? (
+            <Button onClick={() => setIsCreateModalOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              New Task
+            </Button>
+          ) : (
+            <Badge variant="secondary" className="gap-1.5 px-3 py-1.5">
+              <Lock className="h-3.5 w-3.5" />
+              Read-only
+            </Badge>
+          )}
         </div>
       </div>
 
@@ -274,8 +286,9 @@ export default function Gantt() {
                           handleEditTask(task);
                         }}
                         className="rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-600"
+                        title={canEdit ? 'Edit task' : 'View task & leave a note'}
                       >
-                        <Edit2 className="h-4 w-4" />
+                        {canEdit ? <Edit2 className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
                     </div>
                   </div>
@@ -319,6 +332,8 @@ export default function Gantt() {
         onDelete={handleDeleteTask}
         zones={zones}
         allTasks={tasks}
+        readOnly={!canEdit}
+        canDelete={canDelete}
       />
 
       {/* Create Task Modal */}

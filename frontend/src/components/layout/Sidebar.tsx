@@ -10,18 +10,36 @@ import {
   Settings,
   LogOut,
   Building2,
+  DollarSign,
 } from 'lucide-react';
 import { clsx } from 'clsx';
+import type { UserRole, Permission, User } from '../../types';
+import { canViewFinance } from '../../lib/permissions';
 
-const navItems = [
-  { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard', roles: ['admin', 'supervisor', 'stakeholder', 'inspector'] as const },
-  { label: 'Upload Photos', icon: Upload, path: '/upload', roles: ['admin', 'supervisor'] as const },
-  { label: 'Photo Gallery', icon: Image, path: '/gallery', roles: ['admin', 'supervisor', 'stakeholder', 'inspector'] as const },
-  { label: 'Gantt Chart', icon: Calendar, path: '/gantt', roles: ['admin', 'supervisor', 'stakeholder', 'inspector'] as const },
-  { label: 'Reports', icon: FileText, path: '/reports', roles: ['admin', 'supervisor', 'stakeholder'] as const },
-  { label: 'Audit Trail', icon: ClipboardList, path: '/audit', roles: ['admin', 'inspector'] as const },
-  { label: 'Settings', icon: Settings, path: '/settings', roles: ['admin'] as const },
+type NavItem = {
+  label: string;
+  icon: typeof LayoutDashboard;
+  path: string;
+  roles?: readonly UserRole[];
+  requiresPermission?: Permission;
+};
+
+const navItems: NavItem[] = [
+  { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard', roles: ['admin', 'supervisor', 'stakeholder', 'inspector'] },
+  { label: 'Upload Photos', icon: Upload, path: '/upload', roles: ['admin', 'supervisor'] },
+  { label: 'Photo Gallery', icon: Image, path: '/gallery', roles: ['admin', 'supervisor', 'stakeholder', 'inspector'] },
+  { label: 'Gantt Chart', icon: Calendar, path: '/gantt', roles: ['admin', 'supervisor', 'stakeholder', 'inspector'] },
+  { label: 'Reports', icon: FileText, path: '/reports', roles: ['admin', 'supervisor', 'stakeholder'] },
+  { label: 'Finance', icon: DollarSign, path: '/finance', requiresPermission: 'finance' },
+  { label: 'Audit Trail', icon: ClipboardList, path: '/audit', roles: ['admin', 'inspector'] },
+  { label: 'Settings', icon: Settings, path: '/settings', roles: ['admin'] },
 ];
+
+function isVisible(item: NavItem, user: User): boolean {
+  if (item.requiresPermission === 'finance') return canViewFinance(user);
+  if (item.requiresPermission) return !!user.permissions?.includes(item.requiresPermission);
+  return !item.roles || item.roles.includes(user.role);
+}
 
 export default function Sidebar() {
   const location = useLocation();
@@ -29,9 +47,7 @@ export default function Sidebar() {
   
   if (!currentUser) return null;
   
-      const filteredNavItems = navItems.filter(item => 
-    item.roles.includes(currentUser.role as any)
-  );
+  const filteredNavItems = navItems.filter(item => isVisible(item, currentUser));
 
   return (
     <div className="flex h-screen w-64 flex-col bg-slate-900 text-white">

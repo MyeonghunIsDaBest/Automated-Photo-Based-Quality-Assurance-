@@ -15,7 +15,7 @@ import { format } from 'date-fns';
 
 const navItems = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-  { label: 'Projects', icon: FolderOpen, path: '/gantt' },
+  { label: 'Projects', icon: FolderOpen, path: '/projects' },
   { label: 'Files', icon: FileText, path: '/files' },
   { label: 'Messages', icon: MessageSquare, path: '/messages' },
   { label: 'Reports', icon: DollarSign, path: '/reports' },
