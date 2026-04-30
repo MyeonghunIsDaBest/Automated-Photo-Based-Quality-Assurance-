@@ -1,10 +1,29 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { X, Upload, Calendar, FileText, Image, Users, MessageSquare, DollarSign, Shield, BarChart3, CheckSquare, FolderOpen } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { Separator } from '../ui/separator';
+import { useAppStore } from '../../store';
+import { canUploadPhotos, canViewFinance, canEditTasks } from '../../lib/permissions';
 
-const quickActionCategories = [
+type Capability = 'upload_photos' | 'upload_documents' | 'edit_tasks' | 'view_finance';
+
+interface QuickAction {
+  label: string;
+  description: string;
+  icon: typeof Upload;
+  path: string;
+  color: string;
+  shortcut?: string;
+  requires?: Capability;
+}
+
+interface QuickActionCategory {
+  title: string;
+  actions: QuickAction[];
+}
+
+const quickActionCategories: QuickActionCategory[] = [
   {
     title: 'Upload & Media',
     actions: [
@@ -15,6 +34,7 @@ const quickActionCategories = [
         path: '/upload',
         color: 'bg-blue-50 text-blue-600',
         shortcut: 'U',
+        requires: 'upload_photos',
       },
       {
         label: 'Photo Gallery',
@@ -29,6 +49,7 @@ const quickActionCategories = [
         icon: FileText,
         path: '/files',
         color: 'bg-emerald-50 text-emerald-600',
+        requires: 'upload_documents',
       },
     ],
   },
@@ -49,6 +70,7 @@ const quickActionCategories = [
         icon: CheckSquare,
         path: '/gantt',
         color: 'bg-indigo-50 text-indigo-600',
+        requires: 'edit_tasks',
       },
       {
         label: 'Project Files',
@@ -69,6 +91,7 @@ const quickActionCategories = [
         path: '/reports',
         color: 'bg-emerald-50 text-emerald-600',
         shortcut: 'R',
+        requires: 'edit_tasks',
       },
       {
         label: 'Progress Reports',
@@ -83,6 +106,7 @@ const quickActionCategories = [
         icon: DollarSign,
         path: '/reports?type=financial',
         color: 'bg-green-50 text-green-600',
+        requires: 'view_finance',
       },
       {
         label: 'Audit Trail',
@@ -117,10 +141,26 @@ const quickActionCategories = [
 
 export default function QuickActionsSidebar() {
   const navigate = useNavigate();
+  const currentUser = useAppStore((s) => s.currentUser);
   const [isOpen, setIsOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const visibleCategories = useMemo<QuickActionCategory[]>(() => {
+    const allowed: Record<Capability, boolean> = {
+      upload_photos:    canUploadPhotos(currentUser),
+      upload_documents: canUploadPhotos(currentUser),
+      edit_tasks:       canEditTasks(currentUser),
+      view_finance:     canViewFinance(currentUser),
+    };
+    return quickActionCategories
+      .map((cat) => ({
+        ...cat,
+        actions: cat.actions.filter((a) => !a.requires || allowed[a.requires]),
+      }))
+      .filter((cat) => cat.actions.length > 0);
+  }, [currentUser]);
 
   // Auto-hide after 5 seconds of inactivity
   useEffect(() => {
@@ -223,7 +263,7 @@ export default function QuickActionsSidebar() {
 
         {/* Content */}
         <div className="h-[calc(100vh-80px)] overflow-auto p-4">
-          {quickActionCategories.map((category, categoryIndex) => (
+          {visibleCategories.map((category, categoryIndex) => (
             <div key={category.title} className="mb-6">
               <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
                 {category.title}
@@ -263,7 +303,7 @@ export default function QuickActionsSidebar() {
                 })}
               </div>
 
-              {categoryIndex < quickActionCategories.length - 1 && (
+              {categoryIndex < visibleCategories.length - 1 && (
                 <Separator className="my-4" />
               )}
             </div>

@@ -1,9 +1,16 @@
-import { useState } from 'react';
-import { Activity, Calendar, FolderOpen, Plus, BarChart3, ScrollText } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import {
+  Activity,
+  ArrowUpRight,
+  BarChart3,
+  Calendar,
+  FolderOpen,
+  Plus,
+  ScrollText,
+} from 'lucide-react';
 import { useAppStore } from '../store';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
-import { Button } from '../components/ui/button';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
+import { useFeatureStore } from '../store/features';
+import { canCreateProjects, canEditTasks } from '../lib/permissions';
 import { GanttChart } from '../components/ui/GanttChart';
 import { useProjectsListStore } from './projects/store';
 import { ProjectsListTab } from './projects/components/ProjectsListTab';
@@ -12,105 +19,295 @@ import { DocumentsTab } from './projects/components/DocumentsTab';
 import { LogsTab } from './projects/components/LogsTab';
 import { ProjectSelector } from './projects/components/ProjectSelector';
 import { NewProjectModal } from './projects/components/NewProjectModal';
+import { ProjectDetailModal } from './projects/components/ProjectDetailModal';
+import CreateTaskModal from '../components/tasks/CreateTaskModal';
+import type { Task } from '../types';
 
 type TabKey = 'list' | 'timeline' | 'activity' | 'documents' | 'logs';
 
-const SCOPED_TABS: TabKey[] = ['activity', 'documents', 'logs'];
+const SCOPED_TABS: TabKey[] = ['timeline', 'activity', 'documents', 'logs'];
+
+const TABS: { key: TabKey; label: string; Icon: typeof BarChart3 }[] = [
+  { key: 'list',      label: 'Projects',  Icon: BarChart3   },
+  { key: 'timeline',  label: 'Timeline',  Icon: Calendar    },
+  { key: 'activity',  label: 'Activity',  Icon: Activity    },
+  { key: 'documents', label: 'Documents', Icon: FolderOpen  },
+  { key: 'logs',      label: 'Logs',      Icon: ScrollText  },
+];
+
+const FONT_STYLES = `
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=DM+Sans:wght@400;500;600;700&display=swap');
+  .projects-root { font-family: 'DM Sans', system-ui, sans-serif; }
+  .projects-root .display { font-family: 'Fraunces', Georgia, serif; font-feature-settings: 'ss01'; letter-spacing: -0.02em; }
+  .projects-root .num     { font-family: 'Fraunces', Georgia, serif; font-variant-numeric: tabular-nums; letter-spacing: -0.04em; }
+  .projects-root .grid-bg {
+    background-image:
+      linear-gradient(to right, rgba(15, 23, 42, 0.04) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(15, 23, 42, 0.04) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+`;
 
 export default function Projects() {
-  const { project, tasks } = useAppStore();
+  const { project, tasks, currentUser } = useAppStore();
   const projects = useProjectsListStore((s) => s.projects);
+  const canCreate = canCreateProjects(currentUser);
   const [activeTab, setActiveTab] = useState<TabKey>('list');
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
+  const [detailProjectId, setDetailProjectId] = useState<string | null>(null);
+  const [addTaskOpen, setAddTaskOpen] = useState(false);
+
+  const addTask = useFeatureStore((s) => s.addTask);
+  const canAddTask = canEditTasks(currentUser);
+
+  // Project the Timeline tab is currently scoped to. Falls back to the
+  // active project when the user hasn't manually picked one.
+  const timelineProjectId = selectedProjectId ?? project.id;
+
+  // Re-derive each project's task counts and progress from the live tasks
+  // store. The static fields on the Project record become stale the moment
+  // anyone creates or edits a task, so always trust the tasks store.
+  const projectsWithProgress = useMemo(() => {
+    return projects.map((p) => {
+      const owned = tasks.filter((t) => t.projectId === p.id);
+      if (owned.length === 0) return p;
+      const tasksComplete = owned.filter((t) => t.status === 'complete').length;
+      const tasksPending = owned.filter((t) => t.status === 'in_progress').length;
+      const tasksOutstanding = owned.length - tasksComplete - tasksPending;
+      const percentComplete = Math.round(
+        owned.reduce((sum, t) => sum + t.percentComplete, 0) / owned.length
+      );
+      return { ...p, tasksComplete, tasksPending, tasksOutstanding, percentComplete };
+    });
+  }, [projects, tasks]);
+
+  const detailProject = useMemo(
+    () => projectsWithProgress.find((p) => p.id === detailProjectId) ?? null,
+    [projectsWithProgress, detailProjectId]
+  );
 
   const showSelector = SCOPED_TABS.includes(activeTab);
 
+  const selectedProjectMeta = useMemo(
+    () => projectsWithProgress.find((p) => p.id === selectedProjectId) ?? null,
+    [projectsWithProgress, selectedProjectId]
+  );
+
+  const timelineTasks = useMemo(() => {
+    const scopeId = selectedProjectId ?? project.id;
+    return tasks.filter((t) => t.projectId === scopeId);
+  }, [tasks, selectedProjectId, project.id]);
+
+  const timelineRange = selectedProjectMeta
+    ? { startDate: selectedProjectMeta.startDate, endDate: selectedProjectMeta.endDate }
+    : { startDate: project.startDate, endDate: project.endDate };
+
+  const timelineLabel = selectedProjectMeta?.name ?? project.name;
+
+  const stats = useMemo(() => {
+    const active    = projectsWithProgress.filter((p) => p.status === 'active').length;
+    const onHold    = projectsWithProgress.filter((p) => p.status === 'on_hold').length;
+    const completed = projectsWithProgress.filter((p) => p.status === 'completed').length;
+    const totalTasks = tasks.length;
+    return { active, onHold, completed, totalTasks };
+  }, [projectsWithProgress, tasks]);
+
   return (
-    <div className="p-6">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Projects</h1>
-          <p className="text-slate-500">Manage and track all construction projects</p>
+    <div className="projects-root min-h-full bg-[#FAFAF7]">
+      <style>{FONT_STYLES}</style>
+
+      {/* ─── Editorial Header ─── */}
+      <header className="relative overflow-hidden border-b border-slate-200/70 bg-white">
+        <div className="grid-bg absolute inset-0 opacity-50" />
+        <div className="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-emerald-100/40 blur-3xl" />
+
+        <div className="relative px-8 pt-10 pb-6">
+          <div className="flex flex-wrap items-end justify-between gap-6">
+            <div>
+              <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
+                <span className="inline-block h-px w-6 bg-slate-400" />
+                Workspace · Projects
+              </div>
+              <h1 className="display text-5xl font-medium leading-none text-slate-900">
+                The <em className="font-normal italic text-emerald-700">portfolio</em>.
+              </h1>
+              <p className="mt-3 max-w-md text-[15px] leading-relaxed text-slate-500">
+                Every site, every milestone, every dependency — tracked from groundbreaking
+                through handover, in one place.
+              </p>
+            </div>
+
+            {canCreate ? (
+              <button
+                onClick={() => setNewProjectOpen(true)}
+                className="group flex items-center gap-2.5 rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white transition-all hover:-translate-y-0.5 hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-700/20"
+              >
+                <Plus className="h-4 w-4 transition-transform group-hover:-translate-y-px" />
+                New Project
+                <ArrowUpRight className="h-3.5 w-3.5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+              </button>
+            ) : (
+              <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-xs font-medium uppercase tracking-[0.15em] text-slate-500">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-400" />
+                Read-only access
+              </div>
+            )}
+          </div>
+
+          {/* Stat strip */}
+          <div className="mt-10 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200 md:grid-cols-4">
+            <StatCell
+              label="Active"
+              value={stats.active.toString()}
+              caption={`${projects.length} total`}
+              accent="#0F766E"
+            />
+            <StatCell
+              label="On Hold"
+              value={stats.onHold.toString()}
+              caption="Paused or pending input"
+              accent="#B45309"
+            />
+            <StatCell
+              label="Completed"
+              value={stats.completed.toString()}
+              caption="Closed and archived"
+              accent="#1E40AF"
+            />
+            <StatCell
+              label="Tasks tracked"
+              value={stats.totalTasks.toString()}
+              caption="Across every project"
+              accent="#0F172A"
+            />
+          </div>
         </div>
-        <div className="flex items-center gap-3">
+      </header>
+
+      {/* ─── Body ─── */}
+      <div className="px-8 py-8 space-y-6">
+        {/* Tab row + selector */}
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-1 rounded-full border border-slate-200 bg-white p-1 shadow-sm">
+            {TABS.map((t) => {
+              const isActive = activeTab === t.key;
+              return (
+                <button
+                  key={t.key}
+                  onClick={() => setActiveTab(t.key)}
+                  className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium transition-all ${
+                    isActive
+                      ? 'bg-slate-900 text-white shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <t.Icon className="h-3.5 w-3.5" />
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+
           {showSelector && (
             <ProjectSelector
-              projects={projects}
+              projects={projectsWithProgress}
               value={selectedProjectId}
               onChange={setSelectedProjectId}
             />
           )}
-          <Button onClick={() => setNewProjectOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            New Project
-          </Button>
         </div>
-      </div>
 
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)} className="mb-6">
-        <TabsList className="grid grid-cols-5">
-          <TabsTrigger value="list" className="text-xs">
-            <BarChart3 className="mr-1.5 h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Projects</span>
-          </TabsTrigger>
-          <TabsTrigger value="timeline" className="text-xs">
-            <Calendar className="mr-1.5 h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Timeline</span>
-          </TabsTrigger>
-          <TabsTrigger value="activity" className="text-xs">
-            <Activity className="mr-1.5 h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Activity</span>
-          </TabsTrigger>
-          <TabsTrigger value="documents" className="text-xs">
-            <FolderOpen className="mr-1.5 h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Documents</span>
-          </TabsTrigger>
-          <TabsTrigger value="logs" className="text-xs">
-            <ScrollText className="mr-1.5 h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Logs</span>
-          </TabsTrigger>
-        </TabsList>
+        {/* Tab content */}
+        {activeTab === 'list' && (
+          <ProjectsListTab
+            projects={projectsWithProgress}
+            onView={(id) => setDetailProjectId(id)}
+          />
+        )}
 
-        <TabsContent value="list">
-          <ProjectsListTab projects={projects} />
-        </TabsContent>
-
-        <TabsContent value="timeline">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Project Timeline</CardTitle>
-              <CardDescription>Visual project schedule and task dependencies</CardDescription>
-            </CardHeader>
-            <CardContent>
+        {activeTab === 'timeline' && (
+          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+            <div className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-100 px-6 py-5">
+              <div>
+                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
+                  Schedule
+                </p>
+                <h2 className="display mt-1 text-2xl font-medium text-slate-900">{timelineLabel}</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  {selectedProjectMeta
+                    ? `${timelineTasks.length} task${timelineTasks.length === 1 ? '' : 's'} on the Gantt`
+                    : 'Pick a project from the selector to scope the schedule. Showing the active project by default.'}
+                </p>
+              </div>
+              {canAddTask && (
+                <button
+                  onClick={() => setAddTaskOpen(true)}
+                  className="group flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-all hover:-translate-y-0.5 hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-700/20"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add Task
+                </button>
+              )}
+            </div>
+            <div className="p-6">
               <GanttChart
-                tasks={tasks}
-                startDate={project.startDate}
-                endDate={project.endDate}
+                tasks={timelineTasks}
+                startDate={timelineRange.startDate}
+                endDate={timelineRange.endDate}
                 compact={false}
               />
-            </CardContent>
-          </Card>
-        </TabsContent>
+            </div>
+          </section>
+        )}
 
-        <TabsContent value="activity">
-          <ActivityTab projectId={selectedProjectId} />
-        </TabsContent>
-
-        <TabsContent value="documents">
-          <DocumentsTab projectId={selectedProjectId} />
-        </TabsContent>
-
-        <TabsContent value="logs">
-          <LogsTab projectId={selectedProjectId} />
-        </TabsContent>
-      </Tabs>
+        {activeTab === 'activity'  && <ActivityTab projectId={selectedProjectId} />}
+        {activeTab === 'documents' && <DocumentsTab projectId={selectedProjectId} />}
+        {activeTab === 'logs'      && <LogsTab projectId={selectedProjectId} />}
+      </div>
 
       <NewProjectModal
         open={newProjectOpen}
         onClose={() => setNewProjectOpen(false)}
         onCreated={() => setActiveTab('list')}
       />
+
+      <ProjectDetailModal
+        project={detailProject}
+        onClose={() => setDetailProjectId(null)}
+      />
+
+      <CreateTaskModal
+        isOpen={addTaskOpen}
+        onClose={() => setAddTaskOpen(false)}
+        onCreate={(form) => {
+          const task: Task = {
+            ...form,
+            id: `task_${Date.now()}`,
+            photoCount: 0,
+            lastUpdated: new Date().toISOString(),
+            updateSource: 'manual',
+          };
+          addTask(task);
+          setAddTaskOpen(false);
+        }}
+        zones={[]}
+        allTasks={timelineTasks}
+        projectId={timelineProjectId}
+      />
+    </div>
+  );
+}
+
+function StatCell({
+  label, value, caption, accent,
+}: { label: string; value: string; caption: string; accent: string }) {
+  return (
+    <div className="relative overflow-hidden bg-white p-5">
+      <div className="absolute left-0 top-0 h-px w-8" style={{ backgroundColor: accent }} />
+      <p className="text-[11px] font-medium uppercase tracking-[0.15em] text-slate-500">{label}</p>
+      <p className="num mt-2 text-4xl font-medium text-slate-900">{value}</p>
+      <p className="mt-1 text-xs text-slate-400">{caption}</p>
     </div>
   );
 }

@@ -2,192 +2,254 @@ import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { useFeatureStore } from '../store/features';
 import { useDashboardStats, useActiveJobs, useUpcomingTasks } from '../store/dashboard';
+import { SECURITY_GROUP_LABELS } from '../lib/permissions';
+import type { SecurityGroup } from '../types';
 import {
-  Image, CheckCircle2, Clock,
-  ArrowUpRight, Briefcase, Users
+  ArrowUpRight,
+  Briefcase,
+  CheckCircle2,
+  Clock,
+  Image as ImageIcon,
+  ShieldCheck,
+  Sparkles,
+  Users,
 } from 'lucide-react';
+
+// Per-role capability summary shown in the welcome strip. Keep it short —
+// the source of truth for actual permissions is `lib/permissions.ts`.
+const ROLE_BLURB: Record<SecurityGroup, string> = {
+  company_admin:    'Full overview · manage users, projects, finance, and Gantt across every site.',
+  administrator:    'Manage users, stakeholders, and suppliers. Full project visibility.',
+  construction_mgr: 'Multi-site oversight. Edit projects, tasks, and add comments.',
+  project_manager:  'Plan + scheduling. Edit Gantt, run reports, edit tasks.',
+  site_manager:     'Run a single site. Update tasks, manage photos and comments.',
+  worker:           'Field crew. Upload photos against tasks, leave notes, view your assignments.',
+};
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from 'recharts';
 import { format, parseISO } from 'date-fns';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
-import { Button } from '../components/ui/button';
-import { Badge } from '../components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
+
+const FONT_STYLES = `
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=DM+Sans:wght@400;500;600;700&display=swap');
+  .dashboard-root { font-family: 'DM Sans', system-ui, sans-serif; }
+  .dashboard-root .display { font-family: 'Fraunces', Georgia, serif; font-feature-settings: 'ss01'; letter-spacing: -0.02em; }
+  .dashboard-root .num     { font-family: 'Fraunces', Georgia, serif; font-variant-numeric: tabular-nums; letter-spacing: -0.04em; }
+  .dashboard-root .grid-bg {
+    background-image:
+      linear-gradient(to right, rgba(15, 23, 42, 0.04) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(15, 23, 42, 0.04) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+`;
+
+const STATUS_BADGE: Record<string, string> = {
+  in_progress: 'border-blue-200 bg-blue-50 text-blue-700',
+  complete:    'border-emerald-200 bg-emerald-50 text-emerald-700',
+  delayed:     'border-red-200 bg-red-50 text-red-700',
+  blocked:     'border-amber-200 bg-amber-50 text-amber-700',
+  not_started: 'border-slate-200 bg-slate-50 text-slate-600',
+};
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { activityFeed, users, zones } = useAppStore();
+  const { activityFeed, users, zones, project, currentProfile } = useAppStore();
   const stats = useDashboardStats();
   const activeJobs = useActiveJobs(3);
   const upcomingTasks = useUpcomingTasks(4);
   const progressTrend = useFeatureStore((s) => s.progressHistory);
 
-  const statCards = [
-    {
-      title: 'Tasks Complete',
-      value: `${stats.tasksComplete}/${stats.totalTasks}`,
-      change: `${stats.tasksInProgress} in progress`,
-      trend: 'up',
-      icon: Briefcase,
-      bgColor: 'bg-emerald-100',
-      iconColor: 'text-emerald-600',
-    },
-    {
-      title: 'Overall Progress',
-      value: `${stats.overallProgress}%`,
-      change: stats.delayedTasks > 0 ? `${stats.delayedTasks} delayed` : 'On track',
-      trend: stats.delayedTasks > 0 ? 'down' : 'up',
-      icon: CheckCircle2,
-      bgColor: 'bg-amber-100',
-      iconColor: 'text-amber-600',
-    },
-    {
-      title: 'Photos This Week',
-      value: stats.photosThisWeek.toString(),
-      change: `+${stats.photosToday} today`,
-      trend: 'up',
-      icon: Image,
-      bgColor: 'bg-blue-100',
-      iconColor: 'text-blue-600',
-    },
-    {
-      title: 'Days Remaining',
-      value: stats.daysRemaining.toString(),
-      change: stats.delayedTasks > 0 ? `${stats.delayedTasks} delayed` : 'On track',
-      trend: stats.delayedTasks > 0 ? 'down' : 'neutral',
-      icon: Clock,
-      bgColor: stats.delayedTasks > 0 ? 'bg-red-100' : 'bg-amber-100',
-      iconColor: stats.delayedTasks > 0 ? 'text-red-600' : 'text-amber-600',
-    },
-  ];
+  const roleLabel = currentProfile
+    ? SECURITY_GROUP_LABELS[currentProfile.securityGroup]
+    : null;
+  const roleBlurb = currentProfile ? ROLE_BLURB[currentProfile.securityGroup] : null;
+  const displayName = currentProfile
+    ? [currentProfile.firstName, currentProfile.lastName].filter(Boolean).join(' ').trim()
+    : '';
 
   return (
-    <div className="p-6">
-      {/* Stats Grid */}
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {statCards.map((stat) => {
-          const Icon = stat.icon;
-          return (
-            <Card key={stat.title} className="relative overflow-hidden">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-slate-500">{stat.title}</p>
-                    <p className="mt-1 text-3xl font-bold text-slate-900">{stat.value}</p>
-                    <div className="mt-2 flex items-center gap-1">
-                      {stat.trend === 'up' && (
-                        <ArrowUpRight className="h-4 w-4 text-emerald-600" />
-                      )}
-                      <span className={`text-sm ${
-                        stat.change.includes('delayed') || stat.change.includes('urgent')
-                          ? 'text-amber-600'
-                          : 'text-slate-500'
-                      }`}>
-                        {stat.change}
+    <div className="dashboard-root min-h-full bg-[#FAFAF7]">
+      <style>{FONT_STYLES}</style>
+
+      {/* ─── Editorial Header ─── */}
+      <header className="relative overflow-hidden border-b border-slate-200/70 bg-white">
+        <div className="grid-bg absolute inset-0 opacity-50" />
+        <div className="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-emerald-100/40 blur-3xl" />
+
+        <div className="relative px-8 pt-10 pb-6">
+          <div className="flex flex-wrap items-end justify-between gap-6">
+            <div>
+              <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
+                <span className="inline-block h-px w-6 bg-slate-400" />
+                Workspace · {project.name}
+              </div>
+              <h1 className="display text-5xl font-medium leading-none text-slate-900">
+                The <em className="font-normal italic text-emerald-700">brief</em>.
+              </h1>
+              <p className="mt-3 max-w-md text-[15px] leading-relaxed text-slate-500">
+                Today's pulse — what's moving, what's overdue, what's worth your attention before
+                the next coffee.
+              </p>
+              {roleLabel && (
+                <div className="mt-5 flex max-w-xl items-start gap-3 rounded-xl border border-slate-200 bg-white/80 px-4 py-3 backdrop-blur-sm">
+                  <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white">
+                    <ShieldCheck className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-baseline gap-2">
+                      <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-slate-400">
+                        Signed in as
+                      </span>
+                      <span className="display text-sm font-medium text-slate-900">
+                        {displayName || currentProfile?.email}
+                      </span>
+                      <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-emerald-700">
+                        {roleLabel}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs leading-relaxed text-slate-500">{roleBlurb}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => navigate('/reports')}
+              className="group flex items-center gap-2.5 rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white transition-all hover:-translate-y-0.5 hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-700/20"
+            >
+              <Sparkles className="h-4 w-4 transition-transform group-hover:-translate-y-px" />
+              Open report deck
+              <ArrowUpRight className="h-3.5 w-3.5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+            </button>
+          </div>
+
+          {/* Stat strip */}
+          <div className="mt-10 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200 md:grid-cols-4">
+            <StatCell
+              label="Tasks Complete"
+              value={`${stats.tasksComplete}/${stats.totalTasks}`}
+              caption={`${stats.tasksInProgress} in progress`}
+              accent="#0F766E"
+            />
+            <StatCell
+              label="Overall Progress"
+              value={`${stats.overallProgress}%`}
+              caption={stats.delayedTasks > 0 ? `${stats.delayedTasks} delayed` : 'On track'}
+              accent={stats.delayedTasks > 0 ? '#BE123C' : '#0F172A'}
+            />
+            <StatCell
+              label="Photos this week"
+              value={stats.photosThisWeek.toString()}
+              caption={`+${stats.photosToday} today`}
+              accent="#0369A1"
+            />
+            <StatCell
+              label="Days remaining"
+              value={stats.daysRemaining.toString()}
+              caption={stats.delayedTasks > 0 ? `${stats.delayedTasks} delayed` : 'Schedule holding'}
+              accent="#6D28D9"
+            />
+          </div>
+        </div>
+      </header>
+
+      {/* ─── Body ─── */}
+      <div className="grid gap-6 px-8 py-8 lg:grid-cols-[1fr_320px]">
+        <main className="space-y-6">
+          {/* Active Jobs */}
+          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+            <SectionHeader
+              eyebrow="On site"
+              title="Active jobs"
+              description="The work currently in motion"
+              actionLabel="View all"
+              onAction={() => navigate('/gantt')}
+            />
+            <div className="divide-y divide-slate-100">
+              {activeJobs.length === 0 && (
+                <p className="px-6 py-8 text-center text-sm text-slate-400 italic">
+                  No active tasks right now.
+                </p>
+              )}
+              {activeJobs.map((job) => {
+                const zone = zones.find((z) => z.id === job.zoneId);
+                const badgeClass = STATUS_BADGE[job.status] ?? STATUS_BADGE.not_started;
+                return (
+                  <div
+                    key={job.id}
+                    className="flex flex-wrap items-center justify-between gap-4 px-6 py-4 transition-colors hover:bg-slate-50/60"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
+                        <Briefcase className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-slate-900">{job.name}</p>
+                        <p className="text-xs text-slate-500">
+                          {zone?.name ?? 'No zone'} · {job.phase}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="text-right">
+                        <p className="num text-lg font-medium text-slate-900">{job.percentComplete}%</p>
+                        <p className="text-[11px] text-slate-400">
+                          Due {format(parseISO(job.endDate), 'MMM d')}
+                        </p>
+                      </div>
+                      <span
+                        className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-wider ${badgeClass}`}
+                      >
+                        {job.status.replace('_', ' ')}
                       </span>
                     </div>
                   </div>
-                  <div className={`rounded-xl ${stat.bgColor} p-3`}>
-                    <Icon className={`h-6 w-6 ${stat.iconColor}`} />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-
-      {/* Main Content Grid */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Left Column - Active Jobs & Progress */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Active Jobs */}
-          <Card>
-            <CardHeader className="pb-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-xl">Active Jobs</CardTitle>
-                  <CardDescription>Current construction projects</CardDescription>
-                </div>
-                <Button variant="ghost" size="sm" onClick={() => navigate('/gantt')}>
-                  View All
-                  <ArrowUpRight className="ml-1 h-4 w-4" />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {activeJobs.length === 0 && (
-                  <p className="text-sm text-slate-500">No active tasks right now.</p>
-                )}
-                {activeJobs.map((job) => {
-                  const zone = zones.find((z) => z.id === job.zoneId);
-                  return (
-                    <div
-                      key={job.id}
-                      className="flex items-center justify-between rounded-lg border border-slate-100 p-4 transition-colors hover:bg-slate-50"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100">
-                          <Briefcase className="h-5 w-5 text-emerald-600" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-slate-900">{job.name}</p>
-                          <p className="text-sm text-slate-500">{zone?.name ?? 'No zone'}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <div className="text-right">
-                          <p className="text-sm font-medium text-slate-900">{job.percentComplete}% Complete</p>
-                          <p className="text-xs text-slate-500">Due: {format(parseISO(job.endDate), 'MMM d, yyyy')}</p>
-                        </div>
-                        <Badge variant={job.status === 'delayed' ? 'destructive' : 'default'}>
-                          {job.status.replace('_', ' ').toUpperCase()}
-                        </Badge>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
+                );
+              })}
+            </div>
+          </section>
 
           {/* Progress Chart */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-xl">Progress Trend</CardTitle>
-                  <CardDescription>Overall project completion over time</CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="h-64">
+          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+            <SectionHeader
+              eyebrow="Trend"
+              title="Progress over time"
+              description="Cumulative completion across every active task"
+            />
+            <div className="px-2 pb-4">
+              <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={progressTrend}>
+                  <AreaChart data={progressTrend} margin={{ top: 12, right: 24, left: 8, bottom: 8 }}>
                     <defs>
-                      <linearGradient id="colorProgress" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10B981" stopOpacity={0.3} />
+                      <linearGradient id="dashProgress" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10B981" stopOpacity={0.35} />
                         <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis 
-                      dataKey="date" 
+                    <XAxis
+                      dataKey="date"
                       tickFormatter={(date) => format(new Date(date), 'MMM d')}
-                      stroke="#64748b"
-                      fontSize={12}
+                      stroke="#94a3b8"
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
                     />
-                    <YAxis stroke="#64748b" fontSize={12} />
+                    <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} />
                     <Tooltip
                       contentStyle={{
                         backgroundColor: 'white',
                         border: '1px solid #e2e8f0',
-                        borderRadius: '8px',
-                        boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                        borderRadius: '12px',
+                        boxShadow: '0 10px 30px -10px rgb(15 23 42 / 0.15)',
+                        fontSize: '12px',
                       }}
                     />
                     <Area
@@ -196,134 +258,206 @@ export default function Dashboard() {
                       stroke="#10B981"
                       strokeWidth={2}
                       fillOpacity={1}
-                      fill="url(#colorProgress)"
+                      fill="url(#dashProgress)"
                     />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </section>
 
           {/* Upcoming Tasks */}
-          <Card>
-            <CardHeader className="pb-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-xl">Upcoming Tasks</CardTitle>
-                  <CardDescription>Priority tasks and deadlines</CardDescription>
-                </div>
-                <Button variant="ghost" size="sm">
-                  View All
-                  <ArrowUpRight className="ml-1 h-4 w-4" />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {upcomingTasks.length === 0 && (
-                  <p className="text-sm text-slate-500">No upcoming tasks.</p>
-                )}
-                {upcomingTasks.map((task) => {
-                  const zone = zones.find((z) => z.id === task.zoneId);
-                  return (
-                    <div
-                      key={task.id}
-                      className="flex items-center justify-between rounded-lg border border-slate-100 p-4 transition-colors hover:bg-slate-50"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-8 w-8 items-center justify-center rounded border border-slate-200">
-                          <div className="h-4 w-4 rounded border-2 border-slate-300" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-slate-900">{task.name}</p>
-                          <p className="text-sm text-slate-500">{zone?.name ?? 'No zone'} · {task.phase}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="secondary">{task.phase}</Badge>
-                        <span className="text-sm text-slate-500">
-                          Starts {format(parseISO(task.startDate), 'MMM d')}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Right Column - Activity & Team */}
-        <div className="space-y-6">
-          {/* Recent Activity */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-xl">Recent Activity</CardTitle>
-              <CardDescription>Latest project updates</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {activityFeed.slice(0, 6).map((activity) => {
-                  const user = users.find(u => u.id === activity.userId);
-                  return (
-                    <div key={activity.id} className="flex gap-3">
-                      <Avatar className="h-8 w-8">
-                        <AvatarImage src={user?.avatar} />
-                        <AvatarFallback>
-                          {user?.fullName.split(' ').map(n => n[0]).join('')}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1">
-                        <p className="text-sm text-slate-900">
-                          <span className="font-medium">{activity.userName}</span>{' '}
-                          <span className="text-slate-600">{activity.message.split(' ')[0]}</span>
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          {format(new Date(activity.timestamp), 'MMM d, h:mm a')}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Team Members */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-xl">Team</CardTitle>
-                <Button variant="ghost" size="sm">
-                  <Users className="mr-1 h-4 w-4" />
-                  View All
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {users.slice(0, 4).map((user) => (
-                  <div key={user.id} className="flex items-center justify-between">
+          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+            <SectionHeader
+              eyebrow="Coming up"
+              title="Upcoming tasks"
+              description="Priority milestones and deadlines"
+              actionLabel="See all"
+              onAction={() => navigate('/gantt')}
+            />
+            <div className="divide-y divide-slate-100">
+              {upcomingTasks.length === 0 && (
+                <p className="px-6 py-8 text-center text-sm text-slate-400 italic">
+                  No upcoming tasks.
+                </p>
+              )}
+              {upcomingTasks.map((task) => {
+                const zone = zones.find((z) => z.id === task.zoneId);
+                return (
+                  <div
+                    key={task.id}
+                    className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 transition-colors hover:bg-slate-50/60"
+                  >
                     <div className="flex items-center gap-3">
-                      <Avatar className="h-9 w-9">
-                        <AvatarImage src={user.avatar} />
-                        <AvatarFallback>
-                          {user.fullName.split(' ').map(n => n[0]).join('')}
-                        </AvatarFallback>
-                      </Avatar>
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-slate-50">
+                        <div className="h-3.5 w-3.5 rounded border-2 border-slate-300" />
+                      </div>
                       <div>
-                        <p className="text-sm font-medium text-slate-900">{user.fullName}</p>
-                        <p className="text-xs text-slate-500 capitalize">{user.role}</p>
+                        <p className="font-medium text-slate-900">{task.name}</p>
+                        <p className="text-xs text-slate-500">
+                          {zone?.name ?? 'No zone'} · {task.phase}
+                        </p>
                       </div>
                     </div>
-                    <div className="h-2 w-2 rounded-full bg-emerald-500" />
+                    <div className="flex items-center gap-3">
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] font-medium capitalize text-slate-600">
+                        {task.phase}
+                      </span>
+                      <span className="text-xs tabular-nums text-slate-500">
+                        Starts {format(parseISO(task.startDate), 'MMM d')}
+                      </span>
+                    </div>
                   </div>
-                ))}
+                );
+              })}
+            </div>
+          </section>
+        </main>
+
+        {/* Sidebar */}
+        <aside className="space-y-6">
+          {/* Recent activity */}
+          <section className="rounded-2xl border border-slate-200 bg-white p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
+                  Live feed
+                </p>
+                <h3 className="display text-lg font-medium text-slate-900">Recent activity</h3>
               </div>
-            </CardContent>
-          </Card>
-        </div>
+              <Clock className="h-4 w-4 text-slate-400" />
+            </div>
+            <ul className="space-y-4">
+              {activityFeed.slice(0, 6).map((activity) => {
+                const user = users.find((u) => u.id === activity.userId);
+                return (
+                  <li key={activity.id} className="flex gap-3">
+                    <Avatar className="h-8 w-8 flex-shrink-0">
+                      <AvatarImage src={user?.avatar} />
+                      <AvatarFallback className="text-[10px]">
+                        {user?.fullName.split(' ').map((n) => n[0]).join('')}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm text-slate-700">
+                        <span className="font-medium text-slate-900">{activity.userName}</span>{' '}
+                        <span className="text-slate-500">{activity.message}</span>
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-slate-400">
+                        {format(new Date(activity.timestamp), 'MMM d, h:mm a')}
+                      </p>
+                    </div>
+                  </li>
+                );
+              })}
+              {activityFeed.length === 0 && (
+                <li className="text-sm text-slate-400 italic">Nothing yet.</li>
+              )}
+            </ul>
+          </section>
+
+          {/* Team */}
+          <section className="rounded-2xl border border-slate-200 bg-white p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
+                  On the roster
+                </p>
+                <h3 className="display text-lg font-medium text-slate-900">Team</h3>
+              </div>
+              <Users className="h-4 w-4 text-slate-400" />
+            </div>
+            <ul className="space-y-3">
+              {users.slice(0, 5).map((user) => (
+                <li key={user.id} className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-9 w-9">
+                      <AvatarImage src={user.avatar} />
+                      <AvatarFallback className="text-xs">
+                        {user.fullName.split(' ').map((n) => n[0]).join('')}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">{user.fullName}</p>
+                      <p className="text-[11px] capitalize text-slate-500">{user.role}</p>
+                    </div>
+                  </div>
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          {/* Quick stat */}
+          <section className="rounded-2xl border border-slate-200 bg-slate-900 p-5 text-white">
+            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-emerald-300">
+              Today
+            </p>
+            <p className="display mt-1 text-2xl font-medium">
+              {stats.photosToday} photo{stats.photosToday === 1 ? '' : 's'} captured
+            </p>
+            <p className="mt-2 text-xs text-slate-300">
+              {stats.tasksInProgress} task{stats.tasksInProgress === 1 ? '' : 's'} in motion ·{' '}
+              {stats.delayedTasks} delayed
+            </p>
+            <button
+              onClick={() => navigate('/gallery')}
+              className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/5 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/10"
+            >
+              <ImageIcon className="h-3.5 w-3.5" />
+              Open gallery
+              <ArrowUpRight className="h-3 w-3" />
+            </button>
+          </section>
+        </aside>
       </div>
     </div>
   );
 }
+
+function StatCell({
+  label, value, caption, accent,
+}: { label: string; value: string; caption: string; accent: string }) {
+  return (
+    <div className="relative overflow-hidden bg-white p-5">
+      <div className="absolute left-0 top-0 h-px w-8" style={{ backgroundColor: accent }} />
+      <p className="text-[11px] font-medium uppercase tracking-[0.15em] text-slate-500">{label}</p>
+      <p className="num mt-2 text-4xl font-medium text-slate-900">{value}</p>
+      <p className="mt-1 text-xs text-slate-400">{caption}</p>
+    </div>
+  );
+}
+
+function SectionHeader({
+  eyebrow, title, description, actionLabel, onAction,
+}: {
+  eyebrow: string;
+  title: string;
+  description?: string;
+  actionLabel?: string;
+  onAction?: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-100 px-6 py-5">
+      <div>
+        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
+          {eyebrow}
+        </p>
+        <h2 className="display mt-1 text-xl font-medium text-slate-900">{title}</h2>
+        {description && <p className="mt-1 text-sm text-slate-500">{description}</p>}
+      </div>
+      {actionLabel && onAction && (
+        <button
+          onClick={onAction}
+          className="group inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-slate-900 hover:bg-slate-900 hover:text-white"
+        >
+          {actionLabel}
+          <ArrowUpRight className="h-3 w-3 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+// Suppress unused import warning — CheckCircle2 reserved for future status block
+void CheckCircle2;

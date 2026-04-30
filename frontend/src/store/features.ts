@@ -379,7 +379,7 @@ export const useFeatureStore = create<FeatureState>((set, get) => ({
 
     if (type === 'weekly') {
       useNotificationStore.getState().addNotification(
-        createWeeklyReport(projectId, 'Lincoln Elementary School', currentProgress, progressChange)
+        createWeeklyReport(projectId, 'Casone Electrical — QA Pilot', currentProgress, progressChange)
       );
     }
 

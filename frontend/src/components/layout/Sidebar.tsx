@@ -1,17 +1,22 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAppStore } from '../../store';
+import { useProjectsListStore } from '../../pages/projects/store';
 import {
   LayoutDashboard,
   Upload,
   Image,
   Calendar,
   FileText,
+  HardHat,
   Settings,
   LogOut,
   Building2,
+  ShieldCheck,
 } from 'lucide-react';
 import { clsx } from 'clsx';
+import { canSeeAdminDashboard } from '../../lib/permissions';
 import type { UserRole, User } from '../../types';
+import { SupabaseStatus } from './SupabaseStatus';
 
 type NavItem = {
   label: string;
@@ -26,6 +31,8 @@ const navItems: NavItem[] = [
   { label: 'Photo Gallery', icon: Image, path: '/gallery', roles: ['admin', 'supervisor', 'stakeholder', 'inspector'] },
   { label: 'Gantt Chart', icon: Calendar, path: '/gantt', roles: ['admin', 'supervisor', 'stakeholder', 'inspector'] },
   { label: 'Reports & Audit', icon: FileText, path: '/reports', roles: ['admin', 'supervisor', 'stakeholder', 'inspector'] },
+  { label: 'Safety & Compliance', icon: HardHat, path: '/safety', roles: ['admin', 'supervisor', 'stakeholder', 'inspector'] },
+  { label: 'Admin', icon: ShieldCheck, path: '/admin', roles: ['admin'] },
   { label: 'Settings', icon: Settings, path: '/settings', roles: ['admin'] },
 ];
 
@@ -35,11 +42,16 @@ function isVisible(item: NavItem, user: User): boolean {
 
 export default function Sidebar() {
   const location = useLocation();
-  const { currentUser, logout, project } = useAppStore();
-  
+  const { currentUser, currentProfile, logout } = useAppStore();
+  const { projects, activeProjectId, setActiveProject } = useProjectsListStore();
+
   if (!currentUser) return null;
-  
-  const filteredNavItems = navItems.filter(item => isVisible(item, currentUser));
+
+  const isAdmin = canSeeAdminDashboard(currentProfile);
+  const filteredNavItems = navItems.filter((item) => {
+    if (item.path === '/admin') return isAdmin;
+    return isVisible(item, currentUser);
+  });
 
   return (
     <div className="flex h-screen w-64 flex-col bg-slate-900 text-white">
@@ -54,10 +66,26 @@ export default function Sidebar() {
         </div>
       </div>
       
-      {/* Project Info */}
+      {/* Project Switcher */}
       <div className="border-b border-slate-700 p-4">
-        <p className="text-xs text-slate-400">Current Project</p>
-        <p className="truncate text-sm font-medium">{project.name}</p>
+        <label className="text-xs text-slate-400">Active Project</label>
+        {projects.length > 0 ? (
+          <select
+            value={activeProjectId ?? ''}
+            onChange={(e) => setActiveProject(e.target.value)}
+            className="mt-1 w-full truncate rounded-md border border-slate-700 bg-slate-800 px-2 py-1.5 text-sm font-medium text-white focus:border-blue-500 focus:outline-none"
+          >
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <p className="mt-1 truncate text-sm italic text-slate-500">
+            No projects yet — create one
+          </p>
+        )}
       </div>
       
       {/* Navigation */}
@@ -84,6 +112,13 @@ export default function Sidebar() {
         })}
       </nav>
       
+      {/* Supabase health indicator (dev-only — the component renders null in
+          production builds). Sits above the user profile so it reads as a
+          system-state pill, not a navigation item. */}
+      <div className="border-t border-slate-700 px-4 py-3">
+        <SupabaseStatus />
+      </div>
+
       {/* User Profile */}
       <div className="border-t border-slate-700 p-4">
         <div className="flex items-center gap-3">

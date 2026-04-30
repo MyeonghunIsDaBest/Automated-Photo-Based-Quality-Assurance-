@@ -79,6 +79,11 @@ export function GanttChart({ tasks, startDate, endDate, compact = false, showMon
       <div className="overflow-hidden rounded-lg border border-slate-200">
         {/* Task Rows - Compact */}
         <div className="divide-y divide-slate-100">
+          {tasks.length === 0 && (
+            <div className="px-4 py-8 text-center text-xs text-slate-500">
+              No tasks scheduled — upload a photo or add a milestone to begin.
+            </div>
+          )}
           {tasks.map((task) => {
             const position = getTaskPosition(task);
             return (
@@ -141,6 +146,16 @@ export function GanttChart({ tasks, startDate, endDate, compact = false, showMon
 
       {/* Task Rows */}
       <div className="divide-y divide-slate-100">
+        {tasks.length === 0 && (
+          <div className="flex flex-col items-center justify-center bg-slate-50/60 px-6 py-16 text-center">
+            <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
+              No tasks yet
+            </p>
+            <p className="mt-2 max-w-sm text-sm leading-relaxed text-slate-500">
+              Upload a daily site photo, or add a milestone — they appear here as the schedule fills in.
+            </p>
+          </div>
+        )}
         {tasks.map((task) => {
           const position = getTaskPosition(task);
           return (

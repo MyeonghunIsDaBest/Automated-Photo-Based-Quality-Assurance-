@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(awk 'NR>=480 && NR<=600' \"C:\\\\Users\\\\footlong\\\\.claude\\\\projects\\\\C--Users-footlong-Downloads-Automated-Photo-Based-Quality-Assurance-frontend-src\\\\8e61431d-95a4-4cce-9115-dc7fa05fa9e6.jsonl\")",
+      "Bash(awk 'NR>=600 && NR<=638' \"C:\\\\Users\\\\footlong\\\\.claude\\\\projects\\\\C--Users-footlong-Downloads-Automated-Photo-Based-Quality-Assurance-frontend-src\\\\8e61431d-95a4-4cce-9115-dc7fa05fa9e6.jsonl\")"
+    ]
+  }
+}

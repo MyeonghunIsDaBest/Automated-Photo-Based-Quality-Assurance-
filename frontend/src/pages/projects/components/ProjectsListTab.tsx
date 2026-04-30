@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { ChevronRight, FolderKanban, Search } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
@@ -14,6 +13,7 @@ type StatusFilter = 'all' | ProjectStatus;
 
 interface ProjectsListTabProps {
   projects: Project[];
+  onView?: (projectId: string) => void;
 }
 
 const STATUS_LABEL: Record<ProjectStatus, string> = {
@@ -36,8 +36,7 @@ function progressBarColor(pct: number) {
   return 'bg-amber-500';
 }
 
-export function ProjectsListTab({ projects }: ProjectsListTabProps) {
-  const navigate = useNavigate();
+export function ProjectsListTab({ projects, onView }: ProjectsListTabProps) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
   const statusFiltered = useMemo(
@@ -146,7 +145,7 @@ export function ProjectsListTab({ projects }: ProjectsListTabProps) {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <Button variant="ghost" size="sm" onClick={() => navigate(`/projects/${proj.id}`)}>
+                      <Button variant="ghost" size="sm" onClick={() => onView?.(proj.id)}>
                         View
                         <ChevronRight className="ml-1 h-3.5 w-3.5" />
                       </Button>

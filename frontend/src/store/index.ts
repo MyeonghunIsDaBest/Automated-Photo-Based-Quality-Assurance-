@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import {
-  User, Project, Zone, Task, Photo, AIAnalysis,
+  User, Profile, Project, Zone, Task, Photo, AIAnalysis,
   AuditLog, Comment, Report, DashboardStats, ActivityFeedItem,
-  TaskStatus, ConstructionPhase, NoteType
+  TaskStatus, ConstructionPhase, NoteType,
+  profileToUser,
 } from '../types';
 import {
   mockUsers, mockProject, mockZones, mockTasks, mockPhotos,
@@ -10,13 +11,52 @@ import {
   mockActivityFeed
 } from '../data/mockData';
 import { useFeatureStore } from './features';
+import { useProjectsListStore, selectActiveProject } from '../pages/projects/store';
+import type { Project as ListProject } from '../pages/projects/types';
+import {
+  signIn as apiSignIn,
+  signUp as apiSignUp,
+  signOut as apiSignOut,
+  getCurrentProfile,
+  onAuthStateChange,
+  type SignupRole,
+} from '../lib/api/auth';
+import { supabaseConfigured } from '../lib/supabase';
+
+// The Projects list and the legacy app store use slightly different `Project`
+// shapes. This adapter maps a list-side record to the global `Project` shape
+// so views still using `useAppStore.project` keep working when the user
+// switches active projects.
+function toLegacyProject(p: ListProject | null): Project {
+  if (!p) return mockProject;
+  return {
+    id: p.id,
+    name: p.name,
+    description: '',
+    clientName: p.client,
+    startDate: p.startDate,
+    endDate: p.endDate,
+    status: p.status === 'archived' ? 'on_hold' : (p.status as Project['status']),
+    createdAt: mockProject.createdAt,
+  };
+}
 
 interface AppState {
-  // Auth
+  // Auth — Supabase-backed.
   currentUser: User | null;
+  currentProfile: Profile | null;
   isAuthenticated: boolean;
-  login: (email: string) => Promise<User>;
-  logout: () => void;
+  isAuthLoading: boolean;
+  login: (email: string, password: string) => Promise<{ error: string | null }>;
+  register: (
+    email: string,
+    password: string,
+    firstName: string,
+    lastName: string,
+    role?: SignupRole,
+  ) => Promise<{ error: string | null }>;
+  logout: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
   
   // Data
   project: Project;
@@ -52,25 +92,81 @@ interface AppState {
 export const useAppStore = create<AppState>((set, get) => ({
   // Auth State
   currentUser: null,
+  currentProfile: null,
   isAuthenticated: false,
-  
-  login: async (email: string) => {
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const user = mockUsers.find(u => u.email === email);
-    if (user) {
-      set({ currentUser: user, isAuthenticated: true });
-      return user;
+  // Starts true so RequireAuth can render a spinner until the first
+  // getSession() call resolves (avoids a redirect-flash to /login on reload).
+  isAuthLoading: supabaseConfigured(),
+
+  login: async (email: string, password: string) => {
+    if (!supabaseConfigured()) {
+      return { error: 'Supabase is not configured. Add keys to frontend/.env.local.' };
     }
-    throw new Error('User not found');
+    try {
+      await apiSignIn(email, password);
+      await get().refreshProfile();
+      return { error: null };
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : 'Sign-in failed.' };
+    }
+  },
+
+  register: async (
+    email: string,
+    password: string,
+    firstName: string,
+    lastName: string,
+    role: SignupRole = 'worker',
+  ) => {
+    if (!supabaseConfigured()) {
+      return { error: 'Supabase is not configured. Add keys to frontend/.env.local.' };
+    }
+    try {
+      await apiSignUp(email, password, firstName, lastName, role);
+      // With email confirmation off, signUp also signs the user in. If
+      // confirmation is on, getSession() returns null and the UI prompts
+      // the user to confirm before signing in.
+      await get().refreshProfile();
+      return { error: null };
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : 'Sign-up failed.' };
+    }
+  },
+
+  logout: async () => {
+    await apiSignOut().catch(() => {});
+    set({ currentUser: null, currentProfile: null, isAuthenticated: false });
+  },
+
+  refreshProfile: async () => {
+    try {
+      const profile = await getCurrentProfile();
+      if (profile) {
+        set({
+          currentProfile: profile,
+          currentUser: profileToUser(profile),
+          isAuthenticated: true,
+          isAuthLoading: false,
+        });
+        // Pull the live project list as soon as we know who the user is.
+        // No-op when Supabase isn't configured.
+        void useProjectsListStore.getState().loadProjects();
+      } else {
+        set({
+          currentProfile: null,
+          currentUser: null,
+          isAuthenticated: false,
+          isAuthLoading: false,
+        });
+      }
+    } catch {
+      set({ isAuthLoading: false });
+    }
   },
   
-  logout: () => {
-    set({ currentUser: null, isAuthenticated: false });
-  },
-  
-  // Data State (from mock data)
-  project: mockProject,
+  // Data State (from mock data — `project` is mirrored from useProjectsListStore
+  // by the subscription below so changing the active project propagates here).
+  project: toLegacyProject(selectActiveProject(useProjectsListStore.getState())),
   users: mockUsers,
   zones: mockZones,
   tasks: mockTasks,
@@ -82,89 +178,33 @@ export const useAppStore = create<AppState>((set, get) => ({
   activityFeed: mockActivityFeed,
   
   // Actions
+  // Saves the photo and bumps the linked task's photo count. The AI analysis
+  // pipeline is intentionally not wired yet — the next step in the demo is
+  // for the user to confirm task progress manually after each upload.
   addPhoto: async (photo: Photo) => {
     const { addAuditLog } = get();
-    const tasks = useFeatureStore.getState().tasks;
 
-    // Add photo to state
-    set(state => ({ photos: [photo, ...state.photos] }));
+    set((state) => ({ photos: [photo, ...state.photos] }));
 
-    // Add audit log
     addAuditLog({
       projectId: photo.projectId,
       userId: photo.uploadedBy,
       action: 'photo_uploaded',
       entityType: 'photo',
       entityId: photo.id,
-      newValue: { filename: photo.filename, zoneId: photo.zoneId },
+      newValue: { filename: photo.filename, zoneId: photo.zoneId, taskId: photo.taskId },
       notes: photo.notes || 'Photo uploaded',
     });
 
-    // Update task photo count on the source-of-truth store; the subscription
-    // below mirrors it back into useAppStore.tasks for any consumer still
-    // reading from there.
     if (photo.taskId) {
       useFeatureStore.setState((state) => ({
         tasks: state.tasks.map((task) =>
           task.id === photo.taskId
-            ? { ...task, photoCount: task.photoCount + 1 }
+            ? { ...task, photoCount: task.photoCount + 1, lastUpdated: new Date().toISOString() }
             : task
         ),
       }));
     }
-    
-    // Simulate AI analysis
-    set({ isUploading: true, uploadProgress: 0 });
-    
-    for (let i = 0; i <= 100; i += 10) {
-      await new Promise(resolve => setTimeout(resolve, 200));
-      set({ uploadProgress: i });
-    }
-    
-    // Generate AI analysis result
-    const aiAnalysis: AIAnalysis = {
-      id: `ai_${Date.now()}`,
-      photoId: photo.id,
-      modelUsed: 'gpt-4-vision',
-      phaseDetected: photo.taskId ? tasks.find(t => t.id === photo.taskId)?.phase || 'framing' : 'framing',
-      completionPct: Math.floor(Math.random() * 30) + 50,
-      confidence: 0.85 + Math.random() * 0.14,
-      safetyFlags: Math.random() > 0.8 ? ['Verify safety equipment usage'] : [],
-      qualityFlags: [],
-      materials: ['lumber', 'metal connectors', 'concrete'],
-      suggestedTask: photo.taskId,
-      actionTaken: 'pending',
-      analyzedAt: new Date().toISOString(),
-    };
-    
-    set({ 
-      isUploading: false,
-      aiAnalysisResult: aiAnalysis,
-      notification: { 
-        message: `AI Analysis: ${aiAnalysis.phaseDetected} detected at ${aiAnalysis.completionPct}% completion`, 
-        type: 'success' 
-      }
-    });
-    
-    // Add AI audit log
-    addAuditLog({
-      projectId: photo.projectId,
-      userId: 'system',
-      action: 'ai_analysis_completed',
-      entityType: 'photo',
-      entityId: photo.id,
-      newValue: { phaseDetected: aiAnalysis.phaseDetected, confidence: aiAnalysis.confidence },
-      notes: 'AI analysis completed automatically',
-    });
-    
-    // Update photo with AI analysis
-    set(state => ({
-      photos: state.photos.map(p => 
-        p.id === photo.id 
-          ? { ...p, aiAnalyzed: true, aiAnalysis }
-          : p
-      ),
-    }));
   },
   
   updateTaskProgress: (taskId: string, newProgress: number, source: 'ai_auto' | 'manual') => {
@@ -269,6 +309,37 @@ useFeatureStore.subscribe((state, prevState) => {
   if (state.tasks !== prevState.tasks) update.tasks = state.tasks;
   if (state.comments !== prevState.comments) update.comments = state.comments;
   if (Object.keys(update).length > 0) useAppStore.setState(update);
+});
+
+// ─── Auth bootstrap ─────────────────────────────────────────────────────────
+// Kick off the initial profile fetch (resolves isAuthLoading) and subscribe
+// to auth changes so SIGNED_OUT in another tab clears local state too.
+if (supabaseConfigured()) {
+  void useAppStore.getState().refreshProfile();
+  onAuthStateChange((session) => {
+    if (!session) {
+      useAppStore.setState({
+        currentUser: null,
+        currentProfile: null,
+        isAuthenticated: false,
+        isAuthLoading: false,
+      });
+    } else {
+      void useAppStore.getState().refreshProfile();
+    }
+  });
+}
+
+// Mirror the active project from useProjectsListStore into useAppStore.project.
+// Any view reading `project` from useAppStore re-renders when the user switches
+// projects via the Sidebar dropdown, so Gantt / Upload / Reports stay in sync.
+useProjectsListStore.subscribe((state, prevState) => {
+  if (
+    state.activeProjectId !== prevState.activeProjectId ||
+    state.projects !== prevState.projects
+  ) {
+    useAppStore.setState({ project: toLegacyProject(selectActiveProject(state)) });
+  }
 });
 
 // Helper selectors

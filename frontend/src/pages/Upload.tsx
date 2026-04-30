@@ -1,27 +1,93 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDropzone } from 'react-dropzone';
 import { useAppStore } from '../store';
-import { Upload as UploadIcon, X, Image as ImageIcon, MapPin, CheckCircle2, AlertCircle, Plus } from 'lucide-react';
+import { useFeatureStore } from '../store/features';
+import { canUploadPhotos } from '../lib/permissions';
+import { Upload as UploadIcon, X, Image as ImageIcon, MapPin, CheckCircle2, Plus, Lock, ArrowUpRight, TrendingUp } from 'lucide-react';
 import { format } from 'date-fns';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
+import { uploadPhoto } from '../lib/api/photos';
+import { updateTaskProgress as apiUpdateTaskProgress } from '../lib/api/tasks';
+import { supabaseConfigured } from '../lib/supabase';
+
+// Reads natural width/height of an image OR video File without uploading
+// it. Used so the photos table records actual dimensions instead of a
+// hard-coded placeholder. Anything we can't parse falls back to 0×0,
+// which the schema accepts (width/height default to 0).
+async function readMediaDimensions(file: File): Promise<{ width: number; height: number }> {
+  if (file.type.startsWith('video/')) {
+    return new Promise((resolve) => {
+      const url = URL.createObjectURL(file);
+      const v = document.createElement('video');
+      v.preload = 'metadata';
+      v.onloadedmetadata = () => {
+        const w = v.videoWidth  || 0;
+        const h = v.videoHeight || 0;
+        URL.revokeObjectURL(url);
+        resolve({ width: w, height: h });
+      };
+      v.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve({ width: 0, height: 0 });
+      };
+      v.src = url;
+    });
+  }
+
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const w = img.naturalWidth  || 0;
+      const h = img.naturalHeight || 0;
+      URL.revokeObjectURL(url);
+      resolve({ width: w, height: h });
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve({ width: 0, height: 0 });
+    };
+    img.src = url;
+  });
+}
 
 export default function Upload() {
   const navigate = useNavigate();
-  const { 
-    zones, tasks, currentUser, project, 
-    addPhoto, aiAnalysisResult, setAiAnalysisResult,
-    updateTaskProgress, isUploading, uploadProgress 
+  const {
+    zones, tasks, currentUser, project,
+    addPhoto, isUploading, uploadProgress,
   } = useAppStore();
-  
+  // updateTaskProgress goes straight to the source-of-truth feature store so
+  // a manual % bump after upload lands without a round-trip through legacy.
+  const updateTaskProgress = useFeatureStore((s) => s.updateTaskProgress);
+
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
   const [selectedZone, setSelectedZone] = useState('');
   const [selectedTask, setSelectedTask] = useState('');
   const [notes, setNotes] = useState('');
   const [uploadComplete, setUploadComplete] = useState(false);
+  const [progressDraft, setProgressDraft] = useState(0);
+
+  const canUpload = canUploadPhotos(currentUser);
+
+  // Scope zone/task pickers to the active project so a user can't accidentally
+  // attach photos to another project's work.
+  const projectZones = useMemo(
+    () => zones.filter((z) => z.projectId === project.id),
+    [zones, project.id]
+  );
+  const projectTasks = useMemo(
+    () => tasks.filter((t) => t.projectId === project.id),
+    [tasks, project.id]
+  );
+  const taskRecord = useMemo(
+    () => projectTasks.find((t) => t.id === selectedTask) ?? null,
+    [projectTasks, selectedTask]
+  );
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const newFiles = [...files, ...acceptedFiles].slice(0, 20);
@@ -35,9 +101,15 @@ export default function Upload() {
     onDrop,
     accept: {
       'image/*': ['.jpeg', '.jpg', '.png', '.webp', '.heic'],
+      'video/mp4':       ['.mp4'],
+      'video/quicktime': ['.mov'],
     },
     maxFiles: 20,
-    maxSize: 10 * 1024 * 1024,
+    // 50 MB ceiling so a short site walkthrough video fits. Photos are
+    // typically 2-5 MB so this doesn't affect the image path. Anything
+    // beyond this should go through Files (project documents) once that
+    // page is wired to Storage.
+    maxSize: 50 * 1024 * 1024,
   });
 
   const removeFile = (index: number) => {
@@ -48,10 +120,15 @@ export default function Upload() {
 
   const handleSubmit = async () => {
     if (files.length === 0) return;
-    
+
     for (const file of files) {
-      const photo = {
-        id: `photo_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      const dims = await readMediaDimensions(file);
+
+      // Default to a local-only photo record. When Supabase is configured we
+      // upload to Storage first and prefer the returned id + storage path so
+      // the photo is durable across reloads.
+      let photo = {
+        id: `photo_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
         projectId: project.id,
         zoneId: selectedZone || undefined,
         taskId: selectedTask || undefined,
@@ -60,42 +137,125 @@ export default function Upload() {
         storageUrl: URL.createObjectURL(file),
         thumbnailUrl: URL.createObjectURL(file),
         fileSizeKb: Math.round(file.size / 1024),
-        width: 1920,
-        height: 1080,
+        width: dims.width,
+        height: dims.height,
         takenAt: new Date().toISOString(),
         uploadedAt: new Date().toISOString(),
         notes: notes || undefined,
         aiAnalyzed: false,
       };
-      
+
+      if (supabaseConfigured()) {
+        try {
+          const row = await uploadPhoto({
+            file,
+            projectId: project.id,
+            taskId: selectedTask || undefined,
+            zoneId: selectedZone || undefined,
+            notes: notes || undefined,
+          });
+          photo = {
+            ...photo,
+            id: row.id,
+            // Display URL stays as the local blob (private bucket needs a
+            // signed URL to render — gallery resolves that on read).
+            uploadedAt: row.uploaded_at,
+            fileSizeKb: row.file_size_kb,
+          };
+        } catch (e) {
+          // eslint-disable-next-line no-console
+          console.error('[upload] photo upload failed:', e);
+          // Surface the error in the toast slot but keep the local row so
+          // the user doesn't lose their work.
+          useAppStore.setState({
+            notification: {
+              type: 'error',
+              message: e instanceof Error ? e.message : 'Photo upload failed.',
+            },
+          });
+        }
+      }
+
       await addPhoto(photo);
     }
-    
+
+    setProgressDraft(taskRecord ? taskRecord.percentComplete : 0);
     setUploadComplete(true);
   };
 
-  const handleConfirmAI = () => {
-    if (aiAnalysisResult && selectedTask) {
-      updateTaskProgress(selectedTask, aiAnalysisResult.completionPct, 'ai_auto');
-      setAiAnalysisResult(null);
-      setUploadComplete(false);
-      setFiles([]);
-      setPreviews([]);
-      setNotes('');
-    }
-  };
-
-  const handleSkipAI = () => {
-    setAiAnalysisResult(null);
+  const resetForm = () => {
     setUploadComplete(false);
     setFiles([]);
     setPreviews([]);
     setNotes('');
+    setSelectedTask('');
+    setSelectedZone('');
+    setProgressDraft(0);
   };
 
-  const filteredTasks = selectedZone 
-    ? tasks.filter(t => t.zoneId === selectedZone)
-    : tasks;
+  const handleApplyProgress = async () => {
+    if (selectedTask) {
+      // Persist remotely first (realtime echoes back into local state); fall
+      // back to the local mutator so the bar still moves when offline.
+      if (supabaseConfigured()) {
+        try {
+          await apiUpdateTaskProgress(selectedTask, progressDraft);
+        } catch (e) {
+          // eslint-disable-next-line no-console
+          console.error('[upload] task progress update failed:', e);
+        }
+      }
+      updateTaskProgress(selectedTask, progressDraft, 'manual');
+    }
+    resetForm();
+  };
+
+  const filteredTasks = selectedZone
+    ? projectTasks.filter((t) => t.zoneId === selectedZone)
+    : projectTasks;
+
+  if (!canUpload) {
+    return (
+      <div className="min-h-full bg-[#FAFAF7] p-6">
+        <div className="mx-auto flex min-h-[60vh] max-w-2xl items-center justify-center">
+          <div className="relative w-full overflow-hidden rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
+            <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-slate-100/70 blur-3xl" />
+            <div className="relative">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900 text-white">
+                <Lock className="h-6 w-6" />
+              </div>
+              <p className="mt-6 text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
+                Read-only access
+              </p>
+              <h1 className="mt-2 text-2xl font-semibold text-slate-900" style={{ fontFamily: "'Fraunces', Georgia, serif", letterSpacing: '-0.02em' }}>
+                Uploading is restricted to your project team.
+              </h1>
+              <p className="mt-3 text-sm leading-relaxed text-slate-500">
+                Your account has visitor-level access. You can browse the gallery, walk through the
+                Gantt, and leave notes on charts — but adding new photos, videos, or documents is
+                reserved for the internal team.
+              </p>
+              <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+                <button
+                  onClick={() => navigate('/gallery')}
+                  className="group flex items-center gap-2 rounded-full bg-slate-900 px-5 py-2.5 text-sm font-medium text-white transition-all hover:-translate-y-0.5 hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-700/20"
+                >
+                  Browse the gallery
+                  <ArrowUpRight className="h-3.5 w-3.5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                </button>
+                <button
+                  onClick={() => navigate('/dashboard')}
+                  className="rounded-full border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-600 transition-all hover:border-slate-300 hover:text-slate-900"
+                >
+                  Back to dashboard
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6">
@@ -106,55 +266,53 @@ export default function Upload() {
           <p className="text-slate-500">Add site progress photos for AI analysis</p>
         </div>
 
-        {/* AI Analysis Result */}
-        {aiAnalysisResult && uploadComplete && (
+        {/* Post-upload progress step — manual until the AI pipeline lands.
+            Asks the user to confirm where the task now stands so the Gantt
+            visibly advances after every site walk. */}
+        {uploadComplete && taskRecord && (
           <Card className="mb-6 border-emerald-200 bg-emerald-50">
             <CardContent className="p-6">
               <div className="flex items-start gap-4">
                 <div className="rounded-full bg-emerald-100 p-3">
-                  <CheckCircle2 className="h-6 w-6 text-emerald-600" />
+                  <TrendingUp className="h-6 w-6 text-emerald-600" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-emerald-900">AI Analysis Complete</h3>
-                  <div className="mt-2 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    <div>
-                      <p className="text-sm text-emerald-700">Detected Phase</p>
-                      <p className="text-lg font-medium text-emerald-900 capitalize">{aiAnalysisResult.phaseDetected}</p>
+                  <h3 className="text-lg font-semibold text-emerald-900">
+                    Update Gantt progress
+                  </h3>
+                  <p className="mt-1 text-sm text-emerald-800">
+                    {files.length} photo{files.length === 1 ? '' : 's'} uploaded for{' '}
+                    <span className="font-medium">{taskRecord.name}</span>. Set the new
+                    completion % so the schedule reflects what's on the ground.
+                  </p>
+
+                  <div className="mt-5 rounded-lg bg-white/70 p-4">
+                    <div className="mb-2 flex items-center justify-between text-sm">
+                      <span className="text-emerald-800">
+                        Was: <span className="font-medium">{taskRecord.percentComplete}%</span>
+                      </span>
+                      <span className="text-emerald-900">
+                        Now: <span className="text-2xl font-semibold tabular-nums">{progressDraft}%</span>
+                      </span>
                     </div>
-                    <div>
-                      <p className="text-sm text-emerald-700">Completion</p>
-                      <p className="text-lg font-medium text-emerald-900">{aiAnalysisResult.completionPct}%</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-emerald-700">Confidence</p>
-                      <p className="text-lg font-medium text-emerald-900">{(aiAnalysisResult.confidence * 100).toFixed(0)}%</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-emerald-700">Materials</p>
-                      <p className="text-sm font-medium text-emerald-900">{aiAnalysisResult.materials.slice(0, 2).join(', ')}</p>
-                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={5}
+                      value={progressDraft}
+                      onChange={(e) => setProgressDraft(Number(e.target.value))}
+                      className="w-full accent-emerald-600"
+                    />
                   </div>
-                  
-                  {aiAnalysisResult.safetyFlags.length > 0 && (
-                    <div className="mt-4 flex items-start gap-2 rounded-lg bg-amber-100 p-3">
-                      <AlertCircle className="mt-0.5 h-5 w-5 text-amber-600" />
-                      <div>
-                        <p className="font-medium text-amber-900">Safety Flags</p>
-                        <ul className="list-disc pl-5 text-sm text-amber-800">
-                          {aiAnalysisResult.safetyFlags.map((flag, i) => (
-                            <li key={i}>{flag}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    </div>
-                  )}
-                  
+
                   <div className="mt-4 flex gap-3">
-                    <Button onClick={handleConfirmAI}>
-                      Confirm & Update Gantt
+                    <Button onClick={handleApplyProgress}>
+                      <CheckCircle2 className="mr-2 h-4 w-4" />
+                      Apply &amp; update Gantt
                     </Button>
-                    <Button variant="outline" onClick={handleSkipAI}>
-                      Skip for Now
+                    <Button variant="outline" onClick={resetForm}>
+                      Skip for now
                     </Button>
                   </div>
                 </div>
@@ -193,16 +351,18 @@ export default function Upload() {
                     <UploadIcon className="h-8 w-8 text-slate-400" />
                   </div>
                   <h3 className="text-lg font-medium text-slate-900">
-                    {isDragActive ? 'Drop photos here' : 'Drag & drop photos here'}
+                    {isDragActive ? 'Drop files here' : 'Drag & drop photos or video here'}
                   </h3>
                   <p className="mt-2 text-sm text-slate-500">
-                    or click to browse (max 20 photos, 10MB each)
+                    or click to browse (max 20 files, 50MB each)
                   </p>
-                  <div className="mt-4 flex gap-2">
+                  <div className="mt-4 flex flex-wrap justify-center gap-2">
                     <Badge variant="secondary">JPG</Badge>
                     <Badge variant="secondary">PNG</Badge>
                     <Badge variant="secondary">WebP</Badge>
                     <Badge variant="secondary">HEIC</Badge>
+                    <Badge variant="secondary">MP4</Badge>
+                    <Badge variant="secondary">MOV</Badge>
                   </div>
                 </div>
               </CardContent>
@@ -216,27 +376,45 @@ export default function Upload() {
                 </CardHeader>
                 <CardContent>
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    {previews.map((preview, index) => (
-                      <div key={index} className="group relative overflow-hidden rounded-lg border border-slate-200">
-                        <img
-                          src={preview}
-                          alt={`Preview ${index + 1}`}
-                          className="h-32 w-full object-cover"
-                        />
-                        <button
-                          onClick={() => removeFile(index)}
-                          className="absolute right-2 top-2 rounded-full bg-red-500 p-1 text-white opacity-0 transition-opacity group-hover:opacity-100"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                        <div className="p-2">
-                          <p className="truncate text-xs text-slate-600">{files[index].name}</p>
-                          <p className="text-xs text-slate-400">
-                            {(files[index].size / 1024).toFixed(0)} KB
-                          </p>
+                    {previews.map((preview, index) => {
+                      const isVideo = files[index]?.type.startsWith('video/');
+                      return (
+                        <div key={index} className="group relative overflow-hidden rounded-lg border border-slate-200">
+                          {isVideo ? (
+                            <video
+                              src={preview}
+                              className="h-32 w-full bg-slate-900 object-cover"
+                              muted
+                              playsInline
+                              preload="metadata"
+                            />
+                          ) : (
+                            <img
+                              src={preview}
+                              alt={`Preview ${index + 1}`}
+                              className="h-32 w-full object-cover"
+                            />
+                          )}
+                          <button
+                            onClick={() => removeFile(index)}
+                            className="absolute right-2 top-2 rounded-full bg-red-500 p-1 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                          {isVideo && (
+                            <span className="absolute bottom-12 left-2 rounded-full bg-slate-900/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-white">
+                              Video
+                            </span>
+                          )}
+                          <div className="p-2">
+                            <p className="truncate text-xs text-slate-600">{files[index].name}</p>
+                            <p className="text-xs text-slate-400">
+                              {(files[index].size / 1024 / 1024).toFixed(1)} MB
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>
@@ -264,7 +442,7 @@ export default function Upload() {
                         className="w-full rounded-lg border border-slate-200 px-3 py-2.5 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                       >
                         <option value="">Select zone</option>
-                        {zones.map((zone) => (
+                        {projectZones.map((zone) => (
                           <option key={zone.id} value={zone.id}>
                             {zone.name}
                           </option>
@@ -280,7 +458,6 @@ export default function Upload() {
                         value={selectedTask}
                         onChange={(e) => setSelectedTask(e.target.value)}
                         className="w-full rounded-lg border border-slate-200 px-3 py-2.5 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                        disabled={!selectedZone}
                       >
                         <option value="">Select task</option>
                         {filteredTasks.map((task) => (
@@ -289,6 +466,11 @@ export default function Upload() {
                           </option>
                         ))}
                       </select>
+                      {projectTasks.length === 0 && (
+                        <p className="mt-1.5 text-xs text-amber-600">
+                          No tasks yet for this project. Create one on the Gantt page first.
+                        </p>
+                      )}
                     </div>
                   </div>
                   
@@ -355,18 +537,24 @@ export default function Upload() {
           </>
         )}
 
-        {/* Upload Complete */}
-        {uploadComplete && !aiAnalysisResult && (
+        {/* Upload Complete — only when there's no task to bump (taskless upload). */}
+        {uploadComplete && !taskRecord && (
           <Card className="border-emerald-200 bg-emerald-50">
             <CardContent className="p-12 text-center">
               <CheckCircle2 className="mx-auto h-16 w-16 text-emerald-600" />
-              <h3 className="mt-4 text-xl font-semibold text-emerald-900">Upload Complete!</h3>
+              <h3 className="mt-4 text-xl font-semibold text-emerald-900">Upload complete.</h3>
               <p className="mt-2 text-emerald-700">
-                Your photos have been uploaded and analyzed.
+                Photos are filed under this project. Attach them to a task next time
+                to advance the Gantt automatically.
               </p>
-              <Button className="mt-6" onClick={() => navigate('/dashboard')}>
-                Return to Dashboard
-              </Button>
+              <div className="mt-6 flex justify-center gap-3">
+                <Button onClick={() => navigate('/gantt')}>
+                  View Gantt
+                </Button>
+                <Button variant="outline" onClick={resetForm}>
+                  Upload more
+                </Button>
+              </div>
             </CardContent>
           </Card>
         )}

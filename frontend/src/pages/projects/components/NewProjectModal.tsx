@@ -5,6 +5,9 @@ import { Input } from '../../../components/ui/input';
 import { ConstructionPhase } from '../../../types';
 import { ProjectStatus } from '../types';
 import { createProject, NewProjectMilestone } from '../lib/createProject';
+import { createProjectWithTasks } from '../../../lib/api/projects';
+import { supabaseConfigured } from '../../../lib/supabase';
+import { useProjectsListStore } from '../store';
 
 interface NewProjectModalProps {
   open: boolean;
@@ -57,6 +60,7 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
   const [budget, setBudget] = useState('');
   const [milestones, setMilestones] = useState<MilestoneRow[]>([newRow()]);
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   if (!open) return null;
 
@@ -72,7 +76,7 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
     setError(null);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -99,16 +103,49 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
       return setError('Budget must be a positive number.');
     }
 
-    createProject({
-      name: name.trim(),
-      clientName: clientName.trim(),
-      description: description.trim(),
-      startDate,
-      endDate,
-      status,
-      budget: budgetNum,
-      milestones: cleanMilestones,
-    });
+    // ── Persist ──────────────────────────────────────────────────────────
+    // When Supabase is configured we go through the create_project_with_tasks
+    // RPC so the project + milestones land atomically. Otherwise fall back
+    // to the local-only mock path so the demo still works without env keys.
+    if (supabaseConfigured()) {
+      setSubmitting(true);
+      try {
+        const newId = await createProjectWithTasks({
+          name: name.trim(),
+          client: clientName.trim(),
+          description: description.trim(),
+          startDate,
+          endDate,
+          status: status === 'archived' ? 'completed' : status,
+          budget: budgetNum,
+          milestones: cleanMilestones.map((m) => ({
+            name: m.name,
+            phase: m.phase,
+            startDate: m.startDate,
+            endDate: m.endDate,
+          })),
+        });
+        // Pull the updated list from the DB and switch the active project to
+        // the one we just created so the Gantt opens on it.
+        await useProjectsListStore.getState().loadProjects();
+        useProjectsListStore.getState().setActiveProject(newId);
+      } catch (err) {
+        setSubmitting(false);
+        return setError(err instanceof Error ? err.message : 'Could not create project.');
+      }
+      setSubmitting(false);
+    } else {
+      createProject({
+        name: name.trim(),
+        clientName: clientName.trim(),
+        description: description.trim(),
+        startDate,
+        endDate,
+        status,
+        budget: budgetNum,
+        milestones: cleanMilestones,
+      });
+    }
 
     reset();
     onCreated?.();
@@ -143,11 +180,11 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-700">Project Name</label>
-                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Lincoln Elementary School - Phase 3" />
+                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Bondi Junction Switchboard Upgrade" />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-700">Client</label>
-                <Input value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Lincoln School District" />
+                <Input value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="e.g. Westfield Bondi Junction" />
               </div>
             </div>
 
@@ -269,10 +306,12 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
           </div>
 
           <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50/50 px-6 py-3">
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
               Cancel
             </Button>
-            <Button type="submit">Create Project</Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting ? 'Creating…' : 'Create Project'}
+            </Button>
           </div>
         </form>
       </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAppStore } from '../store';
 import { useFeatureStore } from '../store/features';
 import { Filter, Plus, Edit2, Eye, Lock } from 'lucide-react';
@@ -11,6 +11,17 @@ import { getPhaseIcon } from '../store';
 import { canEditTasks, canDeleteTasks } from '../lib/permissions';
 import TaskModal from '../components/tasks/TaskModal';
 import CreateTaskModal from '../components/tasks/CreateTaskModal';
+import {
+  listTasks,
+  createTask as apiCreateTask,
+  updateTask as apiUpdateTask,
+  updateTaskProgress as apiUpdateTaskProgress,
+  deleteTask as apiDeleteTask,
+  mapTaskRow,
+  type TaskRow,
+} from '../lib/api/tasks';
+import { subscribeToProjectTasks } from '../lib/api/realtime';
+import { supabaseConfigured } from '../lib/supabase';
 
 export default function Gantt() {
   const { tasks, zones, project, currentUser } = useAppStore();
@@ -23,7 +34,68 @@ export default function Gantt() {
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
-  const filteredTasks = tasks.filter(task => {
+  // ── Live data sync ─────────────────────────────────────────────────────
+  // When Supabase is configured, fetch the canonical task list for the
+  // active project on mount + project change, then subscribe to realtime
+  // INSERT/UPDATE/DELETE events. Mutations elsewhere (this tab or another)
+  // echo back through this subscription, so we never rely on optimistic
+  // local state for correctness.
+  useEffect(() => {
+    if (!supabaseConfigured() || !project?.id) return;
+    let cancelled = false;
+    const projectId = project.id;
+
+    (async () => {
+      try {
+        const rows = await listTasks(projectId);
+        if (cancelled) return;
+        const mapped = rows.map(mapTaskRow);
+        useFeatureStore.setState((state) => ({
+          tasks: [
+            ...state.tasks.filter((t) => t.projectId !== projectId),
+            ...mapped,
+          ],
+        }));
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error('[gantt] failed to load tasks:', e);
+      }
+    })();
+
+    const unsubscribe = subscribeToProjectTasks(projectId, (payload) => {
+      useFeatureStore.setState((state) => {
+        if (payload.eventType === 'INSERT') {
+          const next = mapTaskRow(payload.new as TaskRow);
+          if (state.tasks.some((t) => t.id === next.id)) return state;
+          return { tasks: [...state.tasks, next] };
+        }
+        if (payload.eventType === 'UPDATE') {
+          const next = mapTaskRow(payload.new as TaskRow);
+          return {
+            tasks: state.tasks.map((t) => (t.id === next.id ? next : t)),
+          };
+        }
+        if (payload.eventType === 'DELETE') {
+          const oldId = (payload.old as { id?: string }).id;
+          if (!oldId) return state;
+          return { tasks: state.tasks.filter((t) => t.id !== oldId) };
+        }
+        return state;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [project?.id]);
+
+  // Only show tasks/zones that belong to the active project. Without this,
+  // every task created across every project would render on every Gantt.
+  const projectTasks = tasks.filter((task) => task.projectId === project.id);
+  const projectZones = zones.filter((zone) => zone.projectId === project.id);
+
+  const filteredTasks = projectTasks.filter(task => {
     if (filterZone && task.zoneId !== filterZone) return false;
     if (filterStatus && task.status !== filterStatus) return false;
     return true;
@@ -91,26 +163,92 @@ export default function Gantt() {
     setIsTaskModalOpen(true);
   };
 
-  const handleSaveTask = (updatedTask: Task) => {
-    // Update task in store
-    updateTaskProgress(updatedTask.id, updatedTask.percentComplete, 'manual');
+  const handleSaveTask = async (updatedTask: Task) => {
+    if (supabaseConfigured()) {
+      try {
+        // Persist any field changes the modal made (dates, name, status, %)
+        // through a single update call. Realtime echoes the new row back.
+        await apiUpdateTask(updatedTask.id, {
+          name: updatedTask.name,
+          phase: updatedTask.phase,
+          start_date: updatedTask.startDate,
+          end_date: updatedTask.endDate,
+          status: updatedTask.status,
+          percent_complete: updatedTask.percentComplete,
+          zone_id: updatedTask.zoneId ?? null,
+          assignee_id: updatedTask.assigneeId ?? null,
+          parent_task_id: updatedTask.parentTaskId ?? null,
+          dependencies: updatedTask.dependencies,
+        });
+        // Keep updateTaskProgress() running too so notifications + progress
+        // history points are emitted from the local source-of-truth store.
+        updateTaskProgress(updatedTask.id, updatedTask.percentComplete, 'manual');
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error('[gantt] save task failed:', e);
+        // Last-resort: mirror the change locally so the bar still moves.
+        await apiUpdateTaskProgress(updatedTask.id, updatedTask.percentComplete).catch(() => {});
+        updateTaskProgress(updatedTask.id, updatedTask.percentComplete, 'manual');
+      }
+    } else {
+      updateTaskProgress(updatedTask.id, updatedTask.percentComplete, 'manual');
+    }
     setIsTaskModalOpen(false);
     setSelectedTask(null);
   };
 
-  const handleDeleteTask = (taskId: string) => {
+  const handleDeleteTask = async (taskId: string) => {
+    if (supabaseConfigured()) {
+      try {
+        await apiDeleteTask(taskId);
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error('[gantt] delete task failed:', e);
+      }
+    }
+    // Realtime DELETE will remove the row from local state too, but call the
+    // local mutator so the UI updates instantly when running offline.
     deleteTask(taskId);
   };
 
-  const handleCreateTask = (newTask: Omit<Task, 'id' | 'photoCount' | 'lastUpdated' | 'updateSource'>) => {
-    const task: Task = {
-      ...newTask,
-      id: `task_${Date.now()}`,
-      photoCount: 0,
-      lastUpdated: new Date().toISOString(),
-      updateSource: 'manual',
-    };
-    addTask(task);
+  const handleCreateTask = async (
+    newTask: Omit<Task, 'id' | 'photoCount' | 'lastUpdated' | 'updateSource'>,
+  ) => {
+    if (supabaseConfigured()) {
+      try {
+        const row = await apiCreateTask({
+          project_id: newTask.projectId,
+          zone_id: newTask.zoneId ?? null,
+          assignee_id: newTask.assigneeId ?? null,
+          parent_task_id: newTask.parentTaskId ?? null,
+          name: newTask.name,
+          phase: newTask.phase,
+          start_date: newTask.startDate,
+          end_date: newTask.endDate,
+          percent_complete: newTask.percentComplete,
+          status: newTask.status,
+          notes: newTask.notes,
+          update_source: 'manual',
+          dependencies: newTask.dependencies,
+        });
+        // Realtime usually echoes the INSERT back in <1s; insert locally too
+        // so the new row appears immediately even on lossy connections.
+        const mapped = mapTaskRow(row);
+        addTask(mapped);
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error('[gantt] create task failed:', e);
+      }
+    } else {
+      const task: Task = {
+        ...newTask,
+        id: `task_${Date.now()}`,
+        photoCount: 0,
+        lastUpdated: new Date().toISOString(),
+        updateSource: 'manual',
+      };
+      addTask(task);
+    }
     setIsCreateModalOpen(false);
   };
 
@@ -169,7 +307,7 @@ export default function Gantt() {
                 className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
               >
                 <option value="">All Zones</option>
-                {zones.map(zone => (
+                {projectZones.map(zone => (
                   <option key={zone.id} value={zone.id}>{zone.name}</option>
                 ))}
               </select>
@@ -223,9 +361,32 @@ export default function Gantt() {
             
             {/* Task Rows */}
             <div className="max-h-[500px] overflow-auto">
+              {filteredTasks.length === 0 && (
+                <div className="flex flex-col items-center justify-center px-6 py-14 text-center">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
+                    No tasks yet
+                  </p>
+                  <h3 className="mt-2 text-lg font-semibold text-slate-900">
+                    {projectTasks.length === 0
+                      ? `Nothing scheduled for ${project.name}.`
+                      : 'No tasks match your filters.'}
+                  </h3>
+                  <p className="mt-1 max-w-md text-sm text-slate-500">
+                    {projectTasks.length === 0
+                      ? 'Add a task to start drawing the schedule. Photos uploaded against that task will move the bar forward.'
+                      : 'Clear the filters to see the rest of the schedule.'}
+                  </p>
+                  {canEdit && projectTasks.length === 0 && (
+                    <Button className="mt-5" onClick={() => setIsCreateModalOpen(true)}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add your first task
+                    </Button>
+                  )}
+                </div>
+              )}
               {filteredTasks.map((task) => {
                 const position = getTaskPosition(task);
-                const zone = zones.find(z => z.id === task.zoneId);
+                const zone = projectZones.find(z => z.id === task.zoneId);
                 
                 return (
                   <div
@@ -330,8 +491,8 @@ export default function Gantt() {
         }}
         onSave={handleSaveTask}
         onDelete={handleDeleteTask}
-        zones={zones}
-        allTasks={tasks}
+        zones={projectZones}
+        allTasks={projectTasks}
         readOnly={!canEdit}
         canDelete={canDelete}
       />
@@ -341,8 +502,8 @@ export default function Gantt() {
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         onCreate={handleCreateTask}
-        zones={zones}
-        allTasks={tasks}
+        zones={projectZones}
+        allTasks={projectTasks}
         projectId={project.id}
       />
     </div>

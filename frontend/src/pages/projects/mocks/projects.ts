@@ -1,76 +1,26 @@
 import { Project } from '../types';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Single working project — the live test bed for the photo-QA pipeline.
+// Use this one to upload images, videos and documents from real jobs. Every
+// upload, AI analysis and status change should funnel through this project so
+// the audit trail stays coherent.
+//
+// The id intentionally matches `mockProject.id` in `data/mockData.ts` so the
+// dashboard, gallery and gantt views all stay in sync with this entry.
+// ─────────────────────────────────────────────────────────────────────────────
+
 export const mockProjects: Project[] = [
   {
-    id: 'proj_1',
-    name: 'Lincoln Elementary School - Phase 2',
-    client: 'Lincoln School District',
-    percentComplete: 67,
-    tasksComplete: 8,
-    tasksPending: 4,
-    tasksOutstanding: 0,
-    startDate: '2024-01-15',
-    endDate: '2024-06-30',
-    status: 'active',
-  },
-  {
-    id: 'proj_2',
-    name: 'Westside Community Center',
-    client: 'City of Portland',
-    percentComplete: 34,
-    tasksComplete: 5,
-    tasksPending: 8,
-    tasksOutstanding: 2,
-    startDate: '2024-03-01',
-    endDate: '2024-12-15',
-    status: 'active',
-  },
-  {
-    id: 'proj_3',
-    name: 'Downtown Office Renovation',
-    client: 'ABC Corporation',
-    percentComplete: 89,
-    tasksComplete: 15,
-    tasksPending: 2,
-    tasksOutstanding: 0,
-    startDate: '2023-09-01',
-    endDate: '2024-04-30',
-    status: 'active',
-  },
-  {
-    id: 'proj_4',
-    name: 'Riverside Medical Wing',
-    client: 'Riverside Health Network',
-    percentComplete: 12,
-    tasksComplete: 1,
-    tasksPending: 11,
-    tasksOutstanding: 3,
-    startDate: '2024-04-01',
-    endDate: '2025-02-28',
-    status: 'active',
-  },
-  {
-    id: 'proj_5',
-    name: 'Harbor Logistics Warehouse',
-    client: 'Pacific Freight Co.',
-    percentComplete: 100,
-    tasksComplete: 22,
+    id: 'project_1',
+    name: 'Casone Electrical — QA Pilot',
+    client: 'Casone Electrical Pty Ltd',
+    percentComplete: 0,
+    tasksComplete: 0,
     tasksPending: 0,
     tasksOutstanding: 0,
-    startDate: '2023-02-01',
-    endDate: '2023-11-30',
-    status: 'completed',
-  },
-  {
-    id: 'proj_6',
-    name: 'Maple Heights Residential Block',
-    client: 'Maple Development Group',
-    percentComplete: 45,
-    tasksComplete: 6,
-    tasksPending: 4,
-    tasksOutstanding: 1,
-    startDate: '2024-02-15',
-    endDate: '2024-10-30',
-    status: 'on_hold',
+    startDate: '2026-04-01',
+    endDate: '2026-12-31',
+    status: 'active',
   },
 ];

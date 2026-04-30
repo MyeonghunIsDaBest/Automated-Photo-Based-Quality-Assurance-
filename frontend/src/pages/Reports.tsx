@@ -55,13 +55,9 @@ interface SafetyFlag {
   status: 'open' | 'resolved';
 }
 
-const SAFETY_FLAGS: SafetyFlag[] = [
-  { id: 'sf_1', task: 'Gymnasium Roofing',  flag: 'Workers at height — verify harness use',  date: '2024-02-28', status: 'open' },
-  { id: 'sf_2', task: 'Roof Replacement',   flag: 'Debris falling zone — ensure barriers',   date: '2024-02-28', status: 'open' },
-  { id: 'sf_3', task: 'North Wing Framing', flag: 'Verify safety equipment usage',           date: '2024-02-27', status: 'resolved' },
-  { id: 'sf_4', task: 'Electrical Rough-in',flag: 'Lockout/tagout procedure verified',       date: '2024-02-26', status: 'resolved' },
-  { id: 'sf_5', task: 'Excavation',         flag: 'Trench shoring inspection due',           date: '2024-02-25', status: 'open' },
-];
+// Empty seed — safety flags surface here when AI analysis raises one against
+// an uploaded photo on the live pilot project.
+const SAFETY_FLAGS: SafetyFlag[] = [];
 
 const REPORT_TYPE_META: Record<ReportType, { label: string; window: string; Icon: typeof CalendarDays; accent: string }> = {
   daily:   { label: 'Daily',   window: 'Last 24 hours',     Icon: CalendarDays,  accent: '#0369A1' },
