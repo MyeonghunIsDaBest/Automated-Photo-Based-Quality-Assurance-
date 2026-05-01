@@ -151,7 +151,14 @@ export default function Login() {
             </div>
           </div>
 
-          <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center py-10">
+          {/* Pin the form column to the top of the viewport with a generous
+              top padding rather than vertically centering it — `justify-center`
+              caused the heading to drift up and down whenever the user
+              toggled between Sign in (short form) and Create account (tall
+              form with the role tile grid). The min-h here reserves enough
+              vertical space for the tallest variant so the page never
+              shrinks under the role grid either. */}
+          <div className="mx-auto flex w-full max-w-md flex-col py-10 lg:min-h-[760px] lg:pt-16">
             <div>
               <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
                 <span className="inline-block h-px w-6 bg-slate-400" />
