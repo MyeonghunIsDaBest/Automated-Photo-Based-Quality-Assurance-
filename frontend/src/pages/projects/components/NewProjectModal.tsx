@@ -157,10 +157,10 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-xl">
-        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-          <div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-2 sm:p-4">
+      <div className="flex h-full max-h-[95vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-xl sm:h-auto sm:max-h-[90vh]">
+        <div className="flex flex-shrink-0 items-start justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-6 sm:py-4">
+          <div className="min-w-0">
             <h2 className="text-lg font-semibold text-slate-900">New Project</h2>
             <p className="text-xs text-slate-500">
               Creating a project seeds the Gantt chart, audit trail, and notifications.
@@ -169,14 +169,15 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+            aria-label="Close"
+            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 active:bg-slate-200"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-hidden">
-          <div className="flex-1 space-y-6 overflow-y-auto px-6 py-5">
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-4 py-5 sm:px-6">
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-700">Project Name</label>
@@ -290,7 +291,7 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
                       type="button"
                       onClick={() => setMilestones((rows) => rows.filter((r) => r.id !== m.id))}
                       disabled={milestones.length === 1}
-                      className="flex h-9 w-9 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
+                      className="flex h-10 w-10 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-red-500 active:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
                       title="Remove milestone"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -305,7 +306,7 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
             )}
           </div>
 
-          <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50/50 px-6 py-3">
+          <div className="flex flex-shrink-0 flex-wrap items-center justify-end gap-2 border-t border-slate-200 bg-slate-50/50 px-4 py-3 sm:px-6">
             <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
               Cancel
             </Button>

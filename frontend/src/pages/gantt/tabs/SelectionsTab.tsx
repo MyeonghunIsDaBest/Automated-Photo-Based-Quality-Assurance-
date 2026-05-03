@@ -31,7 +31,7 @@ const STATUS_BADGE: Record<SelectionStatus, string> = {
 };
 
 export function SelectionsTab({ project, zones, canEdit }: SelectionsTabProps) {
-  const selections   = useGanttSideStore((s) => s.selections[project.id] ?? []);
+  const selections   = useGanttSideStore((s) => s.selections?.[project.id] ?? []);
   const addSelection = useGanttSideStore((s) => s.addSelection);
   const setStatus    = useGanttSideStore((s) => s.setSelectionStatus);
   const removeSel    = useGanttSideStore((s) => s.removeSelection);

@@ -206,6 +206,26 @@ export const useGanttSideStore = create<GanttSideState>()(
           },
         })),
     }),
-    { name: 'siteproof-gantt-side' },
+    {
+      name: 'siteproof-gantt-side',
+      version: 1,
+      // Defensive merge — if the persisted blob predates one of these slices
+      // (e.g. an early demo user with no `warranties` key), the missing slice
+      // would arrive as `undefined` and crash every consumer that does
+      // `state.warranties[projectId]`. Normalise here so the store always has
+      // every slice as an object.
+      merge: (persisted, current) => {
+        const safe = (persisted ?? {}) as Partial<GanttSideState>;
+        return {
+          ...current,
+          ...safe,
+          dailyLogs:    safe.dailyLogs    ?? current.dailyLogs,
+          todos:        safe.todos        ?? current.todos,
+          changeOrders: safe.changeOrders ?? current.changeOrders,
+          selections:   safe.selections   ?? current.selections,
+          warranties:   safe.warranties   ?? current.warranties,
+        };
+      },
+    },
   ),
 );

@@ -33,7 +33,7 @@ const fmtUSD = (n: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
 
 export function ChangeOrdersTab({ project, canEdit }: ChangeOrdersTabProps) {
-  const orders     = useGanttSideStore((s) => s.changeOrders[project.id] ?? []);
+  const orders     = useGanttSideStore((s) => s.changeOrders?.[project.id] ?? []);
   const addOrder   = useGanttSideStore((s) => s.addChangeOrder);
   const setStatus  = useGanttSideStore((s) => s.setChangeOrderStatus);
   const removeOrder = useGanttSideStore((s) => s.removeChangeOrder);

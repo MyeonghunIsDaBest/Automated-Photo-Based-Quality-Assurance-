@@ -226,17 +226,17 @@ export default function Reports() {
         <div className="grid-bg absolute inset-0 opacity-50" />
         <div className="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-emerald-100/40 blur-3xl" />
 
-        <div className="relative px-8 pt-10 pb-6">
-          <div className="flex flex-wrap items-end justify-between gap-6">
-            <div>
+        <div className="relative px-4 pt-8 pb-6 sm:px-8 sm:pt-10">
+          <div className="flex flex-wrap items-end justify-between gap-4 sm:gap-6">
+            <div className="min-w-0">
               <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
                 <span className="inline-block h-px w-6 bg-slate-400" />
                 Workspace · Reports & Audit
               </div>
-              <h1 className="display text-5xl font-medium leading-none text-slate-900">
+              <h1 className="display text-3xl sm:text-5xl font-medium leading-none text-slate-900">
                 The <em className="font-normal italic text-emerald-700">record</em>.
               </h1>
-              <p className="mt-3 max-w-md text-[15px] leading-relaxed text-slate-500">
+              <p className="mt-3 max-w-md text-sm sm:text-[15px] leading-relaxed text-slate-500">
                 Progress, finance, and the audit trail — every shovel of dirt, every dollar spent,
                 every safety flag, in one ledger.
               </p>
@@ -283,7 +283,7 @@ export default function Reports() {
       </header>
 
       {/* ─── Body ─── */}
-      <div className="px-8 py-8">
+      <div className="px-4 py-6 sm:px-8 sm:py-8">
         {/* Round pill tabs */}
         <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-1 rounded-full border border-slate-200 bg-white p-1 shadow-sm">
@@ -693,13 +693,13 @@ export default function Reports() {
                     ))}
                   </select>
                 </div>
-                <div className="relative ml-auto">
+                <div className="relative w-full sm:ml-auto sm:w-auto">
                   <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                   <input
                     placeholder="Search action or notes…"
                     value={auditSearch}
                     onChange={(e) => setAuditSearch(e.target.value)}
-                    className="h-8 w-64 rounded-full border border-slate-200 bg-white pl-9 pr-3 text-xs focus:border-slate-400 focus:outline-none"
+                    className="h-9 w-full rounded-full border border-slate-200 bg-white pl-9 pr-3 text-xs focus:border-slate-400 focus:outline-none sm:w-64"
                   />
                 </div>
               </div>

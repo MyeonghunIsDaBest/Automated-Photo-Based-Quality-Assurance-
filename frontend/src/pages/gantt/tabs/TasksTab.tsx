@@ -150,69 +150,118 @@ export function TasksTab({
               />
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50/60 text-left text-[11px] font-medium uppercase tracking-wider text-slate-500">
-                    <SortHeader label="Task"    onClick={() => handleSort('name')}            icon={sortIcon('name')} />
-                    <SortHeader label="Phase"   onClick={() => handleSort('phase')}           icon={sortIcon('phase')} />
-                    <SortHeader label="Start"   onClick={() => handleSort('startDate')}       icon={sortIcon('startDate')} />
-                    <SortHeader label="End"     onClick={() => handleSort('endDate')}         icon={sortIcon('endDate')} />
-                    <SortHeader label="%"       onClick={() => handleSort('percentComplete')} icon={sortIcon('percentComplete')} />
-                    <SortHeader label="Status"  onClick={() => handleSort('status')}          icon={sortIcon('status')} />
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredAndSorted.map((t) => (
-                    <tr
-                      key={t.id}
+            <>
+              {/* Mobile: card list. Each card = one task; tap opens modal.       */}
+              <ul className="divide-y divide-slate-100 md:hidden">
+                {filteredAndSorted.map((t) => (
+                  <li key={t.id}>
+                    <button
+                      type="button"
                       onClick={() => {
                         setSelectedTask(t);
                         setIsTaskModalOpen(true);
                       }}
-                      className="cursor-pointer transition-colors hover:bg-slate-50"
+                      className="flex w-full flex-col gap-2 px-4 py-3 text-left transition-colors hover:bg-slate-50 active:bg-slate-100"
                     >
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-slate-900">{t.name}</p>
-                        {t.zoneId && (
-                          <p className="text-[11px] text-slate-500">
-                            {zones.find((z) => z.id === t.zoneId)?.name ?? 'Unknown zone'}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-medium text-slate-900">{t.name}</p>
+                          <p className="truncate text-[11px] capitalize text-slate-500">
+                            {t.phase}
+                            {t.zoneId && <> · {zones.find((z) => z.id === t.zoneId)?.name ?? 'Unknown zone'}</>}
                           </p>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 capitalize text-slate-600">{t.phase}</td>
-                      <td className="px-4 py-3 text-slate-600">
-                        {format(parseISO(t.startDate), 'MMM d, yyyy')}
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">
-                        {format(parseISO(t.endDate), 'MMM d, yyyy')}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <div className="h-1.5 w-20 overflow-hidden rounded-full bg-slate-100">
-                            <div
-                              className="h-1.5 rounded-full bg-emerald-500"
-                              style={{ width: `${t.percentComplete}%` }}
-                            />
-                          </div>
-                          <span className="tabular-nums text-xs text-slate-600">
-                            {t.percentComplete}%
-                          </span>
                         </div>
-                      </td>
-                      <td className="px-4 py-3">
                         <Badge
                           variant="outline"
-                          className={`text-[10px] uppercase tracking-wider ${STATUS_BADGE[t.status]}`}
+                          className={`flex-shrink-0 text-[10px] uppercase tracking-wider ${STATUS_BADGE[t.status]}`}
                         >
                           {t.status.replace('_', ' ')}
                         </Badge>
-                      </td>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+                          <div
+                            className="h-1.5 rounded-full bg-emerald-500"
+                            style={{ width: `${t.percentComplete}%` }}
+                          />
+                        </div>
+                        <span className="flex-shrink-0 tabular-nums text-xs text-slate-600">
+                          {t.percentComplete}%
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500">
+                        {format(parseISO(t.startDate), 'MMM d')} → {format(parseISO(t.endDate), 'MMM d, yyyy')}
+                      </p>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+
+              {/* Desktop: original sortable table. */}
+              <div className="hidden overflow-x-auto md:block">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50/60 text-left text-[11px] font-medium uppercase tracking-wider text-slate-500">
+                      <SortHeader label="Task"    onClick={() => handleSort('name')}            icon={sortIcon('name')} />
+                      <SortHeader label="Phase"   onClick={() => handleSort('phase')}           icon={sortIcon('phase')} />
+                      <SortHeader label="Start"   onClick={() => handleSort('startDate')}       icon={sortIcon('startDate')} />
+                      <SortHeader label="End"     onClick={() => handleSort('endDate')}         icon={sortIcon('endDate')} />
+                      <SortHeader label="%"       onClick={() => handleSort('percentComplete')} icon={sortIcon('percentComplete')} />
+                      <SortHeader label="Status"  onClick={() => handleSort('status')}          icon={sortIcon('status')} />
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredAndSorted.map((t) => (
+                      <tr
+                        key={t.id}
+                        onClick={() => {
+                          setSelectedTask(t);
+                          setIsTaskModalOpen(true);
+                        }}
+                        className="cursor-pointer transition-colors hover:bg-slate-50"
+                      >
+                        <td className="px-4 py-3">
+                          <p className="font-medium text-slate-900">{t.name}</p>
+                          {t.zoneId && (
+                            <p className="text-[11px] text-slate-500">
+                              {zones.find((z) => z.id === t.zoneId)?.name ?? 'Unknown zone'}
+                            </p>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 capitalize text-slate-600">{t.phase}</td>
+                        <td className="px-4 py-3 text-slate-600">
+                          {format(parseISO(t.startDate), 'MMM d, yyyy')}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">
+                          {format(parseISO(t.endDate), 'MMM d, yyyy')}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <div className="h-1.5 w-20 overflow-hidden rounded-full bg-slate-100">
+                              <div
+                                className="h-1.5 rounded-full bg-emerald-500"
+                                style={{ width: `${t.percentComplete}%` }}
+                              />
+                            </div>
+                            <span className="tabular-nums text-xs text-slate-600">
+                              {t.percentComplete}%
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] uppercase tracking-wider ${STATUS_BADGE[t.status]}`}
+                          >
+                            {t.status.replace('_', ' ')}
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

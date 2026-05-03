@@ -177,8 +177,10 @@ function WorkersView({ workers, dailyLogs }: { workers: Worker[]; dailyLogs: Dai
         </div>
       </CardHeader>
       <CardContent>
+        <div className="-mx-4 overflow-x-auto sm:mx-0">
+        <div className="inline-block min-w-full px-4 align-middle sm:px-0">
         <div className="overflow-hidden rounded-lg border border-slate-200">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[640px] text-sm">
             <thead className="bg-slate-50">
               <tr>
                 <th className="w-8 px-2 py-2.5"></th>
@@ -270,6 +272,8 @@ function WorkersView({ workers, dailyLogs }: { workers: Worker[]; dailyLogs: Dai
               )}
             </tbody>
           </table>
+        </div>
+        </div>
         </div>
       </CardContent>
     </Card>

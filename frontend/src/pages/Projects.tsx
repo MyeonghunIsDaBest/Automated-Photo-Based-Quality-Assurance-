@@ -9,7 +9,6 @@ import {
   ScrollText,
 } from 'lucide-react';
 import { useAppStore } from '../store';
-import { useFeatureStore } from '../store/features';
 import { canCreateProjects, canEditTasks } from '../lib/permissions';
 import { GanttChart } from '../components/ui/GanttChart';
 import { useProjectsListStore } from './projects/store';
@@ -21,7 +20,9 @@ import { ProjectSelector } from './projects/components/ProjectSelector';
 import { NewProjectModal } from './projects/components/NewProjectModal';
 import { ProjectDetailModal } from './projects/components/ProjectDetailModal';
 import CreateTaskModal from '../components/tasks/CreateTaskModal';
-import type { Task } from '../types';
+import BulkAddTasksModal from '../components/tasks/BulkAddTasksModal';
+import { createTaskShared } from '../lib/api/taskMutations';
+import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 
 type TabKey = 'list' | 'timeline' | 'activity' | 'documents' | 'logs';
 
@@ -57,8 +58,8 @@ export default function Projects() {
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [detailProjectId, setDetailProjectId] = useState<string | null>(null);
   const [addTaskOpen, setAddTaskOpen] = useState(false);
+  const [bulkAddOpen, setBulkAddOpen] = useState(false);
 
-  const addTask = useFeatureStore((s) => s.addTask);
   const canAddTask = canEditTasks(currentUser);
 
   // Project the Timeline tab is currently scoped to. Falls back to the
@@ -122,17 +123,17 @@ export default function Projects() {
         <div className="grid-bg absolute inset-0 opacity-50" />
         <div className="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-emerald-100/40 blur-3xl" />
 
-        <div className="relative px-8 pt-10 pb-6">
-          <div className="flex flex-wrap items-end justify-between gap-6">
-            <div>
+        <div className="relative px-4 pt-8 pb-6 sm:px-8 sm:pt-10">
+          <div className="flex flex-wrap items-end justify-between gap-4 sm:gap-6">
+            <div className="min-w-0">
               <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
                 <span className="inline-block h-px w-6 bg-slate-400" />
                 Workspace · Projects
               </div>
-              <h1 className="display text-5xl font-medium leading-none text-slate-900">
+              <h1 className="display text-3xl font-medium leading-none text-slate-900 sm:text-5xl">
                 The <em className="font-normal italic text-emerald-700">portfolio</em>.
               </h1>
-              <p className="mt-3 max-w-md text-[15px] leading-relaxed text-slate-500">
+              <p className="mt-3 max-w-md text-sm leading-relaxed text-slate-500 sm:text-[15px]">
                 Every site, every milestone, every dependency — tracked from groundbreaking
                 through handover, in one place.
               </p>
@@ -186,10 +187,12 @@ export default function Projects() {
       </header>
 
       {/* ─── Body ─── */}
-      <div className="px-8 py-8 space-y-6">
-        {/* Tab row + selector */}
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-1 rounded-full border border-slate-200 bg-white p-1 shadow-sm">
+      <div className="px-4 py-6 space-y-6 sm:px-8 sm:py-8">
+        {/* Tab row + selector — horizontal-scrolls on phones so the strip never */}
+        {/* wraps mid-tab; selector below it on small screens, inline on >= md.  */}
+        <div className="flex flex-col items-stretch gap-3 md:flex-row md:flex-wrap md:items-center md:justify-between">
+          <div className="-mx-4 overflow-x-auto px-4 md:mx-0 md:overflow-visible md:px-0">
+            <div className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white p-1 shadow-sm">
             {TABS.map((t) => {
               const isActive = activeTab === t.key;
               return (
@@ -207,6 +210,7 @@ export default function Projects() {
                 </button>
               );
             })}
+            </div>
           </div>
 
           {showSelector && (
@@ -218,7 +222,9 @@ export default function Projects() {
           )}
         </div>
 
-        {/* Tab content */}
+        {/* Tab content — boundary-wrapped so a render error in one tab doesn't */}
+        {/* nuke the rest of the Projects page.                                  */}
+        <ErrorBoundary label={`Projects · ${activeTab}`}>
         {activeTab === 'list' && (
           <ProjectsListTab
             projects={projectsWithProgress}
@@ -241,13 +247,22 @@ export default function Projects() {
                 </p>
               </div>
               {canAddTask && (
-                <button
-                  onClick={() => setAddTaskOpen(true)}
-                  className="group flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-all hover:-translate-y-0.5 hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-700/20"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Add Task
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => setBulkAddOpen(true)}
+                    className="flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Bulk add
+                  </button>
+                  <button
+                    onClick={() => setAddTaskOpen(true)}
+                    className="group flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-all hover:-translate-y-0.5 hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-700/20"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Add Task
+                  </button>
+                </div>
               )}
             </div>
             <div className="p-6">
@@ -264,6 +279,7 @@ export default function Projects() {
         {activeTab === 'activity'  && <ActivityTab projectId={selectedProjectId} />}
         {activeTab === 'documents' && <DocumentsTab projectId={selectedProjectId} />}
         {activeTab === 'logs'      && <LogsTab projectId={selectedProjectId} />}
+        </ErrorBoundary>
       </div>
 
       <NewProjectModal
@@ -280,20 +296,21 @@ export default function Projects() {
       <CreateTaskModal
         isOpen={addTaskOpen}
         onClose={() => setAddTaskOpen(false)}
-        onCreate={(form) => {
-          const task: Task = {
-            ...form,
-            id: `task_${Date.now()}`,
-            photoCount: 0,
-            lastUpdated: new Date().toISOString(),
-            updateSource: 'manual',
-          };
-          addTask(task);
+        onCreate={async (form) => {
+          await createTaskShared(form);
           setAddTaskOpen(false);
         }}
         zones={[]}
         allTasks={timelineTasks}
         projectId={timelineProjectId}
+      />
+
+      <BulkAddTasksModal
+        isOpen={bulkAddOpen}
+        onClose={() => setBulkAddOpen(false)}
+        projectId={timelineProjectId}
+        defaultStart={timelineRange.startDate}
+        defaultEnd={timelineRange.endDate}
       />
     </div>
   );

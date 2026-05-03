@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Filter, Plus, Edit2, Eye } from 'lucide-react';
+import { Filter, Plus, Edit2, Eye, ListPlus } from 'lucide-react';
 import { format, differenceInDays, parseISO } from 'date-fns';
 import type { Task, TaskStatus, Zone, User, Project } from '../../../types';
 import { Card, CardContent } from '../../../components/ui/card';
@@ -8,6 +8,7 @@ import { Badge } from '../../../components/ui/badge';
 import { getPhaseIcon } from '../../../store';
 import TaskModal from '../../../components/tasks/TaskModal';
 import CreateTaskModal from '../../../components/tasks/CreateTaskModal';
+import BulkAddTasksModal from '../../../components/tasks/BulkAddTasksModal';
 import { TabHeader } from '../components/TabHeader';
 import { EmptyState } from '../components/EmptyState';
 
@@ -35,6 +36,7 @@ export function ScheduleTab({
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isBulkAddOpen, setIsBulkAddOpen] = useState(false);
 
   const filteredTasks = tasks.filter((task) => {
     if (filterZone && task.zoneId !== filterZone) return false;
@@ -106,8 +108,8 @@ export function ScheduleTab({
   return (
     <>
       <TabHeader
-        eyebrow={`Workspace · Schedule · ${project.name}`}
-        title="Project schedule."
+        eyebrow="Workspace · Schedule"
+        title={project.name}
         description={
           canEdit
             ? 'Track and manage every task on this project. Photos uploaded against a task move its bar forward automatically.'
@@ -115,10 +117,16 @@ export function ScheduleTab({
         }
         action={
           canEdit && (
-            <Button onClick={() => setIsCreateModalOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              New Task
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" onClick={() => setIsBulkAddOpen(true)}>
+                <ListPlus className="mr-2 h-4 w-4" />
+                Bulk add
+              </Button>
+              <Button onClick={() => setIsCreateModalOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                New Task
+              </Button>
+            </div>
           )
         }
       />
@@ -159,11 +167,15 @@ export function ScheduleTab({
 
       {/* Gantt Chart */}
       <Card>
-        <CardContent className="p-4">
-          <div className="overflow-hidden rounded-lg border border-slate-200">
+        <CardContent className="p-2 sm:p-4">
+          {/* Outer wrapper scrolls horizontally on phones — the chart needs at  */}
+          {/* least ~720px to be readable, so we let the user pan on mobile      */}
+          {/* instead of cramping or squishing the bars.                         */}
+          <div className="overflow-x-auto rounded-lg border border-slate-200">
+            <div className="min-w-[720px]">
             {/* Month Headers */}
             <div className="flex border-b border-slate-200 bg-slate-50">
-              <div className="w-64 flex-shrink-0 border-r border-slate-200 p-3 text-sm font-medium text-slate-700">
+              <div className="w-48 flex-shrink-0 border-r border-slate-200 p-3 text-sm font-medium text-slate-700 sm:w-64">
                 Task Name
               </div>
               <div className="flex-1">
@@ -219,7 +231,7 @@ export function ScheduleTab({
                         selectedTask?.id === task.id ? 'bg-emerald-50' : ''
                       }`}
                     >
-                      <div className="w-64 flex-shrink-0 border-r border-slate-200 p-3">
+                      <div className="w-48 flex-shrink-0 border-r border-slate-200 p-3 sm:w-64">
                         <div className="flex items-center gap-2">
                           <span className="text-lg">{getPhaseIcon(task.phase)}</span>
                           <div className="flex-1 overflow-hidden">
@@ -282,6 +294,7 @@ export function ScheduleTab({
                 })
               )}
             </div>
+            </div>
           </div>
 
           {/* Legend */}
@@ -340,6 +353,15 @@ export function ScheduleTab({
         zones={zones}
         allTasks={tasks}
         projectId={project.id}
+      />
+
+      {/* Bulk Add Modal — same shared mutation path as the single-task form. */}
+      <BulkAddTasksModal
+        isOpen={isBulkAddOpen}
+        onClose={() => setIsBulkAddOpen(false)}
+        projectId={project.id}
+        defaultStart={project.startDate}
+        defaultEnd={project.endDate}
       />
 
       {/* currentUser is intentionally accepted for future read-state UI; */}

@@ -38,11 +38,11 @@ export default function Gallery() {
   const phases = [...new Set(photos.map(p => p.aiAnalysis?.phaseDetected).filter(Boolean))];
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       {/* Page Header */}
       <div className="mb-6">
-        <div className="flex items-center justify-between">
-          <div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
             <h1 className="text-2xl font-semibold text-slate-900">Photo Gallery</h1>
             <p className="text-slate-500">Browse and filter all project photos</p>
           </div>
@@ -65,15 +65,15 @@ export default function Gallery() {
               </TabsList>
             </Tabs>
 
-            <div className="flex items-center gap-2">
-              <div className="relative">
+            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+              <div className="relative w-full sm:w-auto">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <Input
                   type="text"
                   placeholder="Search photos..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-64 pl-10"
+                  className="w-full pl-10 sm:w-64"
                 />
               </div>
 

@@ -106,7 +106,7 @@ export default function TopNav() {
                   className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
                     isActive
                       ? 'bg-slate-900 text-white'
-                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 active:bg-slate-200'
                   }`}
                 >
                   <Icon className="h-4 w-4" />
@@ -127,7 +127,7 @@ export default function TopNav() {
                 setNotificationsOpen((o) => !o);
                 setUserMenuOpen(false);
               }}
-              className="relative rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
+              className="relative flex h-11 w-11 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 active:bg-slate-200"
               aria-label="Notifications"
             >
               <Bell className="h-5 w-5" />
@@ -144,7 +144,7 @@ export default function TopNav() {
                   className="fixed inset-0 z-40"
                   onClick={() => setNotificationsOpen(false)}
                 />
-                <div className="absolute right-0 z-50 mt-2 w-96 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+                <div className="absolute right-0 z-50 mt-2 w-[calc(100vw-1rem)] max-w-96 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg sm:w-96">
                   <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
                     <h3 className="text-sm font-semibold text-slate-900">Notifications</h3>
                     {unreadCount > 0 && (
@@ -221,7 +221,7 @@ export default function TopNav() {
                 setUserMenuOpen((o) => !o);
                 setNotificationsOpen(false);
               }}
-              className={`flex items-center gap-2 rounded-full border border-slate-200 py-1 pl-1 pr-2.5 text-sm transition-colors hover:border-slate-300 hover:bg-slate-50 ${
+              className={`flex min-h-11 items-center gap-2 rounded-full border border-slate-200 py-1 pl-1 pr-2.5 text-sm transition-colors hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 ${
                 userMenuOpen ? 'border-slate-300 bg-slate-50' : ''
               }`}
               aria-haspopup="menu"
@@ -248,7 +248,7 @@ export default function TopNav() {
                   onClick={() => setUserMenuOpen(false)}
                 />
                 <div
-                  className="absolute right-0 z-50 mt-2 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg"
+                  className="absolute right-0 z-50 mt-2 w-[calc(100vw-1rem)] max-w-xs overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg sm:w-64"
                   role="menu"
                 >
                   <div className="border-b border-slate-100 px-4 py-3">
@@ -295,7 +295,7 @@ export default function TopNav() {
           <button
             type="button"
             onClick={() => setMobileMenuOpen((o) => !o)}
-            className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 md:hidden"
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 active:bg-slate-200 md:hidden"
             aria-label="Toggle menu"
           >
             {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -317,10 +317,10 @@ export default function TopNav() {
                   key={item.path}
                   to={item.path}
                   onClick={() => setMobileMenuOpen(false)}
-                  className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium ${
+                  className={`flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium ${
                     isActive
                       ? 'bg-slate-900 text-white'
-                      : 'text-slate-600 hover:bg-slate-50'
+                      : 'text-slate-600 hover:bg-slate-50 active:bg-slate-100'
                   }`}
                 >
                   <Icon className="h-5 w-5" />

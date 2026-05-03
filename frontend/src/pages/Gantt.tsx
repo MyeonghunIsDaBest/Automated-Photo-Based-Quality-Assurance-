@@ -10,18 +10,20 @@ import type { Task } from '../types';
 import { canEditTasks, canDeleteTasks, canUploadPhotos } from '../lib/permissions';
 import {
   listTasks,
-  createTask as apiCreateTask,
-  updateTask as apiUpdateTask,
-  updateTaskProgress as apiUpdateTaskProgress,
-  deleteTask as apiDeleteTask,
   mapTaskRow,
   type TaskRow,
 } from '../lib/api/tasks';
+import {
+  createTaskShared,
+  saveTaskShared,
+  deleteTaskShared,
+} from '../lib/api/taskMutations';
 import { subscribeToProjectTasks } from '../lib/api/realtime';
 import { supabaseConfigured } from '../lib/supabase';
 
 import { useGanttSideStore } from './gantt/store';
 import type { TabId } from './gantt/types';
+import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 
 import { ScheduleTab }     from './gantt/tabs/ScheduleTab';
 import { TasksTab }        from './gantt/tabs/TasksTab';
@@ -53,7 +55,6 @@ const TAB_SPECS: TabSpec[] = [
 
 export default function Gantt() {
   const { tasks, zones, project, currentUser } = useAppStore();
-  const { updateTaskProgress, addTask, deleteTask } = useFeatureStore();
   const documents = useFeatureStore((s) => s.documents);
   const sideStore = useGanttSideStore.getState; // for counter badges (read once per render)
 
@@ -130,15 +131,18 @@ export default function Gantt() {
   // render — cheap because the badges live next to the tab labels.
   const counts = useMemo(() => {
     const side = sideStore();
+    // Optional-chain every collection lookup. If `persist` rehydrates an old
+    // shape that's missing newer slices, `side.warranties` can be undefined —
+    // accessing `[project.id]` on undefined would throw and white-page the page.
     return {
       schedule:      projectTasks.length,
-      daily_logs:    (side.dailyLogs[project.id]    ?? []).length,
-      todos:         (side.todos[project.id]        ?? []).filter((t) => !t.done).length,
+      daily_logs:    (side.dailyLogs?.[project.id]    ?? []).length,
+      todos:         (side.todos?.[project.id]        ?? []).filter((t) => !t.done).length,
       tasks:         projectTasks.length,
-      change_orders: (side.changeOrders[project.id] ?? []).length,
-      selections:    (side.selections[project.id]   ?? []).length,
-      warranties:    (side.warranties[project.id]   ?? []).length,
-      plans: documents.filter(
+      change_orders: (side.changeOrders?.[project.id] ?? []).length,
+      selections:    (side.selections?.[project.id]   ?? []).length,
+      warranties:    (side.warranties?.[project.id]   ?? []).length,
+      plans: (documents ?? []).filter(
         (d) => d.projectId === project.id && (d.category === 'blueprint' || d.category === 'permit'),
       ).length,
       uploads: undefined as number | undefined,
@@ -148,86 +152,18 @@ export default function Gantt() {
   // Subscribe to side-store changes so badges update live.
   useGanttSideStore();
 
-  // ── Task mutation handlers (shared by Schedule + Tasks tabs) ───────────
-  const handleSaveTask = async (updatedTask: Task) => {
-    if (supabaseConfigured()) {
-      try {
-        await apiUpdateTask(updatedTask.id, {
-          name: updatedTask.name,
-          phase: updatedTask.phase,
-          start_date: updatedTask.startDate,
-          end_date: updatedTask.endDate,
-          status: updatedTask.status,
-          percent_complete: updatedTask.percentComplete,
-          zone_id: updatedTask.zoneId ?? null,
-          assignee_id: updatedTask.assigneeId ?? null,
-          parent_task_id: updatedTask.parentTaskId ?? null,
-          dependencies: updatedTask.dependencies,
-        });
-        updateTaskProgress(updatedTask.id, updatedTask.percentComplete, 'manual');
-      } catch (e) {
-        // eslint-disable-next-line no-console
-        console.error('[gantt] save task failed:', e);
-        await apiUpdateTaskProgress(updatedTask.id, updatedTask.percentComplete).catch(() => {});
-        updateTaskProgress(updatedTask.id, updatedTask.percentComplete, 'manual');
-      }
-    } else {
-      updateTaskProgress(updatedTask.id, updatedTask.percentComplete, 'manual');
-    }
-  };
-
-  const handleDeleteTask = async (taskId: string) => {
-    if (supabaseConfigured()) {
-      try {
-        await apiDeleteTask(taskId);
-      } catch (e) {
-        // eslint-disable-next-line no-console
-        console.error('[gantt] delete task failed:', e);
-      }
-    }
-    deleteTask(taskId);
-  };
-
-  const handleCreateTask = async (
-    newTask: Omit<Task, 'id' | 'photoCount' | 'lastUpdated' | 'updateSource'>,
-  ) => {
-    if (supabaseConfigured()) {
-      try {
-        const row = await apiCreateTask({
-          project_id: newTask.projectId,
-          zone_id: newTask.zoneId ?? null,
-          assignee_id: newTask.assigneeId ?? null,
-          parent_task_id: newTask.parentTaskId ?? null,
-          name: newTask.name,
-          phase: newTask.phase,
-          start_date: newTask.startDate,
-          end_date: newTask.endDate,
-          percent_complete: newTask.percentComplete,
-          status: newTask.status,
-          notes: newTask.notes,
-          update_source: 'manual',
-          dependencies: newTask.dependencies,
-        });
-        addTask(mapTaskRow(row));
-      } catch (e) {
-        // eslint-disable-next-line no-console
-        console.error('[gantt] create task failed:', e);
-      }
-    } else {
-      addTask({
-        ...newTask,
-        id: `task_${Date.now()}`,
-        photoCount: 0,
-        lastUpdated: new Date().toISOString(),
-        updateSource: 'manual',
-      });
-    }
-  };
+  // ── Task mutation handlers ────────────────────────────────────────────
+  // Delegated to shared helpers so Projects (Add Task / bulk add) and Gantt
+  // mutate state through identical code — keeps both views in sync.
+  const handleSaveTask   = (updated: Task) => saveTaskShared(updated);
+  const handleDeleteTask = (taskId: string) => deleteTaskShared(taskId);
+  const handleCreateTask = (input: Omit<Task, 'id' | 'photoCount' | 'lastUpdated' | 'updateSource'>) =>
+    createTaskShared(input).then(() => undefined);
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       {/* ─── Tab strip ─── */}
-      <div className="mb-6 -mx-6 overflow-x-auto px-6 pb-1">
+      <div className="mb-6 -mx-4 overflow-x-auto px-4 pb-1 sm:-mx-6 sm:px-6">
         <div className="inline-flex items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
           {TAB_SPECS.map((tab) => {
             const Icon = tab.icon;
@@ -262,55 +198,59 @@ export default function Gantt() {
       </div>
 
       {/* ─── Active tab ─── */}
-      {activeTab === 'schedule' && (
-        <ScheduleTab
-          project={project}
-          tasks={projectTasks}
-          zones={projectZones}
-          currentUser={currentUser}
-          canEdit={canEdit}
-          canDelete={canDelete}
-          onCreateTask={handleCreateTask}
-          onSaveTask={handleSaveTask}
-          onDeleteTask={handleDeleteTask}
-        />
-      )}
+      {/* Each tab is isolated by an ErrorBoundary so a render error in one          */}
+      {/* tab shows an inline error card instead of unmounting the whole page.       */}
+      <ErrorBoundary label={TAB_SPECS.find((t) => t.id === activeTab)?.label ?? activeTab}>
+        {activeTab === 'schedule' && (
+          <ScheduleTab
+            project={project}
+            tasks={projectTasks}
+            zones={projectZones}
+            currentUser={currentUser}
+            canEdit={canEdit}
+            canDelete={canDelete}
+            onCreateTask={handleCreateTask}
+            onSaveTask={handleSaveTask}
+            onDeleteTask={handleDeleteTask}
+          />
+        )}
 
-      {activeTab === 'tasks' && (
-        <TasksTab
-          project={project}
-          tasks={projectTasks}
-          zones={projectZones}
-          currentUser={currentUser}
-          canEdit={canEdit}
-          canDelete={canDelete}
-          onCreateTask={handleCreateTask}
-          onSaveTask={handleSaveTask}
-          onDeleteTask={handleDeleteTask}
-        />
-      )}
+        {activeTab === 'tasks' && (
+          <TasksTab
+            project={project}
+            tasks={projectTasks}
+            zones={projectZones}
+            currentUser={currentUser}
+            canEdit={canEdit}
+            canDelete={canDelete}
+            onCreateTask={handleCreateTask}
+            onSaveTask={handleSaveTask}
+            onDeleteTask={handleDeleteTask}
+          />
+        )}
 
-      {activeTab === 'daily_logs' && (
-        <DailyLogsTab project={project} currentUser={currentUser} canEdit={canEdit} />
-      )}
+        {activeTab === 'daily_logs' && (
+          <DailyLogsTab project={project} currentUser={currentUser} canEdit={canEdit} />
+        )}
 
-      {activeTab === 'todos' && <TodosTab project={project} canEdit={canEdit} />}
+        {activeTab === 'todos' && <TodosTab project={project} canEdit={canEdit} />}
 
-      {activeTab === 'change_orders' && (
-        <ChangeOrdersTab project={project} canEdit={canEdit} />
-      )}
+        {activeTab === 'change_orders' && (
+          <ChangeOrdersTab project={project} canEdit={canEdit} />
+        )}
 
-      {activeTab === 'selections' && (
-        <SelectionsTab project={project} zones={projectZones} canEdit={canEdit} />
-      )}
+        {activeTab === 'selections' && (
+          <SelectionsTab project={project} zones={projectZones} canEdit={canEdit} />
+        )}
 
-      {activeTab === 'warranties' && <WarrantiesTab project={project} canEdit={canEdit} />}
+        {activeTab === 'warranties' && <WarrantiesTab project={project} canEdit={canEdit} />}
 
-      {activeTab === 'plans' && <PlansTab project={project} canEdit={canEdit} />}
+        {activeTab === 'plans' && <PlansTab project={project} canEdit={canEdit} />}
 
-      {activeTab === 'uploads' && (
-        <UploadsTab project={project} currentUser={currentUser} canUpload={canUpload} />
-      )}
+        {activeTab === 'uploads' && (
+          <UploadsTab project={project} currentUser={currentUser} canUpload={canUpload} />
+        )}
+      </ErrorBoundary>
     </div>
   );
 }

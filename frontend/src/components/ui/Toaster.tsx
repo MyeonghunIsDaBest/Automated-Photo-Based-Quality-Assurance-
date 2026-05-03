@@ -40,13 +40,26 @@ export function Toaster({ message, type, onClose }: ToasterProps) {
   const { bg, border, text, icon: Icon, iconColor } = config[type];
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 animate-in slide-in-from-bottom-4 fade-in duration-300">
-      <div className={`flex items-center gap-3 rounded-lg border px-4 py-3 shadow-lg ${bg} ${border}`}>
-        <Icon className={`h-5 w-5 ${iconColor}`} />
-        <p className={`text-sm font-medium ${text}`}>{message}</p>
+    // Position uses calc(...) with env(safe-area-inset-*) so on notched
+    // phones the toast clears the home-indicator instead of sitting under it.
+    // On a 360px screen the toast width is capped to viewport - 2rem so it
+    // never overflows.
+    <div
+      className="fixed z-50 animate-in slide-in-from-bottom-4 fade-in duration-300"
+      style={{
+        bottom: 'calc(1rem + env(safe-area-inset-bottom))',
+        right: 'calc(1rem + env(safe-area-inset-right))',
+        left: 'calc(1rem + env(safe-area-inset-left))',
+        maxWidth: 'calc(100vw - 2rem)',
+      }}
+    >
+      <div className={`ml-auto flex max-w-md items-center gap-3 rounded-lg border px-4 py-3 shadow-lg ${bg} ${border}`}>
+        <Icon className={`h-5 w-5 flex-shrink-0 ${iconColor}`} />
+        <p className={`min-w-0 flex-1 text-sm font-medium ${text}`}>{message}</p>
         <button
           onClick={onClose}
-          className={`rounded p-1 ${text} hover:bg-white/50`}
+          className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded ${text} hover:bg-white/50 active:bg-white/60`}
+          aria-label="Dismiss"
         >
           <X className="h-4 w-4" />
         </button>

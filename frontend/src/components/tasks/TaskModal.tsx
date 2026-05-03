@@ -183,10 +183,10 @@ export default function TaskModal({
     : 'w-full rounded-md border border-slate-200 px-2.5 py-2 text-sm focus:border-emerald-500 focus:outline-none';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-3xl rounded-lg bg-white shadow-xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-4">
+      <div className="flex h-full max-h-[95vh] w-full max-w-3xl flex-col rounded-lg bg-white shadow-xl sm:h-auto">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+        <div className="flex flex-shrink-0 items-center justify-between border-b border-slate-200 px-4 py-3">
           <div className="flex-1 overflow-hidden">
             <div className="flex items-center gap-2">
               <h2 className="text-base font-semibold text-slate-900 truncate">{task.name}</h2>
@@ -205,7 +205,8 @@ export default function TaskModal({
             </Badge>
             <button
               onClick={onClose}
-              className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              aria-label="Close"
+              className="flex h-10 w-10 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-600 active:bg-slate-200"
             >
               <X className="h-4 w-4" />
             </button>
@@ -213,7 +214,7 @@ export default function TaskModal({
         </div>
 
         {/* Tabs */}
-        <div className="border-b border-slate-200 px-4">
+        <div className="flex-shrink-0 overflow-x-auto border-b border-slate-200 px-4">
           <div className="flex gap-4">
             {[
               { id: 'details', label: 'Details' },
@@ -236,8 +237,8 @@ export default function TaskModal({
           </div>
         </div>
 
-        {/* Content */}
-        <div className="max-h-[calc(100vh-280px)] overflow-auto px-4 py-4">
+        {/* Content (independent scroll inside the 95vh shell) */}
+        <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
           {activeTab === 'details' && (
             <div className="space-y-3">
               {/* Basic Info */}
@@ -594,7 +595,7 @@ export default function TaskModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3">
+        <div className="flex flex-shrink-0 flex-wrap items-center justify-between gap-2 border-t border-slate-200 px-4 py-3">
           {readOnly ? (
             <span className="text-xs text-slate-500">
               You have view-only access. Use the Notes tab to flag issues.

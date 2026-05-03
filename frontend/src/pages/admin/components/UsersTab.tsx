@@ -271,8 +271,10 @@ function Group({
         </span>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <table className="w-full text-left text-sm">
+      <div className="-mx-4 overflow-x-auto sm:mx-0">
+        <div className="inline-block min-w-full px-4 align-middle sm:px-0">
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <table className="w-full min-w-[680px] text-left text-sm">
           <thead className="border-b border-slate-200 bg-slate-50/60 text-[11px] uppercase tracking-wider text-slate-500">
             <tr>
               <th className="px-4 py-3">Name</th>
@@ -372,6 +374,8 @@ function Group({
             )}
           </tbody>
         </table>
+        </div>
+        </div>
       </div>
     </div>
   );

@@ -76,7 +76,9 @@ export function GanttChart({ tasks, startDate, endDate, compact = false, showMon
 
   if (compact) {
     return (
-      <div className="overflow-hidden rounded-lg border border-slate-200">
+      // Compact mode: scroll horizontally on phones so the bar stays readable.
+      <div className="overflow-x-auto rounded-lg border border-slate-200">
+        <div className="min-w-[560px]">
         {/* Task Rows - Compact */}
         <div className="divide-y divide-slate-100">
           {tasks.length === 0 && (
@@ -88,7 +90,7 @@ export function GanttChart({ tasks, startDate, endDate, compact = false, showMon
             const position = getTaskPosition(task);
             return (
               <div key={task.id} className="flex items-center gap-4 p-3">
-                <div className="w-48 flex-shrink-0">
+                <div className="w-36 flex-shrink-0 sm:w-48">
                   <p className="truncate text-sm font-medium text-slate-900">{task.name}</p>
                   <p className="text-xs text-slate-500">{task.percentComplete}%</p>
                 </div>
@@ -116,16 +118,20 @@ export function GanttChart({ tasks, startDate, endDate, compact = false, showMon
             );
           })}
         </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border border-slate-200">
+    // Full mode: also horizontal-scroll on small viewports — the chart needs
+    // ≥640px to be useful at all, and squishing months produces unreadable text.
+    <div className="overflow-x-auto rounded-lg border border-slate-200">
+      <div className="min-w-[640px]">
       {/* Month Headers */}
       {showMonths && (
         <div className="flex border-b border-slate-200 bg-slate-50">
-          <div className="w-48 flex-shrink-0 border-r border-slate-200 p-3 text-sm font-medium text-slate-700">
+          <div className="w-36 flex-shrink-0 border-r border-slate-200 p-3 text-sm font-medium text-slate-700 sm:w-48">
             Task Name
           </div>
           <div className="flex-1">
@@ -160,7 +166,7 @@ export function GanttChart({ tasks, startDate, endDate, compact = false, showMon
           const position = getTaskPosition(task);
           return (
             <div key={task.id} className="flex items-center">
-              <div className="w-48 flex-shrink-0 border-r border-slate-200 p-3">
+              <div className="w-36 flex-shrink-0 border-r border-slate-200 p-3 sm:w-48">
                 <p className="truncate text-sm font-medium text-slate-900">{task.name}</p>
                 <div className="mt-1 flex items-center gap-2">
                   <span className="text-xs text-slate-500">{task.percentComplete}%</span>
@@ -228,6 +234,7 @@ export function GanttChart({ tasks, startDate, endDate, compact = false, showMon
           <div className="h-3 w-3 rounded-full bg-red-500" />
           <span>Delayed</span>
         </div>
+      </div>
       </div>
     </div>
   );

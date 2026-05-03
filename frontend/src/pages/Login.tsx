@@ -106,7 +106,7 @@ export default function Login() {
                 <span className="inline-block h-px w-6 bg-slate-400" />
                 Photo · Progress · Proof
               </div>
-              <h1 className="display max-w-md text-5xl font-medium leading-[1.05] text-slate-900">
+              <h1 className="display max-w-md text-3xl sm:text-5xl font-medium leading-[1.05] text-slate-900">
                 One photo a day —{' '}
                 <em className="font-normal italic text-emerald-700">the rest writes itself</em>.
               </h1>
@@ -232,7 +232,7 @@ export default function Login() {
                     <p className="mt-0.5 text-[11px] text-slate-400">
                       Sets your starting permissions. Admin can promote you afterward.
                     </p>
-                    <div className="mt-2 grid grid-cols-2 gap-2">
+                    <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
                       {ROLE_OPTIONS.map((opt) => {
                         const active = role === opt.value;
                         return (

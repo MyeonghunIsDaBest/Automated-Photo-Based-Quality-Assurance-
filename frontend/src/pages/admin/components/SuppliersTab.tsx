@@ -167,7 +167,7 @@ export default function SuppliersTab() {
 
 function DetailGrid({ s }: { s: Supplier }) {
   return (
-    <div className="grid grid-cols-2 gap-3 text-xs">
+    <div className="grid grid-cols-1 gap-3 text-xs sm:grid-cols-2">
       <Detail label="Website" value={s.website} />
       <Detail label="Main Email" value={s.mainEmail} />
       <Detail label="Main Contact" value={[s.mainContactName, s.mainContactNumber].filter(Boolean).join(' · ')} />

@@ -86,16 +86,17 @@ export default function Settings() {
   ];
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       <div className="mb-6">
         <h1 className="text-2xl font-semibold text-slate-900">Settings</h1>
         <p className="text-slate-500">Manage your account settings and preferences</p>
       </div>
 
       <div className="mx-auto max-w-5xl">
-        <div className="flex gap-6">
+        {/* Sidebar stacks above the panel on mobile; sits beside it on md+. */}
+        <div className="flex flex-col gap-6 md:flex-row">
           {/* Sidebar */}
-          <div className="w-64 flex-shrink-0">
+          <div className="md:w-64 md:flex-shrink-0">
             <Card>
               <CardContent className="p-4">
                 <nav className="space-y-1">

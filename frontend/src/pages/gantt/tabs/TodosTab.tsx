@@ -23,7 +23,7 @@ const FILTERS: { id: Filter; label: string }[] = [
 ];
 
 export function TodosTab({ project, canEdit }: TodosTabProps) {
-  const todos       = useGanttSideStore((s) => s.todos[project.id] ?? []);
+  const todos       = useGanttSideStore((s) => s.todos?.[project.id] ?? []);
   const addTodo     = useGanttSideStore((s) => s.addTodo);
   const toggleTodo  = useGanttSideStore((s) => s.toggleTodo);
   const removeTodo  = useGanttSideStore((s) => s.removeTodo);

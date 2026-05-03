@@ -143,17 +143,17 @@ export default function Files() {
         <div className="grid-bg absolute inset-0 opacity-50" />
         <div className="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-emerald-100/40 blur-3xl" />
 
-        <div className="relative px-8 pt-10 pb-6">
-          <div className="flex items-end justify-between gap-6 flex-wrap">
-            <div>
+        <div className="relative px-4 pt-8 pb-6 sm:px-8 sm:pt-10">
+          <div className="flex items-end justify-between gap-4 sm:gap-6 flex-wrap">
+            <div className="min-w-0">
               <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-slate-500 mb-3">
                 <span className="inline-block h-px w-6 bg-slate-400" />
                 Workspace · Project Files
               </div>
-              <h1 className="display text-5xl font-medium text-slate-900 leading-none">
+              <h1 className="display text-3xl sm:text-5xl font-medium text-slate-900 leading-none">
                 The <em className="italic font-normal text-emerald-700">archive</em>.
               </h1>
-              <p className="mt-3 max-w-md text-[15px] text-slate-500 leading-relaxed">
+              <p className="mt-3 max-w-md text-sm sm:text-[15px] text-slate-500 leading-relaxed">
                 Every contract, blueprint, photo, and field report — kept, searchable,
                 and one click from where you need it.
               </p>
@@ -200,7 +200,7 @@ export default function Files() {
       </header>
 
       {/* ─── Body ─── */}
-      <div className="px-8 py-8 grid gap-8 lg:grid-cols-[1fr_280px]">
+      <div className="px-4 py-6 sm:px-8 sm:py-8 grid gap-6 sm:gap-8 lg:grid-cols-[1fr_280px]">
 
         {/* ── Main column ── */}
         <main>

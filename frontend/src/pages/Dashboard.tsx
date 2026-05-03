@@ -83,14 +83,14 @@ export default function Dashboard() {
         <div className="grid-bg absolute inset-0 opacity-50" />
         <div className="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-emerald-100/40 blur-3xl" />
 
-        <div className="relative px-8 pt-10 pb-6">
-          <div className="flex flex-wrap items-end justify-between gap-6">
-            <div>
+        <div className="relative px-4 pt-8 pb-6 sm:px-8 sm:pt-10">
+          <div className="flex flex-wrap items-end justify-between gap-4 sm:gap-6">
+            <div className="min-w-0">
               <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
                 <span className="inline-block h-px w-6 bg-slate-400" />
                 Workspace · {project.name}
               </div>
-              <h1 className="display text-5xl font-medium leading-none text-slate-900">
+              <h1 className="display text-3xl font-medium leading-none text-slate-900 sm:text-5xl">
                 The <em className="font-normal italic text-emerald-700">brief</em>.
               </h1>
               <p className="mt-3 max-w-md text-[15px] leading-relaxed text-slate-500">
@@ -161,7 +161,7 @@ export default function Dashboard() {
       </header>
 
       {/* ─── Body ─── */}
-      <div className="grid gap-6 px-8 py-8 lg:grid-cols-[1fr_320px]">
+      <div className="grid gap-6 px-4 py-6 sm:px-8 sm:py-8 lg:grid-cols-[1fr_320px]">
         <main className="space-y-6">
           {/* Active Jobs */}
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">

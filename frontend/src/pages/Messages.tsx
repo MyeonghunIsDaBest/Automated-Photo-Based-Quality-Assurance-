@@ -379,17 +379,17 @@ export default function Messages() {
         <div className="grid-bg absolute inset-0 opacity-50" />
         <div className="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-emerald-100/40 blur-3xl" />
 
-        <div className="relative px-8 pt-10 pb-6">
-          <div className="flex flex-wrap items-end justify-between gap-6">
-            <div>
+        <div className="relative px-4 pt-8 pb-6 sm:px-8 sm:pt-10">
+          <div className="flex flex-wrap items-end justify-between gap-4 sm:gap-6">
+            <div className="min-w-0">
               <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
                 <span className="inline-block h-px w-6 bg-slate-400" />
                 Workspace · Messages
               </div>
-              <h1 className="display text-5xl font-medium leading-none text-slate-900">
+              <h1 className="display text-3xl sm:text-5xl font-medium leading-none text-slate-900">
                 The <em className="font-normal italic text-emerald-700">thread</em>.
               </h1>
-              <p className="mt-3 max-w-md text-[15px] leading-relaxed text-slate-500">
+              <p className="mt-3 max-w-md text-sm sm:text-[15px] leading-relaxed text-slate-500">
                 Direct lines, project channels, and the running record of everything said —
                 kept together so nothing slips between sites.
               </p>
@@ -436,11 +436,13 @@ export default function Messages() {
       </header>
 
       {/* ─── Body ─── */}
-      <div className="px-8 py-8">
-        <div className="flex h-[calc(100vh-22rem)] min-h-[520px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="px-4 py-6 sm:px-8 sm:py-8">
+        {/* Mobile: stack the inbox above the thread, both at natural height. */}
+        {/* Desktop: side-by-side fixed-height pane like before.               */}
+        <div className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm md:h-[calc(100vh-22rem)] md:min-h-[520px] md:flex-row">
 
           {/* ── Sidebar ─────────────────────────────────────── */}
-          <div className="flex w-80 flex-shrink-0 flex-col border-r border-slate-200 bg-white">
+          <div className="flex w-full max-h-[60vh] flex-col border-b border-slate-200 bg-white md:max-h-none md:w-80 md:flex-shrink-0 md:border-b-0 md:border-r">
             <div className="border-b border-slate-100 px-5 pt-5 pb-4">
               <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500">
                 Inbox

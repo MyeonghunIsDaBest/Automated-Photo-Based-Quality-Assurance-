@@ -63,8 +63,10 @@ export default function StakeholdersTab() {
         </div>
       )}
 
+      <div className="-mx-4 overflow-x-auto sm:mx-0">
+       <div className="inline-block min-w-full px-4 align-middle sm:px-0">
       <div className="rounded-xl border border-slate-200 bg-white">
-        <table className="w-full text-left text-sm">
+        <table className="w-full min-w-[680px] text-left text-sm">
           <thead className="border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
             <tr>
               <th className="px-4 py-3">Company</th>
@@ -91,8 +93,9 @@ export default function StakeholdersTab() {
                   <td className="px-4 py-3 text-right">
                     <button
                       onClick={() => handleDelete(s)}
-                      className="rounded-md p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-500 hover:bg-red-50 hover:text-red-600 active:bg-red-100"
                       title="Delete"
+                      aria-label="Delete"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -102,6 +105,8 @@ export default function StakeholdersTab() {
             )}
           </tbody>
         </table>
+      </div>
+       </div>
       </div>
 
       {adding && (

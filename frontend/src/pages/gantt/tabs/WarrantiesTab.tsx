@@ -30,7 +30,7 @@ function expiryLabel(expiryDate: string): string {
 }
 
 export function WarrantiesTab({ project, canEdit }: WarrantiesTabProps) {
-  const warranties = useGanttSideStore((s) => s.warranties[project.id] ?? []);
+  const warranties = useGanttSideStore((s) => s.warranties?.[project.id] ?? []);
   const addWarranty    = useGanttSideStore((s) => s.addWarranty);
   const removeWarranty = useGanttSideStore((s) => s.removeWarranty);
 

@@ -18,7 +18,7 @@ interface DailyLogsTabProps {
 const today = () => new Date().toISOString().slice(0, 10);
 
 export function DailyLogsTab({ project, currentUser, canEdit }: DailyLogsTabProps) {
-  const logs = useGanttSideStore((s) => s.dailyLogs[project.id] ?? []);
+  const logs = useGanttSideStore((s) => s.dailyLogs?.[project.id] ?? []);
   const addLog    = useGanttSideStore((s) => s.addDailyLog);
   const removeLog = useGanttSideStore((s) => s.removeDailyLog);
 

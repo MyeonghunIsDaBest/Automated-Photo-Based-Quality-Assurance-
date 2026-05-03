@@ -179,6 +179,19 @@ export default function QuickActionsSidebar() {
     };
   }, [isOpen, isHovered]);
 
+  // Lock the page underneath while the sidebar is open on mobile so the
+  // user's vertical drag doesn't scroll the dashboard behind the panel.
+  useEffect(() => {
+    if (isOpen) {
+      document.body.classList.add('body-scroll-lock');
+    } else {
+      document.body.classList.remove('body-scroll-lock');
+    }
+    return () => {
+      document.body.classList.remove('body-scroll-lock');
+    };
+  }, [isOpen]);
+
   const toggleSidebar = () => {
     setIsOpen(!isOpen);
   };
@@ -238,12 +251,13 @@ export default function QuickActionsSidebar() {
         />
       )}
 
-      {/* Sidebar Panel */}
+      {/* Sidebar Panel — full width on phones, fixed 320px on sm+. */}
       <div
         ref={sidebarRef}
-        className={`fixed left-0 top-0 z-50 h-full w-80 transform border-r border-slate-200 bg-white shadow-2xl transition-transform duration-300 ease-in-out ${
+        className={`fixed left-0 top-0 z-50 h-full w-full transform border-r border-slate-200 bg-white shadow-2xl transition-transform duration-300 ease-in-out sm:w-80 ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
+        style={{ paddingLeft: 'env(safe-area-inset-left)' }}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
@@ -255,7 +269,8 @@ export default function QuickActionsSidebar() {
           </div>
           <button
             onClick={() => setIsOpen(false)}
-            className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            aria-label="Close quick actions"
+            className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 active:bg-slate-200"
           >
             <X className="h-5 w-5" />
           </button>
