@@ -34,7 +34,10 @@ export default function Admin() {
             <span className="inline-block h-px w-6 bg-slate-400" />
             Workspace · Administration
           </div>
-          <h1 className="display text-3xl sm:text-5xl font-medium leading-none text-slate-900">
+          <h1
+            className="display text-2xl sm:text-4xl md:text-5xl font-medium leading-tight text-slate-900"
+            style={{ textWrap: 'balance' }}
+          >
             People &amp; <em className="font-normal italic text-emerald-700">partners</em>.
           </h1>
           <p className="mt-3 max-w-xl text-sm sm:text-[15px] leading-relaxed text-slate-500">
@@ -94,11 +97,12 @@ function Section({
           {eyebrow}
         </div>
         <h2
-          className="text-3xl font-medium leading-tight text-slate-900"
+          className="text-2xl font-medium leading-tight text-slate-900 sm:text-3xl"
           style={{
             fontFamily: "'Fraunces', Georgia, serif",
             fontFeatureSettings: "'ss01'",
             letterSpacing: '-0.02em',
+            textWrap: 'balance',
           }}
         >
           {title}

@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAppStore } from '../../store';
 import { useNotificationStore } from '../../store/notifications';
 import {
-  LayoutDashboard, FolderOpen, FileText, MessageSquare,
+  LayoutDashboard, FolderOpen, MessageSquare,
   DollarSign, Bell, Settings, LogOut, Building2,
   Menu, X, Shield, MessageCircle, TrendingUp, FileCheck, HardHat,
   ShieldCheck, ChevronDown,
@@ -20,10 +20,12 @@ type NavItem = {
   adminOnly?: boolean;
 };
 
+// Files moved into each project's Gantt overview as a sub-tab; no longer a
+// top-level route. Same for project messages — the /messages page remains for
+// general/cross-project chat, but project-scoped chat lives in Gantt.
 const navItems: NavItem[] = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
   { label: 'Projects',  icon: FolderOpen,      path: '/projects' },
-  { label: 'Files',     icon: FileText,        path: '/files' },
   { label: 'Messages',  icon: MessageSquare,   path: '/messages' },
   { label: 'Reports',   icon: DollarSign,      path: '/reports' },
   { label: 'Safety',    icon: HardHat,         path: '/safety' },
@@ -82,7 +84,12 @@ export default function TopNav() {
     .toUpperCase();
 
   return (
-    <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/85 backdrop-blur">
+    // Solid white background — `bg-white/85 backdrop-blur` ghosted content
+    // through on mobile WebKit (visible in screenshots as "EMAIL" / "URITY"
+    // peeking behind the logo), and the editorial design reads cleaner with
+    // a hard edge anyway. Desktop loses the frosted-glass effect, which the
+    // sticky border already implies visually.
+    <header className="sticky top-0 z-40 border-b border-slate-200 bg-white">
       <div className="flex h-16 items-center justify-between gap-6 px-6">
         {/* ─── Left: brand + primary nav ─── */}
         <div className="flex min-w-0 items-center gap-6">

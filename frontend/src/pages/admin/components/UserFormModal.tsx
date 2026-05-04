@@ -76,26 +76,27 @@ export default function UserFormModal({ mode, profile, onClose, onSaved }: Props
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-2 sm:p-4">
+      <div className="flex h-full max-h-[95vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:h-auto sm:max-h-[90vh]">
+        <div className="flex flex-shrink-0 items-center justify-between border-b border-slate-200 px-4 py-3 sm:px-6 sm:py-4">
           <h2 className="text-lg font-semibold text-slate-900">
             {mode === 'create' ? 'Add User' : 'Edit User'}
           </h2>
           <button
             onClick={onClose}
-            className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+            aria-label="Close"
+            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-900 active:bg-slate-200"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSave} className="space-y-6 p-6">
+        <form onSubmit={handleSave} className="min-h-0 flex-1 space-y-6 overflow-y-auto p-4 sm:p-6">
           <section>
             <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
               Account
             </h3>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field label="First Name" required>
                 <input
                   type="text"
@@ -168,8 +169,8 @@ export default function UserFormModal({ mode, profile, onClose, onSaved }: Props
             <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
               Emergency Contact
             </h3>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Contact Name" className="col-span-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label="Contact Name" className="sm:col-span-2">
                 <input
                   type="text"
                   value={emergencyContactName}

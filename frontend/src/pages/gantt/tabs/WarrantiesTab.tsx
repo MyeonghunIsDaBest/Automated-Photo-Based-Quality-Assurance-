@@ -30,9 +30,10 @@ function expiryLabel(expiryDate: string): string {
 }
 
 export function WarrantiesTab({ project, canEdit }: WarrantiesTabProps) {
-  const warranties = useGanttSideStore((s) => s.warranties?.[project.id] ?? []);
+  const allWarranties  = useGanttSideStore((s) => s.warranties);
   const addWarranty    = useGanttSideStore((s) => s.addWarranty);
   const removeWarranty = useGanttSideStore((s) => s.removeWarranty);
+  const warranties     = useMemo(() => allWarranties?.[project.id] ?? [], [allWarranties, project.id]);
 
   const [item, setItem] = useState('');
   const [supplier, setSupplier] = useState('');
@@ -163,7 +164,7 @@ export function WarrantiesTab({ project, canEdit }: WarrantiesTabProps) {
                     <button
                       type="button"
                       onClick={() => removeWarranty(project.id, w.id)}
-                      className="rounded-md p-1 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                      className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500 active:bg-red-100"
                       title="Remove"
                     >
                       <Trash2 className="h-4 w-4" />

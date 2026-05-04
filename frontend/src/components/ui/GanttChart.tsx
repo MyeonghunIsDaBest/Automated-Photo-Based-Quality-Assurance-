@@ -139,8 +139,9 @@ export function GanttChart({ tasks, startDate, endDate, compact = false, showMon
               {months.map((month) => (
                 <div
                   key={month.name}
-                  className="border-r border-slate-200 px-3 py-2 text-sm font-medium text-slate-700"
+                  className="truncate border-r border-slate-200 px-3 py-2 text-sm font-medium text-slate-700"
                   style={{ width: `${month.width}%` }}
+                  title={month.name}
                 >
                   {month.name}
                 </div>
@@ -216,7 +217,7 @@ export function GanttChart({ tasks, startDate, endDate, compact = false, showMon
       </div>
 
       {/* Legend */}
-      <div className="flex flex-wrap items-center gap-4 border-t border-slate-200 bg-slate-50 p-4 text-sm">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-200 bg-slate-50 p-4 text-sm">
         <span className="text-slate-500">Status:</span>
         <div className="flex items-center gap-2">
           <div className="h-3 w-3 rounded-full bg-slate-400" />

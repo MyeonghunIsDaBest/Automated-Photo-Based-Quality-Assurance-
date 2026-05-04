@@ -10,6 +10,7 @@ import {
 import { format, formatDistanceToNow } from 'date-fns';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import { useProjectsListStore, selectActiveProject } from './projects/store';   // ← kee
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -64,6 +65,7 @@ const FONT_STYLES = `
 
 export default function Files() {
   const { documents, uploadDocument, deleteDocument } = useFeatureStore();
+  const activeProject = useProjectsListStore(selectActiveProject);
   const [activeTab, setActiveTab] = useState<'all' | 'document' | 'photo' | 'video'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
@@ -93,19 +95,26 @@ export default function Files() {
 
   // ── Upload ──
   const onDrop = useCallback((acceptedFiles: File[]) => {
-    acceptedFiles.forEach(file => {
-      uploadDocument({
-        projectId: 'project_1',
-        name: file.name,
-        type: file.type.startsWith('image/') ? 'photo' : file.type.startsWith('video/') ? 'video' : 'document',
-        category: uploadCategory,
-        size: file.size,
-        uploadedBy: 'user_1',
-        url: URL.createObjectURL(file),
-      });
-    });
+  if (!activeProject) {
+    // No project selected — bail loudly instead of writing to a fake id
+    // that will never be visible on the Dashboard or Gantt.
+    console.warn('[Files] No active project; upload aborted. Pick a project first.');
     setUploadOpen(false);
-  }, [uploadDocument, uploadCategory]);
+    return;
+  }
+  acceptedFiles.forEach(file => {
+    uploadDocument({
+      projectId: activeProject.id,
+      name: file.name,
+      type: file.type.startsWith('image/') ? 'photo' : file.type.startsWith('video/') ? 'video' : 'document',
+      category: uploadCategory,
+      size: file.size,
+      uploadedBy: 'user_1',
+      url: URL.createObjectURL(file),
+    });
+  });
+  setUploadOpen(false);
+}, [uploadDocument, uploadCategory, activeProject]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -144,13 +153,16 @@ export default function Files() {
         <div className="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-emerald-100/40 blur-3xl" />
 
         <div className="relative px-4 pt-8 pb-6 sm:px-8 sm:pt-10">
-          <div className="flex items-end justify-between gap-4 sm:gap-6 flex-wrap">
+          <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between sm:gap-6">
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-slate-500 mb-3">
                 <span className="inline-block h-px w-6 bg-slate-400" />
                 Workspace · Project Files
               </div>
-              <h1 className="display text-3xl sm:text-5xl font-medium text-slate-900 leading-none">
+              <h1
+                className="display text-2xl sm:text-4xl md:text-5xl font-medium text-slate-900 leading-tight"
+                style={{ textWrap: 'balance' }}
+              >
                 The <em className="italic font-normal text-emerald-700">archive</em>.
               </h1>
               <p className="mt-3 max-w-md text-sm sm:text-[15px] text-slate-500 leading-relaxed">
@@ -161,7 +173,7 @@ export default function Files() {
 
             <button
               onClick={() => setUploadOpen(true)}
-              className="group flex items-center gap-2.5 rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white transition-all hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-700/20 hover:-translate-y-0.5"
+              className="group inline-flex items-center justify-center gap-2.5 self-start whitespace-nowrap rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white transition-all hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-700/20 hover:-translate-y-0.5 active:bg-emerald-800"
             >
               <Upload className="h-4 w-4 transition-transform group-hover:-translate-y-px" />
               Upload files
@@ -557,21 +569,25 @@ function UploadModal({
   onClose: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
       <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative w-full max-w-xl rounded-3xl bg-white shadow-2xl overflow-hidden files-root">
-        <div className="px-7 pt-6 pb-4 border-b border-slate-100 flex items-center justify-between">
-          <div>
+      <div className="files-root relative flex h-full max-h-[95vh] w-full max-w-xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl sm:h-auto">
+        <div className="flex flex-shrink-0 items-center justify-between border-b border-slate-100 px-5 pt-6 pb-4 sm:px-7">
+          <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-700">Upload</p>
-            <h3 className="display text-2xl font-medium text-slate-900 mt-0.5">Add to the archive</h3>
+            <h3 className="display mt-0.5 text-xl font-medium text-slate-900 sm:text-2xl">Add to the archive</h3>
           </div>
-          <button onClick={onClose} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700 active:bg-slate-200"
+          >
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="p-7">
+        <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-7">
           {/* Category selector */}
           <p className="text-xs font-medium uppercase tracking-wider text-slate-500 mb-3">Category</p>
           <div className="flex flex-wrap gap-2 mb-6">

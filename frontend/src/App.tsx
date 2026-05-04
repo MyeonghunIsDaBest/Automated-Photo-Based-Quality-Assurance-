@@ -9,7 +9,6 @@ import Gantt from './pages/Gantt';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import Messages from './pages/Messages';
-import Files from './pages/Files';
 import Projects from './pages/Projects';
 import Safety from './pages/Safety';
 import Admin from './pages/Admin';
@@ -35,7 +34,9 @@ function App() {
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="upload" element={<Upload />} />
             <Route path="gallery" element={<Gallery />} />
-            <Route path="files" element={<Files />} />
+            {/* /files retired — files now live as a tab inside each project's */}
+            {/* Gantt overview. Soft-redirect so existing bookmarks land there. */}
+            <Route path="files" element={<Navigate to="/gantt" replace />} />
             <Route path="projects" element={<Projects />} />
             <Route path="gantt" element={<Gantt />} />
             <Route path="messages" element={<Messages />} />

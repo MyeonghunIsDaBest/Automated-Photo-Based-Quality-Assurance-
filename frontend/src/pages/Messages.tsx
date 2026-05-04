@@ -380,13 +380,16 @@ export default function Messages() {
         <div className="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-emerald-100/40 blur-3xl" />
 
         <div className="relative px-4 pt-8 pb-6 sm:px-8 sm:pt-10">
-          <div className="flex flex-wrap items-end justify-between gap-4 sm:gap-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between sm:gap-6">
             <div className="min-w-0">
               <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
                 <span className="inline-block h-px w-6 bg-slate-400" />
                 Workspace · Messages
               </div>
-              <h1 className="display text-3xl sm:text-5xl font-medium leading-none text-slate-900">
+              <h1
+                className="display text-2xl sm:text-4xl md:text-5xl font-medium leading-tight text-slate-900"
+                style={{ textWrap: 'balance' }}
+              >
                 The <em className="font-normal italic text-emerald-700">thread</em>.
               </h1>
               <p className="mt-3 max-w-md text-sm sm:text-[15px] leading-relaxed text-slate-500">
@@ -397,7 +400,7 @@ export default function Messages() {
 
             <button
               onClick={() => setShowNewChat(true)}
-              className="group flex items-center gap-2.5 rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white transition-all hover:-translate-y-0.5 hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-700/20"
+              className="group inline-flex items-center justify-center gap-2.5 self-start whitespace-nowrap rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white transition-all hover:-translate-y-0.5 hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-700/20 active:bg-emerald-800"
             >
               <Plus className="h-4 w-4 transition-transform group-hover:-translate-y-px" />
               New chat

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Palette, Plus, Trash2 } from 'lucide-react';
 import type { Project, Zone } from '../../../types';
 import { Card, CardContent } from '../../../components/ui/card';
@@ -31,10 +31,11 @@ const STATUS_BADGE: Record<SelectionStatus, string> = {
 };
 
 export function SelectionsTab({ project, zones, canEdit }: SelectionsTabProps) {
-  const selections   = useGanttSideStore((s) => s.selections?.[project.id] ?? []);
-  const addSelection = useGanttSideStore((s) => s.addSelection);
-  const setStatus    = useGanttSideStore((s) => s.setSelectionStatus);
-  const removeSel    = useGanttSideStore((s) => s.removeSelection);
+  const allSelections = useGanttSideStore((s) => s.selections);
+  const addSelection  = useGanttSideStore((s) => s.addSelection);
+  const setStatus     = useGanttSideStore((s) => s.setSelectionStatus);
+  const removeSel     = useGanttSideStore((s) => s.removeSelection);
+  const selections    = useMemo(() => allSelections?.[project.id] ?? [], [allSelections, project.id]);
 
   const [zoneId, setZoneId] = useState('');
   const [item, setItem] = useState('');
@@ -169,7 +170,7 @@ export function SelectionsTab({ project, zones, canEdit }: SelectionsTabProps) {
                       <button
                         type="button"
                         onClick={() => removeSel(project.id, s.id)}
-                        className="rounded-md p-1 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                        className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500 active:bg-red-100"
                         title="Remove"
                       >
                         <Trash2 className="h-4 w-4" />

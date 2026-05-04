@@ -69,8 +69,8 @@ export default function SuppliersTab() {
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between">
-        <div>
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h2 className="text-lg font-semibold text-slate-900">Suppliers ({items.length})</h2>
           <p className="text-sm text-slate-500">
             Vendors and material suppliers. Each can have multiple contacts and branches.
@@ -78,7 +78,7 @@ export default function SuppliersTab() {
         </div>
         <button
           onClick={() => setAdding(true)}
-          className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+          className="inline-flex flex-shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 active:bg-emerald-800"
         >
           <Plus className="h-4 w-4" /> Add Supplier
         </button>

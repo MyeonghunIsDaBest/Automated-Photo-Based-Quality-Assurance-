@@ -106,7 +106,10 @@ export default function Login() {
                 <span className="inline-block h-px w-6 bg-slate-400" />
                 Photo · Progress · Proof
               </div>
-              <h1 className="display max-w-md text-3xl sm:text-5xl font-medium leading-[1.05] text-slate-900">
+              <h1
+                className="display max-w-md text-2xl sm:text-4xl md:text-5xl font-medium leading-tight text-slate-900"
+                style={{ textWrap: 'balance' }}
+              >
                 One photo a day —{' '}
                 <em className="font-normal italic text-emerald-700">the rest writes itself</em>.
               </h1>

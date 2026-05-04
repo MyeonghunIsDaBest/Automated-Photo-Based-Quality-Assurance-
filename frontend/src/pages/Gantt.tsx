@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAppStore } from '../store';
 import { useFeatureStore } from '../store/features';
 import {
-  Calendar, CalendarDays, CheckSquare, ClipboardEdit,
-  FileBox, ListChecks, Palette, ShieldCheck, Upload as UploadIcon,
+  CalendarDays, CheckSquare, ClipboardEdit,
+  FileBox, LayoutDashboard, ListChecks, Palette, ShieldCheck,
+  Upload as UploadIcon,
   type LucideIcon,
 } from 'lucide-react';
 import type { Task } from '../types';
@@ -25,7 +26,7 @@ import { useGanttSideStore } from './gantt/store';
 import type { TabId } from './gantt/types';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 
-import { ScheduleTab }     from './gantt/tabs/ScheduleTab';
+import { OverviewTab }     from './gantt/tabs/OverviewTab';
 import { TasksTab }        from './gantt/tabs/TasksTab';
 import { DailyLogsTab }    from './gantt/tabs/DailyLogsTab';
 import { TodosTab }        from './gantt/tabs/TodosTab';
@@ -36,37 +37,47 @@ import { PlansTab }        from './gantt/tabs/PlansTab';
 import { UploadsTab }      from './gantt/tabs/UploadsTab';
 
 interface TabSpec {
-  id: TabId;
+  id: TabId | 'daily_logs_legacy' | 'change_orders_legacy' | 'selections_legacy';
   label: string;
   icon: LucideIcon;
 }
 
+// Overview lands first so clicking into a project always opens the briefing.
+// The merged Overview now folds in the old Schedule view's Trend / Timeline /
+// Calendar surfaces, so the standalone "Schedule (old)" tab is gone.
+// Remaining legacy tabs (Daily Logs, Change Orders, Selections) stay visible
+// during the rework so testing doesn't lose access to the old surfaces.
 const TAB_SPECS: TabSpec[] = [
-  { id: 'schedule',      label: 'Schedule',      icon: Calendar },
-  { id: 'daily_logs',    label: 'Daily Logs',    icon: CalendarDays },
-  { id: 'todos',         label: 'To-Dos',        icon: CheckSquare },
-  { id: 'tasks',         label: 'Tasks',         icon: ListChecks },
-  { id: 'change_orders', label: 'Change Orders', icon: ClipboardEdit },
-  { id: 'selections',    label: 'Selections',    icon: Palette },
-  { id: 'warranties',    label: 'Warranties',    icon: ShieldCheck },
-  { id: 'plans',         label: 'Plans',         icon: FileBox },
-  { id: 'uploads',       label: 'Uploads',       icon: UploadIcon },
+  { id: 'overview',           label: 'Overview',      icon: LayoutDashboard },
+  { id: 'tasks',              label: 'Tasks',         icon: ListChecks },
+  { id: 'daily_logs_legacy',  label: 'Daily Logs',    icon: CalendarDays },
+  { id: 'punch_list',         label: 'To-Dos',        icon: CheckSquare },
+  { id: 'change_orders_legacy', label: 'Change Orders', icon: ClipboardEdit },
+  { id: 'selections_legacy',  label: 'Selections',    icon: Palette },
+  { id: 'warranties',         label: 'Warranties',    icon: ShieldCheck },
+  { id: 'plans',              label: 'Plans',         icon: FileBox },
+  { id: 'uploads',            label: 'Uploads',       icon: UploadIcon },
 ];
+
+type ActiveTab = TabSpec['id'];
 
 export default function Gantt() {
   const { tasks, zones, project, currentUser } = useAppStore();
   const documents = useFeatureStore((s) => s.documents);
-  const sideStore = useGanttSideStore.getState; // for counter badges (read once per render)
+
+  // Subscribe to side-store slices so badges update live.
+  const dailyLogs    = useGanttSideStore((s) => s.diaryEntries);    // legacy badge: count diary entries
+  const todos        = useGanttSideStore((s) => s.punchItems);
+  const orders       = useGanttSideStore((s) => s.orders);
+  const warranties   = useGanttSideStore((s) => s.warranties);
 
   const canEdit   = canEditTasks(currentUser);
   const canDelete = canDeleteTasks(currentUser);
   const canUpload = canUploadPhotos(currentUser);
 
-  const [activeTab, setActiveTab] = useState<TabId>('schedule');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
 
   // ── Realtime task sync ─────────────────────────────────────────────────
-  // Subscription lives in the parent so it persists when the user clicks
-  // through tabs — Schedule and Tasks tabs both consume the same slice.
   useEffect(() => {
     if (!supabaseConfigured() || !project?.id) return;
     let cancelled = false;
@@ -117,7 +128,6 @@ export default function Gantt() {
     };
   }, [project?.id]);
 
-  // Project-scoped slices (memoised so tab components don't re-derive them).
   const projectTasks = useMemo(
     () => tasks.filter((t) => t.projectId === project.id),
     [tasks, project.id],
@@ -127,38 +137,47 @@ export default function Gantt() {
     [zones, project.id],
   );
 
-  // Counter badges for the tab strip. Reads sub-store snapshots once per
-  // render — cheap because the badges live next to the tab labels.
-  const counts = useMemo(() => {
-    const side = sideStore();
-    // Optional-chain every collection lookup. If `persist` rehydrates an old
-    // shape that's missing newer slices, `side.warranties` can be undefined —
-    // accessing `[project.id]` on undefined would throw and white-page the page.
-    return {
-      schedule:      projectTasks.length,
-      daily_logs:    (side.dailyLogs?.[project.id]    ?? []).length,
-      todos:         (side.todos?.[project.id]        ?? []).filter((t) => !t.done).length,
-      tasks:         projectTasks.length,
-      change_orders: (side.changeOrders?.[project.id] ?? []).length,
-      selections:    (side.selections?.[project.id]   ?? []).length,
-      warranties:    (side.warranties?.[project.id]   ?? []).length,
-      plans: (documents ?? []).filter(
-        (d) => d.projectId === project.id && (d.category === 'blueprint' || d.category === 'permit'),
-      ).length,
-      uploads: undefined as number | undefined,
-    };
-  }, [projectTasks, documents, project.id, sideStore]);
-
-  // Subscribe to side-store changes so badges update live.
-  useGanttSideStore();
+  // Counter badges for the tab strip.
+  const counts = useMemo(() => ({
+    overview:               undefined as number | undefined,
+    daily_logs_legacy:      (dailyLogs?.[project.id]   ?? []).length,
+    punch_list:             (todos?.[project.id]       ?? []).filter((p) => p.status === 'open').length,
+    tasks:                  projectTasks.length,
+    change_orders_legacy:   (orders?.[project.id]      ?? []).length,
+    selections_legacy:      0, // legacy tab kept for view; selections folded into orders
+    warranties:             (warranties?.[project.id]  ?? []).length,
+    plans: (documents ?? []).filter(
+      (d) => d.projectId === project.id && (d.category === 'blueprint' || d.category === 'permit'),
+    ).length,
+    uploads: undefined as number | undefined,
+  }), [projectTasks, project.id, dailyLogs, todos, orders, warranties, documents]);
 
   // ── Task mutation handlers ────────────────────────────────────────────
-  // Delegated to shared helpers so Projects (Add Task / bulk add) and Gantt
-  // mutate state through identical code — keeps both views in sync.
   const handleSaveTask   = (updated: Task) => saveTaskShared(updated);
   const handleDeleteTask = (taskId: string) => deleteTaskShared(taskId);
   const handleCreateTask = (input: Omit<Task, 'id' | 'photoCount' | 'lastUpdated' | 'updateSource'>) =>
     createTaskShared(input).then(() => undefined);
+
+  // Overview deep-links into other tabs.
+  const handleJumpToTab = (tabId: TabId) => {
+    // Map new TabIds onto the legacy ones still wired up below.
+    const map: Partial<Record<TabId, ActiveTab>> = {
+      overview:    'overview',
+      tasks:       'tasks',
+      site_diary:  'daily_logs_legacy',     // until Site Diary lands
+      punch_list:  'punch_list',
+      orders:      'change_orders_legacy',  // until Orders lands
+      deliveries:  'change_orders_legacy',
+      invoices:    'change_orders_legacy',
+      warranties:  'warranties',
+      plans:       'plans',
+      files:       'plans',                 // Files lives in the project Files page
+      messages:    'uploads',               // until Messages tab is wired here
+      uploads:     'uploads',
+    };
+    const next = map[tabId];
+    if (next) setActiveTab(next);
+  };
 
   return (
     <div className="p-4 sm:p-6">
@@ -198,11 +217,9 @@ export default function Gantt() {
       </div>
 
       {/* ─── Active tab ─── */}
-      {/* Each tab is isolated by an ErrorBoundary so a render error in one          */}
-      {/* tab shows an inline error card instead of unmounting the whole page.       */}
       <ErrorBoundary label={TAB_SPECS.find((t) => t.id === activeTab)?.label ?? activeTab}>
-        {activeTab === 'schedule' && (
-          <ScheduleTab
+        {activeTab === 'overview' && (
+          <OverviewTab
             project={project}
             tasks={projectTasks}
             zones={projectZones}
@@ -212,6 +229,7 @@ export default function Gantt() {
             onCreateTask={handleCreateTask}
             onSaveTask={handleSaveTask}
             onDeleteTask={handleDeleteTask}
+            onJumpToTab={handleJumpToTab}
           />
         )}
 
@@ -229,17 +247,17 @@ export default function Gantt() {
           />
         )}
 
-        {activeTab === 'daily_logs' && (
+        {activeTab === 'daily_logs_legacy' && (
           <DailyLogsTab project={project} currentUser={currentUser} canEdit={canEdit} />
         )}
 
-        {activeTab === 'todos' && <TodosTab project={project} canEdit={canEdit} />}
+        {activeTab === 'punch_list' && <TodosTab project={project} canEdit={canEdit} />}
 
-        {activeTab === 'change_orders' && (
+        {activeTab === 'change_orders_legacy' && (
           <ChangeOrdersTab project={project} canEdit={canEdit} />
         )}
 
-        {activeTab === 'selections' && (
+        {activeTab === 'selections_legacy' && (
           <SelectionsTab project={project} zones={projectZones} canEdit={canEdit} />
         )}
 

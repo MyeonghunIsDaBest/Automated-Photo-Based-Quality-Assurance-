@@ -140,7 +140,7 @@ export default function UsersTab() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by name or email…"
-          className="h-9 flex-1 min-w-[200px] max-w-md rounded-full border border-slate-200 bg-white px-4 text-sm shadow-sm focus:border-slate-900 focus:outline-none"
+          className="h-10 w-full min-w-0 flex-1 rounded-full border border-slate-200 bg-white px-4 text-sm shadow-sm focus:border-slate-900 focus:outline-none sm:max-w-md"
         />
         <div className="flex flex-wrap items-center gap-2">
           {FILTERS.map((f) => (
@@ -271,8 +271,10 @@ function Group({
         </span>
       </div>
 
-      <div className="-mx-4 overflow-x-auto sm:mx-0">
-        <div className="inline-block min-w-full px-4 align-middle sm:px-0">
+      <div className="relative -mx-4 sm:mx-0">
+        {/* Right-edge fade tells the eye "scroll right for more" instead of */}
+        {/* "the design is broken" when columns spill off-viewport on phones. */}
+        <div className="overflow-x-auto px-4 pb-1 sm:px-0">
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <table className="w-full min-w-[680px] text-left text-sm">
           <thead className="border-b border-slate-200 bg-slate-50/60 text-[11px] uppercase tracking-wider text-slate-500">
@@ -376,6 +378,10 @@ function Group({
         </table>
         </div>
         </div>
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute right-0 top-0 h-full w-8 bg-gradient-to-l from-white to-transparent sm:hidden"
+        />
       </div>
     </div>
   );

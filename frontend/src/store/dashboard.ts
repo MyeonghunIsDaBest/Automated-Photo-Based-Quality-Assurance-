@@ -6,11 +6,17 @@ import type { Task } from '../types';
 
 // Live KPIs derived from the actual store. Replaces the hardcoded
 // `mockDashboardStats` / `dashboardStats` slice. Re-renders on every task
-// or photo change so the Dashboard, TopNav badge, and Reports stay in sync.
+// or document change so the Dashboard, TopNav badge, and Reports stay in sync.
+//
+// Photos: previously read from useAppStore.photos, but new uploads from the
+// Files page write to useFeatureStore.documents — the two stores never
+// synced, so "Photos This Week" stayed at 0 forever. We now read straight
+// from documents (filtered by type='photo' and the active project) so any
+// upload is visible on the dashboard immediately.
 export function useDashboardStats() {
-  const project = useAppStore((s) => s.project);
-  const photos = useAppStore((s) => s.photos);
-  const tasks = useFeatureStore((s) => s.tasks);
+  const project   = useAppStore((s) => s.project);
+  const tasks     = useFeatureStore((s) => s.tasks);
+  const documents = useFeatureStore((s) => s.documents);
 
   return useMemo(() => {
     const totalTasks = tasks.length;
@@ -18,12 +24,16 @@ export function useDashboardStats() {
       ? Math.round(tasks.reduce((sum, t) => sum + t.percentComplete, 0) / totalTasks)
       : 0;
 
-    const tasksComplete = tasks.filter((t) => t.status === 'complete').length;
+    const tasksComplete   = tasks.filter((t) => t.status === 'complete').length;
     const tasksInProgress = tasks.filter((t) => t.status === 'in_progress').length;
-    const delayedTasks = tasks.filter((t) => t.status === 'delayed').length;
+    const delayedTasks    = tasks.filter((t) => t.status === 'delayed').length;
 
-    const photosToday = photos.filter((p) => safeIsToday(p.uploadedAt)).length;
-    const photosThisWeek = photos.filter((p) => safeIsThisWeek(p.uploadedAt)).length;
+    // Photos for the active project, derived from the documents collection.
+    const projectPhotos = documents.filter(
+      (d) => d.type === 'photo' && d.projectId === project.id,
+    );
+    const photosToday    = projectPhotos.filter((p) => safeIsToday(p.uploadedAt)).length;
+    const photosThisWeek = projectPhotos.filter((p) => safeIsThisWeek(p.uploadedAt)).length;
 
     const daysRemaining = Math.max(0, differenceInDays(parseISO(project.endDate), new Date()));
 
@@ -37,7 +47,7 @@ export function useDashboardStats() {
       daysRemaining,
       delayedTasks,
     };
-  }, [tasks, photos, project]);
+  }, [tasks, documents, project]);
 }
 
 // Top 3 in-progress tasks closest to their end date — replaces the hardcoded

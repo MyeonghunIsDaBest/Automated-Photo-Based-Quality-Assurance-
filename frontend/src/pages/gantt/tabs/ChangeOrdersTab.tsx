@@ -33,10 +33,11 @@ const fmtUSD = (n: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
 
 export function ChangeOrdersTab({ project, canEdit }: ChangeOrdersTabProps) {
-  const orders     = useGanttSideStore((s) => s.changeOrders?.[project.id] ?? []);
+  const allOrders  = useGanttSideStore((s) => s.changeOrders);
   const addOrder   = useGanttSideStore((s) => s.addChangeOrder);
   const setStatus  = useGanttSideStore((s) => s.setChangeOrderStatus);
   const removeOrder = useGanttSideStore((s) => s.removeChangeOrder);
+  const orders     = useMemo(() => allOrders?.[project.id] ?? [], [allOrders, project.id]);
 
   const [poNumber, setPoNumber] = useState('');
   const [description, setDescription] = useState('');
@@ -192,7 +193,7 @@ export function ChangeOrdersTab({ project, canEdit }: ChangeOrdersTabProps) {
                     <button
                       type="button"
                       onClick={() => removeOrder(project.id, o.id)}
-                      className="rounded-md p-1 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                      className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500 active:bg-red-100"
                       title="Remove"
                     >
                       <Trash2 className="h-4 w-4" />

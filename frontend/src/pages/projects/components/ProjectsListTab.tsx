@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ChevronRight, FolderKanban, Search } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/ui/card';
-import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { Project, ProjectStatus } from '../types';
 import { useTableState } from '../hooks/useTableState';
@@ -13,7 +12,9 @@ type StatusFilter = 'all' | ProjectStatus;
 
 interface ProjectsListTabProps {
   projects: Project[];
-  onView?: (projectId: string) => void;
+  // Click on a row OR the project name OR the trailing chevron all route here.
+  // Caller decides what to do (typically: set active project + navigate to /gantt).
+  onOpen?: (projectId: string) => void;
 }
 
 const STATUS_LABEL: Record<ProjectStatus, string> = {
@@ -36,7 +37,7 @@ function progressBarColor(pct: number) {
   return 'bg-amber-500';
 }
 
-export function ProjectsListTab({ projects, onView }: ProjectsListTabProps) {
+export function ProjectsListTab({ projects, onOpen }: ProjectsListTabProps) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
   const statusFiltered = useMemo(
@@ -108,7 +109,7 @@ export function ProjectsListTab({ projects, onView }: ProjectsListTabProps) {
                 <li key={proj.id}>
                   <button
                     type="button"
-                    onClick={() => onView?.(proj.id)}
+                    onClick={() => onOpen?.(proj.id)}
                     className="flex w-full flex-col gap-3 rounded-lg border border-slate-200 bg-white p-4 text-left transition-colors hover:bg-slate-50 active:bg-slate-100"
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -153,14 +154,29 @@ export function ProjectsListTab({ projects, onView }: ProjectsListTabProps) {
                     <SortableHeader label="Pending" sortKey="tasksPending" sort={sort} onToggle={toggleSort} />
                     <SortableHeader label="Outstanding" sortKey="tasksOutstanding" sort={sort} onToggle={toggleSort} />
                     <SortableHeader label="Status" sortKey="status" sort={sort} onToggle={toggleSort} />
-                    <th className="px-4 py-3 text-right font-medium text-slate-700">Actions</th>
+                    <th className="px-4 py-3 text-right font-medium text-slate-700"><span className="sr-only">Open</span></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {applied.map((proj) => (
-                    <tr key={proj.id} className="hover:bg-slate-50">
+                    // Whole row is the navigation surface — click anywhere
+                    // (project name, progress bar, badge) and you land on the
+                    // project's Gantt overview. Keyboard users get the same via
+                    // tabIndex + Enter/Space.
+                    <tr
+                      key={proj.id}
+                      tabIndex={0}
+                      onClick={() => onOpen?.(proj.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          onOpen?.(proj.id);
+                        }
+                      }}
+                      className="cursor-pointer transition-colors hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none"
+                    >
                       <td className="px-4 py-3">
-                        <p className="font-medium text-slate-900">{proj.name}</p>
+                        <p className="font-medium text-slate-900 group-hover:underline">{proj.name}</p>
                         <p className="text-xs text-slate-500">{proj.client}</p>
                       </td>
                       <td className="px-4 py-3">
@@ -185,10 +201,7 @@ export function ProjectsListTab({ projects, onView }: ProjectsListTabProps) {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <Button variant="ghost" size="sm" onClick={() => onView?.(proj.id)}>
-                          View
-                          <ChevronRight className="ml-1 h-3.5 w-3.5" />
-                        </Button>
+                        <ChevronRight className="ml-auto h-4 w-4 text-slate-400" aria-hidden="true" />
                       </td>
                     </tr>
                   ))}

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Activity,
   ArrowUpRight,
@@ -18,7 +19,6 @@ import { DocumentsTab } from './projects/components/DocumentsTab';
 import { LogsTab } from './projects/components/LogsTab';
 import { ProjectSelector } from './projects/components/ProjectSelector';
 import { NewProjectModal } from './projects/components/NewProjectModal';
-import { ProjectDetailModal } from './projects/components/ProjectDetailModal';
 import CreateTaskModal from '../components/tasks/CreateTaskModal';
 import BulkAddTasksModal from '../components/tasks/BulkAddTasksModal';
 import { createTaskShared } from '../lib/api/taskMutations';
@@ -52,15 +52,24 @@ const FONT_STYLES = `
 export default function Projects() {
   const { project, tasks, currentUser } = useAppStore();
   const projects = useProjectsListStore((s) => s.projects);
+  const setActiveProject = useProjectsListStore((s) => s.setActiveProject);
+  const navigate = useNavigate();
   const canCreate = canCreateProjects(currentUser);
   const [activeTab, setActiveTab] = useState<TabKey>('list');
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
-  const [detailProjectId, setDetailProjectId] = useState<string | null>(null);
   const [addTaskOpen, setAddTaskOpen] = useState(false);
   const [bulkAddOpen, setBulkAddOpen] = useState(false);
 
   const canAddTask = canEditTasks(currentUser);
+
+  // Click on a project row → set it as the active project, then navigate to
+  // the Gantt overview. The Gantt page now hosts edit-project, files, and
+  // messages so the modal-based detail view from this page is retired.
+  const handleOpenProject = (id: string) => {
+    setActiveProject(id);
+    navigate('/gantt');
+  };
 
   // Project the Timeline tab is currently scoped to. Falls back to the
   // active project when the user hasn't manually picked one.
@@ -82,11 +91,6 @@ export default function Projects() {
       return { ...p, tasksComplete, tasksPending, tasksOutstanding, percentComplete };
     });
   }, [projects, tasks]);
-
-  const detailProject = useMemo(
-    () => projectsWithProgress.find((p) => p.id === detailProjectId) ?? null,
-    [projectsWithProgress, detailProjectId]
-  );
 
   const showSelector = SCOPED_TABS.includes(activeTab);
 
@@ -124,13 +128,16 @@ export default function Projects() {
         <div className="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-emerald-100/40 blur-3xl" />
 
         <div className="relative px-4 pt-8 pb-6 sm:px-8 sm:pt-10">
-          <div className="flex flex-wrap items-end justify-between gap-4 sm:gap-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between sm:gap-6">
             <div className="min-w-0">
               <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
                 <span className="inline-block h-px w-6 bg-slate-400" />
                 Workspace · Projects
               </div>
-              <h1 className="display text-3xl font-medium leading-none text-slate-900 sm:text-5xl">
+              <h1
+                className="display text-2xl font-medium leading-tight text-slate-900 sm:text-4xl md:text-5xl"
+                style={{ textWrap: 'balance' }}
+              >
                 The <em className="font-normal italic text-emerald-700">portfolio</em>.
               </h1>
               <p className="mt-3 max-w-md text-sm leading-relaxed text-slate-500 sm:text-[15px]">
@@ -142,7 +149,7 @@ export default function Projects() {
             {canCreate ? (
               <button
                 onClick={() => setNewProjectOpen(true)}
-                className="group flex items-center gap-2.5 rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white transition-all hover:-translate-y-0.5 hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-700/20"
+                className="group inline-flex items-center justify-center gap-2.5 self-start whitespace-nowrap rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white transition-all hover:-translate-y-0.5 hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-700/20 active:bg-emerald-800"
               >
                 <Plus className="h-4 w-4 transition-transform group-hover:-translate-y-px" />
                 New Project
@@ -228,18 +235,23 @@ export default function Projects() {
         {activeTab === 'list' && (
           <ProjectsListTab
             projects={projectsWithProgress}
-            onView={(id) => setDetailProjectId(id)}
+            onOpen={handleOpenProject}
           />
         )}
 
         {activeTab === 'timeline' && (
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-            <div className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-100 px-6 py-5">
-              <div>
+            <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-5 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between sm:px-6">
+              <div className="min-w-0">
                 <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
                   Schedule
                 </p>
-                <h2 className="display mt-1 text-2xl font-medium text-slate-900">{timelineLabel}</h2>
+                <h2
+                  className="display mt-1 text-xl font-medium text-slate-900 sm:text-2xl"
+                  style={{ textWrap: 'balance' }}
+                >
+                  {timelineLabel}
+                </h2>
                 <p className="mt-1 text-sm text-slate-500">
                   {selectedProjectMeta
                     ? `${timelineTasks.length} task${timelineTasks.length === 1 ? '' : 's'} on the Gantt`
@@ -250,14 +262,14 @@ export default function Projects() {
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     onClick={() => setBulkAddOpen(true)}
-                    className="flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                    className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 active:bg-slate-100"
                   >
                     <Plus className="h-3.5 w-3.5" />
                     Bulk add
                   </button>
                   <button
                     onClick={() => setAddTaskOpen(true)}
-                    className="group flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-all hover:-translate-y-0.5 hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-700/20"
+                    className="group inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-all hover:-translate-y-0.5 hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-700/20 active:bg-emerald-800"
                   >
                     <Plus className="h-3.5 w-3.5" />
                     Add Task
@@ -288,10 +300,8 @@ export default function Projects() {
         onCreated={() => setActiveTab('list')}
       />
 
-      <ProjectDetailModal
-        project={detailProject}
-        onClose={() => setDetailProjectId(null)}
-      />
+      {/* The project-detail modal moved to the Gantt page so editing project */}
+      {/* metadata happens inside the project itself, not from the directory.   */}
 
       <CreateTaskModal
         isOpen={addTaskOpen}

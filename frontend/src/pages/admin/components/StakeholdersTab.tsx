@@ -40,8 +40,8 @@ export default function StakeholdersTab() {
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between">
-        <div>
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h2 className="text-lg font-semibold text-slate-900">
             Stakeholders ({items.length})
           </h2>
@@ -51,7 +51,7 @@ export default function StakeholdersTab() {
         </div>
         <button
           onClick={() => setAdding(true)}
-          className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+          className="inline-flex flex-shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 active:bg-emerald-800"
         >
           <Plus className="h-4 w-4" /> Add Stakeholder
         </button>
@@ -63,8 +63,8 @@ export default function StakeholdersTab() {
         </div>
       )}
 
-      <div className="-mx-4 overflow-x-auto sm:mx-0">
-       <div className="inline-block min-w-full px-4 align-middle sm:px-0">
+      <div className="relative -mx-4 sm:mx-0">
+        <div className="overflow-x-auto px-4 pb-1 sm:px-0">
       <div className="rounded-xl border border-slate-200 bg-white">
         <table className="w-full min-w-[680px] text-left text-sm">
           <thead className="border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
@@ -106,7 +106,11 @@ export default function StakeholdersTab() {
           </tbody>
         </table>
       </div>
-       </div>
+        </div>
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute right-0 top-0 h-full w-8 bg-gradient-to-l from-white to-transparent sm:hidden"
+        />
       </div>
 
       {adding && (
@@ -156,19 +160,28 @@ function AddStakeholderModal({
     setForm((f) => ({ ...f, [key]: value }));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-      <form onSubmit={handleSave} className="w-full max-w-xl space-y-3 rounded-2xl bg-white p-6 shadow-2xl">
-        <div className="flex items-center justify-between">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-2 sm:p-4">
+      <form
+        onSubmit={handleSave}
+        className="flex h-full max-h-[95vh] w-full max-w-xl flex-col rounded-2xl bg-white shadow-2xl sm:h-auto"
+      >
+        <div className="flex flex-shrink-0 items-center justify-between p-4 sm:p-6 sm:pb-3">
           <h3 className="text-lg font-semibold text-slate-900">Add Stakeholder</h3>
-          <button type="button" onClick={onClose} className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="flex h-10 w-10 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 active:bg-slate-200"
+          >
             <X className="h-5 w-5" />
           </button>
         </div>
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 pb-4 sm:px-6 sm:pb-6">
 
         <Field label="Company Name" required>
           <input required value={form.companyName} onChange={(e) => setField('companyName', e.target.value)} className="input" />
         </Field>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="First Name" required>
             <input required value={form.firstName} onChange={(e) => setField('firstName', e.target.value)} className="input" />
           </Field>
@@ -192,10 +205,11 @@ function AddStakeholderModal({
         {error && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
         )}
+        </div>
 
-        <div className="flex justify-end gap-2 pt-2">
-          <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
-          <button type="submit" disabled={saving} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
+        <div className="flex flex-shrink-0 justify-end gap-2 border-t border-slate-100 px-4 py-3 sm:px-6">
+          <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 active:bg-slate-100">Cancel</button>
+          <button type="submit" disabled={saving} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-50">
             {saving ? 'Saving…' : 'Save'}
           </button>
         </div>

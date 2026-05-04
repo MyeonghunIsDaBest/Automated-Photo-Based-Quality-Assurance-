@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Calendar, Clock, Image as ImageIcon, Trash2, Users } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import type { Project, User } from '../../../types';
@@ -18,9 +18,13 @@ interface DailyLogsTabProps {
 const today = () => new Date().toISOString().slice(0, 10);
 
 export function DailyLogsTab({ project, currentUser, canEdit }: DailyLogsTabProps) {
-  const logs = useGanttSideStore((s) => s.dailyLogs?.[project.id] ?? []);
+  // Subscribe to the whole `dailyLogs` map (stable reference) and derive the
+  // per-project slice with useMemo. Returning a fresh `[]` from inside the
+  // selector creates a new reference every render and infinite-loops React.
+  const allLogs   = useGanttSideStore((s) => s.dailyLogs);
   const addLog    = useGanttSideStore((s) => s.addDailyLog);
   const removeLog = useGanttSideStore((s) => s.removeDailyLog);
+  const logs      = useMemo(() => allLogs?.[project.id] ?? [], [allLogs, project.id]);
 
   const [date, setDate] = useState(today());
   const [hours, setHours] = useState('');
@@ -158,7 +162,7 @@ export function DailyLogsTab({ project, currentUser, canEdit }: DailyLogsTabProp
                   <button
                     type="button"
                     onClick={() => removeLog(project.id, log.id)}
-                    className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                    className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500 active:bg-red-100"
                     title="Delete"
                   >
                     <Trash2 className="h-4 w-4" />

@@ -23,10 +23,11 @@ const FILTERS: { id: Filter; label: string }[] = [
 ];
 
 export function TodosTab({ project, canEdit }: TodosTabProps) {
-  const todos       = useGanttSideStore((s) => s.todos?.[project.id] ?? []);
+  const allTodos    = useGanttSideStore((s) => s.todos);
   const addTodo     = useGanttSideStore((s) => s.addTodo);
   const toggleTodo  = useGanttSideStore((s) => s.toggleTodo);
   const removeTodo  = useGanttSideStore((s) => s.removeTodo);
+  const todos       = useMemo(() => allTodos?.[project.id] ?? [], [allTodos, project.id]);
 
   const [text, setText] = useState('');
   const [due, setDue] = useState('');
@@ -143,7 +144,7 @@ export function TodosTab({ project, canEdit }: TodosTabProps) {
                     <button
                       type="button"
                       onClick={() => removeTodo(project.id, t.id)}
-                      className="rounded-md p-1 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                      className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500 active:bg-red-100"
                       title="Remove"
                     >
                       <Trash2 className="h-4 w-4" />
