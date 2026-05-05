@@ -12,6 +12,8 @@ import { useGanttSideStore } from '../store';
 interface WarrantiesTabProps {
   project: Project;
   canEdit: boolean;
+  // Skip the editorial TabHeader when nested inside SupplierTab.
+  hideHeader?: boolean;
 }
 
 function expiryBadge(expiryDate: string): string {
@@ -29,7 +31,7 @@ function expiryLabel(expiryDate: string): string {
   return `Valid ${days}d`;
 }
 
-export function WarrantiesTab({ project, canEdit }: WarrantiesTabProps) {
+export function WarrantiesTab({ project, canEdit, hideHeader = false }: WarrantiesTabProps) {
   const allWarranties  = useGanttSideStore((s) => s.warranties);
   const addWarranty    = useGanttSideStore((s) => s.addWarranty);
   const removeWarranty = useGanttSideStore((s) => s.removeWarranty);
@@ -53,9 +55,13 @@ export function WarrantiesTab({ project, canEdit }: WarrantiesTabProps) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!item.trim() || !supplier.trim() || !expiryDate) return;
+    // The store's Warranty shape uses description/supplierName/startDate
+    // (post-schema-rewrite). Map the form's friendly field names onto the
+    // canonical row.
     addWarranty(project.id, {
-      item: item.trim(),
-      supplier: supplier.trim(),
+      description: item.trim(),
+      supplierName: supplier.trim(),
+      startDate: new Date().toISOString().slice(0, 10),
       expiryDate,
       fileRef: fileRef.trim() || undefined,
     });
@@ -68,19 +74,29 @@ export function WarrantiesTab({ project, canEdit }: WarrantiesTabProps) {
 
   return (
     <>
-      <TabHeader
-        eyebrow={`Workspace · Warranties · ${project.name}`}
-        title="What's covered, until when."
-        description="Equipment + workmanship warranties with their expiry dates. Anything within 30 days lights up amber; expired items go red."
-        action={
-          canEdit && !showForm ? (
-            <Button onClick={() => setShowForm(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              New warranty
-            </Button>
-          ) : null
-        }
-      />
+      {!hideHeader && (
+        <TabHeader
+          eyebrow={`Workspace · Warranties · ${project.name}`}
+          title="What's covered, until when."
+          description="Equipment + workmanship warranties with their expiry dates. Anything within 30 days lights up amber; expired items go red."
+          action={
+            canEdit && !showForm ? (
+              <Button onClick={() => setShowForm(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                New warranty
+              </Button>
+            ) : null
+          }
+        />
+      )}
+      {hideHeader && canEdit && !showForm && (
+        <div className="mb-4 flex justify-end">
+          <Button onClick={() => setShowForm(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            New warranty
+          </Button>
+        </div>
+      )}
 
       {showForm && canEdit && (
         <Card className="mb-6">
@@ -144,9 +160,9 @@ export function WarrantiesTab({ project, canEdit }: WarrantiesTabProps) {
               {sorted.map((w) => (
                 <li key={w.id} className="flex items-center gap-4 px-4 py-3">
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium text-slate-900">{w.item}</p>
+                    <p className="font-medium text-slate-900">{w.description}</p>
                     <p className="text-xs text-slate-500">
-                      {w.supplier}
+                      {w.supplierName}
                       {w.fileRef && <> · {w.fileRef}</>}
                     </p>
                   </div>

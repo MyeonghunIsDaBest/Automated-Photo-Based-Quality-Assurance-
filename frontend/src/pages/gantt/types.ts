@@ -1,14 +1,24 @@
 // Tab IDs surfaced on the Gantt strip. Order here drives the strip order
 // in Gantt.tsx — Overview is first because it's the default landing tab.
+//
+// 'supplier' is a merged tab that hosts orders, deliveries, invoices, and
+// warranties under one editorial header (see SupplierTab.tsx). The original
+// TabIds for those four still live in the union — Overview's deep-link map
+// consumes them and routes everything to 'supplier'.
+//
+// 'inventory' is the rebrand of the old 'selections' surface — same
+// underlying selections store, refocused on procurement-state inventory.
 export type TabId =
   | 'overview'
   | 'tasks'
   | 'site_diary'
   | 'punch_list'
-  | 'orders'
-  | 'deliveries'
-  | 'invoices'
-  | 'warranties'
+  | 'supplier'      // merged: orders + deliveries + invoices + warranties
+  | 'orders'        // legacy deep-link target → resolves to 'supplier'
+  | 'deliveries'    // legacy deep-link target → resolves to 'supplier'
+  | 'invoices'      // legacy deep-link target → resolves to 'supplier'
+  | 'warranties'    // legacy deep-link target → resolves to 'supplier'
+  | 'inventory'     // was 'selections'
   | 'plans'
   | 'files'
   | 'messages'
@@ -178,4 +188,12 @@ export interface ActivityEvent {
   targetTabId: TabId;          // for deep-linking from the activity feed
   targetEntityId: string;
   timestamp: string;
+}
+
+export interface ChecklistItem {
+  id: string;
+  text: string;
+  done: boolean;
+  createdAt: string;
+  closedAt?: string;
 }

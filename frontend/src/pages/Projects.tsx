@@ -1,40 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  Activity,
-  ArrowUpRight,
-  BarChart3,
-  Calendar,
-  FolderOpen,
-  Plus,
-  ScrollText,
-} from 'lucide-react';
+import { ArrowUpRight, Plus } from 'lucide-react';
 import { useAppStore } from '../store';
-import { canCreateProjects, canEditTasks } from '../lib/permissions';
-import { GanttChart } from '../components/ui/GanttChart';
+import { canCreateProjects } from '../lib/permissions';
 import { useProjectsListStore } from './projects/store';
 import { ProjectsListTab } from './projects/components/ProjectsListTab';
-import { ActivityTab } from './projects/components/ActivityTab';
-import { DocumentsTab } from './projects/components/DocumentsTab';
-import { LogsTab } from './projects/components/LogsTab';
-import { ProjectSelector } from './projects/components/ProjectSelector';
 import { NewProjectModal } from './projects/components/NewProjectModal';
-import CreateTaskModal from '../components/tasks/CreateTaskModal';
-import BulkAddTasksModal from '../components/tasks/BulkAddTasksModal';
-import { createTaskShared } from '../lib/api/taskMutations';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
-
-type TabKey = 'list' | 'timeline' | 'activity' | 'documents' | 'logs';
-
-const SCOPED_TABS: TabKey[] = ['timeline', 'activity', 'documents', 'logs'];
-
-const TABS: { key: TabKey; label: string; Icon: typeof BarChart3 }[] = [
-  { key: 'list',      label: 'Projects',  Icon: BarChart3   },
-  { key: 'timeline',  label: 'Timeline',  Icon: Calendar    },
-  { key: 'activity',  label: 'Activity',  Icon: Activity    },
-  { key: 'documents', label: 'Documents', Icon: FolderOpen  },
-  { key: 'logs',      label: 'Logs',      Icon: ScrollText  },
-];
 
 const FONT_STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=DM+Sans:wght@400;500;600;700&display=swap');
@@ -49,19 +21,17 @@ const FONT_STYLES = `
   }
 `;
 
+// The Projects page is a directory and nothing more — Timeline / Activity /
+// Documents / Logs all moved into each project's Gantt page where they're
+// scoped to a single project. Picking a tile here routes into the per-project
+// Gantt workspace, which is the only place those views live now.
 export default function Projects() {
-  const { project, tasks, currentUser } = useAppStore();
+  const { tasks, currentUser } = useAppStore();
   const projects = useProjectsListStore((s) => s.projects);
   const setActiveProject = useProjectsListStore((s) => s.setActiveProject);
   const navigate = useNavigate();
   const canCreate = canCreateProjects(currentUser);
-  const [activeTab, setActiveTab] = useState<TabKey>('list');
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
-  const [addTaskOpen, setAddTaskOpen] = useState(false);
-  const [bulkAddOpen, setBulkAddOpen] = useState(false);
-
-  const canAddTask = canEditTasks(currentUser);
 
   // Click on a project row → set it as the active project, then navigate to
   // the Gantt overview. The Gantt page now hosts edit-project, files, and
@@ -70,10 +40,6 @@ export default function Projects() {
     setActiveProject(id);
     navigate('/gantt');
   };
-
-  // Project the Timeline tab is currently scoped to. Falls back to the
-  // active project when the user hasn't manually picked one.
-  const timelineProjectId = selectedProjectId ?? project.id;
 
   // Re-derive each project's task counts and progress from the live tasks
   // store. The static fields on the Project record become stale the moment
@@ -91,24 +57,6 @@ export default function Projects() {
       return { ...p, tasksComplete, tasksPending, tasksOutstanding, percentComplete };
     });
   }, [projects, tasks]);
-
-  const showSelector = SCOPED_TABS.includes(activeTab);
-
-  const selectedProjectMeta = useMemo(
-    () => projectsWithProgress.find((p) => p.id === selectedProjectId) ?? null,
-    [projectsWithProgress, selectedProjectId]
-  );
-
-  const timelineTasks = useMemo(() => {
-    const scopeId = selectedProjectId ?? project.id;
-    return tasks.filter((t) => t.projectId === scopeId);
-  }, [tasks, selectedProjectId, project.id]);
-
-  const timelineRange = selectedProjectMeta
-    ? { startDate: selectedProjectMeta.startDate, endDate: selectedProjectMeta.endDate }
-    : { startDate: project.startDate, endDate: project.endDate };
-
-  const timelineLabel = selectedProjectMeta?.name ?? project.name;
 
   const stats = useMemo(() => {
     const active    = projectsWithProgress.filter((p) => p.status === 'active').length;
@@ -193,134 +141,19 @@ export default function Projects() {
         </div>
       </header>
 
-      {/* ─── Body ─── */}
-      <div className="px-4 py-6 space-y-6 sm:px-8 sm:py-8">
-        {/* Tab row + selector — horizontal-scrolls on phones so the strip never */}
-        {/* wraps mid-tab; selector below it on small screens, inline on >= md.  */}
-        <div className="flex flex-col items-stretch gap-3 md:flex-row md:flex-wrap md:items-center md:justify-between">
-          <div className="-mx-4 overflow-x-auto px-4 md:mx-0 md:overflow-visible md:px-0">
-            <div className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white p-1 shadow-sm">
-            {TABS.map((t) => {
-              const isActive = activeTab === t.key;
-              return (
-                <button
-                  key={t.key}
-                  onClick={() => setActiveTab(t.key)}
-                  className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium transition-all ${
-                    isActive
-                      ? 'bg-slate-900 text-white shadow-sm'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <t.Icon className="h-3.5 w-3.5" />
-                  {t.label}
-                </button>
-              );
-            })}
-            </div>
-          </div>
-
-          {showSelector && (
-            <ProjectSelector
-              projects={projectsWithProgress}
-              value={selectedProjectId}
-              onChange={setSelectedProjectId}
-            />
-          )}
-        </div>
-
-        {/* Tab content — boundary-wrapped so a render error in one tab doesn't */}
-        {/* nuke the rest of the Projects page.                                  */}
-        <ErrorBoundary label={`Projects · ${activeTab}`}>
-        {activeTab === 'list' && (
+      {/* ─── Projects directory ─── */}
+      <div className="px-4 py-6 sm:px-8 sm:py-8">
+        <ErrorBoundary label="Projects · list">
           <ProjectsListTab
             projects={projectsWithProgress}
             onOpen={handleOpenProject}
           />
-        )}
-
-        {activeTab === 'timeline' && (
-          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-            <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-5 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between sm:px-6">
-              <div className="min-w-0">
-                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
-                  Schedule
-                </p>
-                <h2
-                  className="display mt-1 text-xl font-medium text-slate-900 sm:text-2xl"
-                  style={{ textWrap: 'balance' }}
-                >
-                  {timelineLabel}
-                </h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  {selectedProjectMeta
-                    ? `${timelineTasks.length} task${timelineTasks.length === 1 ? '' : 's'} on the Gantt`
-                    : 'Pick a project from the selector to scope the schedule. Showing the active project by default.'}
-                </p>
-              </div>
-              {canAddTask && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    onClick={() => setBulkAddOpen(true)}
-                    className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 active:bg-slate-100"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    Bulk add
-                  </button>
-                  <button
-                    onClick={() => setAddTaskOpen(true)}
-                    className="group inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-all hover:-translate-y-0.5 hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-700/20 active:bg-emerald-800"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    Add Task
-                  </button>
-                </div>
-              )}
-            </div>
-            <div className="p-6">
-              <GanttChart
-                tasks={timelineTasks}
-                startDate={timelineRange.startDate}
-                endDate={timelineRange.endDate}
-                compact={false}
-              />
-            </div>
-          </section>
-        )}
-
-        {activeTab === 'activity'  && <ActivityTab projectId={selectedProjectId} />}
-        {activeTab === 'documents' && <DocumentsTab projectId={selectedProjectId} />}
-        {activeTab === 'logs'      && <LogsTab projectId={selectedProjectId} />}
         </ErrorBoundary>
       </div>
 
       <NewProjectModal
         open={newProjectOpen}
         onClose={() => setNewProjectOpen(false)}
-        onCreated={() => setActiveTab('list')}
-      />
-
-      {/* The project-detail modal moved to the Gantt page so editing project */}
-      {/* metadata happens inside the project itself, not from the directory.   */}
-
-      <CreateTaskModal
-        isOpen={addTaskOpen}
-        onClose={() => setAddTaskOpen(false)}
-        onCreate={async (form) => {
-          await createTaskShared(form);
-          setAddTaskOpen(false);
-        }}
-        zones={[]}
-        allTasks={timelineTasks}
-        projectId={timelineProjectId}
-      />
-
-      <BulkAddTasksModal
-        isOpen={bulkAddOpen}
-        onClose={() => setBulkAddOpen(false)}
-        projectId={timelineProjectId}
-        defaultStart={timelineRange.startDate}
-        defaultEnd={timelineRange.endDate}
       />
     </div>
   );

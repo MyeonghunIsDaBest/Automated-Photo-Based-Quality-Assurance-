@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import { updateProfile } from '../../../lib/api/profiles';
-import { signUp } from '../../../lib/api/auth';
+import { adminCreateUser } from '../../../lib/api/admin';
 import { SECURITY_GROUP_LABELS, canAssignSecurityGroup } from '../../../lib/permissions';
 import { useAppStore } from '../../../store';
 import type { Profile, SecurityGroup } from '../../../types';
@@ -50,12 +50,25 @@ export default function UserFormModal({ mode, profile, onClose, onSaved }: Props
     setError(null);
     try {
       if (mode === 'create') {
-        await signUp(email, password, firstName, lastName);
-        // Note: the auth.users → profiles trigger creates the row at default
-        // 'worker'. If the admin picked a different group + has permission,
-        // promote it now. We can't update by email server-side without a
-        // round-trip; UsersTab refreshes after onSaved and shows the new row.
-        // The admin can then change the group inline via the table dropdown.
+        // Server-side via the admin-create-user edge function. We deliberately
+        // do NOT call the public auth.signUp here — that auto-signs the new
+        // user in and replaces the admin's session in the same browser
+        // context (and any open tab via Supabase's localStorage session sync).
+        // The edge function uses the service role key on the server, so the
+        // caller's session is never touched. The function also handles the
+        // security_group promotion that the handle_new_user trigger
+        // intentionally downgrades for admin-tier requests.
+        await adminCreateUser({
+          email,
+          password,
+          firstName,
+          lastName,
+          securityGroup,
+          mobile: mobile || null,
+          emergencyContactName: emergencyContactName || null,
+          emergencyContactEmail: emergencyContactEmail || null,
+          emergencyContactMobile: emergencyContactMobile || null,
+        });
       } else if (profile) {
         await updateProfile(profile.id, {
           firstName,

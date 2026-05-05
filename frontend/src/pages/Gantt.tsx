@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { useFeatureStore } from '../store/features';
 import {
-  CalendarDays, CheckSquare, ClipboardEdit,
-  FileBox, LayoutDashboard, ListChecks, Palette, ShieldCheck,
+  ArrowLeft, CalendarDays, CheckSquare,
+  FileBox, Layers, LayoutDashboard, ListChecks, Package,
   Upload as UploadIcon,
   type LucideIcon,
 } from 'lucide-react';
@@ -28,35 +29,36 @@ import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 
 import { OverviewTab }     from './gantt/tabs/OverviewTab';
 import { TasksTab }        from './gantt/tabs/TasksTab';
-import { DailyLogsTab }    from './gantt/tabs/DailyLogsTab';
-import { TodosTab }        from './gantt/tabs/TodosTab';
-import { ChangeOrdersTab } from './gantt/tabs/ChangeOrdersTab';
-import { SelectionsTab }   from './gantt/tabs/SelectionsTab';
-import { WarrantiesTab }   from './gantt/tabs/WarrantiesTab';
+import { PunchListTab }    from './gantt/tabs/PunchListTab';
+import { InventoryTab }    from './gantt/tabs/InventoryTab';
 import { PlansTab }        from './gantt/tabs/PlansTab';
 import { UploadsTab }      from './gantt/tabs/UploadsTab';
+import { SiteDiaryTab }    from './gantt/tabs/SiteDiaryTab';
+// SupplierTab merges OrdersTab + DeliveriesTab + InvoicesTab + WarrantiesTab
+// under one editorial header so the procurement surface area collapses from
+// four nav entries to one. Each child tab is reused as-is via a `hideHeader`
+// prop so we don't duplicate logic / drawers / wizards.
+import { SupplierTab }     from './gantt/tabs/SupplierTab';
+
 
 interface TabSpec {
-  id: TabId | 'daily_logs_legacy' | 'change_orders_legacy' | 'selections_legacy';
+  id: TabId;
   label: string;
   icon: LucideIcon;
 }
 
 // Overview lands first so clicking into a project always opens the briefing.
-// The merged Overview now folds in the old Schedule view's Trend / Timeline /
-// Calendar surfaces, so the standalone "Schedule (old)" tab is gone.
-// Remaining legacy tabs (Daily Logs, Change Orders, Selections) stay visible
-// during the rework so testing doesn't lose access to the old surfaces.
+// 'supplier' merges Orders + Deliveries + Invoices + Warranties into one
+// procurement-side tab; 'inventory' is the rebrand of the old Selections.
 const TAB_SPECS: TabSpec[] = [
-  { id: 'overview',           label: 'Overview',      icon: LayoutDashboard },
-  { id: 'tasks',              label: 'Tasks',         icon: ListChecks },
-  { id: 'daily_logs_legacy',  label: 'Daily Logs',    icon: CalendarDays },
-  { id: 'punch_list',         label: 'To-Dos',        icon: CheckSquare },
-  { id: 'change_orders_legacy', label: 'Change Orders', icon: ClipboardEdit },
-  { id: 'selections_legacy',  label: 'Selections',    icon: Palette },
-  { id: 'warranties',         label: 'Warranties',    icon: ShieldCheck },
-  { id: 'plans',              label: 'Plans',         icon: FileBox },
-  { id: 'uploads',            label: 'Uploads',       icon: UploadIcon },
+  { id: 'overview',    label: 'Overview',   icon: LayoutDashboard },
+  { id: 'tasks',       label: 'Tasks',      icon: ListChecks },
+  { id: 'site_diary',  label: 'Site Diary', icon: CalendarDays },
+  { id: 'punch_list',  label: 'Punch List', icon: CheckSquare },
+  { id: 'supplier',    label: 'Supplier',   icon: Package },
+  { id: 'inventory',   label: 'Inventory',  icon: Layers },
+  { id: 'plans',       label: 'Plans',      icon: FileBox },
+  { id: 'uploads',     label: 'Uploads',    icon: UploadIcon },
 ];
 
 type ActiveTab = TabSpec['id'];
@@ -65,11 +67,15 @@ export default function Gantt() {
   const { tasks, zones, project, currentUser } = useAppStore();
   const documents = useFeatureStore((s) => s.documents);
 
-  // Subscribe to side-store slices so badges update live.
-  const dailyLogs    = useGanttSideStore((s) => s.diaryEntries);    // legacy badge: count diary entries
+  // Subscribe to side-store slices so badges update live. Deliveries don't
+  // contribute to the Supplier badge (informational, not action-needed) so
+  // we skip subscribing here — SupplierTab subscribes for its own pill.
+  const dailyLogs    = useGanttSideStore((s) => s.diaryEntries);
   const todos        = useGanttSideStore((s) => s.punchItems);
   const orders       = useGanttSideStore((s) => s.orders);
   const warranties   = useGanttSideStore((s) => s.warranties);
+  const invoices     = useGanttSideStore((s) => s.invoices);
+
 
   const canEdit   = canEditTasks(currentUser);
   const canDelete = canDeleteTasks(currentUser);
@@ -137,20 +143,38 @@ export default function Gantt() {
     [zones, project.id],
   );
 
-  // Counter badges for the tab strip.
-  const counts = useMemo(() => ({
-    overview:               undefined as number | undefined,
-    daily_logs_legacy:      (dailyLogs?.[project.id]   ?? []).length,
-    punch_list:             (todos?.[project.id]       ?? []).filter((p) => p.status === 'open').length,
-    tasks:                  projectTasks.length,
-    change_orders_legacy:   (orders?.[project.id]      ?? []).length,
-    selections_legacy:      0, // legacy tab kept for view; selections folded into orders
-    warranties:             (warranties?.[project.id]  ?? []).length,
-    plans: (documents ?? []).filter(
-      (d) => d.projectId === project.id && (d.category === 'blueprint' || d.category === 'permit'),
-    ).length,
-    uploads: undefined as number | undefined,
-  }), [projectTasks, project.id, dailyLogs, todos, orders, warranties, documents]);
+  // Counter badges for the tab strip. The Supplier tab's badge is the sum
+  // of "things that need attention" across its four sub-sections (open
+  // orders + unpaid invoices + warranties expiring within 30 days). Total
+  // deliveries don't add to the badge because most are completed records;
+  // they're informational, not action-needed.
+  const counts = useMemo(() => {
+    const projOrders     = orders?.[project.id]     ?? [];
+    const projInvoices   = invoices?.[project.id]   ?? [];
+    const projWarranties = warranties?.[project.id] ?? [];
+    const ordersOpen     = projOrders.filter((o) => o.status !== 'received' && o.status !== 'cancelled').length;
+    const invoicesUnpaid = projInvoices.filter((i) => i.status !== 'paid').length;
+    const now           = Date.now();
+    const thirtyDays    = now + 30 * 24 * 3600 * 1000;
+    const warrantiesSoon = projWarranties.filter((w) => {
+      const exp = Date.parse(w.expiryDate);
+      return Number.isFinite(exp) && exp <= thirtyDays;
+    }).length;
+
+    return {
+      overview:    undefined as number | undefined,
+      site_diary:  (dailyLogs?.[project.id] ?? []).length,
+      punch_list:  (todos?.[project.id]     ?? []).filter((p) => p.status === 'open').length,
+      tasks:       projectTasks.length,
+      supplier:    ordersOpen + invoicesUnpaid + warrantiesSoon,
+      inventory:   0, // selections list — count when quantity tracking lands
+      plans: (documents ?? []).filter(
+        (d) => d.projectId === project.id && (d.category === 'blueprint' || d.category === 'permit'),
+      ).length,
+      uploads: undefined as number | undefined,
+    };
+  }, [projectTasks, project.id, dailyLogs, todos, orders, invoices, warranties, documents]);
+
 
   // ── Task mutation handlers ────────────────────────────────────────────
   const handleSaveTask   = (updated: Task) => saveTaskShared(updated);
@@ -158,22 +182,26 @@ export default function Gantt() {
   const handleCreateTask = (input: Omit<Task, 'id' | 'photoCount' | 'lastUpdated' | 'updateSource'>) =>
     createTaskShared(input).then(() => undefined);
 
-  // Overview deep-links into other tabs.
+  // Overview deep-links into other tabs. Orders / Deliveries / Invoices /
+  // Warranties all resolve to the merged Supplier tab — SupplierTab opens
+  // on its 'orders' sub-section by default; we'd pass `initialSection`
+  // here once SupplierTab supports honouring it from props.
   const handleJumpToTab = (tabId: TabId) => {
-    // Map new TabIds onto the legacy ones still wired up below.
     const map: Partial<Record<TabId, ActiveTab>> = {
-      overview:    'overview',
-      tasks:       'tasks',
-      site_diary:  'daily_logs_legacy',     // until Site Diary lands
-      punch_list:  'punch_list',
-      orders:      'change_orders_legacy',  // until Orders lands
-      deliveries:  'change_orders_legacy',
-      invoices:    'change_orders_legacy',
-      warranties:  'warranties',
-      plans:       'plans',
-      files:       'plans',                 // Files lives in the project Files page
-      messages:    'uploads',               // until Messages tab is wired here
-      uploads:     'uploads',
+      overview:   'overview',
+      tasks:      'tasks',
+      site_diary: 'site_diary',
+      punch_list: 'punch_list',
+      supplier:   'supplier',
+      orders:     'supplier',
+      deliveries: 'supplier',
+      invoices:   'supplier',
+      warranties: 'supplier',
+      inventory:  'inventory',
+      plans:      'plans',
+      files:      'plans',     // standalone Files page consumed from /files
+      messages:   'uploads',   // until Messages tab is wired here
+      uploads:    'uploads',
     };
     const next = map[tabId];
     if (next) setActiveTab(next);
@@ -181,6 +209,27 @@ export default function Gantt() {
 
   return (
     <div className="p-4 sm:p-6">
+      {/* ─── Page header: back link + project name ─── */}
+      {/* Sits above the tab strip so users can bail back to /projects        */}
+      {/* without going through the global TopNav. Project name on the right  */}
+      {/* anchors which workspace they're in.                                 */}
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <Link
+          to="/projects"
+          className="group inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 transition-colors hover:text-slate-900"
+        >
+          <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
+          All projects
+        </Link>
+        <h1
+          className="min-w-0 truncate text-base font-medium text-slate-900 sm:text-lg"
+          style={{ fontFamily: "'Fraunces', Georgia, serif", letterSpacing: '-0.02em' }}
+          title={project.name}
+        >
+          {project.name}
+        </h1>
+      </div>
+
       {/* ─── Tab strip ─── */}
       <div className="mb-6 -mx-4 overflow-x-auto px-4 pb-1 sm:-mx-6 sm:px-6">
         <div className="inline-flex items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
@@ -247,21 +296,26 @@ export default function Gantt() {
           />
         )}
 
-        {activeTab === 'daily_logs_legacy' && (
-          <DailyLogsTab project={project} currentUser={currentUser} canEdit={canEdit} />
+        {activeTab === 'site_diary' && (
+          <SiteDiaryTab project={project} currentUser={currentUser} canEdit={canEdit} />
         )}
 
-        {activeTab === 'punch_list' && <TodosTab project={project} canEdit={canEdit} />}
-
-        {activeTab === 'change_orders_legacy' && (
-          <ChangeOrdersTab project={project} canEdit={canEdit} />
+        {activeTab === 'punch_list' && (
+          <PunchListTab project={project} canEdit={canEdit} canDelete={canDelete} />
         )}
 
-        {activeTab === 'selections_legacy' && (
-          <SelectionsTab project={project} zones={projectZones} canEdit={canEdit} />
+        {activeTab === 'supplier' && (
+          <SupplierTab project={project} canEdit={canEdit} canDelete={canDelete} />
         )}
 
-        {activeTab === 'warranties' && <WarrantiesTab project={project} canEdit={canEdit} />}
+        {activeTab === 'inventory' && (
+          <InventoryTab
+            project={project}
+            zones={projectZones}
+            canEdit={canEdit}
+            onJumpToOrders={() => setActiveTab('supplier')}
+          />
+        )}
 
         {activeTab === 'plans' && <PlansTab project={project} canEdit={canEdit} />}
 

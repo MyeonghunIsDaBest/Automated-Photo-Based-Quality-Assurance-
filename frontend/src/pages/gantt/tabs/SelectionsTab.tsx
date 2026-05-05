@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Palette, Plus, Trash2 } from 'lucide-react';
+import { Layers, Plus, Trash2 } from 'lucide-react';
 import type { Project, Zone } from '../../../types';
 import { Card, CardContent } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
@@ -62,14 +62,14 @@ export function SelectionsTab({ project, zones, canEdit }: SelectionsTabProps) {
   return (
     <>
       <TabHeader
-        eyebrow={`Workspace · Selections · ${project.name}`}
-        title="Materials & finishes."
-        description="Track every material pick from spec to delivery — by zone, by supplier."
+        eyebrow={`Workspace · Inventory · ${project.name}`}
+        title="Project inventory."
+        description="Every item earmarked for this site — from spec to delivery, by zone and supplier. Quantities and stock tracking are next; today the focus is the procurement-state pipeline."
         action={
           canEdit && !showForm ? (
             <Button onClick={() => setShowForm(true)}>
               <Plus className="mr-2 h-4 w-4" />
-              Add selection
+              Add item
             </Button>
           ) : null
         }
@@ -131,9 +131,9 @@ export function SelectionsTab({ project, zones, canEdit }: SelectionsTabProps) {
 
       {selections.length === 0 ? (
         <EmptyState
-          icon={Palette}
-          title="No selections yet."
-          description={canEdit ? 'Click "Add selection" to log the first one.' : undefined}
+          icon={Layers}
+          title="No inventory items yet."
+          description={canEdit ? 'Click "Add item" to log the first one.' : undefined}
         />
       ) : (
         <Card>

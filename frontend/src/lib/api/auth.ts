@@ -61,6 +61,13 @@ export type SignupRole =
   | 'stakeholder'
   | 'supplier';
 
+// SELF-SERVICE registration only — for the public Login → "Create account"
+// form. Do NOT call this from the admin panel: supabase.auth.signUp(...)
+// auto-signs the new user in, which (with persistSession + localStorage
+// session sync) silently logs the calling admin out as the new user. For
+// admin-driven creation, use `adminCreateUser` in `lib/api/admin.ts` —
+// that goes through the `admin-create-user` edge function and never
+// touches the caller's session.
 export async function signUp(
   email: string,
   password: string,
@@ -73,7 +80,8 @@ export async function signUp(
   // are separate entity tables. We pass them through the meta_data anyway so
   // the admin dashboard can show "this user signed up wanting to be a
   // supplier" and create the matching supplier/stakeholder record. The
-  // 0011 trigger normalizes their security_group to 'worker'.
+  // handle_new_user trigger (00_init.sql §4) normalizes their security_group
+  // to 'worker'.
   const { data, error } = await supabase.auth.signUp({
     email,
     password,

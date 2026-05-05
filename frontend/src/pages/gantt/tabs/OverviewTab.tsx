@@ -180,7 +180,7 @@ export function OverviewTab({
     <>
       <TabHeader
         eyebrow="Workspace · Overview"
-        title="Briefing."
+        title={project.name}
         description={`${dateRange} · ${totals.daysRemaining} day${totals.daysRemaining === 1 ? '' : 's'} remaining`}
         action={
           <Badge

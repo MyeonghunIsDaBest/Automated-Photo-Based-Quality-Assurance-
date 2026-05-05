@@ -7,6 +7,7 @@ import type {
   Delivery,
   Invoice, InvoiceStatus,
   Warranty,
+  ChecklistItem,
 } from './types';
 
 // ─── Slice maps ──────────────────────────────────────────────────────────
@@ -23,6 +24,7 @@ interface State {
   deliveries:   ByProject<Delivery>;
   invoices:     ByProject<Invoice>;
   warranties:   ByProject<Warranty>;
+  checklists:   Record<string, ChecklistItem[]>;
 }
 
 interface Actions {
@@ -59,6 +61,12 @@ interface Actions {
   addWarranty:    (projectId: string, draft: Omit<Warranty, 'id' | 'projectId' | 'createdAt'>) => void;
   updateWarranty: (projectId: string, id: string, patch: Partial<Warranty>) => void;
   removeWarranty: (projectId: string, id: string) => void;
+
+  // Checklist
+  addChecklistItem:    (taskId: string, text: string) => void;
+  toggleChecklistItem: (taskId: string, itemId: string) => void;
+  updateChecklistItem: (taskId: string, itemId: string, patch: Partial<ChecklistItem>) => void;
+  removeChecklistItem: (taskId: string, itemId: string) => void;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -116,12 +124,14 @@ interface LegacyShape {
   orders?: ByProject<Order>;
   deliveries?: ByProject<Delivery>;
   invoices?: ByProject<Invoice>;
+  checklists?: Record<string, ChecklistItem[]>;
 }
 
 function migrate(persisted: unknown): State {
   const empty: State = {
     diaryEntries: {}, punchItems: {}, orders: {},
     deliveries: {}, invoices: {}, warranties: {},
+    checklists: {},
   };
   if (!persisted || typeof persisted !== 'object') return empty;
   const legacy = persisted as LegacyShape;
@@ -197,7 +207,7 @@ function migrate(persisted: unknown): State {
           id: uid('li'),
           description: sel.item,
           qty: 1,
-          unitCost: 0,           // unknown in legacy data
+          unitCost: 0,
           unit: 'ea',
           qtyReceived: sel.status === 'delivered' ? 1 : 0,
         }],
@@ -247,8 +257,9 @@ function migrate(persisted: unknown): State {
     punchItems,
     orders,
     deliveries: legacy.deliveries ?? {},
-    invoices: legacy.invoices ?? {},
+    invoices:   legacy.invoices ?? {},
     warranties,
+    checklists: legacy.checklists ?? {},
   };
 }
 
@@ -256,13 +267,14 @@ function migrate(persisted: unknown): State {
 
 export const useGanttSideStore = create<State & Actions>()(
   persist(
-    (set, get) => ({
+    (set, _get) => ({
       diaryEntries: {},
       punchItems: {},
       orders: {},
       deliveries: {},
       invoices: {},
       warranties: {},
+      checklists: {},
 
       // ── Diary ──────────────────────────────────────────────────────────
       addDiaryEntry: (projectId, draft) => {
@@ -549,6 +561,56 @@ export const useGanttSideStore = create<State & Actions>()(
           },
         }));
       },
+
+      // ── Checklist ──────────────────────────────────────────────────────
+      addChecklistItem: (taskId, text) => {
+        const item: ChecklistItem = {
+          id: uid('chk'),
+          text,
+          done: false,
+          createdAt: now(),
+        };
+        set((s) => ({
+          checklists: {
+            ...s.checklists,
+            [taskId]: [...(s.checklists[taskId] ?? []), item],
+          },
+        }));
+      },
+      toggleChecklistItem: (taskId, itemId) => {
+        set((s) => ({
+          checklists: {
+            ...s.checklists,
+            [taskId]: (s.checklists[taskId] ?? []).map((c) =>
+              c.id === itemId
+                ? {
+                    ...c,
+                    done: !c.done,
+                    closedAt: !c.done ? now() : undefined,
+                  }
+                : c,
+            ),
+          },
+        }));
+      },
+      updateChecklistItem: (taskId, itemId, patch) => {
+        set((s) => ({
+          checklists: {
+            ...s.checklists,
+            [taskId]: (s.checklists[taskId] ?? []).map((c) =>
+              c.id === itemId ? { ...c, ...patch } : c,
+            ),
+          },
+        }));
+      },
+      removeChecklistItem: (taskId, itemId) => {
+        set((s) => ({
+          checklists: {
+            ...s.checklists,
+            [taskId]: (s.checklists[taskId] ?? []).filter((c) => c.id !== itemId),
+          },
+        }));
+      },
     }),
     {
       name: 'siteproof-gantt-side',
@@ -577,16 +639,24 @@ export const selectWarranties  = (s: State, projectId: string) => s.warranties[p
 export const orderTotal = (order: Order) =>
   order.lineItems.reduce((sum, li) => sum + li.qty * li.unitCost, 0);
 
-const EMPTY_DIARY:      DiaryEntry[] = [];
-const EMPTY_PUNCH:      PunchItem[]  = [];
-const EMPTY_ORDERS:     Order[]      = [];
-const EMPTY_DELIVERIES: Delivery[]   = [];
-const EMPTY_INVOICES:   Invoice[]    = [];
-const EMPTY_WARRANTIES: Warranty[]   = [];
+// ─── Reference-stable empty fallbacks ────────────────────────────────────
+// These fixed arrays are returned by the convenience hooks below so "this
+// project has no X yet" never produces a new reference per render. The
+// React 18 useSyncExternalStore snapshot equality check goes infinite if
+// the selector returns a new `[]` every call — see the Daily Logs crash
+// log on 2026-05-04 for the painful version of learning this.
+const EMPTY_DIARY:      DiaryEntry[]    = [];
+const EMPTY_PUNCH:      PunchItem[]     = [];
+const EMPTY_ORDERS:     Order[]         = [];
+const EMPTY_DELIVERIES: Delivery[]      = [];
+const EMPTY_INVOICES:   Invoice[]       = [];
+const EMPTY_WARRANTIES: Warranty[]      = [];
+const EMPTY_CHECKLIST:  ChecklistItem[] = [];
 
-export const useDiaryEntries     = (projectId: string) => useGanttSideStore((s) => s.diaryEntries[projectId] ?? EMPTY_DIARY);
-export const usePunchItems       = (projectId: string) => useGanttSideStore((s) => s.punchItems[projectId]   ?? EMPTY_PUNCH);
-export const useOrdersForProject = (projectId: string) => useGanttSideStore((s) => s.orders[projectId]       ?? EMPTY_ORDERS);
-export const useDeliveries       = (projectId: string) => useGanttSideStore((s) => s.deliveries[projectId]   ?? EMPTY_DELIVERIES);
-export const useInvoices         = (projectId: string) => useGanttSideStore((s) => s.invoices[projectId]     ?? EMPTY_INVOICES);
-export const useWarrantiesForProject = (projectId: string) => useGanttSideStore((s) => s.warranties[projectId] ?? EMPTY_WARRANTIES);
+export const useDiaryEntries        = (projectId: string) => useGanttSideStore((s) => s.diaryEntries[projectId] ?? EMPTY_DIARY);
+export const usePunchItems          = (projectId: string) => useGanttSideStore((s) => s.punchItems[projectId]   ?? EMPTY_PUNCH);
+export const useOrdersForProject    = (projectId: string) => useGanttSideStore((s) => s.orders[projectId]       ?? EMPTY_ORDERS);
+export const useDeliveries          = (projectId: string) => useGanttSideStore((s) => s.deliveries[projectId]   ?? EMPTY_DELIVERIES);
+export const useInvoices            = (projectId: string) => useGanttSideStore((s) => s.invoices[projectId]     ?? EMPTY_INVOICES);
+export const useWarrantiesForProject = (projectId: string) => useGanttSideStore((s) => s.warranties[projectId]  ?? EMPTY_WARRANTIES);
+export const useChecklist           = (taskId: string)    => useGanttSideStore((s) => s.checklists[taskId]      ?? EMPTY_CHECKLIST);
