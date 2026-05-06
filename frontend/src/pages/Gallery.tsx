@@ -10,10 +10,16 @@ import { Badge } from '../components/ui/badge';
 import { Input } from '../components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
+import NotAuthorized from '../components/NotAuthorized';
+import { canViewGallery } from '../lib/permissions';
 
 export default function Gallery() {
   const navigate = useNavigate();
-  const { photos, zones, users } = useAppStore();
+  const { photos, zones, users, currentProfile } = useAppStore();
+
+  if (!canViewGallery(currentProfile)) {
+    return <NotAuthorized surface="the photo gallery" />;
+  }
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
   const [filterZone, setFilterZone] = useState('');
   const [filterPhase, setFilterPhase] = useState('');

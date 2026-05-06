@@ -8,6 +8,9 @@ import { Button } from '../components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { useMessagingStore, type Participant } from '../store/messaging';
+import { useAppStore } from '../store';
+import NotAuthorized from '../components/NotAuthorized';
+import { canViewMessages } from '../lib/permissions';
 
 // ─── Mock Data ─────────────────────────────────────────────────────────────────
 
@@ -317,11 +320,16 @@ function GroupAvatarStack({ participants }: { participants: Participant[] }) {
 // ─── Main Component ────────────────────────────────────────────────────────────
 
 export default function Messages() {
+  const currentProfile = useAppStore((s) => s.currentProfile);
   const conversations = useMessagingStore((s) => s.conversations);
   const createDirect = useMessagingStore((s) => s.createDirect);
   const createGroup = useMessagingStore((s) => s.createGroup);
   const appendMessage = useMessagingStore((s) => s.appendMessage);
   const markRead = useMessagingStore((s) => s.markRead);
+
+  if (!canViewMessages(currentProfile)) {
+    return <NotAuthorized surface="messages" />;
+  }
 
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');

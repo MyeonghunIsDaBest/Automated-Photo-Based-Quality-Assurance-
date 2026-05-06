@@ -51,15 +51,16 @@ export async function signIn(email: string, password: string): Promise<Session> 
   return data.session;
 }
 
-// Roles a user is allowed to self-select on the signup form. The two
-// admin tiers are NOT in this list — see migration 0011 for the enforcement.
+// Roles a user is allowed to self-select on the signup form. Admin tiers
+// (company_admin, administrator) and read-only client tiers (stakeholder,
+// supplier) are NOT in this list — those are admin-create-only via the
+// `admin-create-user` Edge Function. The handle_new_user trigger
+// (01_security_group_expand.sql §3) downgrades any other value to 'worker'.
 export type SignupRole =
   | 'worker'
   | 'site_manager'
   | 'project_manager'
-  | 'construction_mgr'
-  | 'stakeholder'
-  | 'supplier';
+  | 'construction_mgr';
 
 // SELF-SERVICE registration only — for the public Login → "Create account"
 // form. Do NOT call this from the admin panel: supabase.auth.signUp(...)
@@ -76,12 +77,6 @@ export async function signUp(
   role: SignupRole = 'worker',
 ): Promise<Session | null> {
   if (!supabaseConfigured()) throw NOT_CONFIGURED;
-  // 'stakeholder' and 'supplier' aren't in the security_group enum — those
-  // are separate entity tables. We pass them through the meta_data anyway so
-  // the admin dashboard can show "this user signed up wanting to be a
-  // supplier" and create the matching supplier/stakeholder record. The
-  // handle_new_user trigger (00_init.sql §4) normalizes their security_group
-  // to 'worker'.
   const { data, error } = await supabase.auth.signUp({
     email,
     password,

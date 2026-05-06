@@ -1,0 +1,85 @@
+{
+  "generatedAt": "2026-05-06T10:07:52.000Z",
+  "entries": [
+    {
+      "id": "26cac10",
+      "date": "2026-05-06T03:03:44+08:00",
+      "surface": "frontend",
+      "kind": "change",
+      "headline": "New features for live testing.",
+      "filesChanged": 33
+    },
+    {
+      "id": "634e8dc",
+      "date": "2026-05-04T18:56:53+08:00",
+      "surface": "frontend",
+      "kind": "new",
+      "headline": "New day new updates for demo site.",
+      "filesChanged": 33
+    },
+    {
+      "id": "f66af9a",
+      "date": "2026-05-04T05:52:15+08:00",
+      "surface": "frontend",
+      "kind": "change",
+      "headline": "Patching errors and adding errorBoundary for checker.",
+      "filesChanged": 39
+    },
+    {
+      "id": "82547e8",
+      "date": "2026-05-01T09:21:26+08:00",
+      "surface": "frontend",
+      "kind": "change",
+      "headline": "Admin dashboard update and attempt patch for project/gantt task.",
+      "filesChanged": 13
+    },
+    {
+      "id": "8115827",
+      "date": "2026-05-01T05:19:26+08:00",
+      "surface": "frontend",
+      "kind": "change",
+      "headline": "More functionality update for live testing.",
+      "filesChanged": 68
+    },
+    {
+      "id": "82f2779",
+      "date": "2026-04-29T21:24:11+08:00",
+      "surface": "frontend",
+      "kind": "change",
+      "headline": "3rd enhancement of ui.",
+      "filesChanged": 26
+    },
+    {
+      "id": "a66eeff",
+      "date": "2026-04-29T17:33:31+08:00",
+      "surface": "frontend",
+      "kind": "improve",
+      "headline": "Refactor ui pt1.",
+      "filesChanged": 21
+    },
+    {
+      "id": "d0acb21",
+      "date": "2026-04-28T20:21:26+08:00",
+      "surface": "frontend",
+      "kind": "fix",
+      "headline": "Fix GanttChart filename casing for Linux builds.",
+      "filesChanged": 1
+    },
+    {
+      "id": "3df659c",
+      "date": "2026-04-28T20:19:09+08:00",
+      "surface": "infra",
+      "kind": "new",
+      "headline": "Add vercel.json for frontend subdirectory build.",
+      "filesChanged": 1
+    },
+    {
+      "id": "8ee7bc0",
+      "date": "2026-04-28T20:13:31+08:00",
+      "surface": "frontend",
+      "kind": "change",
+      "headline": "Initial frontend commit.",
+      "filesChanged": 44
+    }
+  ]
+}

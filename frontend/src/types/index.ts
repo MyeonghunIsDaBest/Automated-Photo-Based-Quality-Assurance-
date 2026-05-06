@@ -1,24 +1,35 @@
-// User Roles (legacy 5-role union, kept for backward compat with existing UI).
-// Source of truth is now `SecurityGroup` below; legacy code reads `User.role`
-// via a mapping in `mapSecurityGroupToLegacyRole`.
+/**
+ * @deprecated Use `SecurityGroup` instead. The 5-role union is preserved only
+ * for back-compat with seeded mock data and pre-Phase-A UI surfaces. New code
+ * MUST gate via `securityGroup` and the helpers in `lib/permissions.ts`.
+ */
 export type UserRole = 'admin' | 'supervisor' | 'stakeholder' | 'inspector' | 'subcontractor';
 
-// 6-tier security group sourced from the Postgres `security_group` enum
-// (see supabase/migrations/0004_profiles.sql).
+// 8-tier security group sourced from the Postgres `security_group` enum
+// (see supabase/migrations/00_init.sql + 01_security_group_expand.sql).
 export type SecurityGroup =
   | 'company_admin'
   | 'administrator'
   | 'construction_mgr'
   | 'project_manager'
   | 'site_manager'
-  | 'worker';
+  | 'worker'
+  | 'stakeholder'
+  | 'supplier';
 
 // Document expiry alert window (matches the `expiry_alert` enum in 0005).
 export type ExpiryAlert = '2_months' | '1_month' | '3_weeks' | '2_weeks' | '1_week';
 
-// Permissions are layered on top of role — orthogonal to it. A `stakeholder`
-// (external client) can hold `finance` if the company chooses to grant it.
-export type Permission = 'finance' | 'export' | 'audit_export' | 'user_management';
+// Permissions are orthogonal flags layered on top of security_group — used
+// for capabilities that don't cleanly fit a tier (e.g. `quality_inspect`
+// gives a worker authority to file QA notes, `finance` opens the Reports
+// finance tab to a manager who'd otherwise miss it).
+export type Permission =
+  | 'finance'
+  | 'export'
+  | 'audit_export'
+  | 'user_management'
+  | 'quality_inspect';
 
 export interface User {
   id: string;
@@ -46,6 +57,11 @@ export interface Profile {
   securityGroup: SecurityGroup;
   isActive: boolean;
   avatarUrl?: string;
+  // Phase A linkage: stakeholder/supplier accounts point at their org-wide
+  // directory record so the UI can render company name, contacts, etc.
+  // CHECK constraint enforces at most one of these is set.
+  stakeholderId?: string | null;
+  supplierId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -136,9 +152,9 @@ export interface SupplierBranch {
   createdAt: string;
 }
 
-// Maps the new 6-tier security group onto the legacy 5-role union so older
-// UI keeps working. Both Company Admin and Administrator collapse to `admin`
-// because their write surface is the union of legacy admin abilities.
+// Maps the 8-tier security group onto the legacy 5-role union so older UI
+// keeps working. Phase A widened the enum but kept this shim — Phase E
+// removes it once all callers gate via `securityGroup` directly.
 export function mapSecurityGroupToLegacyRole(group: SecurityGroup): UserRole {
   switch (group) {
     case 'company_admin':
@@ -150,6 +166,12 @@ export function mapSecurityGroupToLegacyRole(group: SecurityGroup): UserRole {
       return 'supervisor';
     case 'worker':
       return 'subcontractor';
+    case 'stakeholder':
+      return 'stakeholder';
+    case 'supplier':
+      // Supplier has no legacy equivalent; closest read-only viewer is
+      // 'stakeholder' from the legacy taxonomy.
+      return 'stakeholder';
   }
 }
 
@@ -157,6 +179,10 @@ export function mapSecurityGroupToLegacyRole(group: SecurityGroup): UserRole {
 // components reading `currentUser.role` / `.fullName` keep functioning.
 export function profileToUser(p: Profile): User {
   const fullName = [p.firstName, p.lastName].filter(Boolean).join(' ').trim() || p.email;
+  const isCompany =
+    p.securityGroup === 'company_admin' || p.securityGroup === 'administrator';
+  const isClient =
+    p.securityGroup === 'stakeholder' || p.securityGroup === 'supplier';
   return {
     id: p.id,
     email: p.email,
@@ -164,10 +190,7 @@ export function profileToUser(p: Profile): User {
     role: mapSecurityGroupToLegacyRole(p.securityGroup),
     securityGroup: p.securityGroup,
     avatar: p.avatarUrl,
-    organization:
-      p.securityGroup === 'company_admin' || p.securityGroup === 'administrator'
-        ? 'company'
-        : undefined,
+    organization: isCompany ? 'company' : isClient ? 'client' : undefined,
   };
 }
 

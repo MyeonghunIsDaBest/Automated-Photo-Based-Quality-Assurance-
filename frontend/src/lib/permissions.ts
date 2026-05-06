@@ -1,26 +1,33 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// permissions.ts — Phase A unified gate.
+//
+// Every UI gate routes through this file. The single source of truth is
+// `CAPABILITIES_BY_GROUP` in `./auth/capabilities` — these helpers are thin
+// projections of that map. The legacy 5-role allowlist is kept as a graceful
+// fallback for any mock-data paths that still emit a `User` without a
+// `securityGroup`; Phase E removes it.
+// ─────────────────────────────────────────────────────────────────────────────
+
 import type { Profile, SecurityGroup, User, UserRole, Permission } from '../types';
+import { capabilitiesFor, type Capabilities } from './auth/capabilities';
 
-// ─── Security-group write entitlements ──────────────────────────────────────
-// Source of truth for "what can this account write?". Reads stay open across
-// the app (the admin dashboard is the only read-gated surface, handled by
-// `canSeeAdminDashboard`).
-const ENTITY_BY_GROUP: Record<SecurityGroup, ReadonlySet<string>> = {
-  company_admin: new Set(['*']),
-  administrator: new Set(['users', 'stakeholders', 'suppliers']),
-  construction_mgr: new Set(['tasks', 'projects', 'comments']),
-  project_manager: new Set(['tasks', 'projects', 'comments', 'reports']),
-  site_manager: new Set(['tasks', 'photos', 'comments']),
-  worker: new Set(['photos', 'comments']),
-};
+// AdminPrincipal — accept Profile (post-auth) or User (legacy mock paths).
+type AdminPrincipal = Profile | User | null | undefined;
 
-function groupCanWrite(group: SecurityGroup | undefined, entity: string): boolean {
-  if (!group) return false;
-  const allowed = ENTITY_BY_GROUP[group];
-  if (!allowed) return false;
-  return allowed.has('*') || allowed.has(entity);
+function principalGroup(p: AdminPrincipal): SecurityGroup | undefined {
+  if (!p) return undefined;
+  if ('securityGroup' in p && p.securityGroup) return p.securityGroup;
+  return undefined;
 }
 
-// ─── Legacy 5-role allowlist (kept so existing UI keeps compiling) ─────────
+function caps(p: AdminPrincipal): Capabilities {
+  return capabilitiesFor(principalGroup(p));
+}
+
+// ─── Legacy 5-role allowlist ─────────────────────────────────────────────
+// @deprecated Kept only so demo/mock data paths that emit a `User` without a
+// `securityGroup` still pass basic gates. Phase E deletes this once all
+// callers route through `securityGroup` + capabilities.
 const ROLE_WRITE_ALLOWLIST: Record<UserRole, ReadonlySet<string>> = {
   admin: new Set(['*']),
   supervisor: new Set(['tasks', 'photos', 'comments']),
@@ -29,27 +36,27 @@ const ROLE_WRITE_ALLOWLIST: Record<UserRole, ReadonlySet<string>> = {
   stakeholder: new Set(['comments']),
 };
 
-function canWrite(user: User | null, entity: string): boolean {
+function legacyCanWrite(user: User | null, entity: string): boolean {
   if (!user) return false;
-  // Prefer the security_group-based check when present (real Supabase users);
-  // fall back to the legacy role allowlist for any remaining mock paths.
-  if (user.securityGroup) return groupCanWrite(user.securityGroup, entity);
   const allowed = ROLE_WRITE_ALLOWLIST[user.role];
   if (!allowed) return false;
   return allowed.has('*') || allowed.has(entity);
 }
 
+// ─── Standard gates ──────────────────────────────────────────────────────
+
 export function canEditTasks(user: User | null): boolean {
-  return canWrite(user, 'tasks');
+  if (user?.securityGroup) return caps(user).editGanttTasks;
+  return legacyCanWrite(user, 'tasks');
 }
 
 export function canCreateProjects(user: User | null): boolean {
-  if (user?.securityGroup) return groupCanWrite(user.securityGroup, 'projects');
+  if (user?.securityGroup) return caps(user).createProjects;
   return user?.role === 'admin';
 }
 
 export function canEditProjects(user: User | null): boolean {
-  if (user?.securityGroup) return groupCanWrite(user.securityGroup, 'projects');
+  if (user?.securityGroup) return caps(user).editProjects;
   return user?.role === 'admin';
 }
 
@@ -61,11 +68,13 @@ export function canDeleteTasks(user: User | null): boolean {
 }
 
 export function canUploadPhotos(user: User | null): boolean {
-  return canWrite(user, 'photos');
+  if (user?.securityGroup) return caps(user).uploadPhotos;
+  return legacyCanWrite(user, 'photos');
 }
 
 export function canAddComments(user: User | null): boolean {
-  return canWrite(user, 'comments');
+  if (user?.securityGroup) return caps(user).viewMessages; // comments require message access
+  return legacyCanWrite(user, 'comments');
 }
 
 export function hasPermission(user: User | null, permission: Permission): boolean {
@@ -73,38 +82,77 @@ export function hasPermission(user: User | null, permission: Permission): boolea
 }
 
 export function canViewFinance(user: User | null): boolean {
-  if (user?.securityGroup) {
-    return user.securityGroup === 'company_admin' || user.securityGroup === 'project_manager';
-  }
+  if (user?.securityGroup) return caps(user).viewReportsFinance;
   return hasPermission(user, 'finance');
 }
 
-// ─── Admin-dashboard gates (drive Sidebar/TopNav visibility + RequireAuth) ─
-// Accept either a Profile (post-auth) or the legacy User (in case some
-// caller still has only that shape).
-type AdminPrincipal = Profile | User | null | undefined;
+// ─── Phase A — new helpers ────────────────────────────────────────────────
 
-function principalGroup(p: AdminPrincipal): SecurityGroup | undefined {
-  if (!p) return undefined;
-  if ('securityGroup' in p && p.securityGroup) return p.securityGroup;
-  return undefined;
+export function canViewGallery(p: AdminPrincipal): boolean {
+  return caps(p).viewGallery;
 }
 
+export function canViewMessages(p: AdminPrincipal): boolean {
+  return caps(p).viewMessages;
+}
+
+export function canViewProjectFiles(p: AdminPrincipal, _projectId?: string): boolean {
+  // Per-project scoping requires a project_members / project_stakeholders
+  // table that doesn't exist yet (deferred to follow-up migration). Until
+  // then the capability flag is the only gate — RLS filters the rows.
+  return caps(p).viewProjectFiles;
+}
+
+export function canConfirmAIAnalysis(p: AdminPrincipal): boolean {
+  return caps(p).confirmAIAnalysis;
+}
+
+export function canExportAuditLog(p: AdminPrincipal): boolean {
+  return caps(p).exportAuditLog;
+}
+
+export function canViewProject(p: AdminPrincipal, _projectId?: string): boolean {
+  // Same rationale as canViewProjectFiles — capability flag now, per-project
+  // RLS scoping in a follow-up migration. UI may still narrow further.
+  return caps(p).viewProjects;
+}
+
+export function canViewSupplierTab(p: AdminPrincipal, _projectId?: string): boolean {
+  return caps(p).viewGanttSupplierTab;
+}
+
+export function canEditSupplierTab(p: AdminPrincipal, _projectId?: string): boolean {
+  return caps(p).editGanttSupplierTab;
+}
+
+export function canViewSafetyIncident(p: AdminPrincipal): boolean {
+  return caps(p).viewSafety;
+}
+
+export function canResolveSafetyIncident(p: AdminPrincipal): boolean {
+  return caps(p).resolveSafetyIncident;
+}
+
+export function canLogSafetyIncident(p: AdminPrincipal): boolean {
+  return caps(p).logSafetyIncident;
+}
+
+// ─── Admin-dashboard gates (drive Sidebar/TopNav visibility + RequireAuth) ─
+
 export function canSeeAdminDashboard(p: AdminPrincipal): boolean {
-  const g = principalGroup(p);
-  return g === 'company_admin' || g === 'administrator';
+  return caps(p).seeAdminDashboard;
 }
 
 export function canManageUsers(user: AdminPrincipal): boolean {
-  return canSeeAdminDashboard(user);
+  return caps(user).manageUsers;
 }
 
 export function canManageStakeholders(user: AdminPrincipal): boolean {
-  return canSeeAdminDashboard(user);
+  return caps(user).manageStakeholders;
 }
 
 export function canManageSuppliers(user: AdminPrincipal): boolean {
-  return canSeeAdminDashboard(user);
+  return caps(user).manageSuppliers;
 }
 
 // Only Company Admin can change a user's security_group to/from
@@ -134,4 +182,6 @@ export const SECURITY_GROUP_LABELS: Record<SecurityGroup, string> = {
   project_manager: 'Project Manager',
   site_manager: 'Site Manager',
   worker: 'Worker',
+  stakeholder: 'Stakeholder',
+  supplier: 'Supplier',
 };

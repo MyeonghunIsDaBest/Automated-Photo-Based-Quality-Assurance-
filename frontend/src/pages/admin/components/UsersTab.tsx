@@ -44,6 +44,8 @@ const ROLE_BADGE: Record<SecurityGroup, string> = {
   project_manager:  'border-blue-200 bg-blue-50 text-blue-700',
   site_manager:     'border-blue-200 bg-blue-50 text-blue-700',
   worker:           'border-slate-200 bg-slate-50 text-slate-600',
+  stakeholder:      'border-violet-200 bg-violet-50 text-violet-700',
+  supplier:         'border-amber-200 bg-amber-50 text-amber-700',
 };
 
 export default function UsersTab() {

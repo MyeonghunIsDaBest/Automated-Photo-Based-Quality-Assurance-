@@ -4,6 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "build:whats-new": "node scripts/build-whats-new.mjs",
+    "predev": "npm run build:whats-new",
+    "prebuild": "npm run build:whats-new",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",

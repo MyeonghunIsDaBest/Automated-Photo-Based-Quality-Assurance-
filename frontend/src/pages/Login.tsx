@@ -9,14 +9,14 @@ import {
   HardHat,
   ClipboardList,
   Briefcase,
-  Truck,
-  Eye,
   Wrench,
   type LucideIcon,
 } from 'lucide-react';
 import { useAppStore } from '../store';
 import type { SignupRole } from '../lib/api/auth';
 
+// Stakeholder + Supplier accounts are admin-created only — see
+// `admin-create-user` Edge Function. They never appear here.
 const ROLE_OPTIONS: {
   value: SignupRole;
   label: string;
@@ -27,8 +27,6 @@ const ROLE_OPTIONS: {
   { value: 'site_manager',    label: 'Site Manager',     Icon: ClipboardList,  caption: 'Run a site. Update tasks, manage photos.' },
   { value: 'project_manager', label: 'Project Manager',  Icon: Briefcase,      caption: 'Plan + scheduling. Edit Gantt + reports.' },
   { value: 'construction_mgr',label: 'Construction Mgr', Icon: Wrench,         caption: 'Multi-site oversight. Edit projects + tasks.' },
-  { value: 'stakeholder',     label: 'Stakeholder',      Icon: Eye,            caption: 'Client / external. Read-only with comments.' },
-  { value: 'supplier',        label: 'Supplier',         Icon: Truck,          caption: 'Vendor / supplier. Read-only with comments.' },
 ];
 
 const FLOW_STEPS: { Icon: LucideIcon; label: string; caption: string }[] = [

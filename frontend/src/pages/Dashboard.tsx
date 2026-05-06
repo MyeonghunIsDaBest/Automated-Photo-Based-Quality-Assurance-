@@ -24,6 +24,8 @@ const ROLE_BLURB: Record<SecurityGroup, string> = {
   project_manager:  'Plan + scheduling. Edit Gantt, run reports, edit tasks.',
   site_manager:     'Run a single site. Update tasks, manage photos and comments.',
   worker:           'Field crew. Upload photos against tasks, leave notes, view your assignments.',
+  stakeholder:      'Read-only client view. Track progress and review reports for your linked projects.',
+  supplier:         'Read-only vendor view. See your scoped orders, deliveries, invoices, and warranties.',
 };
 import {
   Area,
@@ -36,6 +38,7 @@ import {
 } from 'recharts';
 import { format, parseISO } from 'date-fns';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
+import WhatsNewCard from '../components/dashboard/WhatsNewCard';
 
 const FONT_STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=DM+Sans:wght@400;500;600;700&display=swap');
@@ -319,6 +322,9 @@ export default function Dashboard() {
 
         {/* Sidebar */}
         <aside className="space-y-6">
+          {/* What's new — auto-generated from git log on each build/dev start. */}
+          <WhatsNewCard />
+
           {/* Recent activity */}
           <section className="rounded-2xl border border-slate-200 bg-white p-5">
             <div className="mb-4 flex items-center justify-between">

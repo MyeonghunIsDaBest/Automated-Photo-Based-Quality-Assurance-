@@ -3,8 +3,31 @@ import {
   canSeeAdminDashboard,
   canAssignSecurityGroup,
   canEditTasks,
+  canViewGallery,
+  canViewMessages,
+  canViewProjectFiles,
+  canConfirmAIAnalysis,
+  canExportAuditLog,
+  canViewProject,
+  canViewSupplierTab,
+  canEditSupplierTab,
+  canResolveSafetyIncident,
+  canLogSafetyIncident,
+  canViewFinance,
 } from '../lib/permissions';
+import { CAPABILITIES_BY_GROUP } from '../lib/auth/capabilities';
 import type { Profile, SecurityGroup } from '../types';
+
+const ALL_GROUPS: SecurityGroup[] = [
+  'company_admin',
+  'administrator',
+  'construction_mgr',
+  'project_manager',
+  'site_manager',
+  'worker',
+  'stakeholder',
+  'supplier',
+];
 
 function makeProfile(group: SecurityGroup, overrides: Partial<Profile> = {}): Profile {
   return {
@@ -28,6 +51,8 @@ describe('canSeeAdminDashboard', () => {
     ['project_manager', false],
     ['site_manager', false],
     ['worker', false],
+    ['stakeholder', false],
+    ['supplier', false],
   ];
 
   it.each(cases)('returns %s for %s', (group, expected) => {
@@ -37,6 +62,94 @@ describe('canSeeAdminDashboard', () => {
   it('returns false for null/undefined', () => {
     expect(canSeeAdminDashboard(null)).toBe(false);
     expect(canSeeAdminDashboard(undefined)).toBe(false);
+  });
+});
+
+describe('Phase A capability matrix', () => {
+  it('every security_group is mapped in CAPABILITIES_BY_GROUP', () => {
+    for (const g of ALL_GROUPS) {
+      expect(CAPABILITIES_BY_GROUP[g]).toBeDefined();
+    }
+  });
+
+  it('matrix matches the documented rules (snapshot)', () => {
+    // Captures the truth table once; any silent drift fails CI.
+    expect(CAPABILITIES_BY_GROUP).toMatchSnapshot();
+  });
+});
+
+describe('Phase A: new helpers per security_group', () => {
+  // Truth from feature-access-matrix.md. If any cell here changes, also
+  // update the matrix doc + the CAPABILITIES_BY_GROUP map.
+  const expectations: Record<SecurityGroup, Record<string, boolean>> = {
+    company_admin: {
+      gallery: true, messages: true, projectFiles: true, confirmAI: true,
+      exportAudit: true, viewProject: true, supplierTabView: true,
+      supplierTabEdit: true, resolveSafety: true, logSafety: true, finance: true,
+    },
+    administrator: {
+      gallery: true, messages: true, projectFiles: true, confirmAI: true,
+      exportAudit: true, viewProject: true, supplierTabView: true,
+      supplierTabEdit: false, resolveSafety: false, logSafety: false, finance: false,
+    },
+    construction_mgr: {
+      gallery: true, messages: true, projectFiles: true, confirmAI: true,
+      exportAudit: false, viewProject: true, supplierTabView: true,
+      supplierTabEdit: true, resolveSafety: true, logSafety: true, finance: false,
+    },
+    project_manager: {
+      gallery: true, messages: true, projectFiles: true, confirmAI: true,
+      exportAudit: false, viewProject: true, supplierTabView: true,
+      supplierTabEdit: true, resolveSafety: true, logSafety: true, finance: true,
+    },
+    site_manager: {
+      gallery: true, messages: true, projectFiles: true, confirmAI: true,
+      exportAudit: false, viewProject: true, supplierTabView: true,
+      supplierTabEdit: false, resolveSafety: true, logSafety: true, finance: false,
+    },
+    worker: {
+      gallery: true, messages: true, projectFiles: true, confirmAI: false,
+      exportAudit: false, viewProject: true, supplierTabView: false,
+      supplierTabEdit: false, resolveSafety: false, logSafety: true, finance: false,
+    },
+    stakeholder: {
+      gallery: true, messages: true, projectFiles: true, confirmAI: false,
+      exportAudit: false, viewProject: true, supplierTabView: true,
+      supplierTabEdit: false, resolveSafety: false, logSafety: false, finance: false,
+    },
+    supplier: {
+      gallery: true, messages: true, projectFiles: true, confirmAI: false,
+      exportAudit: false, viewProject: true, supplierTabView: true,
+      supplierTabEdit: false, resolveSafety: false, logSafety: false, finance: false,
+    },
+  };
+
+  it.each(ALL_GROUPS)('helpers for %s match the matrix', (group) => {
+    const p = makeProfile(group);
+    const e = expectations[group];
+    expect(canViewGallery(p)).toBe(e.gallery);
+    expect(canViewMessages(p)).toBe(e.messages);
+    expect(canViewProjectFiles(p, 'proj-1')).toBe(e.projectFiles);
+    expect(canConfirmAIAnalysis(p)).toBe(e.confirmAI);
+    expect(canExportAuditLog(p)).toBe(e.exportAudit);
+    expect(canViewProject(p, 'proj-1')).toBe(e.viewProject);
+    expect(canViewSupplierTab(p, 'proj-1')).toBe(e.supplierTabView);
+    expect(canEditSupplierTab(p, 'proj-1')).toBe(e.supplierTabEdit);
+    expect(canResolveSafetyIncident(p)).toBe(e.resolveSafety);
+    expect(canLogSafetyIncident(p)).toBe(e.logSafety);
+    // canViewFinance accepts a User; legacy mock paths still feed it that
+    // shape, so build a User from the profile here.
+    expect(canViewFinance({
+      id: p.id, email: p.email, fullName: '', role: 'admin', securityGroup: group,
+    })).toBe(e.finance);
+  });
+
+  it('all helpers return false for null', () => {
+    expect(canViewGallery(null)).toBe(false);
+    expect(canViewMessages(null)).toBe(false);
+    expect(canConfirmAIAnalysis(null)).toBe(false);
+    expect(canExportAuditLog(null)).toBe(false);
+    expect(canViewProject(null)).toBe(false);
   });
 });
 
