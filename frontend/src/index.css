@@ -1,5 +1,69 @@
 @import "tailwindcss";
 
+/* ─── Editorial design tokens (Phase B) ─────────────────────────────── */
+/* Tailwind v4 reads `@theme` for utility generation. Anything declared here
+   becomes available as a utility class (e.g. font-display, shadow-card,
+   rounded-pill). The fonts are loaded via the @import below so they're
+   available to every page without per-page <style> injections. */
+
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=DM+Sans:wght@400;500;600;700&display=swap');
+
+@theme {
+  --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --font-sans: 'DM Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  /* Tight, generous, page-edition shadows tuned to the slate-900 anchor. */
+  --shadow-card: 0 1px 0 0 rgb(15 23 42 / 0.04), 0 1px 2px -1px rgb(15 23 42 / 0.06);
+  --shadow-modal: 0 20px 50px -20px rgb(15 23 42 / 0.35);
+  --shadow-pill: 0 6px 20px -10px rgb(15 23 42 / 0.4);
+
+  /* Editorial radii — the design language uses two distinct corner sizes:
+     2xl (1rem) for cards and pill (9999px) for buttons. */
+  --radius-pill: 9999px;
+}
+
+/* Form inputs inside editorial modals + admin pages. Sits on a white card
+   border, picks up the slate-900 focus ring used everywhere else. The 16px
+   font-size below sm avoids the iOS auto-zoom (already enforced globally,
+   restated here for clarity). */
+.editorial-input {
+  display: block;
+  width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(203 213 225);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  background-color: white;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.editorial-input:focus { border-color: rgb(15 23 42); }
+.editorial-input:disabled { background-color: rgb(248 250 252); color: rgb(100 116 139); }
+@media (max-width: 640px) {
+  .editorial-input { font-size: 16px; }
+}
+
+/* Editorial type primitives. Pages compose these via the .editorial-root
+   class on a wrapping element (set automatically by <SectionHeader> and
+   the editorial primitives in `lib/editorial.ts`). */
+.editorial-root { font-family: var(--font-sans); }
+.editorial-root .display {
+  font-family: var(--font-display);
+  font-feature-settings: 'ss01';
+  letter-spacing: -0.02em;
+}
+.editorial-root .num {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+}
+.editorial-root .grid-bg {
+  background-image:
+    linear-gradient(to right, rgb(15 23 42 / 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(15 23 42 / 0.05) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
 /* ─── Mobile foundations ───────────────────────────────────────────── */
 
 /* Stop iOS Safari from auto-zooming when a user taps an input. iOS only

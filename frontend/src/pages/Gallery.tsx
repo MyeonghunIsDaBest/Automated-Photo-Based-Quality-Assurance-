@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { Search, Filter, MapPin, Eye, X, Grid, List, Upload as UploadIcon } from 'lucide-react';
+import { Search, Filter, MapPin, Eye, X, Grid, List, Upload as UploadIcon, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
-import { Photo } from '../types';
+import { Photo, SafetyFlag, SafetySeverity, AnalysisStatus } from '../types';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
@@ -12,6 +12,43 @@ import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
 import NotAuthorized from '../components/NotAuthorized';
 import { canViewGallery } from '../lib/permissions';
+
+// Mirror of supabase/functions/_shared/safetyTaxonomy.ts. Duplicated rather
+// than imported because that file lives under Deno-only paths; the Phase C
+// contract parity script ensures the shapes stay aligned.
+const SAFETY_SEVERITY: Record<SafetyFlag, SafetySeverity> = {
+  exposed_wiring:  'critical',
+  fall_hazard:     'critical',
+  no_hard_hat:     'high',
+  unsecured_load:  'high',
+  housekeeping:    'medium',
+  signage_missing: 'low',
+};
+
+const SEVERITY_TONE: Record<SafetySeverity, string> = {
+  critical: 'border-red-200 bg-red-50 text-red-700',
+  high:     'border-orange-200 bg-orange-50 text-orange-700',
+  medium:   'border-amber-200 bg-amber-50 text-amber-700',
+  low:      'border-slate-200 bg-slate-50 text-slate-700',
+};
+
+const STATUS_LABEL: Record<AnalysisStatus, string> = {
+  queued:    'Queued for AI',
+  analysing: 'Analysing…',
+  analysed:  'Analysed',
+  failed:    'AI failed',
+  confirmed: 'Confirmed',
+  rejected:  'Rejected',
+};
+
+const STATUS_TONE: Record<AnalysisStatus, string> = {
+  queued:    'border-slate-200 bg-slate-100 text-slate-600',
+  analysing: 'border-blue-200 bg-blue-50 text-blue-700',
+  analysed:  'border-emerald-200 bg-emerald-50 text-emerald-700',
+  failed:    'border-red-200 bg-red-50 text-red-700',
+  confirmed: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  rejected:  'border-slate-200 bg-slate-100 text-slate-600',
+};
 
 export default function Gallery() {
   const navigate = useNavigate();
@@ -25,11 +62,19 @@ export default function Gallery() {
   const [filterPhase, setFilterPhase] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [pendingOnly, setPendingOnly] = useState(false);
 
   const filteredPhotos = photos.filter(photo => {
     if (filterZone && photo.zoneId !== filterZone) return false;
     if (filterPhase && photo.aiAnalysis?.phaseDetected !== filterPhase) return false;
     if (searchQuery && !photo.filename.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+    if (pendingOnly) {
+      // Pending review = analysed by AI but supervisor hasn't confirmed/rejected.
+      const a = photo.aiAnalysis;
+      if (!a) return false;
+      if (a.actionTaken !== 'pending') return false;
+      if (a.analysisStatus === 'confirmed' || a.analysisStatus === 'rejected') return false;
+    }
     return true;
   });
 
@@ -41,7 +86,13 @@ export default function Gallery() {
     return users.find(u => u.id === userId)?.fullName || 'Unknown';
   };
 
-  const phases = [...new Set(photos.map(p => p.aiAnalysis?.phaseDetected).filter(Boolean))];
+  const phases = [
+    ...new Set(
+      photos
+        .map((p) => p.aiAnalysis?.phaseDetected)
+        .filter((p): p is NonNullable<typeof p> => p != null),
+    ),
+  ];
 
   return (
     <div className="p-4 sm:p-6">
@@ -59,20 +110,21 @@ export default function Gallery() {
         </div>
       </div>
 
-      {/* Tabs and Filters */}
+      {/* Tabs and Filters — Phase B mobile rework: vertical stack <sm so each
+          control gets a full-width row; revert to inline layout on tablet+. */}
       <Card className="mb-6">
-        <CardContent className="p-4">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <Tabs defaultValue="photos" className="w-auto">
-              <TabsList>
-                <TabsTrigger value="photos">Photos</TabsTrigger>
-                <TabsTrigger value="documents">Documents</TabsTrigger>
-                <TabsTrigger value="videos">Videos</TabsTrigger>
+        <CardContent className="p-3 sm:p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+            <Tabs defaultValue="photos" className="w-full sm:w-auto">
+              <TabsList className="w-full sm:w-auto">
+                <TabsTrigger value="photos" className="flex-1 sm:flex-none">Photos</TabsTrigger>
+                <TabsTrigger value="documents" className="flex-1 sm:flex-none">Documents</TabsTrigger>
+                <TabsTrigger value="videos" className="flex-1 sm:flex-none">Videos</TabsTrigger>
               </TabsList>
             </Tabs>
 
-            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-              <div className="relative w-full sm:w-auto">
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+              <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <Input
                   type="text"
@@ -84,43 +136,65 @@ export default function Gallery() {
               </div>
 
               <div className="flex items-center gap-2">
-                <Filter className="h-4 w-4 text-slate-400" />
+                <Filter className="h-4 w-4 flex-shrink-0 text-slate-400" />
                 <select
                   value={filterZone}
                   onChange={(e) => setFilterZone(e.target.value)}
-                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+                  className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none sm:flex-none"
                 >
                   <option value="">All Zones</option>
                   {zones.map(zone => (
                     <option key={zone.id} value={zone.id}>{zone.name}</option>
                   ))}
                 </select>
-                
+
                 <select
                   value={filterPhase}
                   onChange={(e) => setFilterPhase(e.target.value)}
-                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+                  className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm capitalize focus:border-emerald-500 focus:outline-none sm:flex-none"
                 >
                   <option value="">All Phases</option>
                   {phases.map(phase => (
                     <option key={phase} value={phase} className="capitalize">{phase}</option>
                   ))}
                 </select>
-              </div>
 
-              <div className="flex items-center gap-1 rounded-lg border border-slate-200 p-1">
+                {/* Pending-AI toggle. When on, only photos whose AI analysis
+                    is awaiting supervisor confirm/reject are shown — useful
+                    for the manager triaging the review queue from the gallery. */}
                 <button
-                  onClick={() => setViewMode('grid')}
-                  className={`rounded p-1.5 ${viewMode === 'grid' ? 'bg-slate-100' : 'text-slate-500'}`}
+                  type="button"
+                  onClick={() => setPendingOnly((v) => !v)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                    pendingOnly
+                      ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                      : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                  }`}
+                  aria-pressed={pendingOnly}
                 >
-                  <Grid className="h-4 w-4" />
+                  Pending AI only
                 </button>
-                <button
-                  onClick={() => setViewMode('list')}
-                  className={`rounded p-1.5 ${viewMode === 'list' ? 'bg-slate-100' : 'text-slate-500'}`}
-                >
-                  <List className="h-4 w-4" />
-                </button>
+
+                {/* View-mode toggle. Same row as filters so it doesn't take a
+                    third stacked row on phones. */}
+                <div className="flex flex-shrink-0 items-center gap-1 rounded-lg border border-slate-200 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('grid')}
+                    aria-label="Grid view"
+                    className={`rounded p-1.5 ${viewMode === 'grid' ? 'bg-slate-100' : 'text-slate-500'}`}
+                  >
+                    <Grid className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('list')}
+                    aria-label="List view"
+                    className={`rounded p-1.5 ${viewMode === 'list' ? 'bg-slate-100' : 'text-slate-500'}`}
+                  >
+                    <List className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -157,18 +231,39 @@ export default function Gallery() {
               </div>
               
               <CardContent className="p-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <p className="font-medium text-slate-900">{getZoneName(photo.zoneId)}</p>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-slate-900 truncate">{getZoneName(photo.zoneId)}</p>
                     <p className="text-sm text-slate-500">{format(new Date(photo.uploadedAt), 'MMM d, h:mm a')}</p>
                   </div>
-                  {photo.aiAnalysis && (
+                  {photo.aiAnalysis && photo.aiAnalysis.analysisStatus === 'analysed' && (
                     <Badge variant="default">
                       {Math.round(photo.aiAnalysis.confidence * 100)}%
                     </Badge>
                   )}
                 </div>
-                
+
+                {/* AI status pill + safety/quality flag chips. Cards become
+                    glanceable: a manager scanning the gallery can spot
+                    "Pending review" or a critical safety chip without opening
+                    each photo. */}
+                {photo.aiAnalysis && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${STATUS_TONE[photo.aiAnalysis.analysisStatus]}`}>
+                      {STATUS_LABEL[photo.aiAnalysis.analysisStatus]}
+                    </span>
+                    {photo.aiAnalysis.safetyFlags.map((flag) => (
+                      <span
+                        key={flag}
+                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${SEVERITY_TONE[SAFETY_SEVERITY[flag]]}`}
+                      >
+                        <AlertTriangle className="h-3 w-3" aria-hidden />
+                        {flag.replace(/_/g, ' ')}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
                 {photo.notes && (
                   <p className="mt-2 line-clamp-2 text-sm text-slate-600">{photo.notes}</p>
                 )}

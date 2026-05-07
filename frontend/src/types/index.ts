@@ -217,7 +217,26 @@ export interface Zone {
 
 // Task Status
 export type TaskStatus = 'not_started' | 'in_progress' | 'complete' | 'delayed' | 'blocked';
-export type ConstructionPhase = 'foundation' | 'framing' | 'electrical' | 'plumbing' | 'drywall' | 'finishing' | 'roofing' | 'excavation';
+
+// `ConstructionPhase`, `SafetyFlag`, `QualityFlag` live in `lib/ai/contract.ts`
+// (the Photo-QA contract) and are re-exported here for back-compat — many
+// pre-Phase-C files import from `~/types`. Edit the canonical file.
+import type {
+  ConstructionPhase,
+  SafetyFlag,
+  QualityFlag,
+  AnalysisStatus,
+  AnalysisAction,
+  SafetySeverity,
+} from '../lib/ai/contract';
+export type {
+  ConstructionPhase,
+  SafetyFlag,
+  QualityFlag,
+  AnalysisStatus,
+  AnalysisAction,
+  SafetySeverity,
+};
 
 // Gantt Task
 export interface Task {
@@ -262,19 +281,25 @@ export interface Photo {
   aiAnalysis?: AIAnalysis;
 }
 
-// AI Analysis
+// AI Analysis — typed against the Phase C contract. Closed unions for the
+// flag arrays (`SafetyFlag`, `QualityFlag`) so chips render with consistent
+// icons + severity colour. Phase C also adds analysisStatus/rationale/
+// rawResponse to mirror `02_phase_c_seam.sql`.
 export interface AIAnalysis {
   id: string;
   photoId: string;
   modelUsed: string;
-  phaseDetected: ConstructionPhase;
+  phaseDetected: ConstructionPhase | null;
   completionPct: number;
   confidence: number;
-  safetyFlags: string[];
-  qualityFlags: string[];
+  safetyFlags: SafetyFlag[];
+  qualityFlags: QualityFlag[];
   materials: string[];
-  suggestedTask?: string;
-  actionTaken: 'auto_updated' | 'confirmed' | 'skipped' | 'pending';
+  suggestedTask: string | null;
+  actionTaken: AnalysisAction;
+  analysisStatus: AnalysisStatus;
+  rationale: string | null;
+  rawResponse: unknown;
   analyzedAt: string;
 }
 

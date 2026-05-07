@@ -1,15 +1,17 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ArrowUpRight,
+  CheckCircle2,
   FileText,
   HardHat,
   Plus,
   ShieldCheck,
   Trash2,
+  XCircle,
 } from 'lucide-react';
 import { useAppStore } from '../store';
-import { canEditProjects } from '../lib/permissions';
+import { canEditProjects, canResolveSafetyIncident, canViewSafetyIncident } from '../lib/permissions';
 import { useSafetyStore } from './safety/store';
 import {
   CATEGORY_BLURB,
@@ -25,8 +27,40 @@ import {
 } from './safety/types';
 import { SafetyDocumentModal } from './safety/components/SafetyDocumentModal';
 import { IncidentFormModal } from './safety/components/IncidentFormModal';
+import {
+  acknowledgeIncident,
+  dismissIncident,
+  listSafetyIncidents,
+  resolveIncident,
+  type SafetyIncident,
+} from '../lib/api/safetyIncidents';
+import { useSafetyRealtime } from '../lib/hooks/useSafetyRealtime';
+import type { SafetyFlag, SafetySeverity } from '../types';
 
-type TabKey = 'documents' | 'incidents';
+type TabKey = 'documents' | 'incidents' | 'hazards';
+
+const HAZARD_SEVERITY_TONE: Record<SafetySeverity, string> = {
+  critical: 'border-red-200 bg-red-50 text-red-700',
+  high:     'border-orange-200 bg-orange-50 text-orange-700',
+  medium:   'border-amber-200 bg-amber-50 text-amber-700',
+  low:      'border-slate-200 bg-slate-50 text-slate-700',
+};
+
+const HAZARD_STATUS_TONE: Record<SafetyIncident['status'], string> = {
+  open:         'border-red-200 bg-red-50 text-red-700',
+  acknowledged: 'border-amber-200 bg-amber-50 text-amber-700',
+  resolved:     'border-emerald-200 bg-emerald-50 text-emerald-700',
+  dismissed:    'border-slate-200 bg-slate-50 text-slate-600',
+};
+
+const HAZARD_FLAG_LABEL: Record<SafetyFlag, string> = {
+  no_hard_hat:     'No hard hat',
+  exposed_wiring:  'Exposed wiring',
+  fall_hazard:     'Fall hazard',
+  unsecured_load:  'Unsecured load',
+  housekeeping:    'Housekeeping',
+  signage_missing: 'Signage missing',
+};
 
 const FONT_STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=DM+Sans:wght@400;500;600;700&display=swap');
@@ -73,12 +107,54 @@ const daysSince = (iso: string) => {
 
 export default function Safety() {
   const currentUser = useAppStore((s) => s.currentUser);
+  const currentProfile = useAppStore((s) => s.currentProfile);
+  const project = useAppStore((s) => s.project);
   const documents = useSafetyStore((s) => s.documents);
   const incidents = useSafetyStore((s) => s.incidents);
   const removeDocument = useSafetyStore((s) => s.removeDocument);
   const setIncidentStatus = useSafetyStore((s) => s.setIncidentStatus);
 
   const canEdit = canEditProjects(currentUser);
+  const canSeeHazards = canViewSafetyIncident(currentProfile);
+  const canResolveHazards = canResolveSafetyIncident(currentProfile);
+
+  // AI-detected hazards (Phase C). Read-only for workers; manager+ can
+  // acknowledge / resolve / dismiss. The Realtime hook fires a toast on
+  // every new INSERT regardless of which page is active.
+  const [hazards, setHazards] = useState<SafetyIncident[]>([]);
+  const [hazardsLoading, setHazardsLoading] = useState(false);
+  const [hazardsError, setHazardsError] = useState<string | null>(null);
+  const [hazardActing, setHazardActing] = useState<string | null>(null);
+
+  useSafetyRealtime(canSeeHazards ? project.id : null);
+
+  useEffect(() => {
+    if (!canSeeHazards) return;
+    let cancelled = false;
+    setHazardsLoading(true);
+    setHazardsError(null);
+    listSafetyIncidents(project.id)
+      .then((list) => { if (!cancelled) setHazards(list); })
+      .catch((e) => { if (!cancelled) setHazardsError(e instanceof Error ? e.message : 'Failed to load.'); })
+      .finally(() => { if (!cancelled) setHazardsLoading(false); });
+    return () => { cancelled = true; };
+  }, [project.id, canSeeHazards]);
+
+  const handleHazardAction = async (
+    id: string,
+    fn: (id: string, notes?: string) => Promise<SafetyIncident>,
+  ) => {
+    setHazardActing(id);
+    setHazardsError(null);
+    try {
+      const updated = await fn(id);
+      setHazards((prev) => prev.map((h) => (h.id === id ? updated : h)));
+    } catch (e) {
+      setHazardsError(e instanceof Error ? e.message : 'Action failed.');
+    } finally {
+      setHazardActing(null);
+    }
+  };
 
   const [activeTab, setActiveTab] = useState<TabKey>('documents');
   const [docFilter, setDocFilter] = useState<SafetyDocCategory | 'all'>('all');
@@ -229,6 +305,17 @@ export default function Safety() {
             <AlertTriangle className="h-3.5 w-3.5" />
             Incidents
           </TabButton>
+          {canSeeHazards && (
+            <TabButton active={activeTab === 'hazards'} onClick={() => setActiveTab('hazards')}>
+              <ShieldCheck className="h-3.5 w-3.5" />
+              AI hazards
+              {hazards.filter((h) => h.status === 'open').length > 0 && (
+                <span className="ml-1 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
+                  {hazards.filter((h) => h.status === 'open').length}
+                </span>
+              )}
+            </TabButton>
+          )}
         </div>
 
         {activeTab === 'documents' && (
@@ -361,6 +448,114 @@ export default function Safety() {
           </section>
         )}
       </div>
+
+      {activeTab === 'hazards' && canSeeHazards && (
+        <section className="mx-4 mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white sm:mx-8">
+          <div className="border-b border-slate-100 px-6 py-4">
+            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
+              — AI-detected hazards
+            </p>
+            <h3 className="display mt-1 text-lg font-medium text-slate-900">
+              Flags surfaced by photo analysis
+            </h3>
+            <p className="mt-1 text-sm text-slate-500">
+              Inserted automatically when the AI sees something on a site photo. Manager+ can
+              acknowledge, resolve, or dismiss. Drives the realtime safety toast pipeline.
+            </p>
+          </div>
+
+          {hazardsError && (
+            <div className="border-b border-red-100 bg-red-50 px-6 py-2 text-sm text-red-700">
+              {hazardsError}
+            </div>
+          )}
+
+          {hazardsLoading ? (
+            <div className="px-6 py-12 text-center text-sm text-slate-400">Loading…</div>
+          ) : hazards.length === 0 ? (
+            <div className="px-6 py-16 text-center">
+              <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">No AI hazards yet</p>
+              <p className="mt-2 text-sm leading-relaxed text-slate-500">
+                The AI hasn't flagged anything on this project. Photos with critical or
+                high-severity flags surface here automatically once analysed.
+              </p>
+            </div>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {hazards.map((h) => (
+                <li key={h.id} className="px-4 py-4 sm:px-6">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${HAZARD_SEVERITY_TONE[h.severity]}`}>
+                          {h.severity}
+                        </span>
+                        <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${HAZARD_STATUS_TONE[h.status]}`}>
+                          {h.status}
+                        </span>
+                        {h.aiAnalysisId && (
+                          <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-blue-700">
+                            AI
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {h.flags.map((f) => (
+                          <span
+                            key={f}
+                            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700"
+                          >
+                            <AlertTriangle className="h-3 w-3 text-slate-500" aria-hidden />
+                            {HAZARD_FLAG_LABEL[f] ?? f}
+                          </span>
+                        ))}
+                      </div>
+                      {h.notes && (
+                        <p className="mt-2 line-clamp-2 text-sm text-slate-600">{h.notes}</p>
+                      )}
+                      <p className="mt-1 text-[11px] text-slate-400">
+                        {fmtDateTime(h.createdAt)}
+                      </p>
+                    </div>
+                    {canResolveHazards && h.status !== 'resolved' && h.status !== 'dismissed' && (
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        {h.status === 'open' && (
+                          <button
+                            type="button"
+                            disabled={hazardActing === h.id}
+                            onClick={() => handleHazardAction(h.id, acknowledgeIncident)}
+                            className="inline-flex items-center justify-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-300 disabled:opacity-50"
+                          >
+                            Acknowledge
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          disabled={hazardActing === h.id}
+                          onClick={() => handleHazardAction(h.id, resolveIncident)}
+                          className="inline-flex items-center justify-center gap-1 rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          Resolve
+                        </button>
+                        <button
+                          type="button"
+                          disabled={hazardActing === h.id}
+                          onClick={() => handleHazardAction(h.id, dismissIncident)}
+                          className="inline-flex items-center justify-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                        >
+                          <XCircle className="h-3.5 w-3.5" />
+                          Dismiss
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       <SafetyDocumentModal
         open={docModalOpen}

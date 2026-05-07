@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Trash2, X, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
 import {
   listSuppliers,
   createSupplier,
@@ -7,6 +7,7 @@ import {
   type SupplierInput,
 } from '../../../lib/api/suppliers';
 import type { Supplier, SupplierAddress } from '../../../types';
+import { EditorialButton, EditorialModal } from '../../../components/editorial';
 
 const EMPTY_ADDRESS: SupplierAddress = {};
 
@@ -76,12 +77,14 @@ export default function SuppliersTab() {
             Vendors and material suppliers. Each can have multiple contacts and branches.
           </p>
         </div>
-        <button
+        <EditorialButton
+          variant="pill"
+          trailingIcon="none"
           onClick={() => setAdding(true)}
-          className="inline-flex flex-shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 active:bg-emerald-800"
+          className="self-start sm:self-auto"
         >
-          <Plus className="h-4 w-4" /> Add Supplier
-        </button>
+          <Plus className="h-4 w-4" aria-hidden /> Add Supplier
+        </EditorialButton>
       </div>
 
       {error && (
@@ -250,46 +253,61 @@ function AddSupplierModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-      <form onSubmit={handleSave} className="max-h-[90vh] w-full max-w-3xl space-y-5 overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-slate-900">Add Supplier</h3>
-          <button type="button" onClick={onClose} className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100">
-            <X className="h-5 w-5" />
-          </button>
+    <EditorialModal
+      open
+      onClose={onClose}
+      eyebrow="Section · Suppliers"
+      title="Add supplier"
+      size="xl"
+      footer={
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <EditorialButton type="button" variant="ghost" trailingIcon="none" onClick={onClose}>
+            Cancel
+          </EditorialButton>
+          <EditorialButton
+            type="submit"
+            variant="pill"
+            trailingIcon="none"
+            form="supplier-form"
+            disabled={saving}
+          >
+            {saving ? 'Saving…' : 'Save supplier'}
+          </EditorialButton>
         </div>
-
+      }
+    >
+      <form id="supplier-form" onSubmit={handleSave} className="space-y-5">
         <Section title="Main details">
-          <div className="grid grid-cols-2 gap-3">
-            <F label="Supplier Name" required>
-              <input required value={form.name} onChange={(e) => setField('name', e.target.value)} className="input" />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <F label="Supplier name" required>
+              <input required value={form.name} onChange={(e) => setField('name', e.target.value)} className="editorial-input" />
             </F>
             <F label="ABN">
-              <input value={form.abn} onChange={(e) => setField('abn', e.target.value)} className="input" />
+              <input value={form.abn} onChange={(e) => setField('abn', e.target.value)} className="editorial-input" />
             </F>
             <F label="Website">
-              <input value={form.website} onChange={(e) => setField('website', e.target.value)} className="input" />
+              <input value={form.website} onChange={(e) => setField('website', e.target.value)} className="editorial-input" />
             </F>
             <F label="Notes">
-              <input value={form.notes} onChange={(e) => setField('notes', e.target.value)} className="input" />
+              <input value={form.notes} onChange={(e) => setField('notes', e.target.value)} className="editorial-input" />
             </F>
-            <F label="Main Email"><input type="email" value={form.mainEmail} onChange={(e) => setField('mainEmail', e.target.value)} className="input" /></F>
-            <F label="Main Contact Number"><input value={form.mainContactNumber} onChange={(e) => setField('mainContactNumber', e.target.value)} className="input" /></F>
-            <F label="Main Contact Name"><input value={form.mainContactName} onChange={(e) => setField('mainContactName', e.target.value)} className="input" /></F>
-            <F label="Accounts Email"><input type="email" value={form.accountsEmail} onChange={(e) => setField('accountsEmail', e.target.value)} className="input" /></F>
-            <F label="Accounts Contact Number"><input value={form.accountsContactNumber} onChange={(e) => setField('accountsContactNumber', e.target.value)} className="input" /></F>
-            <F label="Accounts Contact Name"><input value={form.accountsContactName} onChange={(e) => setField('accountsContactName', e.target.value)} className="input" /></F>
+            <F label="Main email"><input type="email" value={form.mainEmail} onChange={(e) => setField('mainEmail', e.target.value)} className="editorial-input" /></F>
+            <F label="Main contact number"><input value={form.mainContactNumber} onChange={(e) => setField('mainContactNumber', e.target.value)} className="editorial-input" /></F>
+            <F label="Main contact name"><input value={form.mainContactName} onChange={(e) => setField('mainContactName', e.target.value)} className="editorial-input" /></F>
+            <F label="Accounts email"><input type="email" value={form.accountsEmail} onChange={(e) => setField('accountsEmail', e.target.value)} className="editorial-input" /></F>
+            <F label="Accounts contact number"><input value={form.accountsContactNumber} onChange={(e) => setField('accountsContactNumber', e.target.value)} className="editorial-input" /></F>
+            <F label="Accounts contact name"><input value={form.accountsContactName} onChange={(e) => setField('accountsContactName', e.target.value)} className="editorial-input" /></F>
           </div>
         </Section>
 
-        <Section title="Main Address">
+        <Section title="Main address">
           <AddressFields
             address={form.mainAddress ?? {}}
             onChange={(k, v) => setAddrField('mainAddress', k, v)}
           />
         </Section>
 
-        <Section title="Postal Address">
+        <Section title="Postal address">
           <AddressFields
             address={form.postalAddress ?? {}}
             onChange={(k, v) => setAddrField('postalAddress', k, v)}
@@ -297,21 +315,31 @@ function AddSupplierModal({
         </Section>
 
         <Section title={`Contacts (${form.contacts?.length ?? 0})`} action={
-          <button type="button" onClick={addContact} className="text-xs font-medium text-emerald-700 hover:text-emerald-800">
-            + Add contact
+          <button
+            type="button"
+            onClick={addContact}
+            className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
+          >
+            <Plus className="h-3 w-3" /> Add contact
           </button>
         }>
           <div className="space-y-2">
             {(form.contacts ?? []).map((c, idx) => (
-              <div key={idx} className="rounded-lg border border-slate-200 p-3">
-                <div className="grid grid-cols-2 gap-2">
-                  <input placeholder="Name" value={c.name} onChange={(e) => updateContact(idx, 'name', e.target.value)} className="input" />
-                  <input placeholder="Role" value={c.role ?? ''} onChange={(e) => updateContact(idx, 'role', e.target.value)} className="input" />
-                  <input placeholder="Email" type="email" value={c.email ?? ''} onChange={(e) => updateContact(idx, 'email', e.target.value)} className="input" />
-                  <input placeholder="Mobile" value={c.mobile ?? ''} onChange={(e) => updateContact(idx, 'mobile', e.target.value)} className="input" />
+              <div key={idx} className="rounded-lg border border-slate-200 bg-slate-50/50 p-3">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <input placeholder="Name" value={c.name} onChange={(e) => updateContact(idx, 'name', e.target.value)} className="editorial-input" />
+                  <input placeholder="Role" value={c.role ?? ''} onChange={(e) => updateContact(idx, 'role', e.target.value)} className="editorial-input" />
+                  <input placeholder="Email" type="email" value={c.email ?? ''} onChange={(e) => updateContact(idx, 'email', e.target.value)} className="editorial-input" />
+                  <input placeholder="Mobile" value={c.mobile ?? ''} onChange={(e) => updateContact(idx, 'mobile', e.target.value)} className="editorial-input" />
                 </div>
-                <div className="mt-2 text-right">
-                  <button type="button" onClick={() => removeContact(idx)} className="text-xs text-red-600 hover:text-red-700">Remove</button>
+                <div className="mt-2 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => removeContact(idx)}
+                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                  >
+                    <Trash2 className="h-3 w-3" /> Remove
+                  </button>
                 </div>
               </div>
             ))}
@@ -319,21 +347,31 @@ function AddSupplierModal({
         </Section>
 
         <Section title={`Branches (${form.branches?.length ?? 0})`} action={
-          <button type="button" onClick={addBranch} className="text-xs font-medium text-emerald-700 hover:text-emerald-800">
-            + Add branch
+          <button
+            type="button"
+            onClick={addBranch}
+            className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
+          >
+            <Plus className="h-3 w-3" /> Add branch
           </button>
         }>
           <div className="space-y-2">
             {(form.branches ?? []).map((b, idx) => (
-              <div key={idx} className="rounded-lg border border-slate-200 p-3">
-                <div className="grid grid-cols-2 gap-2">
-                  <input placeholder="Branch Name" value={b.branchName} onChange={(e) => updateBranch(idx, 'branchName', e.target.value)} className="input" />
-                  <input placeholder="Contact Name" value={b.contactName ?? ''} onChange={(e) => updateBranch(idx, 'contactName', e.target.value)} className="input" />
-                  <input placeholder="Email" type="email" value={b.email ?? ''} onChange={(e) => updateBranch(idx, 'email', e.target.value)} className="input" />
-                  <input placeholder="Contact Number" value={b.contactNumber ?? ''} onChange={(e) => updateBranch(idx, 'contactNumber', e.target.value)} className="input" />
+              <div key={idx} className="rounded-lg border border-slate-200 bg-slate-50/50 p-3">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <input placeholder="Branch name" value={b.branchName} onChange={(e) => updateBranch(idx, 'branchName', e.target.value)} className="editorial-input" />
+                  <input placeholder="Contact name" value={b.contactName ?? ''} onChange={(e) => updateBranch(idx, 'contactName', e.target.value)} className="editorial-input" />
+                  <input placeholder="Email" type="email" value={b.email ?? ''} onChange={(e) => updateBranch(idx, 'email', e.target.value)} className="editorial-input" />
+                  <input placeholder="Contact number" value={b.contactNumber ?? ''} onChange={(e) => updateBranch(idx, 'contactNumber', e.target.value)} className="editorial-input" />
                 </div>
-                <div className="mt-2 text-right">
-                  <button type="button" onClick={() => removeBranch(idx)} className="text-xs text-red-600 hover:text-red-700">Remove</button>
+                <div className="mt-2 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => removeBranch(idx)}
+                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                  >
+                    <Trash2 className="h-3 w-3" /> Remove
+                  </button>
                 </div>
               </div>
             ))}
@@ -341,20 +379,8 @@ function AddSupplierModal({
         </Section>
 
         {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
-
-        <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
-          <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
-          <button type="submit" disabled={saving} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
-            {saving ? 'Saving…' : 'Save Supplier'}
-          </button>
-        </div>
-
-        <style>{`
-          .input { display:block; width:100%; border-radius:0.5rem; border:1px solid rgb(203 213 225); padding:0.5rem 0.75rem; font-size:0.875rem; outline:none; }
-          .input:focus { border-color: rgb(15 23 42); }
-        `}</style>
       </form>
-    </div>
+    </EditorialModal>
   );
 }
 
@@ -363,8 +389,8 @@ function Section({
 }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
     <section>
-      <div className="mb-2 flex items-center justify-between">
-        <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500">{title}</h4>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <h4 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">{title}</h4>
         {action}
       </div>
       {children}
@@ -389,12 +415,12 @@ function AddressFields({
   address, onChange,
 }: { address: SupplierAddress; onChange: (k: keyof SupplierAddress, v: string) => void }) {
   return (
-    <div className="grid grid-cols-2 gap-2">
-      <input placeholder="Street" value={address.street ?? ''} onChange={(e) => onChange('street', e.target.value)} className="input col-span-2" />
-      <input placeholder="Suburb" value={address.suburb ?? ''} onChange={(e) => onChange('suburb', e.target.value)} className="input" />
-      <input placeholder="State" value={address.state ?? ''} onChange={(e) => onChange('state', e.target.value)} className="input" />
-      <input placeholder="Postcode" value={address.postcode ?? ''} onChange={(e) => onChange('postcode', e.target.value)} className="input" />
-      <input placeholder="Country" value={address.country ?? ''} onChange={(e) => onChange('country', e.target.value)} className="input" />
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <input placeholder="Street" value={address.street ?? ''} onChange={(e) => onChange('street', e.target.value)} className="editorial-input sm:col-span-2" />
+      <input placeholder="Suburb" value={address.suburb ?? ''} onChange={(e) => onChange('suburb', e.target.value)} className="editorial-input" />
+      <input placeholder="State" value={address.state ?? ''} onChange={(e) => onChange('state', e.target.value)} className="editorial-input" />
+      <input placeholder="Postcode" value={address.postcode ?? ''} onChange={(e) => onChange('postcode', e.target.value)} className="editorial-input" />
+      <input placeholder="Country" value={address.country ?? ''} onChange={(e) => onChange('country', e.target.value)} className="editorial-input" />
     </div>
   );
 }

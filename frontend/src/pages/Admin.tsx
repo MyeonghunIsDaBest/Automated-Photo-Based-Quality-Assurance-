@@ -1,46 +1,34 @@
 import { useAppStore } from '../store';
 import { canSeeAdminDashboard } from '../lib/permissions';
+import { EyebrowLabel } from '../components/editorial';
 import UsersTab from './admin/components/UsersTab';
 import StakeholdersTab from './admin/components/StakeholdersTab';
 import SuppliersTab from './admin/components/SuppliersTab';
 
-const FONT_STYLES = `
-  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=DM+Sans:wght@400;500;600;700&display=swap');
-  .admin-root { font-family: 'DM Sans', system-ui, sans-serif; }
-  .admin-root .display { font-family: 'Fraunces', Georgia, serif; font-feature-settings: 'ss01'; letter-spacing: -0.02em; }
-  .admin-root .grid-bg {
-    background-image:
-      linear-gradient(to right, rgba(15, 23, 42, 0.04) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(15, 23, 42, 0.04) 1px, transparent 1px);
-    background-size: 32px 32px;
-  }
-`;
-
+// Phase B follow-up: drops the per-page FONT_STYLES injection in favour of
+// the global `.editorial-root` selector + Google Fonts @import declared in
+// `frontend/src/index.css`. The page reads identically to before, just
+// without inlining the same CSS three times across the app.
 export default function Admin() {
   const { currentProfile } = useAppStore();
   if (!canSeeAdminDashboard(currentProfile)) return null;
 
   return (
-    <div className="admin-root min-h-full bg-[#FAFAF7]">
-      <style>{FONT_STYLES}</style>
-
+    <div className="editorial-root min-h-full bg-[#FAFAF7]">
       {/* ─── Editorial header ─── */}
       <header className="relative overflow-hidden border-b border-slate-200/70 bg-white">
         <div className="grid-bg absolute inset-0 opacity-50" />
         <div className="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-emerald-100/40 blur-3xl" />
 
         <div className="relative px-4 py-8 sm:px-8 sm:py-10">
-          <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
-            <span className="inline-block h-px w-6 bg-slate-400" />
-            Workspace · Administration
-          </div>
+          <EyebrowLabel>Workspace · Administration</EyebrowLabel>
           <h1
-            className="display text-2xl sm:text-4xl md:text-5xl font-medium leading-tight text-slate-900"
+            className="display mt-3 text-2xl font-medium leading-tight text-slate-900 sm:text-4xl md:text-5xl"
             style={{ textWrap: 'balance' }}
           >
             People &amp; <em className="font-normal italic text-emerald-700">partners</em>.
           </h1>
-          <p className="mt-3 max-w-xl text-sm sm:text-[15px] leading-relaxed text-slate-500">
+          <p className="mt-3 max-w-xl text-sm leading-relaxed text-slate-500 sm:text-[15px]">
             Manage every account on the system, the external stakeholders kept in the
             loop, and the suppliers feeding the schedule. Admins live at the top of the
             list — everyone else is filterable below.
@@ -61,7 +49,7 @@ export default function Admin() {
         <Section
           eyebrow="Section · Stakeholders"
           title="External contacts."
-          description="Clients, consultants, council reps. They don't have logins — they're CRM records the project office maintains."
+          description="Clients, consultants, council reps. Some stakeholders also have logins linked back here via Phase A's stakeholder security group."
         >
           <StakeholdersTab />
         </Section>
@@ -92,18 +80,10 @@ function Section({
   return (
     <section>
       <div className="mb-5">
-        <div className="mb-2 flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
-          <span className="inline-block h-px w-6 bg-slate-400" />
-          {eyebrow}
-        </div>
+        <EyebrowLabel>{eyebrow}</EyebrowLabel>
         <h2
-          className="text-2xl font-medium leading-tight text-slate-900 sm:text-3xl"
-          style={{
-            fontFamily: "'Fraunces', Georgia, serif",
-            fontFeatureSettings: "'ss01'",
-            letterSpacing: '-0.02em',
-            textWrap: 'balance',
-          }}
+          className="display mt-2 text-2xl font-medium leading-tight text-slate-900 sm:text-3xl"
+          style={{ textWrap: 'balance' }}
         >
           {title}
         </h2>

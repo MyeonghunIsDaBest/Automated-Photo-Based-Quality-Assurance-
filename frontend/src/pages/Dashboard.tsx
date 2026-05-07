@@ -428,10 +428,12 @@ function StatCell({
   label, value, caption, accent,
 }: { label: string; value: string; caption: string; accent: string }) {
   return (
-    <div className="relative overflow-hidden bg-white p-5">
-      <div className="absolute left-0 top-0 h-px w-8" style={{ backgroundColor: accent }} />
-      <p className="text-[11px] font-medium uppercase tracking-[0.15em] text-slate-500">{label}</p>
-      <p className="num mt-2 text-4xl font-medium text-slate-900">{value}</p>
+    <div className="relative overflow-hidden bg-white p-4 sm:p-5">
+      <div className="absolute left-0 top-0 h-1 w-12 rounded-br-full" style={{ backgroundColor: accent }} />
+      <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500 sm:text-[11px] sm:tracking-[0.15em]">{label}</p>
+      {/* Scales down on phones so values like "$150,000" or "10 days" don't
+          overflow at grid-cols-2 (~150px usable per cell at 375px). */}
+      <p className="num mt-2 text-2xl font-medium text-slate-900 sm:text-3xl md:text-4xl">{value}</p>
       <p className="mt-1 text-xs text-slate-400">{caption}</p>
     </div>
   );

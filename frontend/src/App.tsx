@@ -11,6 +11,7 @@ import Settings from './pages/Settings';
 import Messages from './pages/Messages';
 import Projects from './pages/Projects';
 import Safety from './pages/Safety';
+import ReviewQueue from './pages/ReviewQueue';
 import Admin from './pages/Admin';
 import BootstrapAdmin from './pages/admin/BootstrapAdmin';
 import RequireAuth from './components/RequireAuth';
@@ -42,6 +43,10 @@ function App() {
             <Route path="messages" element={<Messages />} />
             <Route path="reports" element={<Reports />} />
             <Route path="safety" element={<Safety />} />
+            {/* Phase C: review queue for AI analyses with confidence in the
+                pending band (0.50..0.85). Page itself gates by
+                canConfirmAIAnalysis — workers see a 403 view. */}
+            <Route path="review-queue" element={<ReviewQueue />} />
             <Route path="finance" element={<Navigate to="/reports" replace />} />
             <Route path="settings" element={<Settings />} />
           </Route>

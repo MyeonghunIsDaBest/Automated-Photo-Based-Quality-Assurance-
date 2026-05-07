@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "build:whats-new": "node scripts/build-whats-new.mjs",
+    "check:contract": "node scripts/check-contract-parity.mjs",
     "predev": "npm run build:whats-new",
-    "prebuild": "npm run build:whats-new",
+    "prebuild": "npm run build:whats-new && npm run check:contract",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
@@ -27,9 +28,11 @@
     "@radix-ui/react-tooltip": "^1.1.4",
     "@supabase/supabase-js": "^2.105.1",
     "axios": "^1.15.2",
+    "blockhash-core": "^0.1.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "2.1.1",
     "date-fns": "^4.1.0",
+    "exifr": "^7.1.3",
     "lucide-react": "^1.11.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
@@ -53,7 +56,7 @@
     "tailwindcss": "4.1.17",
     "typescript": "5.9.3",
     "vite": "7.2.4",
-    "vite-plugin-singlefile": "2.3.0",
+    "vite-plugin-pwa": "^1.3.0",
     "vitest": "^2.1.8"
   }
 }

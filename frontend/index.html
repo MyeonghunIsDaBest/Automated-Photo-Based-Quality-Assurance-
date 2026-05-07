@@ -3,7 +3,26 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>BuildTrack - Photo-Based Quality Assurance System</title>
+
+    <title>BuildTrack — Photo-Based Quality Assurance</title>
+    <meta
+      name="description"
+      content="Drop a daily site photo, the Gantt chart updates itself. Automated photo-based quality assurance for construction sites."
+    />
+
+    <!-- Editorial palette anchor — slate-900 — keeps the iOS/Android status
+         bar matching the brand chrome both in standalone PWA mode and the
+         regular browser tab. -->
+    <meta name="theme-color" content="#0f172a" />
+
+    <!-- iOS PWA / Add-to-Home-Screen support. Without these the on-site
+         workers can't install the app from Safari. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="BuildTrack" />
+
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
   </head>
   <body>
     <div id="root"></div>

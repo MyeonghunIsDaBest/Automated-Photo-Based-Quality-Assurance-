@@ -11,7 +11,15 @@ import { useAppStore } from '../../../store';
 import type { Profile, SecurityGroup } from '../../../types';
 import UserFormModal from './UserFormModal';
 import UserDocuments from './UserDocuments';
+import {
+  EditorialButton,
+  ResponsiveDataTable,
+  type ColumnDef,
+} from '../../../components/editorial';
 
+// Includes the Phase A additions so admins can assign every tier through the
+// dropdown. canAssignSecurityGroup() still gates company_admin to company
+// admins only — the option is just visible, not enabled.
 const SECURITY_GROUPS: SecurityGroup[] = [
   'company_admin',
   'administrator',
@@ -19,6 +27,8 @@ const SECURITY_GROUPS: SecurityGroup[] = [
   'project_manager',
   'site_manager',
   'worker',
+  'stakeholder',
+  'supplier',
 ];
 
 const ADMIN_GROUPS: SecurityGroup[] = ['company_admin', 'administrator'];
@@ -28,12 +38,13 @@ const MANAGER_GROUPS: SecurityGroup[] = [
   'site_manager',
 ];
 
-type FilterId = 'all' | 'managers' | 'workers' | 'disabled';
+type FilterId = 'all' | 'managers' | 'workers' | 'partners' | 'disabled';
 
 const FILTERS: { id: FilterId; label: string }[] = [
   { id: 'all',      label: 'All non-admins' },
   { id: 'managers', label: 'Managers' },
   { id: 'workers',  label: 'Workers' },
+  { id: 'partners', label: 'Stakeholders + Suppliers' },
   { id: 'disabled', label: 'Disabled' },
 ];
 
@@ -123,6 +134,7 @@ export default function UsersTab() {
       if (filter === 'all')      return true;
       if (filter === 'managers') return MANAGER_GROUPS.includes(p.securityGroup);
       if (filter === 'workers')  return p.securityGroup === 'worker';
+      if (filter === 'partners') return p.securityGroup === 'stakeholder' || p.securityGroup === 'supplier';
       if (filter === 'disabled') return !p.isActive;
       return true;
     });
@@ -135,14 +147,16 @@ export default function UsersTab() {
 
   return (
     <div>
-      {/* Toolbar — search, filter chips, add */}
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      {/* Toolbar — search, filter chips, add. Mobile-first: stacks vertically
+          under sm so the search input gets a whole row, the filter chips wrap
+          on a second row, and the Add User button anchors to the bottom. */}
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         <input
           type="search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by name or email…"
-          className="h-10 w-full min-w-0 flex-1 rounded-full border border-slate-200 bg-white px-4 text-sm shadow-sm focus:border-slate-900 focus:outline-none sm:max-w-md"
+          className="h-10 w-full min-w-0 rounded-full border border-slate-200 bg-white px-4 text-sm shadow-sm focus:border-slate-900 focus:outline-none sm:max-w-md sm:flex-1"
         />
         <div className="flex flex-wrap items-center gap-2">
           {FILTERS.map((f) => (
@@ -160,13 +174,15 @@ export default function UsersTab() {
             </button>
           ))}
         </div>
-        <button
+        <EditorialButton
+          variant="pill"
+          trailingIcon="none"
           onClick={() => setCreating(true)}
-          className="ml-auto flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
+          className="sm:ml-auto"
         >
-          <Plus className="h-4 w-4" />
+          <Plus className="h-4 w-4" aria-hidden />
           Add User
-        </button>
+        </EditorialButton>
       </div>
 
       {error && (
@@ -261,6 +277,95 @@ function Group({
     ? 'bg-emerald-50 text-emerald-700'
     : 'bg-slate-100 text-slate-600';
 
+  // Action buttons share a renderer between the table cell + mobile card so
+  // the affordances stay identical across breakpoints.
+  const renderActions = (p: Profile) => (
+    <div className="flex items-center gap-1">
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onSelect(p); }}
+        title="Documents"
+        aria-label="Documents"
+        className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+      >
+        <FileText className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onEdit(p); }}
+        title="Edit"
+        aria-label="Edit"
+        className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+      >
+        <Edit className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onToggleActive(p); }}
+        title={p.isActive ? 'Disable' : 'Enable'}
+        aria-label={p.isActive ? 'Disable' : 'Enable'}
+        className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+      >
+        <Power className="h-4 w-4" />
+      </button>
+    </div>
+  );
+
+  const renderRoleControl = (p: Profile) => (
+    <div className="flex flex-wrap items-center gap-2">
+      <span
+        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${ROLE_BADGE[p.securityGroup]}`}
+      >
+        {SECURITY_GROUP_LABELS[p.securityGroup]}
+      </span>
+      <select
+        value={p.securityGroup}
+        onChange={(e) => onGroupChange(p, e.target.value as SecurityGroup)}
+        onClick={(e) => e.stopPropagation()}
+        className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs focus:border-slate-900 focus:outline-none"
+      >
+        {SECURITY_GROUPS.map((g) => (
+          <option
+            key={g}
+            value={g}
+            disabled={!canAssignSecurityGroup(currentProfile, g)}
+          >
+            {SECURITY_GROUP_LABELS[g]}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+
+  const columns: ColumnDef<Profile>[] = [
+    {
+      key: 'name',
+      header: 'Name',
+      cell: (p) => (
+        <span className="font-medium text-slate-900">
+          {[p.firstName, p.lastName].filter(Boolean).join(' ') || '—'}
+        </span>
+      ),
+    },
+    { key: 'email', header: 'Email', cell: (p) => <span className="text-slate-600">{p.email}</span> },
+    { key: 'role',  header: 'Security Group', cell: renderRoleControl },
+    { key: 'mobile', header: 'Mobile', cell: (p) => <span className="text-slate-600">{p.mobile ?? '—'}</span> },
+    {
+      key: 'status',
+      header: 'Status',
+      cell: (p) => (
+        <span
+          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+            p.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'
+          }`}
+        >
+          {p.isActive ? 'Active' : 'Disabled'}
+        </span>
+      ),
+    },
+    { key: 'actions', header: '', cell: renderActions, align: 'right' },
+  ];
+
   return (
     <div>
       <div className="mb-3 flex items-center gap-2">
@@ -273,117 +378,43 @@ function Group({
         </span>
       </div>
 
-      <div className="relative -mx-4 sm:mx-0">
-        {/* Right-edge fade tells the eye "scroll right for more" instead of */}
-        {/* "the design is broken" when columns spill off-viewport on phones. */}
-        <div className="overflow-x-auto px-4 pb-1 sm:px-0">
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <table className="w-full min-w-[680px] text-left text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50/60 text-[11px] uppercase tracking-wider text-slate-500">
-            <tr>
-              <th className="px-4 py-3">Name</th>
-              <th className="px-4 py-3">Email</th>
-              <th className="px-4 py-3">Security Group</th>
-              <th className="px-4 py-3">Mobile</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {loading ? (
-              <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-400">
-                  Loading…
-                </td>
-              </tr>
-            ) : rows.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-400">
-                  {emptyHint}
-                </td>
-              </tr>
-            ) : (
-              rows.map((p) => (
-                <tr
-                  key={p.id}
-                  className={`transition-colors hover:bg-slate-50 ${
-                    selectedId === p.id ? 'bg-emerald-50/40' : ''
-                  }`}
-                >
-                  <td className="px-4 py-3 font-medium text-slate-900">
-                    {[p.firstName, p.lastName].filter(Boolean).join(' ') || '—'}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">{p.email}</td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`mr-2 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${ROLE_BADGE[p.securityGroup]}`}
-                    >
-                      {SECURITY_GROUP_LABELS[p.securityGroup]}
-                    </span>
-                    <select
-                      value={p.securityGroup}
-                      onChange={(e) => onGroupChange(p, e.target.value as SecurityGroup)}
-                      className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs focus:border-slate-900 focus:outline-none"
-                    >
-                      {SECURITY_GROUPS.map((g) => (
-                        <option
-                          key={g}
-                          value={g}
-                          disabled={!canAssignSecurityGroup(currentProfile, g)}
-                        >
-                          {SECURITY_GROUP_LABELS[g]}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">{p.mobile ?? '—'}</td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                        p.isActive
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : 'bg-slate-200 text-slate-600'
-                      }`}
-                    >
-                      {p.isActive ? 'Active' : 'Disabled'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-1">
-                      <button
-                        onClick={() => onSelect(p)}
-                        title="Documents"
-                        className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-                      >
-                        <FileText className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => onEdit(p)}
-                        title="Edit"
-                        className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-                      >
-                        <Edit className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => onToggleActive(p)}
-                        title={p.isActive ? 'Disable' : 'Enable'}
-                        className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-                      >
-                        <Power className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        {loading ? (
+          <div className="px-4 py-8 text-center text-sm text-slate-400">Loading…</div>
+        ) : (
+          <ResponsiveDataTable<Profile>
+            columns={columns}
+            rows={rows}
+            rowKey={(p) => p.id}
+            empty={emptyHint}
+            mobileCard={(p) => (
+              <div
+                className={`space-y-2 ${selectedId === p.id ? 'rounded-lg ring-2 ring-emerald-200' : ''}`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-slate-900">
+                      {[p.firstName, p.lastName].filter(Boolean).join(' ') || '—'}
+                    </p>
+                    <p className="truncate text-xs text-slate-500">{p.email}</p>
+                  </div>
+                  <span
+                    className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                      p.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'
+                    }`}
+                  >
+                    {p.isActive ? 'Active' : 'Disabled'}
+                  </span>
+                </div>
+                {renderRoleControl(p)}
+                {p.mobile && (
+                  <p className="text-[11px] text-slate-500">Mobile: {p.mobile}</p>
+                )}
+                <div className="flex justify-end pt-1">{renderActions(p)}</div>
+              </div>
             )}
-          </tbody>
-        </table>
-        </div>
-        </div>
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute right-0 top-0 h-full w-8 bg-gradient-to-l from-white to-transparent sm:hidden"
-        />
+          />
+        )}
       </div>
     </div>
   );

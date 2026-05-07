@@ -1,16 +1,22 @@
 import { Task } from '../../types';
 import { format, differenceInDays, parseISO } from 'date-fns';
 import { Badge } from './badge';
+import { useMediaQuery } from '../../lib/hooks/useMediaQuery';
 
 interface GanttChartProps {
   tasks: Task[];
   startDate: string;
   endDate: string;
+  /** Tighter padding on stat surfaces; the bar chart still renders. */
   compact?: boolean;
   showMonths?: boolean;
 }
 
 export function GanttChart({ tasks, startDate, endDate, compact = false, showMonths = true }: GanttChartProps) {
+  // Phase B — phones can't read a horizontal bar chart. Switch to a vertical
+  // task-card list under sm. matchMedia returns false in jsdom so the test
+  // suite keeps exercising the desktop branch.
+  const isPhone = useMediaQuery('(max-width: 639px)');
   const start = parseISO(startDate);
   const end = parseISO(endDate);
   const totalDays = differenceInDays(end, start);
@@ -74,6 +80,65 @@ export function GanttChart({ tasks, startDate, endDate, compact = false, showMon
     return status.replace('_', ' ').toUpperCase();
   };
 
+  // ── Mobile: vertical task-card list. Renders for both compact + full when
+  //    the viewport is narrower than `sm` and at least one task exists. The
+  //    empty-state branch falls through to the desktop layout so the same
+  //    "No tasks yet" copy renders everywhere.
+  if (isPhone && tasks.length > 0) {
+    return (
+      <div className="space-y-2">
+        {tasks.map((task) => {
+          const accent = getZoneColor(task.zoneId);
+          const statusBg = getStatusColor(task.status);
+          return (
+            <div
+              key={task.id}
+              className="relative overflow-hidden rounded-xl border border-slate-200 bg-white p-3"
+            >
+              <span
+                className="absolute left-0 top-0 h-full w-1"
+                style={{ backgroundColor: accent }}
+                aria-hidden
+              />
+              <div className="flex items-start justify-between gap-2 pl-2">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-slate-900">{task.name}</p>
+                  <p className="mt-0.5 text-[11px] text-slate-500">
+                    {format(parseISO(task.startDate), 'MMM d')} →{' '}
+                    {format(parseISO(task.endDate), 'MMM d')}
+                  </p>
+                </div>
+                <Badge
+                  variant={
+                    task.status === 'complete'
+                      ? 'default'
+                      : task.status === 'delayed'
+                        ? 'destructive'
+                        : 'blue'
+                  }
+                  className="text-[10px]"
+                >
+                  {getStatusLabel(task.status)}
+                </Badge>
+              </div>
+              <div className="mt-2 flex items-center gap-2 pl-2">
+                <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className={`absolute inset-y-0 left-0 ${statusBg}`}
+                    style={{ width: `${task.percentComplete}%` }}
+                  />
+                </div>
+                <span className="text-[11px] tabular-nums text-slate-600">
+                  {task.percentComplete}%
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
   if (compact) {
     return (
       // Compact mode: scroll horizontally on phones so the bar stays readable.
@@ -131,7 +196,7 @@ export function GanttChart({ tasks, startDate, endDate, compact = false, showMon
       {/* Month Headers */}
       {showMonths && (
         <div className="flex border-b border-slate-200 bg-slate-50">
-          <div className="w-36 flex-shrink-0 border-r border-slate-200 p-3 text-sm font-medium text-slate-700 sm:w-48">
+          <div className="sticky left-0 z-10 w-36 flex-shrink-0 border-r border-slate-200 bg-slate-50 p-3 text-sm font-medium text-slate-700 sm:w-48">
             Task Name
           </div>
           <div className="flex-1">
@@ -167,7 +232,7 @@ export function GanttChart({ tasks, startDate, endDate, compact = false, showMon
           const position = getTaskPosition(task);
           return (
             <div key={task.id} className="flex items-center">
-              <div className="w-36 flex-shrink-0 border-r border-slate-200 p-3 sm:w-48">
+              <div className="sticky left-0 z-10 w-36 flex-shrink-0 border-r border-slate-200 bg-white p-3 sm:w-48">
                 <p className="truncate text-sm font-medium text-slate-900">{task.name}</p>
                 <div className="mt-1 flex items-center gap-2">
                   <span className="text-xs text-slate-500">{task.percentComplete}%</span>

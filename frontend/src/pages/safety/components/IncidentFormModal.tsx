@@ -285,13 +285,41 @@ export function IncidentFormModal({ open, initialType, onClose }: IncidentFormMo
                 <label className="mb-1 block text-xs font-medium text-slate-700">
                   Photos <span className="font-normal text-slate-400">(optional)</span>
                 </label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={(e) => setPhotos(Array.from(e.target.files ?? []))}
-                  className="block w-full text-xs text-slate-500 file:mr-3 file:rounded-md file:border-0 file:bg-slate-900 file:px-3 file:py-2 file:text-xs file:font-medium file:text-white hover:file:bg-emerald-700"
-                />
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Camera-first capture path. iOS / Android open the rear
+                      camera directly when the input has both `image/*` and
+                      `capture="environment"`. */}
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-md bg-slate-900 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-emerald-700">
+                    <span>Take photo</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      multiple
+                      onChange={(e) => {
+                        const captured = Array.from(e.target.files ?? []);
+                        setPhotos((prev) => [...prev, ...captured]);
+                        e.target.value = '';
+                      }}
+                      className="sr-only"
+                    />
+                  </label>
+                  {/* Gallery picker — same input minus the capture attr. */}
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50">
+                    <span>Pick from gallery</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={(e) => {
+                        const picked = Array.from(e.target.files ?? []);
+                        setPhotos((prev) => [...prev, ...picked]);
+                        e.target.value = '';
+                      }}
+                      className="sr-only"
+                    />
+                  </label>
+                </div>
                 {photos.length > 0 && (
                   <p className="mt-1 text-xs text-slate-500">{photos.length} photo(s) attached</p>
                 )}

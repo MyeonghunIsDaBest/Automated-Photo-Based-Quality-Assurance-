@@ -23,6 +23,7 @@ export interface PhotoRow {
   gps_lng: number | null;
   notes: string | null;
   ai_analyzed: boolean;
+  perceptual_hash?: string | null;
 }
 
 interface UploadInput {
@@ -31,6 +32,12 @@ interface UploadInput {
   taskId?: string;
   zoneId?: string;
   notes?: string;
+  gpsLat?: number | null;
+  gpsLng?: number | null;
+  takenAt?: string | null;
+  perceptualHash?: string | null;
+  width?: number;
+  height?: number;
 }
 
 const NOT_CONFIGURED = new Error(
@@ -46,7 +53,10 @@ function extOf(name: string): string {
 
 // Uploads a single file to Storage, then inserts the metadata row in the
 // `photos` table. Returns the new row.
-export async function uploadPhoto({ file, projectId, taskId, zoneId, notes }: UploadInput): Promise<PhotoRow> {
+export async function uploadPhoto({
+  file, projectId, taskId, zoneId, notes,
+  gpsLat, gpsLng, takenAt, perceptualHash, width, height,
+}: UploadInput): Promise<PhotoRow> {
   if (!supabaseConfigured()) throw NOT_CONFIGURED;
 
   // crypto.randomUUID() is in every modern browser Vite supports.
@@ -71,6 +81,12 @@ export async function uploadPhoto({ file, projectId, taskId, zoneId, notes }: Up
       filename: file.name,
       storage_path: storagePath,
       file_size_kb: Math.round(file.size / 1024),
+      width: width ?? 0,
+      height: height ?? 0,
+      taken_at: takenAt ?? null,
+      gps_lat: gpsLat ?? null,
+      gps_lng: gpsLng ?? null,
+      perceptual_hash: perceptualHash ?? null,
       notes: notes ?? null,
     })
     .select('*')
@@ -110,6 +126,36 @@ export async function getPhotoUrl(storagePath: string, expiresInSeconds = 3600):
     .createSignedUrl(storagePath, expiresInSeconds);
   if (error) return null;
   return data?.signedUrl ?? null;
+}
+
+// Find photos in the same project whose perceptual_hash is within a given
+// distance of the new candidate. The DB-side filter trims the search to the
+// project + non-null hash; the Hamming distance is computed via the
+// `phash_distance` SQL helper from `02_phase_c_seam.sql`.
+export async function findSimilarPhotos(
+  projectId: string,
+  hash: string,
+  maxDistance: number,
+): Promise<PhotoRow[]> {
+  if (!supabaseConfigured()) return [];
+  if (!hash || hash.length !== 16) return [];
+
+  // Pull every photo with a hash for this project, then filter client-side.
+  // For projects with thousands of photos this should switch to a SQL RPC
+  // (`find_similar_photos`) — flagged in the canonical Phase C plan as TBD.
+  const { data, error } = await supabase
+    .from('photos')
+    .select('*')
+    .eq('project_id', projectId)
+    .not('perceptual_hash', 'is', null);
+  if (error) throw error;
+
+  // Reuse the client-side phashDistance helper so the filter matches the
+  // SQL helper bit-for-bit.
+  const { phashDistance } = await import('../ai/perceptualHash');
+  return ((data ?? []) as PhotoRow[]).filter(
+    (p) => phashDistance(p.perceptual_hash, hash) <= maxDistance,
+  );
 }
 
 export async function deletePhoto(photo: PhotoRow): Promise<void> {

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="BuildTrack QA">
+  <rect width="512" height="512" rx="96" fill="#0f172a"/>
+  <g transform="translate(256 256)">
+    <circle r="148" fill="none" stroke="#10b981" stroke-width="20" stroke-dasharray="48 48" opacity="0.55"/>
+    <g font-family="Georgia, 'Times New Roman', serif" font-weight="600" text-anchor="middle" dominant-baseline="central" fill="#fafaf7">
+      <text x="0" y="-6" font-size="148" letter-spacing="-6">BT</text>
+      <text x="0" y="86" font-size="42" font-style="italic" letter-spacing="6" fill="#34d399">QA</text>
+    </g>
+  </g>
+</svg>

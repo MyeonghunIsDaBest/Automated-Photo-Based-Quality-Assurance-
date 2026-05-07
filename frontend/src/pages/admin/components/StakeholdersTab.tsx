@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Trash2, X } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import {
   listStakeholders,
   createStakeholder,
@@ -7,6 +7,12 @@ import {
   type StakeholderInput,
 } from '../../../lib/api/stakeholders';
 import type { Stakeholder } from '../../../types';
+import {
+  EditorialButton,
+  EditorialModal,
+  ResponsiveDataTable,
+  type ColumnDef,
+} from '../../../components/editorial';
 
 export default function StakeholdersTab() {
   const [items, setItems] = useState<Stakeholder[]>([]);
@@ -38,6 +44,42 @@ export default function StakeholdersTab() {
     }
   };
 
+  const columns: ColumnDef<Stakeholder>[] = [
+    {
+      key: 'company',
+      header: 'Company',
+      cell: (s) => <span className="font-medium text-slate-900">{s.companyName}</span>,
+    },
+    {
+      key: 'contact',
+      header: 'Contact',
+      cell: (s) => (
+        <span className="text-slate-600">
+          {[s.firstName, s.lastName].filter(Boolean).join(' ') || '—'}
+        </span>
+      ),
+    },
+    { key: 'email',  header: 'Email',  cell: (s) => <span className="text-slate-600">{s.email ?? '—'}</span> },
+    { key: 'mobile', header: 'Mobile', cell: (s) => <span className="text-slate-600">{s.mobile ?? '—'}</span> },
+    { key: 'role',   header: 'Role',   cell: (s) => <span className="text-slate-600">{s.role ?? '—'}</span> },
+    {
+      key: 'actions',
+      header: '',
+      align: 'right',
+      cell: (s) => (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); void handleDelete(s); }}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-500 hover:bg-red-50 hover:text-red-600 active:bg-red-100"
+          title="Delete"
+          aria-label="Delete"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      ),
+    },
+  ];
+
   return (
     <div>
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -49,12 +91,14 @@ export default function StakeholdersTab() {
             External contacts (clients, consultants, council reps).
           </p>
         </div>
-        <button
+        <EditorialButton
+          variant="pill"
+          trailingIcon="none"
           onClick={() => setAdding(true)}
-          className="inline-flex flex-shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 active:bg-emerald-800"
+          className="self-start sm:self-auto"
         >
-          <Plus className="h-4 w-4" /> Add Stakeholder
-        </button>
+          <Plus className="h-4 w-4" aria-hidden /> Add Stakeholder
+        </EditorialButton>
       </div>
 
       {error && (
@@ -63,54 +107,42 @@ export default function StakeholdersTab() {
         </div>
       )}
 
-      <div className="relative -mx-4 sm:mx-0">
-        <div className="overflow-x-auto px-4 pb-1 sm:px-0">
-      <div className="rounded-xl border border-slate-200 bg-white">
-        <table className="w-full min-w-[680px] text-left text-sm">
-          <thead className="border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
-            <tr>
-              <th className="px-4 py-3">Company</th>
-              <th className="px-4 py-3">Contact</th>
-              <th className="px-4 py-3">Email</th>
-              <th className="px-4 py-3">Mobile</th>
-              <th className="px-4 py-3">Role</th>
-              <th className="px-4 py-3 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {loading ? (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">Loading…</td></tr>
-            ) : items.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">No stakeholders yet.</td></tr>
-            ) : (
-              items.map((s) => (
-                <tr key={s.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3 font-medium text-slate-900">{s.companyName}</td>
-                  <td className="px-4 py-3 text-slate-600">{s.firstName} {s.lastName}</td>
-                  <td className="px-4 py-3 text-slate-600">{s.email ?? '—'}</td>
-                  <td className="px-4 py-3 text-slate-600">{s.mobile ?? '—'}</td>
-                  <td className="px-4 py-3 text-slate-600">{s.role ?? '—'}</td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => handleDelete(s)}
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-500 hover:bg-red-50 hover:text-red-600 active:bg-red-100"
-                      title="Delete"
-                      aria-label="Delete"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        {loading ? (
+          <div className="px-4 py-8 text-center text-sm text-slate-400">Loading…</div>
+        ) : (
+          <ResponsiveDataTable<Stakeholder>
+            columns={columns}
+            rows={items}
+            rowKey={(s) => s.id}
+            empty="No stakeholders yet."
+            mobileCard={(s) => (
+              <div className="space-y-1.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-slate-900">{s.companyName}</p>
+                    <p className="truncate text-xs text-slate-500">
+                      {[s.firstName, s.lastName].filter(Boolean).join(' ') || '—'}
+                      {s.role ? ` · ${s.role}` : ''}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); void handleDelete(s); }}
+                    className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md text-slate-500 hover:bg-red-50 hover:text-red-600 active:bg-red-100"
+                    aria-label="Delete"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-500">
+                  {s.email && <span>{s.email}</span>}
+                  {s.mobile && <span>{s.mobile}</span>}
+                </div>
+              </div>
             )}
-          </tbody>
-        </table>
-      </div>
-        </div>
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute right-0 top-0 h-full w-8 bg-gradient-to-l from-white to-transparent sm:hidden"
-        />
+          />
+        )}
       </div>
 
       {adding && (
@@ -160,66 +192,59 @@ function AddStakeholderModal({
     setForm((f) => ({ ...f, [key]: value }));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-2 sm:p-4">
-      <form
-        onSubmit={handleSave}
-        className="flex h-full max-h-[95vh] w-full max-w-xl flex-col rounded-2xl bg-white shadow-2xl sm:h-auto"
-      >
-        <div className="flex flex-shrink-0 items-center justify-between p-4 sm:p-6 sm:pb-3">
-          <h3 className="text-lg font-semibold text-slate-900">Add Stakeholder</h3>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="flex h-10 w-10 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 active:bg-slate-200"
+    <EditorialModal
+      open
+      onClose={onClose}
+      eyebrow="Section · Stakeholders"
+      title="Add stakeholder"
+      size="md"
+      footer={
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <EditorialButton type="button" variant="ghost" trailingIcon="none" onClick={onClose}>
+            Cancel
+          </EditorialButton>
+          <EditorialButton
+            type="submit"
+            variant="pill"
+            trailingIcon="none"
+            form="stakeholder-form"
+            disabled={saving}
           >
-            <X className="h-5 w-5" />
-          </button>
+            {saving ? 'Saving…' : 'Save'}
+          </EditorialButton>
         </div>
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 pb-4 sm:px-6 sm:pb-6">
-
-        <Field label="Company Name" required>
-          <input required value={form.companyName} onChange={(e) => setField('companyName', e.target.value)} className="input" />
+      }
+    >
+      <form id="stakeholder-form" onSubmit={handleSave} className="space-y-3">
+        <Field label="Company name" required>
+          <input required value={form.companyName} onChange={(e) => setField('companyName', e.target.value)} className="editorial-input" />
         </Field>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label="First Name" required>
-            <input required value={form.firstName} onChange={(e) => setField('firstName', e.target.value)} className="input" />
+          <Field label="First name" required>
+            <input required value={form.firstName} onChange={(e) => setField('firstName', e.target.value)} className="editorial-input" />
           </Field>
-          <Field label="Last Name" required>
-            <input required value={form.lastName} onChange={(e) => setField('lastName', e.target.value)} className="input" />
+          <Field label="Last name" required>
+            <input required value={form.lastName} onChange={(e) => setField('lastName', e.target.value)} className="editorial-input" />
           </Field>
           <Field label="Email">
-            <input type="email" value={form.email} onChange={(e) => setField('email', e.target.value)} className="input" />
+            <input type="email" value={form.email} onChange={(e) => setField('email', e.target.value)} className="editorial-input" />
           </Field>
           <Field label="Mobile">
-            <input type="tel" value={form.mobile} onChange={(e) => setField('mobile', e.target.value)} className="input" />
+            <input type="tel" value={form.mobile} onChange={(e) => setField('mobile', e.target.value)} className="editorial-input" />
           </Field>
         </div>
         <Field label="Role">
-          <input value={form.role} onChange={(e) => setField('role', e.target.value)} className="input" />
+          <input value={form.role} onChange={(e) => setField('role', e.target.value)} className="editorial-input" />
         </Field>
         <Field label="Notes">
-          <textarea rows={2} value={form.notes} onChange={(e) => setField('notes', e.target.value)} className="input" />
+          <textarea rows={2} value={form.notes} onChange={(e) => setField('notes', e.target.value)} className="editorial-input" />
         </Field>
 
         {error && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
         )}
-        </div>
-
-        <div className="flex flex-shrink-0 justify-end gap-2 border-t border-slate-100 px-4 py-3 sm:px-6">
-          <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 active:bg-slate-100">Cancel</button>
-          <button type="submit" disabled={saving} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-50">
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-        </div>
-
-        <style>{`
-          .input { display:block; width:100%; border-radius:0.5rem; border:1px solid rgb(203 213 225); padding:0.5rem 0.75rem; font-size:0.875rem; outline:none; }
-          .input:focus { border-color: rgb(15 23 42); }
-        `}</style>
       </form>
-    </div>
+    </EditorialModal>
   );
 }
 

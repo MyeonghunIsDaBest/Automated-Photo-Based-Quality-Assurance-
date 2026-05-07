@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDropzone } from 'react-dropzone';
+import exifr from 'exifr';
 import { useAppStore } from '../store';
 import { useFeatureStore } from '../store/features';
 import { canUploadPhotos } from '../lib/permissions';
@@ -9,9 +10,28 @@ import { format } from 'date-fns';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
-import { uploadPhoto } from '../lib/api/photos';
+import { uploadPhoto, findSimilarPhotos, type PhotoRow } from '../lib/api/photos';
 import { updateTaskProgress as apiUpdateTaskProgress } from '../lib/api/tasks';
 import { supabaseConfigured } from '../lib/supabase';
+import { CameraCaptureButton } from '../components/editorial';
+import { computePerceptualHash } from '../lib/ai/perceptualHash';
+import DuplicateConfirmModal from '../components/photos/DuplicateConfirmModal';
+
+// Distance threshold mirrors `_shared/thresholds.ts` (PHASH_DUPLICATE_THRESHOLD).
+// Hard-coded here too so the frontend doesn't depend on importing from a Deno
+// module — the constant matters for the user-visible UX, so re-stating it
+// alongside this file's logic is fine.
+const PHASH_DUPLICATE_THRESHOLD = 6;
+
+// Per-file EXIF + hash captured before upload.
+interface FileMeta {
+  takenAt: string | null;
+  gpsLat: number | null;
+  gpsLng: number | null;
+  perceptualHash: string | null;
+  width: number;
+  height: number;
+}
 
 // Reads natural width/height of an image OR video File without uploading
 // it. Used so the photos table records actual dimensions instead of a
@@ -54,6 +74,52 @@ async function readMediaDimensions(file: File): Promise<{ width: number; height:
   });
 }
 
+// Phase C: collect everything we need to know about a file BEFORE the
+// network upload — dimensions, EXIF GPS, capture timestamp, perceptual hash.
+// All steps fall back to null/zero rather than throwing so a stripped image
+// (no EXIF, no GPS) still uploads cleanly.
+async function extractFileMeta(file: File): Promise<FileMeta> {
+  const dims = await readMediaDimensions(file);
+
+  let takenAt: string | null = null;
+  let gpsLat: number | null = null;
+  let gpsLng: number | null = null;
+
+  // Videos and other non-images skip the EXIF parse — exifr would just
+  // resolve to undefined but the call adds latency.
+  if (file.type.startsWith('image/')) {
+    try {
+      const exif = await exifr.parse(file, {
+        pick: ['DateTimeOriginal', 'GPSLatitude', 'GPSLongitude', 'GPSLatitudeRef', 'GPSLongitudeRef'],
+      });
+      if (exif) {
+        if (exif.DateTimeOriginal instanceof Date) {
+          takenAt = exif.DateTimeOriginal.toISOString();
+        } else if (typeof exif.DateTimeOriginal === 'string') {
+          // Some cameras serialise as 'YYYY:MM:DD HH:MM:SS' — parse defensively.
+          const parsed = new Date(exif.DateTimeOriginal.replace(':', '-').replace(':', '-'));
+          if (!Number.isNaN(parsed.valueOf())) takenAt = parsed.toISOString();
+        }
+        if (typeof exif.latitude === 'number') gpsLat = exif.latitude;
+        if (typeof exif.longitude === 'number') gpsLng = exif.longitude;
+      }
+    } catch {
+      // EXIF unavailable — silent fallback.
+    }
+  }
+
+  const perceptualHash = await computePerceptualHash(file);
+
+  return {
+    takenAt,
+    gpsLat,
+    gpsLng,
+    perceptualHash,
+    width: dims.width,
+    height: dims.height,
+  };
+}
+
 export default function Upload() {
   const navigate = useNavigate();
   const {
@@ -71,6 +137,15 @@ export default function Upload() {
   const [notes, setNotes] = useState('');
   const [uploadComplete, setUploadComplete] = useState(false);
   const [progressDraft, setProgressDraft] = useState(0);
+
+  // Dedup modal state. When a submission detects perceptual-hash matches we
+  // pause the loop and surface a modal; the user's choice resolves a
+  // promise stored on `pendingDecisionRef` and the loop resumes.
+  const [dedupPrompt, setDedupPrompt] = useState<{
+    candidateHash: string;
+    duplicates: PhotoRow[];
+    resolve: (decision: 'upload' | 'skip' | 'cancel') => void;
+  } | null>(null);
 
   const canUpload = canUploadPhotos(currentUser);
 
@@ -118,15 +193,43 @@ export default function Upload() {
     setPreviews(newFiles.map(file => URL.createObjectURL(file)));
   };
 
+  // Pause the upload loop and ask the user whether a near-duplicate should
+  // upload anyway. Returns the user's decision once they click in the modal.
+  const promptDuplicate = (candidateHash: string, duplicates: PhotoRow[]) =>
+    new Promise<'upload' | 'skip' | 'cancel'>((resolve) => {
+      setDedupPrompt({ candidateHash, duplicates, resolve });
+    });
+
   const handleSubmit = async () => {
     if (files.length === 0) return;
 
-    for (const file of files) {
-      const dims = await readMediaDimensions(file);
+    let cancelled = false;
+    let uploadedCount = 0;
 
-      // Default to a local-only photo record. When Supabase is configured we
-      // upload to Storage first and prefer the returned id + storage path so
-      // the photo is durable across reloads.
+    for (const file of files) {
+      if (cancelled) break;
+
+      // 1. EXIF + GPS + perceptual hash + dimensions — all best-effort.
+      const meta = await extractFileMeta(file);
+
+      // 2. Dedup check (only for image files with a successful hash and a
+      //    Supabase project to query).
+      if (meta.perceptualHash && supabaseConfigured()) {
+        try {
+          const dupes = await findSimilarPhotos(project.id, meta.perceptualHash, PHASH_DUPLICATE_THRESHOLD);
+          if (dupes.length > 0) {
+            const decision = await promptDuplicate(meta.perceptualHash, dupes);
+            if (decision === 'cancel') { cancelled = true; break; }
+            if (decision === 'skip') continue;
+            // 'upload' falls through.
+          }
+        } catch (e) {
+          console.error('[upload] dedup query failed, continuing without:', e);
+        }
+      }
+
+      // 3. Upload. Default to a local-only photo record so the gallery still
+      //    populates when Supabase isn't configured.
       let photo = {
         id: `photo_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
         projectId: project.id,
@@ -137,11 +240,13 @@ export default function Upload() {
         storageUrl: URL.createObjectURL(file),
         thumbnailUrl: URL.createObjectURL(file),
         fileSizeKb: Math.round(file.size / 1024),
-        width: dims.width,
-        height: dims.height,
-        takenAt: new Date().toISOString(),
+        width: meta.width,
+        height: meta.height,
+        takenAt: meta.takenAt ?? new Date().toISOString(),
         uploadedAt: new Date().toISOString(),
         notes: notes || undefined,
+        gpsLat: meta.gpsLat ?? undefined,
+        gpsLng: meta.gpsLng ?? undefined,
         aiAnalyzed: false,
       };
 
@@ -153,20 +258,21 @@ export default function Upload() {
             taskId: selectedTask || undefined,
             zoneId: selectedZone || undefined,
             notes: notes || undefined,
+            gpsLat: meta.gpsLat,
+            gpsLng: meta.gpsLng,
+            takenAt: meta.takenAt,
+            perceptualHash: meta.perceptualHash,
+            width: meta.width,
+            height: meta.height,
           });
           photo = {
             ...photo,
             id: row.id,
-            // Display URL stays as the local blob (private bucket needs a
-            // signed URL to render — gallery resolves that on read).
             uploadedAt: row.uploaded_at,
             fileSizeKb: row.file_size_kb,
           };
         } catch (e) {
-          // eslint-disable-next-line no-console
           console.error('[upload] photo upload failed:', e);
-          // Surface the error in the toast slot but keep the local row so
-          // the user doesn't lose their work.
           useAppStore.setState({
             notification: {
               type: 'error',
@@ -177,10 +283,19 @@ export default function Upload() {
       }
 
       await addPhoto(photo);
+      uploadedCount += 1;
     }
 
-    setProgressDraft(taskRecord ? taskRecord.percentComplete : 0);
-    setUploadComplete(true);
+    if (uploadedCount > 0) {
+      setProgressDraft(taskRecord ? taskRecord.percentComplete : 0);
+      setUploadComplete(true);
+    }
+  };
+
+  const closeDedupPrompt = (decision: 'upload' | 'skip' | 'cancel') => {
+    if (!dedupPrompt) return;
+    dedupPrompt.resolve(decision);
+    setDedupPrompt(null);
   };
 
   const resetForm = () => {
@@ -364,6 +479,18 @@ export default function Upload() {
                     <Badge variant="secondary">MP4</Badge>
                     <Badge variant="secondary">MOV</Badge>
                   </div>
+                </div>
+
+                {/* Phone-first capture path. Stops the user from having to
+                    open the gallery + take photo + upload — one tap and the
+                    camera comes up. Wrapped in an onClick.stopPropagation
+                    so the surrounding dropzone's click-to-browse doesn't
+                    also fire. */}
+                <div
+                  className="mt-3 flex justify-center sm:hidden"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <CameraCaptureButton onCapture={(captured) => onDrop(captured)} />
                 </div>
               </CardContent>
             </Card>
@@ -559,6 +686,16 @@ export default function Upload() {
           </Card>
         )}
       </div>
+
+      {dedupPrompt && (
+        <DuplicateConfirmModal
+          candidateHash={dedupPrompt.candidateHash}
+          duplicates={dedupPrompt.duplicates}
+          onUploadAnyway={() => closeDedupPrompt('upload')}
+          onSkip={() => closeDedupPrompt('skip')}
+          onCancel={() => closeDedupPrompt('cancel')}
+        />
+      )}
     </div>
   );
 }
