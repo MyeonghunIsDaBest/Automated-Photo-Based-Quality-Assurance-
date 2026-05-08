@@ -92,7 +92,7 @@ export default function EditorialModal({
           </button>
         </header>
 
-        <div className="flex-1 overflow-y-auto px-5 py-4 pb-[max(env(safe-area-inset-bottom),1rem)] sm:px-6">
+        <div className="editorial-scrollbox flex-1 px-5 py-4 pb-[max(env(safe-area-inset-bottom),1rem)] sm:px-6">
           {children}
         </div>
 

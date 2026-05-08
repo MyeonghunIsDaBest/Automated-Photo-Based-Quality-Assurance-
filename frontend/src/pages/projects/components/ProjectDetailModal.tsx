@@ -165,7 +165,7 @@ export function ProjectDetailModal({ project, onClose }: ProjectDetailModalProps
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-2 sm:p-4">
       <div
-        className="flex h-full max-h-[95vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-xl sm:h-auto sm:max-h-[90vh]"
+        className="flex h-full max-h-[95dvh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-xl sm:h-auto sm:max-h-[90dvh]"
         style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}
       >
         {/* Header */}
@@ -200,7 +200,7 @@ export function ProjectDetailModal({ project, onClose }: ProjectDetailModalProps
         {editing ? (
           /* ─── Edit form ─── */
           <form onSubmit={handleSave} className="flex flex-1 flex-col overflow-hidden">
-            <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
+            <div className="editorial-scrollbox flex-1 space-y-5 px-6 py-5">
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Project Name">
                   <Input
@@ -319,7 +319,7 @@ export function ProjectDetailModal({ project, onClose }: ProjectDetailModalProps
         ) : (
           /* ─── Read-only view ─── */
           <>
-            <div className="flex-1 space-y-6 overflow-y-auto px-6 py-5">
+            <div className="editorial-scrollbox flex-1 space-y-6 px-6 py-5">
               <div className="grid gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200 sm:grid-cols-2">
                 <ReadCell label="Status">
                   <span

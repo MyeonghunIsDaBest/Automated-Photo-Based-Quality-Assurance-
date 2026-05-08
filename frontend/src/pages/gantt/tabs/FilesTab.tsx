@@ -308,7 +308,7 @@ function UploadModal({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-2 sm:p-4">
-      <div className="flex h-full max-h-[95vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:h-auto">
+      <div className="flex h-full max-h-[95dvh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:h-auto">
         <div className="flex flex-shrink-0 items-center justify-between border-b border-slate-100 px-5 py-4">
           <h3 className="text-base font-semibold text-slate-900">Upload to project</h3>
           <button
@@ -321,7 +321,7 @@ function UploadModal({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-5">
+        <div className="editorial-scrollbox flex-1 p-5">
           <p className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-500">Category</p>
           <div className="mb-5 flex flex-wrap gap-2">
             {CATEGORIES.map((cat) => {

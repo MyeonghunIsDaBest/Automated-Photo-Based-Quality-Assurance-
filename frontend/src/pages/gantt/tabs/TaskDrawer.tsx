@@ -1,25 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Activity as ActivityIcon, AlertCircle, Calendar, CheckCircle2,
-  CheckSquare, ChevronRight, Image as ImageIcon, Link2, MessageSquare,
-  Plus, Send, ShieldCheck, ShoppingCart, Trash2, X,
+  AlertCircle, CheckCircle2, CheckSquare,
+  Image as ImageIcon, Lock, Plus, Trash2, Upload as UploadIcon, X,
 } from 'lucide-react';
 import { differenceInCalendarDays, format, parseISO } from 'date-fns';
-import type { Task, Zone, NoteType, ConstructionPhase } from '../../../types';
-import { Badge } from '../../../components/ui/badge';
+import type { Task, Zone, ConstructionPhase, User } from '../../../types';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
-import { Avatar, AvatarFallback } from '../../../components/ui/avatar';
-import { useFeatureStore } from '../../../store/features';
 import { useAppStore } from '../../../store';
-import {
-  useGanttSideStore,
-  useChecklist,
-  useOrdersForProject,
-  orderTotal,
-} from '../store';
-import { useProjectActivity, ACTIVITY_VERBS } from '../lib/useProjectActivity';
-import { canAddComments } from '../../../lib/permissions';
+import { useGanttSideStore, useChecklist } from '../store';
+import { canUploadPhotos } from '../../../lib/permissions';
+import { uploadPhoto, getPhotoUrl } from '../../../lib/api/photos';
+import { supabaseConfigured } from '../../../lib/supabase';
 
 interface TaskDrawerProps {
   task: Task | null;          // null when creating
@@ -29,22 +21,18 @@ interface TaskDrawerProps {
   onCreate: (input: Omit<Task, 'id' | 'photoCount' | 'lastUpdated' | 'updateSource'>) => Promise<void> | void;
   onDelete: (id: string) => Promise<void> | void;
   zones: Zone[];
-  allTasks: Task[];
   projectId: string;
+  currentUser: User | null;
   readOnly?: boolean;
   canDelete?: boolean;
 }
 
-type SubTab = 'details' | 'checklist' | 'dependencies' | 'photos' | 'comments' | 'orders' | 'activity';
+type SubTab = 'details' | 'checklist' | 'photos';
 
 const TABS: { id: SubTab; label: string; icon: typeof CheckSquare }[] = [
-  { id: 'details',      label: 'Details',      icon: CheckSquare },
-  { id: 'checklist',    label: 'Checklist',    icon: CheckCircle2 },
-  { id: 'dependencies', label: 'Dependencies', icon: Link2 },
-  { id: 'photos',       label: 'Photos',       icon: ImageIcon },
-  { id: 'comments',     label: 'Comments',     icon: MessageSquare },
-  { id: 'orders',       label: 'Orders',       icon: ShoppingCart },
-  { id: 'activity',     label: 'Activity',     icon: ActivityIcon },
+  { id: 'details',   label: 'Details',   icon: CheckSquare },
+  { id: 'checklist', label: 'Checklist', icon: CheckCircle2 },
+  { id: 'photos',    label: 'Photos',    icon: ImageIcon },
 ];
 
 const PHASES: ConstructionPhase[] = [
@@ -61,7 +49,7 @@ const DAY_MS = 86_400_000;
 // committed.
 export default function TaskDrawer({
   task, isOpen, onClose, onSave, onCreate, onDelete,
-  zones, allTasks, projectId, readOnly = false, canDelete = true,
+  zones, projectId, currentUser, readOnly = false, canDelete = true,
 }: TaskDrawerProps) {
   const isCreate = task === null;
   const [draft, setDraft] = useState<Partial<Task>>({});
@@ -201,7 +189,7 @@ export default function TaskDrawer({
 
       {/* Drawer panel — bottom sheet on mobile, right sheet on desktop. */}
       <aside
-        className="fixed inset-x-0 bottom-0 z-50 flex max-h-[92vh] flex-col rounded-t-2xl bg-white shadow-2xl sm:inset-y-0 sm:right-0 sm:left-auto sm:max-h-none sm:w-[480px] sm:rounded-l-2xl sm:rounded-tr-none lg:w-[560px]"
+        className="fixed inset-x-0 bottom-0 z-50 flex max-h-[92dvh] flex-col rounded-t-2xl bg-white shadow-2xl sm:inset-y-0 sm:right-0 sm:left-auto sm:max-h-none sm:w-[480px] sm:rounded-l-2xl sm:rounded-tr-none lg:w-[560px]"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -284,7 +272,7 @@ export default function TaskDrawer({
         )}
 
         {/* Body */}
-        <div className="min-h-0 flex-1 overflow-y-auto p-5">
+        <div className="editorial-scrollbox flex-1 p-5">
           {(isCreate || activeTab === 'details') && (
             <DetailsPane
               task={task}
@@ -299,27 +287,8 @@ export default function TaskDrawer({
           {!isCreate && activeTab === 'checklist' && task && (
             <ChecklistPane taskId={task.id} readOnly={readOnly} />
           )}
-          {!isCreate && activeTab === 'dependencies' && task && (
-            <DependenciesPane
-              task={task}
-              draft={draft}
-              setDraft={setDraft}
-              commitField={commitField}
-              allTasks={allTasks}
-              readOnly={readOnly}
-            />
-          )}
           {!isCreate && activeTab === 'photos' && task && (
-            <PhotosPane task={task} />
-          )}
-          {!isCreate && activeTab === 'comments' && task && (
-            <CommentsPane task={task} />
-          )}
-          {!isCreate && activeTab === 'orders' && task && (
-            <OrdersPane task={task} projectId={projectId} />
-          )}
-          {!isCreate && activeTab === 'activity' && task && (
-            <ActivityPane task={task} projectId={projectId} />
+            <PhotosPane task={task} projectId={projectId} currentUser={currentUser} />
           )}
         </div>
 
@@ -599,329 +568,161 @@ function ChecklistPane({ taskId, readOnly }: { taskId: string; readOnly: boolean
   );
 }
 
-function DependenciesPane({
-  task, draft, setDraft, commitField, allTasks, readOnly,
+// PhotosPane — list of media attached to this task plus an upload control
+// gated by `canUploadPhotos`. Accepts images and videos via the `photos` table
+// (taskId is set so the file appears here on next refresh and the task's
+// progress hooks downstream can pick it up). Documents (PDF/DOCX) belong on
+// the Plans tab and are routed via Files; the helper text reflects that.
+function PhotosPane({
+  task, projectId, currentUser,
 }: {
   task: Task;
-  draft: Partial<Task>;
-  setDraft: (fn: (d: Partial<Task>) => Partial<Task>) => void;
-  commitField: <K extends keyof Task>(k: K, v: Task[K]) => void;
-  allTasks: Task[];
-  readOnly: boolean;
+  projectId: string;
+  currentUser: User | null;
 }) {
-  const blockedBy = (draft.dependencies ?? [])
-    .map((id) => allTasks.find((t) => t.id === id))
-    .filter((t): t is Task => Boolean(t));
-  const blocks = allTasks.filter((t) => t.dependencies.includes(task.id));
-  const candidates = allTasks.filter(
-    (t) => t.id !== task.id && !(draft.dependencies ?? []).includes(t.id),
-  );
-
-  const handleAdd = (id: string) => {
-    if (!id) return;
-    const next = [...(draft.dependencies ?? []), id];
-    setDraft((d) => ({ ...d, dependencies: next }));
-    commitField('dependencies', next);
-  };
-  const handleRemove = (id: string) => {
-    const next = (draft.dependencies ?? []).filter((d) => d !== id);
-    setDraft((d) => ({ ...d, dependencies: next }));
-    commitField('dependencies', next);
-  };
-
-  return (
-    <div className="space-y-5">
-      <section>
-        <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-500">
-          Blocked by ({blockedBy.length})
-        </h3>
-        {blockedBy.length === 0 ? (
-          <p className="text-sm text-slate-400">No blockers — this task can start anytime.</p>
-        ) : (
-          <ul className="space-y-1">
-            {blockedBy.map((dep) => (
-              <li key={dep.id} className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm">
-                <span className={`inline-block h-1.5 w-1.5 flex-shrink-0 rounded-full ${
-                  dep.status === 'complete' ? 'bg-emerald-500' :
-                  dep.status === 'in_progress' ? 'bg-blue-500' : 'bg-slate-400'
-                }`} />
-                <span className="min-w-0 flex-1 truncate text-slate-800">{dep.name}</span>
-                <span className="tabular-nums text-xs text-slate-500">{dep.percentComplete}%</span>
-                {!readOnly && (
-                  <button
-                    type="button"
-                    onClick={() => handleRemove(dep.id)}
-                    className="text-slate-400 hover:text-red-500"
-                    aria-label={`Remove dependency ${dep.name}`}
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-        {!readOnly && candidates.length > 0 && (
-          <select
-            onChange={(e) => { handleAdd(e.target.value); e.target.value = ''; }}
-            defaultValue=""
-            aria-label="Add a dependency"
-            className="mt-2 block w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm"
-          >
-            <option value="">+ Add a dependency…</option>
-            {candidates.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-        )}
-      </section>
-
-      <section>
-        <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-500">
-          Blocks ({blocks.length})
-        </h3>
-        {blocks.length === 0 ? (
-          <p className="text-sm text-slate-400">Nothing waits on this task.</p>
-        ) : (
-          <ul className="space-y-1">
-            {blocks.map((b) => (
-              <li key={b.id} className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm">
-                <span className="min-w-0 flex-1 truncate text-slate-800">{b.name}</span>
-                <ChevronRight className="h-4 w-4 text-slate-300" />
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </div>
-  );
-}
-
-function PhotosPane({ task }: { task: Task }) {
-  const photos = useAppStore((s) => s.photos);
+  const storePhotos = useAppStore((s) => s.photos);
   const taskPhotos = useMemo(
-    () => photos.filter((p) => p.taskId === task.id),
-    [photos, task.id],
+    () => storePhotos.filter((p) => p.taskId === task.id),
+    [storePhotos, task.id],
   );
 
-  if (taskPhotos.length === 0) {
-    return (
-      <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50/60 px-4 py-6 text-center text-sm text-slate-400">
-        No photos yet. Upload one against this task and the bar advances automatically.
-      </p>
-    );
-  }
+  const canUpload = canUploadPhotos(currentUser);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [extraTiles, setExtraTiles] = useState<{
+    id: string; url: string | null; filename: string; uploadedAt: string;
+  }[]>([]);
 
-  return (
-    <div className="grid grid-cols-2 gap-2">
-      {taskPhotos.map((p) => (
-        <a
-          key={p.id}
-          href={p.storageUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="group relative aspect-square overflow-hidden rounded-md bg-slate-100"
-        >
-          <img
-            src={p.thumbnailUrl ?? p.storageUrl}
-            alt={p.filename}
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-            loading="lazy"
-          />
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-2">
-            <p className="truncate text-[10px] font-medium text-white">
-              {format(parseISO(p.uploadedAt), 'MMM d')}
-            </p>
-          </div>
-        </a>
-      ))}
-    </div>
-  );
-}
+  const triggerPicker = () => inputRef.current?.click();
 
-const NOTE_TYPE_META: Record<NoteType, { label: string; tone: string; icon: typeof AlertCircle }> = {
-  issue:          { label: 'Issue',          tone: 'border-red-200 bg-red-50 text-red-700',       icon: AlertCircle },
-  accuracy_check: { label: 'Accuracy check', tone: 'border-amber-200 bg-amber-50 text-amber-700', icon: ShieldCheck },
-  general:        { label: 'Note',           tone: 'border-slate-200 bg-slate-50 text-slate-600', icon: MessageSquare },
-};
-
-function CommentsPane({ task }: { task: Task }) {
-  const comments = useFeatureStore((s) => s.comments);
-  const addComment = useAppStore((s) => s.addComment);
-  const currentUser = useAppStore((s) => s.currentUser);
-  const taskComments = useMemo(
-    () => comments.filter((c) => c.taskId === task.id),
-    [comments, task.id],
-  );
-  const [draft, setDraft] = useState('');
-  const [noteType, setNoteType] = useState<NoteType>('general');
-
-  const canPost = currentUser ? canAddComments(currentUser) : false;
-
-  const handleSubmit = (e?: React.FormEvent) => {
-    e?.preventDefault();
-    const content = draft.trim();
-    if (!content) return;
-    addComment(task.id, content, noteType);
-    setDraft('');
-    setNoteType('general');
-  };
-
-  // Cmd/Ctrl + Enter submits — common chat pattern.
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-      e.preventDefault();
-      handleSubmit();
+  const handleFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    if (!supabaseConfigured()) {
+      setError('Uploads need Supabase env keys to be set.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      for (const file of Array.from(files)) {
+        // Reject docs early — they belong on the Plans tab. The dropzone hint
+        // explains this; this guard is for drag-drop and direct picker bypass.
+        if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+          setError(`${file.name}: documents go in the Plans tab.`);
+          continue;
+        }
+        const row = await uploadPhoto({ file, projectId, taskId: task.id });
+        const signed = await getPhotoUrl(row.storage_path);
+        setExtraTiles((prev) => [
+          { id: row.id, url: signed, filename: row.filename, uploadedAt: row.uploaded_at },
+          ...prev,
+        ]);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Upload failed.');
+    } finally {
+      setBusy(false);
+      if (inputRef.current) inputRef.current.value = '';
     }
   };
 
-  return (
-    <div className="flex h-full flex-col gap-3">
-      <ul className="space-y-3">
-        {taskComments.length === 0 && (
-          <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50/60 px-4 py-6 text-center text-sm text-slate-400">
-            No comments yet.
-          </p>
-        )}
-        {taskComments.map((c) => {
-          const meta = NOTE_TYPE_META[c.noteType ?? 'general'];
-          const Icon = meta.icon;
-          const initials = c.userName
-            ? c.userName.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase()
-            : '??';
-          return (
-            <li key={c.id} className="flex gap-3">
-              <Avatar className="h-7 w-7 flex-shrink-0">
-                <AvatarFallback className="text-[10px] font-semibold">
-                  {initials}
-                </AvatarFallback>
-              </Avatar>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-xs font-medium text-slate-900">{c.userName}</span>
-                  <span className="text-[10px] text-slate-400">
-                    {format(parseISO(c.createdAt), 'MMM d, h:mm a')}
-                  </span>
-                </div>
-                <div className={`mt-1 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${meta.tone}`}>
-                  <Icon className="h-3 w-3" />
-                  {meta.label}
-                </div>
-                <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{c.content}</p>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
+  const totalCount = taskPhotos.length + extraTiles.length;
 
-      {canPost && (
-        <form onSubmit={handleSubmit} className="mt-auto flex flex-col gap-2 border-t border-slate-100 pt-3">
-          <select
-            value={noteType}
-            onChange={(e) => setNoteType(e.target.value as NoteType)}
-            aria-label="Note type"
-            className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs"
+  return (
+    <div className="space-y-4">
+      {canUpload ? (
+        <div>
+          <button
+            type="button"
+            onClick={triggerPicker}
+            disabled={busy}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-200 px-4 py-5 text-sm text-slate-600 transition-colors hover:border-emerald-400 hover:bg-emerald-50/40 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <option value="general">Note</option>
-            <option value="issue">Issue</option>
-            <option value="accuracy_check">Accuracy check</option>
-          </select>
-          <div className="flex items-end gap-2">
-            <textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={handleKeyDown}
-              rows={2}
-              placeholder="Leave a note… (⌘/Ctrl+Enter to send)"
-              className="flex-1 rounded-md border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-            />
-            <button
-              type="submit"
-              disabled={!draft.trim()}
-              aria-label="Post note"
-              className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-slate-900 text-white hover:bg-emerald-700 disabled:opacity-40"
+            <UploadIcon className="h-4 w-4" />
+            {busy ? 'Uploading…' : 'Upload photo or video'}
+          </button>
+          <input
+            ref={inputRef}
+            type="file"
+            multiple
+            accept="image/*,video/mp4,video/quicktime"
+            onChange={(e) => handleFiles(e.target.files)}
+            className="hidden"
+          />
+          <p className="mt-1.5 text-[10px] text-slate-400">
+            Images and videos attach to this task. For PDFs / docs, use the Plans tab.
+          </p>
+          {error && (
+            <p className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              {error}
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          <Lock className="h-3.5 w-3.5 text-slate-400" />
+          Your role can view photos but not upload to this task.
+        </div>
+      )}
+
+      {totalCount === 0 ? (
+        <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50/60 px-4 py-6 text-center text-sm text-slate-400">
+          No photos yet. Upload one against this task and the bar advances automatically.
+        </p>
+      ) : (
+        <div className="grid grid-cols-2 gap-2">
+          {extraTiles.map((p) => (
+            <a
+              key={p.id}
+              href={p.url ?? '#'}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group relative aspect-square overflow-hidden rounded-md bg-slate-100"
             >
-              <Send className="h-4 w-4" />
-            </button>
-          </div>
-        </form>
+              {p.url ? (
+                <img
+                  src={p.url}
+                  alt={p.filename}
+                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                  loading="lazy"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center">
+                  <ImageIcon className="h-6 w-6 text-slate-300" />
+                </div>
+              )}
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-2">
+                <p className="truncate text-[10px] font-medium text-white">
+                  {format(parseISO(p.uploadedAt), 'MMM d')}
+                </p>
+              </div>
+            </a>
+          ))}
+          {taskPhotos.map((p) => (
+            <a
+              key={p.id}
+              href={p.storageUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group relative aspect-square overflow-hidden rounded-md bg-slate-100"
+            >
+              <img
+                src={p.thumbnailUrl ?? p.storageUrl}
+                alt={p.filename}
+                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                loading="lazy"
+              />
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-2">
+                <p className="truncate text-[10px] font-medium text-white">
+                  {format(parseISO(p.uploadedAt), 'MMM d')}
+                </p>
+              </div>
+            </a>
+          ))}
+        </div>
       )}
     </div>
-  );
-}
-
-function OrdersPane({ task, projectId }: { task: Task; projectId: string }) {
-  const allOrders = useOrdersForProject(projectId);
-  const linked = useMemo(() => allOrders.filter((o) => o.taskId === task.id), [allOrders, task.id]);
-
-  if (linked.length === 0) {
-    return (
-      <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/60 px-4 py-6 text-center">
-        <ShoppingCart className="mx-auto mb-2 h-5 w-5 text-slate-400" />
-        <p className="text-sm font-medium text-slate-600">No orders linked yet</p>
-        <p className="mt-1 text-xs text-slate-500">
-          Place an order in the Orders tab and tie it to this task — line items appear here with delivery status.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <ul className="space-y-2">
-      {linked.map((o) => (
-        <li key={o.id} className="rounded-md border border-slate-200 px-3 py-2.5">
-          <div className="flex items-center justify-between gap-2">
-            <span className="font-mono text-[11px] text-slate-700">{o.poNumber}</span>
-            <Badge variant="outline" className="text-[10px] uppercase tracking-wider">
-              {o.status.replace(/_/g, ' ')}
-            </Badge>
-          </div>
-          <p className="mt-1 truncate text-sm font-medium text-slate-900">{o.supplierName}</p>
-          <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
-            <span>{o.lineItems.length} line{o.lineItems.length === 1 ? '' : 's'}</span>
-            <span className="tabular-nums">${orderTotal(o).toLocaleString()}</span>
-          </div>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function ActivityPane({ task, projectId }: { task: Task; projectId: string }) {
-  const events = useProjectActivity(projectId, { limit: 30 });
-  const taskEvents = useMemo(
-    () => events.filter((e) => e.targetEntityId === task.id),
-    [events, task.id],
-  );
-
-  if (taskEvents.length === 0) {
-    return (
-      <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50/60 px-4 py-6 text-center text-sm text-slate-400">
-        No activity recorded for this task yet.
-      </p>
-    );
-  }
-
-  return (
-    <ul className="space-y-3">
-      {taskEvents.map((e) => (
-        <li key={e.id} className="flex items-start gap-3">
-          <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-slate-50">
-            <Calendar className="h-3.5 w-3.5 text-slate-500" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm text-slate-800">
-              <span className="font-medium">{e.actorName}</span>{' '}
-              <span className="text-slate-500">{ACTIVITY_VERBS[e.kind]}</span>{' '}
-              {e.targetLabel}
-            </p>
-            <p className="text-[10px] text-slate-400">
-              {format(parseISO(e.timestamp), 'MMM d, h:mm a')}
-            </p>
-          </div>
-        </li>
-      ))}
-    </ul>
   );
 }
 

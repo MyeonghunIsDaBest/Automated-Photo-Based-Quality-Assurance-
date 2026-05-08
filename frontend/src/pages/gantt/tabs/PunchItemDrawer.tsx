@@ -63,7 +63,7 @@ export default function PunchItemDrawer({
         onClick={onClose}
       />
       <aside
-        className="fixed inset-x-0 bottom-0 z-50 flex max-h-[92vh] flex-col rounded-t-2xl bg-white shadow-2xl sm:inset-y-0 sm:right-0 sm:left-auto sm:max-h-none sm:w-[460px] sm:rounded-l-2xl sm:rounded-tr-none lg:w-[520px]"
+        className="fixed inset-x-0 bottom-0 z-50 flex max-h-[92dvh] flex-col rounded-t-2xl bg-white shadow-2xl sm:inset-y-0 sm:right-0 sm:left-auto sm:max-h-none sm:w-[460px] sm:rounded-l-2xl sm:rounded-tr-none lg:w-[520px]"
         role="dialog"
         aria-modal="true"
       >
@@ -112,7 +112,7 @@ export default function PunchItemDrawer({
         </header>
 
         {/* Body */}
-        <div className="min-h-0 flex-1 overflow-y-auto p-5">
+        <div className="editorial-scrollbox flex-1 p-5">
           {/* Toggle status big-button */}
           {!readOnly && (
             <button

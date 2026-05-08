@@ -553,7 +553,7 @@ function UploadModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
       <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="editorial-root relative flex h-full max-h-[95vh] w-full max-w-xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl sm:h-auto">
+      <div className="editorial-root relative flex h-full max-h-[95dvh] w-full max-w-xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl sm:h-auto">
         <div className="flex flex-shrink-0 items-center justify-between border-b border-slate-100 px-5 pt-6 pb-4 sm:px-7">
           <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-700">Upload</p>
@@ -568,7 +568,7 @@ function UploadModal({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-7">
+        <div className="editorial-scrollbox flex-1 p-5 sm:p-7">
           {/* Category selector */}
           <p className="text-xs font-medium uppercase tracking-wider text-slate-500 mb-3">Category</p>
           <div className="flex flex-wrap gap-2 mb-6">

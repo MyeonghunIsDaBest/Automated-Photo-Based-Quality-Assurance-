@@ -31,6 +31,10 @@ interface TasksTabProps {
    *  stale or pointing to a deleted entity). The Gantt page reads `?task=`
    *  via `useUrlHydration` and forwards it here. */
   initialOpenTaskId?: string | null;
+  /** Called when the drawer is dismissed. The parent uses this to clear
+   *  `initialOpenTaskId`, otherwise switching tabs and back re-opens the
+   *  drawer on every TasksTab remount. */
+  onDrawerClose?: () => void;
 }
 
 type ViewMode = 'board' | 'list' | 'mine';
@@ -87,7 +91,7 @@ const BOARD_COLUMNS: { status: TaskStatus; label: string }[] = [
 
 export function TasksTab({
   project, tasks, zones, currentUser, canEdit, canDelete,
-  onCreateTask, onSaveTask, onDeleteTask, initialOpenTaskId,
+  onCreateTask, onSaveTask, onDeleteTask, initialOpenTaskId, onDrawerClose,
 }: TasksTabProps) {
   const navigate = useNavigate();
   const [mode, setMode] = useState<ViewMode>('board');
@@ -503,13 +507,20 @@ export function TasksTab({
       <TaskDrawer
         task={drawerMode === 'edit' ? drawerTask : null}
         isOpen={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
+        onClose={() => {
+          setDrawerOpen(false);
+          // Clear hydration sentinel so the drawer can be re-deep-linked, and
+          // tell the parent to drop the captured `?task=` so it doesn't fire
+          // again the next time the user clicks the Tasks tab.
+          hydratedRef.current = null;
+          onDrawerClose?.();
+        }}
         onSave={onSaveTask}
         onCreate={onCreateTask}
         onDelete={onDeleteTask}
         zones={zones}
-        allTasks={tasks}
         projectId={project.id}
+        currentUser={currentUser}
         readOnly={!canEdit}
         canDelete={canDelete}
       />
@@ -687,7 +698,7 @@ function ModalShell({
       onClick={onClose}
     >
       <div
-        className="flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:max-h-none"
+        className="flex max-h-[90dvh] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:max-h-none"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
@@ -701,7 +712,7 @@ function ModalShell({
             <X className="h-4 w-4" />
           </button>
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{body}</div>
+        <div className="editorial-scrollbox flex-1 px-5 py-4">{body}</div>
         <footer className="flex flex-shrink-0 items-center justify-end gap-2 border-t border-slate-100 px-5 py-3">
           {footer}
         </footer>

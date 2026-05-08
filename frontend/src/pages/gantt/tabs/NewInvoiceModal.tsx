@@ -78,7 +78,7 @@ export default function NewInvoiceModal({
       onClick={onClose}
     >
       <div
-        className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:max-h-none"
+        className="flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:max-h-none"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
@@ -103,7 +103,7 @@ export default function NewInvoiceModal({
           </button>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+        <div className="editorial-scrollbox flex-1 px-5 py-4">
           <div className="space-y-4">
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-600">

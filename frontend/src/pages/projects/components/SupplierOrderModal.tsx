@@ -172,7 +172,7 @@ export function SupplierOrderModal({ open, project, onClose }: SupplierOrderModa
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4">
       <form
         onSubmit={handleSubmit}
-        className="flex max-h-[90vh] w-full max-w-xl flex-col overflow-hidden rounded-xl bg-white shadow-xl"
+        className="flex max-h-[90dvh] w-full max-w-xl flex-col overflow-hidden rounded-xl bg-white shadow-xl"
         style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}
       >
         <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
@@ -203,7 +203,7 @@ export function SupplierOrderModal({ open, project, onClose }: SupplierOrderModa
           </button>
         </div>
 
-        <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
+        <div className="editorial-scrollbox flex-1 space-y-4 px-6 py-5">
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-700">Supplier</label>
             {loadingSuppliers ? (

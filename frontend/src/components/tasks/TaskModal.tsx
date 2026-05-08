@@ -184,7 +184,7 @@ export default function TaskModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-4">
-      <div className="flex h-full max-h-[95vh] w-full max-w-3xl flex-col rounded-lg bg-white shadow-xl sm:h-auto">
+      <div className="flex h-full max-h-[95dvh] w-full max-w-3xl flex-col rounded-lg bg-white shadow-xl sm:h-auto">
         {/* Header */}
         <div className="flex flex-shrink-0 items-center justify-between border-b border-slate-200 px-4 py-3">
           <div className="flex-1 overflow-hidden">

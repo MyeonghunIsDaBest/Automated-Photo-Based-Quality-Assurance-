@@ -85,7 +85,7 @@ export default function NewPunchItemSheet({
       onClick={onClose}
     >
       <div
-        className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:max-h-none"
+        className="flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:max-h-none"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Mobile drag handle */}
@@ -115,7 +115,7 @@ export default function NewPunchItemSheet({
           </button>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+        <div className="editorial-scrollbox flex-1 px-5 py-4">
           <div className="space-y-5">
             {/* The thing */}
             <div>

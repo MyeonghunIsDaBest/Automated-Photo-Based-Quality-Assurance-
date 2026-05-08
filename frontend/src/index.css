@@ -29,6 +29,7 @@
 .editorial-input {
   display: block;
   width: 100%;
+  min-width: 0; /* lets the input shrink inside flex/grid cells without forcing parent overflow */
   border-radius: 0.5rem;
   border: 1px solid rgb(203 213 225);
   padding: 0.5rem 0.75rem;
@@ -41,6 +42,22 @@
 .editorial-input:disabled { background-color: rgb(248 250 252); color: rgb(100 116 139); }
 @media (max-width: 640px) {
   .editorial-input { font-size: 16px; }
+}
+
+/* Scroll container shared by every modal body and drawer body in the app.
+   `scrollbar-gutter: stable` reserves the scrollbar's track outside the
+   padding zone so:
+     - On Windows/Linux the 15px-wide native scrollbar no longer floats
+       over the right edge of inputs and tab strips.
+     - When content shrinks/grows past the overflow threshold, the body
+       width doesn't shift sideways (the layout doesn't "jump").
+   `overscroll-behavior: contain` keeps an over-pull at the bottom of a
+   long form from rubber-banding the page underneath on iOS. */
+.editorial-scrollbox {
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+  min-height: 0; /* required so this can shrink inside a flex column parent */
 }
 
 /* Editorial type primitives. Pages compose these via the .editorial-root

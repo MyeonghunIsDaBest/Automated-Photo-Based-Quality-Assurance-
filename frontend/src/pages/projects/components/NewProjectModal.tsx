@@ -158,7 +158,7 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-2 sm:p-4">
-      <div className="flex h-full max-h-[95vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-xl sm:h-auto sm:max-h-[90vh]">
+      <div className="flex h-full max-h-[95dvh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-xl sm:h-auto sm:max-h-[90dvh]">
         <div className="flex flex-shrink-0 items-start justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-6 sm:py-4">
           <div className="min-w-0">
             <h2 className="text-lg font-semibold text-slate-900">New Project</h2>
@@ -177,7 +177,7 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
         </div>
 
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-4 py-5 sm:px-6">
+          <div className="editorial-scrollbox flex-1 space-y-6 px-4 py-5 sm:px-6">
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-700">Project Name</label>

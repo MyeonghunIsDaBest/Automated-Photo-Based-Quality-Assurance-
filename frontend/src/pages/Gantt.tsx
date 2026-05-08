@@ -167,11 +167,12 @@ export default function Gantt() {
 
   return (
     <div className="p-4 sm:p-6">
-      {/* ─── Page header: back link + project name ─── */}
-      {/* Sits above the tab strip so users can bail back to /projects        */}
-      {/* without going through the global TopNav. Project name on the right  */}
-      {/* anchors which workspace they're in.                                 */}
-      <div className="mb-4 flex items-center justify-between gap-3">
+      {/* ─── Page header: back link only ─── */}
+      {/* The project name is already shown by each tab's eyebrow            */}
+      {/* breadcrumb (Workspace · Tasks · {project.name}, etc.) and by the   */}
+      {/* TopNav project switcher. Removing the duplicate `<h1>` here keeps  */}
+      {/* the title from "hanging" beside every tab.                         */}
+      <div className="mb-4 flex items-center gap-3">
         <Link
           to="/projects"
           className="group inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 transition-colors hover:text-slate-900"
@@ -179,13 +180,6 @@ export default function Gantt() {
           <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
           All projects
         </Link>
-        <h1
-          className="min-w-0 truncate text-base font-medium text-slate-900 sm:text-lg"
-          style={{ fontFamily: "'Fraunces', Georgia, serif", letterSpacing: '-0.02em' }}
-          title={project.name}
-        >
-          {project.name}
-        </h1>
       </div>
 
       {/* ─── Tab strip ─── */}
@@ -252,6 +246,7 @@ export default function Gantt() {
             onSaveTask={handleSaveTask}
             onDeleteTask={handleDeleteTask}
             initialOpenTaskId={initialOpenTaskId}
+            onDrawerClose={() => setInitialOpenTaskId(null)}
           />
         )}
 

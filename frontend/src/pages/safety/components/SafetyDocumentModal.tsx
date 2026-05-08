@@ -69,7 +69,7 @@ export function SafetyDocumentModal({ open, initialCategory, onClose }: SafetyDo
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white shadow-xl"
+      <div className="flex max-h-[90dvh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white shadow-xl"
         style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}
       >
         <div className="flex items-start justify-between border-b border-slate-200 px-6 py-4">
@@ -94,7 +94,7 @@ export function SafetyDocumentModal({ open, initialCategory, onClose }: SafetyDo
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-hidden">
-          <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
+          <div className="editorial-scrollbox flex-1 space-y-5 px-6 py-5">
             <div>
               <label className="mb-2 block text-xs font-medium text-slate-700">Category</label>
               <div className="grid grid-cols-3 gap-2">

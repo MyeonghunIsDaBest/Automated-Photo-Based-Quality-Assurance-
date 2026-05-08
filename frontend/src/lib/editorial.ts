@@ -81,7 +81,10 @@ export const modalOverlay = cn(
 );
 
 /** Modal card — fills the viewport on phones (max-h-[100dvh] handles the
- *  iOS toolbar correctly), settles into a centered card on tablet+. */
+ *  iOS toolbar correctly), settles into a centered card on tablet+. The
+ *  `dvh` unit on tablet+ keeps the card from clipping when the iOS Safari
+ *  toolbar shows up; static `vh` measured the toolbar-collapsed viewport
+ *  and the modal would lose its bottom edge when the toolbar reappeared. */
 export const modalCard = cn(
   'fixed z-50',
   // Mobile: bottom-sheet pinned to the bottom safe area.
@@ -89,7 +92,7 @@ export const modalCard = cn(
   // Tablet+: centered card.
   'sm:top-1/2 sm:left-1/2 sm:right-auto sm:bottom-auto',
   'sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl',
-  'sm:max-h-[90vh] sm:w-[min(560px,calc(100vw-2rem))]',
+  'sm:max-h-[90dvh] sm:w-[min(560px,calc(100vw-2rem))]',
   // Visual chrome.
   'flex flex-col bg-white shadow-modal',
 );
