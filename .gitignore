@@ -1,5 +1,6 @@
-# Backend (excluded from this frontend-only repo)
-backend/
+# Backend local-only artifacts. backend/supabase IS tracked (it's the deployed
+# backend); only the local SQLite DB and scratch notes are excluded.
+backend/data/
 backend_leftover.md
 
 # Internal planning / team docs
@@ -31,3 +32,5 @@ Thumbs.db
 # Editor
 .vscode/
 .idea/
+
+/migrations

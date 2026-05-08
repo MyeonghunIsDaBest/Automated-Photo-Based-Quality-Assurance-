@@ -1,9 +1,9 @@
 // Photo-QA contract parity check.
 //
 // Diffs `frontend/src/lib/ai/contract.ts` against
-// `supabase/functions/_shared/contract.ts`. The frontend can't import from
-// `supabase/functions/` and Deno can't reach into `frontend/src`, so the two
-// files are vendored copies that MUST be byte-identical.
+// `backend/supabase/functions/_shared/contract.ts`. The frontend can't import
+// from `backend/supabase/functions/` and Deno can't reach into `frontend/src`,
+// so the two files are vendored copies that MUST be byte-identical.
 //
 // Wired into `prebuild` so a drift fails the build before it ships.
 
@@ -15,7 +15,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..');
 
 const FRONTEND = resolve(REPO, 'frontend/src/lib/ai/contract.ts');
-const SHARED   = resolve(REPO, 'supabase/functions/_shared/contract.ts');
+const SHARED   = resolve(REPO, 'backend/supabase/functions/_shared/contract.ts');
 
 let exitCode = 0;
 
@@ -35,7 +35,7 @@ if (exitCode === 0) {
   const b = readFileSync(SHARED,   'utf8').replace(/\r\n/g, '\n').replace(/\s+$/, '\n');
 
   if (a !== b) {
-    fail('frontend/src/lib/ai/contract.ts and supabase/functions/_shared/contract.ts have drifted.');
+    fail('frontend/src/lib/ai/contract.ts and backend/supabase/functions/_shared/contract.ts have drifted.');
     console.error('');
     console.error('  Both files must be byte-identical.');
     console.error('  Edit one, copy to the other, commit together.');

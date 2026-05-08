@@ -1,0 +1,32 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 0009_bootstrap_admin.sql.EXAMPLE
+--
+-- This file is NOT auto-run. It's a copy-paste template for promoting the very
+-- first user account to `company_admin` from the Supabase SQL Editor when you
+-- don't want to use the in-app bootstrap screen (`/admin/bootstrap`).
+--
+-- HOW TO USE:
+--   1. Sign up your account through the app's /login → "Create account" form.
+--      The trigger in 0004_profiles.sql auto-creates a default `worker` profile.
+--   2. Open Supabase dashboard → SQL Editor → New query.
+--   3. Replace YOUR_EMAIL below, paste, click Run.
+--
+-- The SQL Editor runs as the postgres superuser and bypasses RLS, so the
+-- update succeeds even with no admin in the system yet.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+update profiles
+   set security_group = 'company_admin',
+       is_active      = true
+ where email = 'YOUR_EMAIL@example.com';
+
+-- (Optional) also set a display name on the auth user so the dashboard
+-- Authentication tab shows "Jane Doe" instead of just an email.
+update auth.users
+   set raw_user_meta_data = coalesce(raw_user_meta_data, '{}'::jsonb)
+                          || jsonb_build_object(
+                               'first_name',   'Jane',
+                               'last_name',    'Doe',
+                               'display_name', 'Jane Doe'
+                             )
+ where email = 'YOUR_EMAIL@example.com';

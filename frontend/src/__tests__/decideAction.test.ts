@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { AnalysisResult } from '../lib/ai/contract';
-import { decideAction } from '../../../supabase/functions/_shared/decideAction';
+import { decideAction } from '../../../backend/supabase/functions/_shared/decideAction';
 
 // Pure-function test of the Photo-QA action rule. Imports the Deno-side helper
 // directly because that file is byte-equivalent to the frontend (the parity
