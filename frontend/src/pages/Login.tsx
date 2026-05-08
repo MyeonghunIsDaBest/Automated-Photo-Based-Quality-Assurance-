@@ -35,18 +35,6 @@ const FLOW_STEPS: { Icon: LucideIcon; label: string; caption: string }[] = [
   { Icon: CheckCircle2,      label: 'Prove',   caption: 'Every change is logged for QA and liability.' },
 ];
 
-const FONT_STYLES = `
-  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=DM+Sans:wght@400;500;600;700&display=swap');
-  .login-root { font-family: 'DM Sans', system-ui, sans-serif; }
-  .login-root .display { font-family: 'Fraunces', Georgia, serif; font-feature-settings: 'ss01'; letter-spacing: -0.02em; }
-  .login-root .grid-bg {
-    background-image:
-      linear-gradient(to right, rgba(15, 23, 42, 0.05) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(15, 23, 42, 0.05) 1px, transparent 1px);
-    background-size: 32px 32px;
-  }
-`;
-
 type Mode = 'signin' | 'register';
 
 export default function Login() {
@@ -81,9 +69,7 @@ export default function Login() {
   };
 
   return (
-    <div className="login-root min-h-screen bg-[#FAFAF7]">
-      <style>{FONT_STYLES}</style>
-
+    <div className="editorial-root min-h-screen bg-[#FAFAF7]">
       <div className="grid min-h-screen lg:grid-cols-2">
         {/* ─── Left: brand + value prop ─── */}
         <aside className="relative hidden overflow-hidden border-r border-slate-200/70 bg-white lg:block">

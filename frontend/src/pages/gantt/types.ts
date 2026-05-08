@@ -21,7 +21,6 @@ export type TabId =
   | 'inventory'     // was 'selections'
   | 'plans'
   | 'files'
-  | 'messages'
   | 'uploads';
 
 // ─── Site Diary ──────────────────────────────────────────────────────────
@@ -177,7 +176,9 @@ export type ActivityKind =
   | 'punch_item_added'
   | 'punch_item_closed'
   | 'diary_entry'
-  | 'comment_added';
+  | 'comment_added'
+  | 'ai_analysed'
+  | 'safety_flag';
 
 export interface ActivityEvent {
   id: string;                  // synthesized: `${kind}:${entityId}:${timestamp}`

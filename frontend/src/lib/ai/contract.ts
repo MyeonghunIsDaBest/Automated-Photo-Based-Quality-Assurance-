@@ -55,6 +55,10 @@ export interface AnalysisRequest {
   perceptualHash: string | null;
   attempt: number;
   invokedBy: InvocationSource;
+  // Optional model override. When null the Edge Function uses its default.
+  // Phase D vision call reads this; the stub ignores it. Versioned model
+  // names (e.g. `claude-sonnet-4-6@2026-05-08`) make replays + audit cleaner.
+  model: string | null;
 }
 
 export interface AnalysisResult {

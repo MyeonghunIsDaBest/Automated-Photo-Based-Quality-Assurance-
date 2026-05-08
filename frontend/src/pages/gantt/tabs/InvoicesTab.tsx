@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   AlertCircle, Calendar, ChevronRight, DollarSign, FileText, Plus,
-  Receipt, ShoppingCart,
+  Receipt,
 } from 'lucide-react';
 import { differenceInDays, format, isThisMonth, parseISO } from 'date-fns';
 import type { Project } from '../../../types';
@@ -12,7 +12,7 @@ import { Input } from '../../../components/ui/input';
 import { TabHeader } from '../components/TabHeader';
 import { EmptyState } from '../components/EmptyState';
 import {
-  useInvoices, useOrdersForProject, orderTotal,
+  useInvoices, useOrdersForProject,
 } from '../store';
 import type { Invoice, InvoiceStatus, Order } from '../types';
 import InvoiceDrawer from './InvoiceDrawer';

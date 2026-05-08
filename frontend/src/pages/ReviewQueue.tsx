@@ -42,8 +42,10 @@ export default function ReviewQueue() {
     setLoading(true);
     setError(null);
     try {
+      // `listPendingAnalyses` returns the same join shape as ReviewQueueItem
+      // declares; types are structurally compatible — no cast needed.
       const data = await listPendingAnalyses(project.id);
-      setItems(data as unknown as ReviewQueueItem[]);
+      setItems(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load queue.');
     } finally {

@@ -11,7 +11,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { uploadPhoto, findSimilarPhotos, type PhotoRow } from '../lib/api/photos';
-import { updateTaskProgress as apiUpdateTaskProgress } from '../lib/api/tasks';
 import { supabaseConfigured } from '../lib/supabase';
 import { CameraCaptureButton } from '../components/editorial';
 import { computePerceptualHash } from '../lib/ai/perceptualHash';
@@ -273,11 +272,9 @@ export default function Upload() {
           };
         } catch (e) {
           console.error('[upload] photo upload failed:', e);
-          useAppStore.setState({
-            notification: {
-              type: 'error',
-              message: e instanceof Error ? e.message : 'Photo upload failed.',
-            },
+          useAppStore.getState().setNotification({
+            type: 'error',
+            message: e instanceof Error ? e.message : 'Photo upload failed.',
           });
         }
       }
@@ -308,18 +305,11 @@ export default function Upload() {
     setProgressDraft(0);
   };
 
-  const handleApplyProgress = async () => {
+  const handleApplyProgress = () => {
     if (selectedTask) {
-      // Persist remotely first (realtime echoes back into local state); fall
-      // back to the local mutator so the bar still moves when offline.
-      if (supabaseConfigured()) {
-        try {
-          await apiUpdateTaskProgress(selectedTask, progressDraft);
-        } catch (e) {
-          // eslint-disable-next-line no-console
-          console.error('[upload] task progress update failed:', e);
-        }
-      }
+      // Single call — the store action (Step 5 of the Phase D refactor) does
+      // optimistic local update + Supabase persist + realtime reconciliation.
+      // No need to call the API helper at the page level any more.
       updateTaskProgress(selectedTask, progressDraft, 'manual');
     }
     resetForm();

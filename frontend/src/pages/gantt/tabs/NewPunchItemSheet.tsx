@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Calendar, Circle, Layers, ListTodo, Plus, X } from 'lucide-react';
+import { Circle, Plus, X } from 'lucide-react';
 import type { Task, User, Zone } from '../../../types';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
@@ -14,7 +14,6 @@ interface NewPunchItemSheetProps {
   currentUser: User | null;
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
 const inDays = (n: number) =>
   new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
 

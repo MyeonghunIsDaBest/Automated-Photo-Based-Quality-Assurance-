@@ -6,6 +6,7 @@
   "scripts": {
     "build:whats-new": "node scripts/build-whats-new.mjs",
     "check:contract": "node scripts/check-contract-parity.mjs",
+    "seed:demo": "node scripts/seed-demo-data.mjs",
     "predev": "npm run build:whats-new",
     "prebuild": "npm run build:whats-new && npm run check:contract",
     "dev": "vite",

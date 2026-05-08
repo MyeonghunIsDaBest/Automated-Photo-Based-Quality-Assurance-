@@ -1,16 +1,19 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
   ArrowUpRight,
   CheckCircle2,
   FileText,
   HardHat,
+  Image as ImageIcon,
   Plus,
   ShieldCheck,
   Trash2,
   XCircle,
 } from 'lucide-react';
 import { useAppStore } from '../store';
+import { useUrlHydration } from '../lib/hooks/useUrlHydration';
 import { canEditProjects, canResolveSafetyIncident, canViewSafetyIncident } from '../lib/permissions';
 import { useSafetyStore } from './safety/store';
 import {
@@ -61,19 +64,6 @@ const HAZARD_FLAG_LABEL: Record<SafetyFlag, string> = {
   housekeeping:    'Housekeeping',
   signage_missing: 'Signage missing',
 };
-
-const FONT_STYLES = `
-  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=DM+Sans:wght@400;500;600;700&display=swap');
-  .safety-root { font-family: 'DM Sans', system-ui, sans-serif; }
-  .safety-root .display { font-family: 'Fraunces', Georgia, serif; font-feature-settings: 'ss01'; letter-spacing: -0.02em; }
-  .safety-root .num     { font-family: 'Fraunces', Georgia, serif; font-variant-numeric: tabular-nums; letter-spacing: -0.04em; }
-  .safety-root .grid-bg {
-    background-image:
-      linear-gradient(to right, rgba(15, 23, 42, 0.04) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(15, 23, 42, 0.04) 1px, transparent 1px);
-    background-size: 32px 32px;
-  }
-`;
 
 const SEVERITY_BADGE: Record<IncidentSeverity, string> = {
   low: 'border-slate-200 bg-slate-50 text-slate-600',
@@ -157,6 +147,32 @@ export default function Safety() {
   };
 
   const [activeTab, setActiveTab] = useState<TabKey>('documents');
+  const [highlightedIncidentId, setHighlightedIncidentId] = useState<string | null>(null);
+  const incidentRefs = useRef<Map<string, HTMLLIElement>>(new Map());
+  const navigate = useNavigate();
+
+  // Connectedness Pass 2: hydrate `?tab=&incident=`. The incident scroll
+  // requires the hazards list to have loaded; this effect retries once
+  // hazards land. Manager-tier-only deep links — workers don't see hazards.
+  useUrlHydration({
+    onApplyExtras: ({ tab, incident }) => {
+      if (tab === 'documents' || tab === 'incidents' || tab === 'hazards') {
+        setActiveTab(tab);
+      }
+      if (incident) setHighlightedIncidentId(incident);
+    },
+  });
+
+  useEffect(() => {
+    if (!highlightedIncidentId) return;
+    const el = incidentRefs.current.get(highlightedIncidentId);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Keep the highlight ring for 3s then fade. Stale URLs that point at a
+    // missing incident silently no-op (no toast — see URL schema).
+    const timer = window.setTimeout(() => setHighlightedIncidentId(null), 3000);
+    return () => window.clearTimeout(timer);
+  }, [highlightedIncidentId, hazards.length]);
   const [docFilter, setDocFilter] = useState<SafetyDocCategory | 'all'>('all');
   const [incidentFilter, setIncidentFilter] = useState<IncidentType | 'all'>('all');
   const [docModalOpen, setDocModalOpen] = useState(false);
@@ -198,9 +214,7 @@ export default function Safety() {
   };
 
   return (
-    <div className="safety-root min-h-full bg-[#FAFAF7]">
-      <style>{FONT_STYLES}</style>
-
+    <div className="editorial-root min-h-full bg-[#FAFAF7]">
       {/* ─── Editorial Header ─── */}
       <header className="relative overflow-hidden border-b border-slate-200/70 bg-white">
         <div className="grid-bg absolute inset-0 opacity-50" />
@@ -483,7 +497,16 @@ export default function Safety() {
           ) : (
             <ul className="divide-y divide-slate-100">
               {hazards.map((h) => (
-                <li key={h.id} className="px-4 py-4 sm:px-6">
+                <li
+                  key={h.id}
+                  ref={(el) => {
+                    if (el) incidentRefs.current.set(h.id, el);
+                    else incidentRefs.current.delete(h.id);
+                  }}
+                  className={`px-4 py-4 transition-colors sm:px-6 ${
+                    highlightedIncidentId === h.id ? 'bg-emerald-50/60 ring-2 ring-emerald-300 ring-inset' : ''
+                  }`}
+                >
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-1.5">
@@ -497,6 +520,21 @@ export default function Safety() {
                           <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-blue-700">
                             AI
                           </span>
+                        )}
+                        {h.photoId && (
+                          /* Cross-link from incident to its source photo. Plain
+                             <a> for middle-click / cmd-click → new tab. */
+                          <a
+                            href={`/gallery?project=${h.projectId}&photo=${h.photoId}`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              navigate(`/gallery?project=${h.projectId}&photo=${h.photoId}`);
+                            }}
+                            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900"
+                          >
+                            <ImageIcon className="h-3 w-3" aria-hidden />
+                            View photo
+                          </a>
                         )}
                       </div>
                       <div className="mt-2 flex flex-wrap gap-1.5">

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Activity as ActivityIcon, AlertCircle, Calendar, CheckCircle2,
-  ExternalLink, Receipt, ShieldCheck, ShoppingCart, Trash2, X,
+  Activity as ActivityIcon, Calendar, CheckCircle2,
+  Receipt, ShieldCheck, ShoppingCart, Trash2, X,
 } from 'lucide-react';
 import { addMonths, format, parseISO } from 'date-fns';
 import { Button } from '../../../components/ui/button';

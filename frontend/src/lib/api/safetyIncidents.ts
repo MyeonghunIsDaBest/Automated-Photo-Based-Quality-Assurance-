@@ -57,6 +57,24 @@ function rowToIncident(row: SafetyIncidentRow): SafetyIncident {
   };
 }
 
+// Cheap count-only query for the Dashboard tiles. Uses Supabase's
+// `count: 'exact', head: true` so no row data crosses the wire — just the
+// integer. Optional `status` filter narrows to e.g. open hazards.
+export async function countSafetyIncidents(
+  projectId: string,
+  filter?: { status?: SafetyIncidentStatus },
+): Promise<number> {
+  if (!supabaseConfigured()) return 0;
+  let q = supabase
+    .from('safety_incidents')
+    .select('*', { count: 'exact', head: true })
+    .eq('project_id', projectId);
+  if (filter?.status) q = q.eq('status', filter.status);
+  const { count, error } = await q;
+  if (error) throw error;
+  return count ?? 0;
+}
+
 export async function listSafetyIncidents(projectId: string): Promise<SafetyIncident[]> {
   if (!supabaseConfigured()) return [];
   const { data, error } = await supabase

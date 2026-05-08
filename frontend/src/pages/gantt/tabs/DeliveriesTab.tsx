@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
-  Box, Calendar, ChevronRight, Package, Plus, Truck,
+  Box, Calendar, Plus, Truck,
 } from 'lucide-react';
 import { differenceInDays, format, parseISO } from 'date-fns';
 import type { Project } from '../../../types';

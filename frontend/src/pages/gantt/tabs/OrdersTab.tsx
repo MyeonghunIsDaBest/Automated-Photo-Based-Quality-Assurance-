@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import {
-  AlertTriangle, Calendar, CheckCircle2, ChevronRight, Clock,
+  ChevronRight, Clock,
   DollarSign, Package, Plus, ShoppingCart, Truck,
 } from 'lucide-react';
-import { differenceInDays, format, parseISO } from 'date-fns';
+import { differenceInDays, parseISO } from 'date-fns';
 import type { Project } from '../../../types';
 import { Card, CardContent } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';

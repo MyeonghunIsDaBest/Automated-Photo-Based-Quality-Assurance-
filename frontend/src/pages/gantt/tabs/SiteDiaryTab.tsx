@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
-  AlertCircle, Calendar, ChevronLeft, ChevronRight, Cloud, CloudRain,
+  Calendar, ChevronLeft, ChevronRight, Cloud, CloudRain,
   CloudSnow, Plus, Sun, Trash2, Users, Wrench,
 } from 'lucide-react';
 import {
@@ -218,6 +218,7 @@ function EntryForm({
       personnel: personnel
         .filter((p) => p.workerName.trim())
         .map((p) => ({
+          id: `dp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
           workerId: p.workerId || `manual_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
           workerName: p.workerName.trim(),
           hours: Number(p.hours) || 0,

@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  AlertTriangle, ChevronRight, Clock, ExternalLink, FileText,
+  AlertTriangle, Clock, FileText,
   Receipt, ShieldCheck, ShoppingCart, Trash2, X,
 } from 'lucide-react';
 import { differenceInDays, format, parseISO } from 'date-fns';

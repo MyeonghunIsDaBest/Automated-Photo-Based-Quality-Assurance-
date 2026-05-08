@@ -48,8 +48,8 @@ const TABS: { id: SubTab; label: string; icon: typeof CheckSquare }[] = [
 ];
 
 const PHASES: ConstructionPhase[] = [
-  'excavation', 'foundation', 'framing', 'electrical',
-  'plumbing', 'hvac', 'finishing',
+  'excavation', 'foundation', 'framing', 'roofing',
+  'electrical', 'plumbing', 'drywall', 'finishing',
 ];
 
 const DEFAULT_PHASE: ConstructionPhase = 'excavation';

@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import {
   Activity,
-  ArrowUpRight,
   BarChart3,
   Calendar,
   CalendarDays,
@@ -39,6 +38,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { AuditLog, Report } from '../types';
+import { EditorialButton, StatCell } from '../components/editorial';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tokens & helpers
@@ -83,20 +83,6 @@ const STATUS_BADGE: Record<InvoiceStatus, string> = {
 const fmtCurrency = (n: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
 
-// ─── Fonts (mirrors Files page) ──────────────────────────────────────────────
-
-const FONT_STYLES = `
-  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=DM+Sans:wght@400;500;600;700&display=swap');
-  .reports-root { font-family: 'DM Sans', system-ui, sans-serif; }
-  .reports-root .display { font-family: 'Fraunces', Georgia, serif; font-feature-settings: 'ss01'; letter-spacing: -0.02em; }
-  .reports-root .num     { font-family: 'Fraunces', Georgia, serif; font-variant-numeric: tabular-nums; letter-spacing: -0.04em; }
-  .reports-root .grid-bg {
-    background-image:
-      linear-gradient(to right, rgba(15, 23, 42, 0.04) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(15, 23, 42, 0.04) 1px, transparent 1px);
-    background-size: 32px 32px;
-  }
-`;
 
 const TABS: { key: ReportTab; label: string; Icon: typeof BarChart3 }[] = [
   { key: 'progress',  label: 'Progress',  Icon: BarChart3 },
@@ -218,9 +204,7 @@ export default function Reports() {
   // ═══════════════════════════════════════════════════════════════════════════
 
   return (
-    <div className="reports-root min-h-full bg-[#FAFAF7]">
-      <style>{FONT_STYLES}</style>
-
+    <div className="editorial-root min-h-full bg-[#FAFAF7]">
       {/* ─── Editorial Header ─── */}
       <header className="relative overflow-hidden border-b border-slate-200/70 bg-white">
         <div className="grid-bg absolute inset-0 opacity-50" />
@@ -245,15 +229,15 @@ export default function Reports() {
               </p>
             </div>
 
-            <button
+            <EditorialButton
+              variant="pill"
               onClick={() => handleGenerate('weekly')}
               disabled={!progressProjectId || generating !== null}
-              className="group inline-flex items-center justify-center gap-2.5 self-start whitespace-nowrap rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white transition-all hover:-translate-y-0.5 hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-700/20 active:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:bg-slate-900 disabled:hover:shadow-none"
+              className="self-start"
             >
               <Sparkles className="h-4 w-4 transition-transform group-hover:-translate-y-px" />
               {generating === 'weekly' ? 'Generating…' : 'Quick weekly report'}
-              <ArrowUpRight className="h-3.5 w-3.5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
-            </button>
+            </EditorialButton>
           </div>
 
           <div className="mt-10 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200 md:grid-cols-4">
@@ -261,25 +245,25 @@ export default function Reports() {
               label="Reports"
               value={reports.length.toString()}
               caption={`${reports.filter((r) => r.reportType === 'weekly').length} weekly`}
-              accent="#0F172A"
+              accentColor="#0F172A"
             />
             <StatCell
               label="Audit entries"
               value={auditLogs.length.toString()}
               caption={`${auditLogs.filter((l) => l.entityType === 'photo').length} from photos`}
-              accent="#0369A1"
+              accentColor="#0369A1"
             />
             <StatCell
               label="Open safety flags"
               value={safetyStats.open.toString()}
               caption={`${safetyStats.resolved} resolved`}
-              accent="#BE123C"
+              accentColor="#BE123C"
             />
             <StatCell
               label="Total spend"
               value={fmtCurrency(totalSpend).replace('$', '$')}
               caption={`${Object.keys(budgets).length} project budgets`}
-              accent="#6D28D9"
+              accentColor="#6D28D9"
             />
           </div>
         </div>
@@ -547,25 +531,25 @@ export default function Reports() {
                     label="Total budget"
                     value={fmtCurrency(financeBudget.total)}
                     caption={projectName(financialProjectId)}
-                    accent="#0F172A"
+                    accentColor="#0F172A"
                   />
                   <StatCell
                     label="Spent"
                     value={fmtCurrency(financeBudget.spent)}
                     caption={`${spentPct}% of budget`}
-                    accent="#0F766E"
+                    accentColor="#0F766E"
                   />
                   <StatCell
                     label="Committed"
                     value={fmtCurrency(financeBudget.committed)}
                     caption={`${committedPct}% pending`}
-                    accent="#0369A1"
+                    accentColor="#0369A1"
                   />
                   <StatCell
                     label="Remaining"
                     value={fmtCurrency(remaining)}
                     caption={remaining < 0 ? 'Over budget' : 'Available to allocate'}
-                    accent={remaining < 0 ? '#BE123C' : '#B45309'}
+                    accentColor={remaining < 0 ? '#BE123C' : '#B45309'}
                   />
                 </div>
 
@@ -762,9 +746,9 @@ export default function Reports() {
             />
 
             <div className="grid grid-cols-1 gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200 md:grid-cols-3">
-              <StatCell label="Open flags"          value={safetyStats.open.toString()}     caption="Need attention"        accent="#BE123C" />
-              <StatCell label="Resolved"            value={safetyStats.resolved.toString()} caption="Successfully closed"   accent="#B45309" />
-              <StatCell label="Days w/o incident"   value="45"                              caption="Excellent streak"      accent="#0F766E" />
+              <StatCell label="Open flags"          value={safetyStats.open.toString()}     caption="Need attention"        accentColor="#BE123C" />
+              <StatCell label="Resolved"            value={safetyStats.resolved.toString()} caption="Successfully closed"   accentColor="#B45309" />
+              <StatCell label="Days w/o incident"   value="45"                              caption="Excellent streak"      accentColor="#0F766E" />
             </div>
 
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
@@ -816,17 +800,6 @@ export default function Reports() {
 }
 
 // ─── Subcomponents ───────────────────────────────────────────────────────────
-
-function StatCell({ label, value, caption, accent }: { label: string; value: string; caption: string; accent: string }) {
-  return (
-    <div className="relative overflow-hidden bg-white p-5">
-      <div className="absolute left-0 top-0 h-px w-8" style={{ backgroundColor: accent }} />
-      <p className="text-[11px] font-medium uppercase tracking-[0.15em] text-slate-500">{label}</p>
-      <p className="num mt-2 text-3xl font-medium text-slate-900">{value}</p>
-      <p className="mt-1 text-xs text-slate-400">{caption}</p>
-    </div>
-  );
-}
 
 function SectionHeader({
   eyebrow,
@@ -931,8 +904,7 @@ interface ReportPreviewProps {
 function ReportPreviewModal({ report, tasks, progressTrend, projectName, onClose, onPrint, onDownload }: ReportPreviewProps) {
   const meta = REPORT_TYPE_META[report.reportType];
   return (
-    <div className="reports-root fixed inset-0 z-50 flex items-center justify-center overflow-auto bg-slate-900/50 p-4 backdrop-blur-sm">
-      <style>{FONT_STYLES}</style>
+    <div className="editorial-root fixed inset-0 z-50 flex items-center justify-center overflow-auto bg-slate-900/50 p-4 backdrop-blur-sm">
       <div className="my-8 w-full max-w-6xl overflow-hidden rounded-3xl bg-white shadow-2xl">
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white px-7 py-5">
           <div>

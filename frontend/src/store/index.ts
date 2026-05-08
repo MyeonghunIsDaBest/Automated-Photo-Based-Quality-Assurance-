@@ -1,14 +1,12 @@
 import { create } from 'zustand';
 import {
   User, Profile, Project, Zone, Task, Photo, AIAnalysis,
-  AuditLog, Comment, Report, DashboardStats, ActivityFeedItem,
+  AuditLog, Comment, Report, DashboardStats,
   TaskStatus, ConstructionPhase, NoteType,
   profileToUser,
 } from '../types';
 import {
-  mockUsers, mockProject, mockZones, mockTasks, mockPhotos,
-  mockAuditLogs, mockComments, mockReports, mockDashboardStats,
-  mockActivityFeed
+  mockProject, mockZones, mockAuditLogs, mockReports, mockDashboardStats,
 } from '../data/mockData';
 import { useFeatureStore } from './features';
 import { useProjectsListStore, selectActiveProject } from '../pages/projects/store';
@@ -21,6 +19,7 @@ import {
   onAuthStateChange,
   type SignupRole,
 } from '../lib/api/auth';
+import { listUsers } from '../lib/api/users';
 import { supabaseConfigured } from '../lib/supabase';
 
 // The Projects list and the legacy app store use slightly different `Project`
@@ -68,10 +67,20 @@ interface AppState {
   comments: Comment[];
   reports: Report[];
   dashboardStats: DashboardStats;
-  activityFeed: ActivityFeedItem[];
-  
+
   // Actions
   addPhoto: (photo: Photo) => Promise<void>;
+  // Idempotent prepend used by realtime — INSERT new, replace if id matches.
+  // Distinct from `addPhoto` which also writes the audit log + bumps task
+  // photoCount; realtime payloads have already been audited server-side.
+  prependPhoto: (photo: Photo) => void;
+  // Patch the AI-analysis sub-object on a single photo. Used by
+  // `useProjectAnalysesRealtime` to surface analysis results without
+  // re-rendering unrelated photo state.
+  patchPhotoAnalysis: (photoId: string, analysis: AIAnalysis) => void;
+  // Replace `project` + reset dashboard stats — used by `createProject` so
+  // the global view jumps to the freshly-created project.
+  setActiveProjectFromCreate: (project: Project) => void;
   updateTaskProgress: (taskId: string, newProgress: number, source: 'ai_auto' | 'manual') => void;
   addComment: (taskId: string, content: string, noteType?: NoteType) => void;
   addAuditLog: (log: Omit<AuditLog, 'id' | 'createdAt'>) => void;
@@ -151,12 +160,20 @@ export const useAppStore = create<AppState>((set, get) => ({
         // Pull the live project list as soon as we know who the user is.
         // No-op when Supabase isn't configured.
         void useProjectsListStore.getState().loadProjects();
+        // Hydrate the team directory from Supabase so the Dashboard's
+        // "Team" panel reflects real auth-backed users instead of the
+        // legacy mockUsers seed. Best-effort; errors leave the panel empty
+        // rather than crashing the auth path.
+        void listUsers()
+          .then((users) => set({ users }))
+          .catch(() => { /* noop — panel renders empty */ });
       } else {
         set({
           currentProfile: null,
           currentUser: null,
           isAuthenticated: false,
           isAuthLoading: false,
+          users: [],
         });
       }
     } catch {
@@ -164,23 +181,52 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
   
-  // Data State (from mock data — `project` is mirrored from useProjectsListStore
-  // by the subscription below so changing the active project propagates here).
+  // Data State. `project` is mirrored from useProjectsListStore by the
+  // subscription below so changing the active project propagates here.
+  // `users` hydrates from Supabase on auth (see refreshProfile) — the
+  // mockUsers seed is gone; pre-auth the panel renders empty. `tasks`,
+  // `photos`, and `comments` are sourced from useFeatureStore / realtime
+  // hooks and start empty here. `zones`, `auditLogs`, `reports`, and
+  // `dashboardStats` are still mock-seeded because no Supabase source
+  // exists for them yet — flagged in claude_build_prog.md as Phase E.
   project: toLegacyProject(selectActiveProject(useProjectsListStore.getState())),
-  users: mockUsers,
+  users: [],
   zones: mockZones,
-  tasks: mockTasks,
-  photos: mockPhotos,
+  tasks: [],
+  photos: [],
   auditLogs: mockAuditLogs,
-  comments: mockComments,
+  comments: [],
   reports: mockReports,
   dashboardStats: mockDashboardStats,
-  activityFeed: mockActivityFeed,
-  
+
   // Actions
   // Saves the photo and bumps the linked task's photo count. The AI analysis
   // pipeline is intentionally not wired yet — the next step in the demo is
   // for the user to confirm task progress manually after each upload.
+  prependPhoto: (photo: Photo) => {
+    set((state) => {
+      if (state.photos.some((p) => p.id === photo.id)) return state;
+      return { photos: [photo, ...state.photos] };
+    });
+  },
+
+  patchPhotoAnalysis: (photoId: string, analysis: AIAnalysis) => {
+    set((state) => {
+      const idx = state.photos.findIndex((p) => p.id === photoId);
+      if (idx < 0) return state;
+      const next = state.photos.slice();
+      next[idx] = { ...next[idx], aiAnalyzed: true, aiAnalysis: analysis };
+      return { photos: next };
+    });
+  },
+
+  setActiveProjectFromCreate: (project: Project) => {
+    set((state) => ({
+      project,
+      dashboardStats: { ...state.dashboardStats, overallProgress: 0 },
+    }));
+  },
+
   addPhoto: async (photo: Photo) => {
     const { addAuditLog } = get();
 

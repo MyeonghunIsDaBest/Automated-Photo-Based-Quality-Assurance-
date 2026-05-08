@@ -81,7 +81,9 @@ export interface UserDocument {
   uploadedAt: string;
 }
 
-// Mirrors `stakeholders`.
+// Mirrors `stakeholders` plus the Phase D-2 child rows surfaced in the
+// list view. `contacts` and `projectIds` are populated by `listStakeholders`
+// in one shot; mutators may leave them undefined.
 export interface Stakeholder {
   id: string;
   companyName: string;
@@ -94,6 +96,21 @@ export interface Stakeholder {
   createdBy?: string;
   createdAt: string;
   updatedAt: string;
+  contacts?: StakeholderContact[];
+  projectIds?: string[];
+}
+
+// Mirrors `stakeholder_contacts`. Each company can carry an arbitrary number
+// of additional contacts on top of the primary one stored on the parent row.
+export interface StakeholderContact {
+  id: string;
+  stakeholderId: string;
+  name: string;
+  email?: string;
+  mobile?: string;
+  role?: string;
+  notes?: string;
+  createdAt: string;
 }
 
 export interface SupplierAddress {
@@ -367,16 +384,11 @@ export interface DashboardStats {
   delayedTasks: number;
 }
 
-// Activity Feed Item
-export interface ActivityFeedItem {
-  id: string;
-  type: 'photo_upload' | 'ai_analysis' | 'task_update' | 'comment' | 'report';
-  message: string;
-  timestamp: string;
-  userId: string;
-  userName: string;
-  metadata?: any;
-}
+// `ActivityFeedItem` — REMOVED. The dead Dashboard "Recent Activity" panel
+// that consumed this shape was wired up to `mockActivityFeed = []` and
+// never actually populated. The connectedness pass replaced the panel with
+// `useProjectActivity()` from `~/lib/hooks/useProjectActivity`, which
+// derives a typed `ActivityEvent[]` from the real project stores.
 
 // Upload State
 export interface UploadState {

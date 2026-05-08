@@ -11,10 +11,11 @@
 //      from the repo root.
 //   2. For each commit, classify by changed files:
 //        frontend/   → 'frontend'
-//        backend/    → 'backend'
-//        supabase/   → 'backend'
+//        supabase/   → 'backend'  (Edge Functions + migrations)
 //        anything else (root configs, .github, docs) → 'infra'
-//      A commit that touches BOTH frontend + backend reports 'fullstack'.
+//      A commit that touches BOTH frontend + supabase reports 'fullstack'.
+//      The legacy `/backend` folder was removed in the Phase D readiness
+//      pass — Supabase covers everything it used to host.
 //   3. Translate the subject to layman terms — strip conventional-commit
 //      prefixes ("feat:", "fix:", etc), drop noisy verbs ("push", "wip"),
 //      capitalize, end with a period.
@@ -69,7 +70,7 @@ function classifySurface(filesChanged) {
   let touchesInfra = false;
   for (const f of filesChanged) {
     if (f.startsWith('frontend/')) touchesFrontend = true;
-    else if (f.startsWith('backend/') || f.startsWith('supabase/')) touchesBackend = true;
+    else if (f.startsWith('supabase/')) touchesBackend = true;
     else touchesInfra = true;
   }
   if (touchesFrontend && touchesBackend) return 'fullstack';

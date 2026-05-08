@@ -10,7 +10,6 @@ import {
   getPhotoUrl,
   type PhotoRow,
 } from '../../../lib/api/photos';
-import { subscribeToProjectPhotos } from '../../../lib/api/realtime';
 import { supabaseConfigured } from '../../../lib/supabase';
 import { TabHeader } from '../components/TabHeader';
 import { EmptyState } from '../components/EmptyState';
@@ -50,8 +49,11 @@ export function UploadsTab({ project, currentUser, canUpload }: UploadsTabProps)
     };
   };
 
-  // Initial fetch + realtime subscription. Recreated when the active project
-  // changes so we never show another project's photos.
+  // Initial fetch only — realtime is now mounted at Layout via
+  // `useProjectPhotosRealtime` so the Dashboard activity feed sees teammate
+  // uploads from any page. The tile grid here is hydrated once on mount;
+  // locally-uploaded photos are appended directly inside `handleFiles` so
+  // the user sees their upload land without an extra round-trip.
   useEffect(() => {
     if (!supabaseConfigured() || !project?.id) return;
     let cancelled = false;
@@ -68,16 +70,8 @@ export function UploadsTab({ project, currentUser, canUpload }: UploadsTabProps)
       }
     })();
 
-    const unsubscribe = subscribeToProjectPhotos(projectId, (row) => {
-      void (async () => {
-        const tile = await resolveTile(row);
-        setItems((prev) => [tile, ...prev].slice(0, 12));
-      })();
-    });
-
     return () => {
       cancelled = true;
-      unsubscribe();
     };
   }, [project?.id]);
 
@@ -94,7 +88,14 @@ export function UploadsTab({ project, currentUser, canUpload }: UploadsTabProps)
         // No task selection in the tab — uploads land scoped to the project.
         // To attach to a specific task, use the /upload page or the Schedule
         // tab's per-row uploader (future work).
-        await uploadPhoto({ file, projectId: project.id });
+        const row = await uploadPhoto({ file, projectId: project.id });
+        // Push the just-uploaded photo into the local tile grid so the user
+        // sees the result immediately. Cross-browser uploads still land in
+        // the Dashboard activity feed via Layout's realtime hook; they only
+        // appear here on next mount, which matches the tab's hydration-only
+        // model after the Pass 2 realtime lift.
+        const tile = await resolveTile(row);
+        setItems((prev) => [tile, ...prev].slice(0, 12));
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Upload failed.');

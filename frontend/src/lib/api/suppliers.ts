@@ -256,3 +256,114 @@ export async function deleteSupplier(id: string): Promise<void> {
   const { error } = await supabase.from('suppliers').delete().eq('id', id);
   if (error) throw error;
 }
+
+// ─── Branches: granular CRUD ───────────────────────────────────────────────
+// The original `createSupplier` takes a one-shot graph (root + branches +
+// contacts). For the Edit flow we diff per-child against the snapshot the
+// modal opened with and call these granular helpers — keeps the form code
+// honest about what it's actually changing instead of re-POSTing the world.
+
+export type BranchInput = Omit<SupplierBranch, 'id' | 'supplierId' | 'createdAt'>;
+export type ContactInput = Omit<SupplierContact, 'id' | 'supplierId' | 'createdAt'>;
+
+function branchInputToRow(input: Partial<BranchInput>): Record<string, unknown> {
+  const row: Record<string, unknown> = {};
+  if (input.branchName !== undefined)            row.branch_name             = input.branchName;
+  if (input.email !== undefined)                 row.email                   = input.email ?? null;
+  if (input.contactNumber !== undefined)         row.contact_number          = input.contactNumber ?? null;
+  if (input.contactName !== undefined)           row.contact_name            = input.contactName ?? null;
+  if (input.accountsEmail !== undefined)         row.accounts_email          = input.accountsEmail ?? null;
+  if (input.accountsContactNumber !== undefined) row.accounts_contact_number = input.accountsContactNumber ?? null;
+  if (input.accountsContactName !== undefined)   row.accounts_contact_name   = input.accountsContactName ?? null;
+  if (input.address !== undefined)               row.address                 = input.address ?? null;
+  if (input.postalAddress !== undefined)         row.postal_address          = input.postalAddress ?? null;
+  return row;
+}
+
+function contactInputToRow(input: Partial<ContactInput>): Record<string, unknown> {
+  const row: Record<string, unknown> = {};
+  if (input.name !== undefined)     row.name      = input.name;
+  if (input.email !== undefined)    row.email     = input.email ?? null;
+  if (input.mobile !== undefined)   row.mobile    = input.mobile ?? null;
+  if (input.role !== undefined)     row.role      = input.role ?? null;
+  if (input.notes !== undefined)    row.notes     = input.notes ?? null;
+  if (input.branchId !== undefined) row.branch_id = input.branchId ?? null;
+  return row;
+}
+
+export async function addSupplierBranch(
+  supplierId: string,
+  input: BranchInput,
+): Promise<SupplierBranch> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const row: Record<string, unknown> = { supplier_id: supplierId, ...branchInputToRow(input) };
+  // branch_name is required at the DB level; force it through even if the
+  // caller passed an empty string so the DB rejects rather than the row
+  // sneaking in with an "undefined" key dropped by branchInputToRow.
+  if (!('branch_name' in row)) row.branch_name = input.branchName ?? '';
+  const { data, error } = await supabase
+    .from('supplier_branches')
+    .insert(row)
+    .select('*')
+    .single();
+  if (error) throw error;
+  return rowToBranch(data as BranchRow);
+}
+
+export async function updateSupplierBranch(
+  id: string,
+  patch: Partial<BranchInput>,
+): Promise<SupplierBranch> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { data, error } = await supabase
+    .from('supplier_branches')
+    .update(branchInputToRow(patch))
+    .eq('id', id)
+    .select('*')
+    .single();
+  if (error) throw error;
+  return rowToBranch(data as BranchRow);
+}
+
+export async function deleteSupplierBranch(id: string): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { error } = await supabase.from('supplier_branches').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function addSupplierContact(
+  supplierId: string,
+  input: ContactInput,
+): Promise<SupplierContact> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const row: Record<string, unknown> = { supplier_id: supplierId, ...contactInputToRow(input) };
+  if (!('name' in row)) row.name = input.name ?? '';
+  const { data, error } = await supabase
+    .from('supplier_contacts')
+    .insert(row)
+    .select('*')
+    .single();
+  if (error) throw error;
+  return rowToContact(data as ContactRow);
+}
+
+export async function updateSupplierContact(
+  id: string,
+  patch: Partial<ContactInput>,
+): Promise<SupplierContact> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { data, error } = await supabase
+    .from('supplier_contacts')
+    .update(contactInputToRow(patch))
+    .eq('id', id)
+    .select('*')
+    .single();
+  if (error) throw error;
+  return rowToContact(data as ContactRow);
+}
+
+export async function deleteSupplierContact(id: string): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { error } = await supabase.from('supplier_contacts').delete().eq('id', id);
+  if (error) throw error;
+}

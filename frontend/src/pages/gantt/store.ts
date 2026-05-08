@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware';
 import type {
   DiaryEntry, DiaryPersonnel,
   PunchItem,
-  Order, OrderLineItem, OrderStatus,
+  Order, OrderStatus,
   Delivery,
   Invoice, InvoiceStatus,
   Warranty,

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  Calendar, ChevronRight, Circle, Layers, Trash2, User as UserIcon, X,
+  Calendar, Circle, Layers, Trash2, X,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import type { Task, Zone } from '../../../types';

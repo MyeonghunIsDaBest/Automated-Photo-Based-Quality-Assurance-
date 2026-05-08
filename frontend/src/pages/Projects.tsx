@@ -1,25 +1,13 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowUpRight, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useAppStore } from '../store';
 import { canCreateProjects } from '../lib/permissions';
 import { useProjectsListStore } from './projects/store';
 import { ProjectsListTab } from './projects/components/ProjectsListTab';
 import { NewProjectModal } from './projects/components/NewProjectModal';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
-
-const FONT_STYLES = `
-  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=DM+Sans:wght@400;500;600;700&display=swap');
-  .projects-root { font-family: 'DM Sans', system-ui, sans-serif; }
-  .projects-root .display { font-family: 'Fraunces', Georgia, serif; font-feature-settings: 'ss01'; letter-spacing: -0.02em; }
-  .projects-root .num     { font-family: 'Fraunces', Georgia, serif; font-variant-numeric: tabular-nums; letter-spacing: -0.04em; }
-  .projects-root .grid-bg {
-    background-image:
-      linear-gradient(to right, rgba(15, 23, 42, 0.04) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(15, 23, 42, 0.04) 1px, transparent 1px);
-    background-size: 32px 32px;
-  }
-`;
+import { EditorialButton } from '../components/editorial';
 
 // The Projects page is a directory and nothing more — Timeline / Activity /
 // Documents / Logs all moved into each project's Gantt page where they're
@@ -67,9 +55,7 @@ export default function Projects() {
   }, [projectsWithProgress, tasks]);
 
   return (
-    <div className="projects-root min-h-full bg-[#FAFAF7]">
-      <style>{FONT_STYLES}</style>
-
+    <div className="editorial-root min-h-full bg-[#FAFAF7]">
       {/* ─── Editorial Header ─── */}
       <header className="relative overflow-hidden border-b border-slate-200/70 bg-white">
         <div className="grid-bg absolute inset-0 opacity-50" />
@@ -95,14 +81,14 @@ export default function Projects() {
             </div>
 
             {canCreate ? (
-              <button
+              <EditorialButton
+                variant="pill"
                 onClick={() => setNewProjectOpen(true)}
-                className="group inline-flex items-center justify-center gap-2.5 self-start whitespace-nowrap rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white transition-all hover:-translate-y-0.5 hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-700/20 active:bg-emerald-800"
+                className="self-start"
               >
                 <Plus className="h-4 w-4 transition-transform group-hover:-translate-y-px" />
                 New Project
-                <ArrowUpRight className="h-3.5 w-3.5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
-              </button>
+              </EditorialButton>
             ) : (
               <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-xs font-medium uppercase tracking-[0.15em] text-slate-500">
                 <span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-400" />

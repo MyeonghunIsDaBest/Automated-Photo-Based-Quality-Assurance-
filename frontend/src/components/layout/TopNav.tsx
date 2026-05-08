@@ -1,12 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAppStore } from '../../store';
+import { useProjectsListStore } from '../../pages/projects/store';
 import { useNotificationStore } from '../../store/notifications';
 import {
   LayoutDashboard, FolderOpen, MessageSquare,
   DollarSign, Bell, Settings, LogOut, Building2,
   Menu, X, Shield, MessageCircle, TrendingUp, FileCheck, HardHat,
-  ShieldCheck, ChevronDown,
+  ShieldCheck, ChevronDown, Check,
 } from 'lucide-react';
 import { canSeeAdminDashboard, SECURITY_GROUP_LABELS } from '../../lib/permissions';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
@@ -59,6 +60,9 @@ export default function TopNav() {
   const navigate = useNavigate();
   const { currentUser, currentProfile, logout } = useAppStore();
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotificationStore();
+  const projects        = useProjectsListStore((s) => s.projects);
+  const activeProjectId = useProjectsListStore((s) => s.activeProjectId);
+  const setActiveProject = useProjectsListStore((s) => s.setActiveProject);
 
   const isAdmin = canSeeAdminDashboard(currentProfile);
   const visibleNav = navItems.filter((item) => !item.adminOnly || isAdmin);
@@ -66,6 +70,24 @@ export default function TopNav() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [projectMenuOpen, setProjectMenuOpen] = useState(false);
+
+  const activeProject = projects.find((p) => p.id === activeProjectId) ?? null;
+  const projectPillRef = useRef<HTMLButtonElement | null>(null);
+
+  // Close the project switcher on Escape; return focus to the trigger so
+  // keyboard users land back on the same control.
+  useEffect(() => {
+    if (!projectMenuOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setProjectMenuOpen(false);
+        projectPillRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [projectMenuOpen]);
 
   if (!currentUser) return null;
 
@@ -97,8 +119,109 @@ export default function TopNav() {
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-600">
               <Building2 className="h-5 w-5 text-white" />
             </div>
-            <span className="text-lg font-semibold tracking-tight text-slate-900">SiteProof</span>
+            <span className="hidden text-lg font-semibold tracking-tight text-slate-900 sm:inline">SiteProof</span>
           </Link>
+
+          {/* Project switcher pill — visible on every page so the active
+              project context is unambiguous. Dropdown lists every project
+              from useProjectsListStore. Below 360px the name collapses to a
+              tooltip-only state so nothing overflows on narrow phones. */}
+          {activeProject && (
+            <div className="relative min-w-0">
+              <button
+                ref={projectPillRef}
+                type="button"
+                onClick={() => {
+                  setProjectMenuOpen((o) => !o);
+                  setNotificationsOpen(false);
+                  setUserMenuOpen(false);
+                }}
+                aria-label={`Switch project, currently ${activeProject.name}`}
+                aria-haspopup="menu"
+                aria-expanded={projectMenuOpen}
+                title={activeProject.name}
+                className="group flex h-9 min-w-0 max-w-[60vw] items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 sm:max-w-[260px]"
+              >
+                <FolderOpen className="h-4 w-4 flex-shrink-0 text-slate-500" aria-hidden />
+                <span className="hidden truncate min-[480px]:inline">{activeProject.name}</span>
+                <ChevronDown className={`h-3.5 w-3.5 flex-shrink-0 text-slate-400 transition-transform ${projectMenuOpen ? 'rotate-180' : ''}`} aria-hidden />
+              </button>
+
+              {projectMenuOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setProjectMenuOpen(false)}
+                  />
+                  <div
+                    role="menu"
+                    aria-label="Switch project"
+                    className="absolute left-0 z-50 mt-2 w-72 max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg"
+                  >
+                    <div className="border-b border-slate-100 px-4 py-2.5">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Active project</p>
+                      <p className="mt-0.5 truncate text-sm font-medium text-slate-900">{activeProject.name}</p>
+                    </div>
+                    {projects.length <= 1 ? (
+                      <div className="px-4 py-6 text-center">
+                        <p className="text-xs text-slate-500">Only one project on this account.</p>
+                        <Link
+                          to="/projects"
+                          onClick={() => setProjectMenuOpen(false)}
+                          className="mt-2 inline-block text-xs font-medium text-emerald-700 hover:text-emerald-800"
+                        >
+                          Manage projects →
+                        </Link>
+                      </div>
+                    ) : (
+                      <ul className="max-h-72 overflow-y-auto py-1">
+                        {projects.map((p) => {
+                          const isActive = p.id === activeProjectId;
+                          return (
+                            <li key={p.id}>
+                              <button
+                                role="menuitemradio"
+                                aria-checked={isActive}
+                                type="button"
+                                onClick={() => {
+                                  setActiveProject(p.id);
+                                  setProjectMenuOpen(false);
+                                  projectPillRef.current?.focus();
+                                }}
+                                className={`flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition-colors ${
+                                  isActive
+                                    ? 'bg-emerald-50 text-emerald-800'
+                                    : 'text-slate-700 hover:bg-slate-50'
+                                }`}
+                              >
+                                <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center">
+                                  {isActive && <Check className="h-3.5 w-3.5" aria-hidden />}
+                                </span>
+                                <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                                {p.client && (
+                                  <span className="ml-2 truncate text-[11px] text-slate-400">{p.client}</span>
+                                )}
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                    <div className="border-t border-slate-100 px-4 py-2">
+                      <Link
+                        to="/projects"
+                        onClick={() => setProjectMenuOpen(false)}
+                        className="flex items-center justify-between text-xs font-medium text-slate-600 hover:text-slate-900"
+                      >
+                        <span>All projects</span>
+                        <span aria-hidden>→</span>
+                      </Link>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
 
           <nav className="hidden md:flex items-center gap-1">
             {visibleNav.map((item) => {

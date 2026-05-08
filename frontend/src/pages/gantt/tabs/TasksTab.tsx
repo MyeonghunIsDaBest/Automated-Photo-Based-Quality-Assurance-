@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   ArrowDown, ArrowUp, ArrowUpDown, CalendarRange, CheckCheck, CheckSquare,
-  ChevronDown, Image as ImageIcon, KanbanSquare, ListChecks, Lock, Plus,
+  Image as ImageIcon, KanbanSquare, ListChecks, Lock, Plus,
   Square, Tag, Trash2, User as UserIcon, X,
 } from 'lucide-react';
 import {
@@ -25,6 +26,11 @@ interface TasksTabProps {
   onCreateTask: (newTask: Omit<Task, 'id' | 'photoCount' | 'lastUpdated' | 'updateSource'>) => Promise<void> | void;
   onSaveTask:   (task: Task) => Promise<void> | void;
   onDeleteTask: (taskId: string) => Promise<void> | void;
+  /** Connectedness pass: when set, opens the matching task drawer on mount.
+   *  Silent skip if the task isn't in the current `tasks` list (the URL is
+   *  stale or pointing to a deleted entity). The Gantt page reads `?task=`
+   *  via `useUrlHydration` and forwards it here. */
+  initialOpenTaskId?: string | null;
 }
 
 type ViewMode = 'board' | 'list' | 'mine';
@@ -81,8 +87,9 @@ const BOARD_COLUMNS: { status: TaskStatus; label: string }[] = [
 
 export function TasksTab({
   project, tasks, zones, currentUser, canEdit, canDelete,
-  onCreateTask, onSaveTask, onDeleteTask,
+  onCreateTask, onSaveTask, onDeleteTask, initialOpenTaskId,
 }: TasksTabProps) {
+  const navigate = useNavigate();
   const [mode, setMode] = useState<ViewMode>('board');
   const [filters, setFilters] = useState<Set<FilterId>>(new Set());
   const [sortKey, setSortKey] = useState<SortKey>('startDate');
@@ -220,6 +227,30 @@ export function TasksTab({
     setDrawerTask(t);
     setDrawerMode('edit');
     setDrawerOpen(true);
+  };
+
+  // Connectedness pass: open the deep-linked task drawer once on mount + when
+  // the tasks list catches up. Guarded so it fires exactly once per
+  // initialOpenTaskId so the drawer doesn't slam shut and re-open on every
+  // task-store update. Stale / missing IDs are a silent skip per the URL
+  // schema's "deleted entity" rule.
+  const hydratedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!initialOpenTaskId) return;
+    if (hydratedRef.current === initialOpenTaskId) return;
+    const found = tasks.find((t) => t.id === initialOpenTaskId);
+    if (!found) return;
+    hydratedRef.current = initialOpenTaskId;
+    openTask(found);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialOpenTaskId, tasks]);
+
+  // Connectedness pass: deep-link from a task's photo-count badge to a
+  // gallery filtered by that task. Defined here so BoardView (and any other
+  // sub-view that surfaces photo_count) can call it without taking a
+  // dependency on react-router.
+  const viewPhotos = (taskId: string) => {
+    navigate(`/gallery?project=${project.id}&task=${taskId}`);
   };
 
   const openCreate = () => {
@@ -443,6 +474,7 @@ export function TasksTab({
           selectMode={selectMode}
           selected={selected}
           onSelectAllInStatus={selectAllInStatus}
+          onViewPhotos={viewPhotos}
         />
       ) : mode === 'list' ? (
         <ListView
@@ -953,7 +985,7 @@ function DeleteConfirmModal({
 
 function BoardView({
   tasks, zones, onOpenTask, onDropTask, canEdit,
-  selectMode, selected, onSelectAllInStatus,
+  selectMode, selected, onSelectAllInStatus, onViewPhotos,
 }: {
   tasks: Task[];
   zones: Zone[];
@@ -963,6 +995,7 @@ function BoardView({
   selectMode: boolean;
   selected: Set<string>;
   onSelectAllInStatus: (s: TaskStatus) => void;
+  onViewPhotos: (taskId: string) => void;
 }) {
   const grouped = useMemo(() => {
     const out: Record<TaskStatus, Task[]> = {
@@ -1068,7 +1101,29 @@ function BoardView({
                       <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
                         <span>{format(parseISO(t.endDate), 'MMM d')}</span>
                         {t.photoCount > 0 && (
-                          <span className="inline-flex items-center gap-1">
+                          /* Connectedness pass: photo_count is now a deep
+                             link to the gallery filtered by this task. The
+                             card itself is a <button>; nesting another
+                             <button> would be invalid, so use role=link with
+                             a click + keyboard handler. stopPropagation keeps
+                             the parent card's open-drawer click from firing. */
+                          <span
+                            role="link"
+                            tabIndex={0}
+                            aria-label={`View ${t.photoCount} photos for ${t.name}`}
+                            className="inline-flex cursor-pointer items-center gap-1 rounded px-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onViewPhotos(t.id);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                onViewPhotos(t.id);
+                              }
+                            }}
+                          >
                             <ImageIcon className="h-3 w-3" />
                             {t.photoCount}
                           </span>

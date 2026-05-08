@@ -1,12 +1,6 @@
 import { Lock, ArrowUpRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
-const FONT_STYLES = `
-  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=DM+Sans:wght@400;500;600&display=swap');
-  .na-root { font-family: 'DM Sans', system-ui, sans-serif; }
-  .na-root .display { font-family: 'Fraunces', Georgia, serif; letter-spacing: -0.02em; }
-`;
-
 interface NotAuthorizedProps {
   /** Page name shown in the eyebrow line. Defaults to "this area". */
   surface?: string;
@@ -16,8 +10,7 @@ interface NotAuthorizedProps {
 
 export default function NotAuthorized({ surface = 'this area', detail }: NotAuthorizedProps) {
   return (
-    <div className="na-root flex min-h-[60vh] items-center justify-center px-6 py-12">
-      <style>{FONT_STYLES}</style>
+    <div className="editorial-root flex min-h-[60vh] items-center justify-center px-6 py-12">
       <div className="max-w-lg text-center">
         <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-full bg-slate-900 text-white">
           <Lock className="h-6 w-6" aria-hidden />

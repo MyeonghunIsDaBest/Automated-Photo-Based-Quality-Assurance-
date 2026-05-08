@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Activity, AlertTriangle, Calendar as CalendarIcon, ChevronLeft, ChevronRight,
-  ClipboardList, DollarSign, FileText, GanttChartSquare, Image as ImageIcon,
-  Layers, ListChecks, MessageSquare, Package, Receipt, ShieldCheck,
+  ClipboardList, FileText, GanttChartSquare, Image as ImageIcon,
+  Layers, ListChecks, MessageSquare, Receipt, ShieldCheck,
   ShoppingCart, Sparkles, TrendingUp, Truck, Wallet,
 } from 'lucide-react';
 import {
@@ -18,9 +18,10 @@ import { Badge } from '../../../components/ui/badge';
 import { GanttChart } from '../../../components/ui/GanttChart';
 import { useFeatureStore } from '../../../store/features';
 import { useGanttSideStore, orderTotal } from '../store';
-import { useProjectActivity, ACTIVITY_VERBS } from '../lib/useProjectActivity';
+import { useProjectActivity } from '../lib/useProjectActivity';
+import ActivityFeed from '../../../components/activity/ActivityFeed';
 import { TabHeader } from '../components/TabHeader';
-import type { ActivityKind, TabId } from '../types';
+import type { TabId } from '../types';
 
 interface OverviewTabProps {
   project: Project;
@@ -348,36 +349,11 @@ export function OverviewTab({
                     {activity.length} latest
                   </span>
                 </div>
-                {activity.length === 0 ? (
-                  <p className="px-4 py-12 text-center text-sm text-slate-400">
-                    Nothing has happened on this project yet.
-                  </p>
-                ) : (
-                  <ul className="divide-y divide-slate-100">
-                    {activity.map((e) => (
-                      <li key={e.id}>
-                        <button
-                          type="button"
-                          onClick={() => onJumpToTab?.(e.targetTabId)}
-                          className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50 active:bg-slate-100 sm:px-5"
-                        >
-                          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-slate-50">
-                            <ActivityIcon kind={e.kind} />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm text-slate-800">
-                              <span className="font-medium text-slate-900">{e.actorName}</span>{' '}
-                              <span className="text-slate-500">{ACTIVITY_VERBS[e.kind]}</span>{' '}
-                              {e.targetLabel}
-                            </p>
-                            <p className="text-[11px] text-slate-400">{timeAgo(e.timestamp)}</p>
-                          </div>
-                          <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-300" />
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                <ActivityFeed
+                  events={activity}
+                  onSelect={(e) => onJumpToTab?.(e.targetTabId)}
+                  emptyLabel="Nothing has happened on this project yet."
+                />
               </CardContent>
             </Card>
 
@@ -1070,23 +1046,6 @@ function ModeButton({
       {label}
     </button>
   );
-}
-
-function ActivityIcon({ kind }: { kind: ActivityKind }) {
-  const Icon = {
-    task_progress:     TrendingUp,
-    task_created:      ListChecks,
-    photo_upload:      ImageIcon,
-    order_placed:      ShoppingCart,
-    order_received:    Package,
-    delivery_received: Truck,
-    invoice_paid:      DollarSign,
-    punch_item_added:  ClipboardList,
-    punch_item_closed: ClipboardList,
-    diary_entry:       CalendarIcon,
-    comment_added:     MessageSquare,
-  }[kind];
-  return <Icon className="h-3.5 w-3.5 text-slate-500" />;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────

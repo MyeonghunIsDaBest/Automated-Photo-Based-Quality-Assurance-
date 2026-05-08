@@ -17,6 +17,10 @@ interface StatCellProps {
   /** One-line caption shown below the value. */
   caption?: string;
   accent?: Accent;
+  /** Raw hex/rgb override for the accent bar. Wins over `accent` when set —
+   *  Reports.tsx uses this to keep its bespoke palette without losing the
+   *  shared layout. Default consumers should stick with the named tokens. */
+  accentColor?: string;
   /** Optional unit suffix rendered next to the value in muted slate. */
   unit?: string;
   className?: string;
@@ -27,13 +31,18 @@ export default function StatCell({
   value,
   caption,
   accent = 'slate',
+  accentColor,
   unit,
   className,
 }: StatCellProps) {
   return (
     <div className={cn(statCard, className)}>
       <span
-        className={cn('absolute top-0 left-0 h-1 w-12 rounded-br-full', ACCENT_BAR[accent])}
+        className={cn(
+          'absolute top-0 left-0 h-1 w-12 rounded-br-full',
+          accentColor ? undefined : ACCENT_BAR[accent],
+        )}
+        style={accentColor ? { backgroundColor: accentColor } : undefined}
         aria-hidden
       />
       <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500">

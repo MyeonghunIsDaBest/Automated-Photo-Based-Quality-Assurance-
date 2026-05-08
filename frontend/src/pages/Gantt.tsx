@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { useFeatureStore } from '../store/features';
@@ -11,21 +11,15 @@ import {
 import type { Task } from '../types';
 import { canEditTasks, canDeleteTasks, canUploadPhotos } from '../lib/permissions';
 import {
-  listTasks,
-  mapTaskRow,
-  type TaskRow,
-} from '../lib/api/tasks';
-import {
   createTaskShared,
   saveTaskShared,
   deleteTaskShared,
 } from '../lib/api/taskMutations';
-import { subscribeToProjectTasks } from '../lib/api/realtime';
-import { supabaseConfigured } from '../lib/supabase';
 
 import { useGanttSideStore } from './gantt/store';
 import type { TabId } from './gantt/types';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
+import { useUrlHydration } from '../lib/hooks/useUrlHydration';
 
 import { OverviewTab }     from './gantt/tabs/OverviewTab';
 import { TasksTab }        from './gantt/tabs/TasksTab';
@@ -82,57 +76,22 @@ export default function Gantt() {
   const canUpload = canUploadPhotos(currentUser);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
+  const [initialOpenTaskId, setInitialOpenTaskId] = useState<string | null>(null);
 
-  // ── Realtime task sync ─────────────────────────────────────────────────
-  useEffect(() => {
-    if (!supabaseConfigured() || !project?.id) return;
-    let cancelled = false;
-    const projectId = project.id;
-
-    (async () => {
-      try {
-        const rows = await listTasks(projectId);
-        if (cancelled) return;
-        const mapped = rows.map(mapTaskRow);
-        useFeatureStore.setState((state) => ({
-          tasks: [
-            ...state.tasks.filter((t) => t.projectId !== projectId),
-            ...mapped,
-          ],
-        }));
-      } catch (e) {
-        // eslint-disable-next-line no-console
-        console.error('[gantt] failed to load tasks:', e);
+  // Connectedness Pass 2: read `?project=&tab=&task=` and hydrate page state.
+  // The hook handles `?project=` itself; the callback applies the rest.
+  useUrlHydration({
+    onApplyExtras: ({ tab, task }) => {
+      if (tab && TAB_SPECS.some((s) => s.id === tab)) {
+        setActiveTab(tab as ActiveTab);
       }
-    })();
+      if (task) setInitialOpenTaskId(task);
+    },
+  });
 
-    const unsubscribe = subscribeToProjectTasks(projectId, (payload) => {
-      useFeatureStore.setState((state) => {
-        if (payload.eventType === 'INSERT') {
-          const next = mapTaskRow(payload.new as TaskRow);
-          if (state.tasks.some((t) => t.id === next.id)) return state;
-          return { tasks: [...state.tasks, next] };
-        }
-        if (payload.eventType === 'UPDATE') {
-          const next = mapTaskRow(payload.new as TaskRow);
-          return {
-            tasks: state.tasks.map((t) => (t.id === next.id ? next : t)),
-          };
-        }
-        if (payload.eventType === 'DELETE') {
-          const oldId = (payload.old as { id?: string }).id;
-          if (!oldId) return state;
-          return { tasks: state.tasks.filter((t) => t.id !== oldId) };
-        }
-        return state;
-      });
-    });
-
-    return () => {
-      cancelled = true;
-      unsubscribe();
-    };
-  }, [project?.id]);
+  // Tasks realtime + initial fetch is mounted at Layout via
+  // `useProjectTasksRealtime` so the Dashboard sees teammate updates while
+  // the user is on any page, not just Gantt.
 
   const projectTasks = useMemo(
     () => tasks.filter((t) => t.projectId === project.id),
@@ -200,7 +159,6 @@ export default function Gantt() {
       inventory:  'inventory',
       plans:      'plans',
       files:      'plans',     // standalone Files page consumed from /files
-      messages:   'uploads',   // until Messages tab is wired here
       uploads:    'uploads',
     };
     const next = map[tabId];
@@ -293,6 +251,7 @@ export default function Gantt() {
             onCreateTask={handleCreateTask}
             onSaveTask={handleSaveTask}
             onDeleteTask={handleDeleteTask}
+            initialOpenTaskId={initialOpenTaskId}
           />
         )}
 

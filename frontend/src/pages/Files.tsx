@@ -4,13 +4,13 @@ import { useFeatureStore } from '../store/features';
 import type { ProjectDocument as Document } from '../store/features';
 import {
   Upload, File as FileIcon, Image as ImageIcon, Video, Trash2, Download,
-  Search, X, Grid3x3, List, MoreHorizontal, FileText, Clock, ArrowUpRight,
+  Search, X, Grid3x3, List, FileText, Clock,
   Layers, FolderOpen,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
-import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { useProjectsListStore, selectActiveProject } from './projects/store';   // ← kee
+import { EditorialButton } from '../components/editorial';
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -43,23 +43,6 @@ const formatBytes = (bytes: number) => {
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 };
-
-// ─── Fonts ────────────────────────────────────────────────────────────────────
-
-const FONT_STYLES = `
-  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=DM+Sans:wght@400;500;600;700&display=swap');
-  .files-root { font-family: 'DM Sans', system-ui, sans-serif; }
-  .files-root .display { font-family: 'Fraunces', Georgia, serif; font-feature-settings: 'ss01'; letter-spacing: -0.02em; }
-  .files-root .num    { font-family: 'Fraunces', Georgia, serif; font-variant-numeric: tabular-nums; letter-spacing: -0.04em; }
-  .files-root .grid-bg {
-    background-image:
-      linear-gradient(to right, rgba(15, 23, 42, 0.04) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(15, 23, 42, 0.04) 1px, transparent 1px);
-    background-size: 32px 32px;
-  }
-  .files-root .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
-  .files-root .scrollbar-thin::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 9999px; }
-`;
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -144,9 +127,7 @@ export default function Files() {
   // ─────────────────────────────────────────────────────────────
 
   return (
-    <div className="files-root min-h-full bg-[#FAFAF7]">
-      <style>{FONT_STYLES}</style>
-
+    <div className="editorial-root min-h-full bg-[#FAFAF7]">
       {/* ─── Editorial Header ─── */}
       <header className="relative overflow-hidden border-b border-slate-200/70 bg-white">
         <div className="grid-bg absolute inset-0 opacity-50" />
@@ -171,14 +152,14 @@ export default function Files() {
               </p>
             </div>
 
-            <button
+            <EditorialButton
+              variant="pill"
               onClick={() => setUploadOpen(true)}
-              className="group inline-flex items-center justify-center gap-2.5 self-start whitespace-nowrap rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white transition-all hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-700/20 hover:-translate-y-0.5 active:bg-emerald-800"
+              className="self-start"
             >
               <Upload className="h-4 w-4 transition-transform group-hover:-translate-y-px" />
               Upload files
-              <ArrowUpRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-            </button>
+            </EditorialButton>
           </div>
 
           {/* ── Stat strip ── */}
@@ -572,7 +553,7 @@ function UploadModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
       <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="files-root relative flex h-full max-h-[95vh] w-full max-w-xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl sm:h-auto">
+      <div className="editorial-root relative flex h-full max-h-[95vh] w-full max-w-xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl sm:h-auto">
         <div className="flex flex-shrink-0 items-center justify-between border-b border-slate-100 px-5 pt-6 pb-4 sm:px-7">
           <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-700">Upload</p>

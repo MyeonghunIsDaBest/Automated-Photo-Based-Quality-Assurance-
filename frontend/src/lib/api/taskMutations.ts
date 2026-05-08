@@ -77,9 +77,7 @@ export async function saveTaskShared(updated: Task): Promise<void> {
         dependencies: updated.dependencies,
       });
       const next = mapTaskRow(row);
-      useFeatureStore.setState((state) => ({
-        tasks: state.tasks.map((t) => (t.id === next.id ? next : t)),
-      }));
+      featureState.updateTask(next);
       // Keep the progress trend / notification side-effects firing.
       featureState.updateTaskProgress(updated.id, updated.percentComplete, 'manual');
       return;
@@ -90,13 +88,11 @@ export async function saveTaskShared(updated: Task): Promise<void> {
   }
 
   // Local-only path (or Supabase fallback): mirror every field, not just %.
-  useFeatureStore.setState((state) => ({
-    tasks: state.tasks.map((t) =>
-      t.id === updated.id
-        ? { ...t, ...updated, lastUpdated: new Date().toISOString(), updateSource: 'manual' }
-        : t,
-    ),
-  }));
+  featureState.updateTask({
+    ...updated,
+    lastUpdated: new Date().toISOString(),
+    updateSource: 'manual',
+  });
   featureState.updateTaskProgress(updated.id, updated.percentComplete, 'manual');
 }
 

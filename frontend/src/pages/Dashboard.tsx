@@ -1,8 +1,13 @@
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { useFeatureStore } from '../store/features';
 import { useDashboardStats, useActiveJobs, useUpcomingTasks } from '../store/dashboard';
-import { SECURITY_GROUP_LABELS } from '../lib/permissions';
+import { useProjectActivity } from '../lib/hooks/useProjectActivity';
+import { useDashboardCounts } from '../lib/hooks/useDashboardCounts';
+import ActivityFeed from '../components/activity/ActivityFeed';
+import type { ActivityEvent } from '../lib/activity/types';
+import { SECURITY_GROUP_LABELS, canConfirmAIAnalysis, canViewSafetyIncident } from '../lib/permissions';
 import type { SecurityGroup } from '../types';
 import {
   ArrowUpRight,
@@ -36,22 +41,10 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { format, parseISO } from 'date-fns';
+import { differenceInCalendarDays, format, parseISO } from 'date-fns';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import WhatsNewCard from '../components/dashboard/WhatsNewCard';
-
-const FONT_STYLES = `
-  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=DM+Sans:wght@400;500;600;700&display=swap');
-  .dashboard-root { font-family: 'DM Sans', system-ui, sans-serif; }
-  .dashboard-root .display { font-family: 'Fraunces', Georgia, serif; font-feature-settings: 'ss01'; letter-spacing: -0.02em; }
-  .dashboard-root .num     { font-family: 'Fraunces', Georgia, serif; font-variant-numeric: tabular-nums; letter-spacing: -0.04em; }
-  .dashboard-root .grid-bg {
-    background-image:
-      linear-gradient(to right, rgba(15, 23, 42, 0.04) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(15, 23, 42, 0.04) 1px, transparent 1px);
-    background-size: 32px 32px;
-  }
-`;
+import { EditorialButton } from '../components/editorial';
 
 const STATUS_BADGE: Record<string, string> = {
   in_progress: 'border-blue-200 bg-blue-50 text-blue-700',
@@ -61,13 +54,89 @@ const STATUS_BADGE: Record<string, string> = {
   not_started: 'border-slate-200 bg-slate-50 text-slate-600',
 };
 
+// Phase-accent palette for the Upcoming Tasks left rail. Maps the eight
+// ConstructionPhase values onto the editorial slate/emerald/blue/amber/violet
+// hues so a glance at the card hints at trade mix without a legend.
+const PHASE_ACCENT: Record<string, string> = {
+  excavation: 'bg-amber-500',
+  foundation: 'bg-slate-500',
+  framing:    'bg-orange-500',
+  roofing:    'bg-rose-500',
+  electrical: 'bg-yellow-500',
+  plumbing:   'bg-sky-500',
+  drywall:    'bg-violet-500',
+  finishing:  'bg-emerald-500',
+};
+
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { activityFeed, users, zones, project, currentProfile } = useAppStore();
+  const { users, zones, project, currentProfile } = useAppStore();
   const stats = useDashboardStats();
   const activeJobs = useActiveJobs(3);
   const upcomingTasks = useUpcomingTasks(4);
   const progressTrend = useFeatureStore((s) => s.progressHistory);
+  const recentActivity = useProjectActivity(project.id, { limit: 8 });
+  const dashboardCounts = useDashboardCounts(project.id);
+
+  const canSeeHazardTile = canViewSafetyIncident(currentProfile);
+  const canSeeReviewTile = canConfirmAIAnalysis(currentProfile);
+
+  // Pass 2: pulse the count tiles when a teammate's update flips the value.
+  // Two refs hold the last-seen value; comparison runs in a single effect
+  // and clears the pulse 700ms later (matches the CSS `statPulse` keyframe).
+  const prevHazardsRef = useRef<number | null>(null);
+  const prevReviewRef  = useRef<number | null>(null);
+  const [hazardPulse,  setHazardPulse]  = useState(false);
+  const [reviewPulse,  setReviewPulse]  = useState(false);
+  useEffect(() => {
+    if (dashboardCounts.loading) return;
+    if (prevHazardsRef.current !== null && prevHazardsRef.current !== dashboardCounts.openHazards) {
+      setHazardPulse(true);
+      const t = window.setTimeout(() => setHazardPulse(false), 700);
+      prevHazardsRef.current = dashboardCounts.openHazards;
+      return () => window.clearTimeout(t);
+    }
+    prevHazardsRef.current = dashboardCounts.openHazards;
+  }, [dashboardCounts.openHazards, dashboardCounts.loading]);
+  useEffect(() => {
+    if (dashboardCounts.loading) return;
+    if (prevReviewRef.current !== null && prevReviewRef.current !== dashboardCounts.pendingReview) {
+      setReviewPulse(true);
+      const t = window.setTimeout(() => setReviewPulse(false), 700);
+      prevReviewRef.current = dashboardCounts.pendingReview;
+      return () => window.clearTimeout(t);
+    }
+    prevReviewRef.current = dashboardCounts.pendingReview;
+  }, [dashboardCounts.pendingReview, dashboardCounts.loading]);
+
+  // Activity row click → deep link to the right surface for that event kind.
+  // Pass 2 wires the *receiving* end (URL hydration); the URL params here
+  // are forward-compatible — pages that don't yet read them just navigate
+  // and ignore the query string.
+  const handleActivitySelect = (event: ActivityEvent) => {
+    switch (event.targetTabId) {
+      case 'tasks':
+        navigate(`/gantt?project=${project.id}&tab=tasks&task=${event.targetEntityId}`);
+        return;
+      case 'uploads':
+        if (event.kind === 'safety_flag') {
+          navigate(`/safety?project=${project.id}&tab=hazards&incident=${event.targetEntityId}`);
+          return;
+        }
+        navigate(`/gallery?project=${project.id}&photo=${event.targetEntityId}`);
+        return;
+      case 'overview':
+        if (event.kind === 'safety_flag') {
+          navigate(`/safety?project=${project.id}&tab=hazards&incident=${event.targetEntityId}`);
+          return;
+        }
+        navigate(`/gantt?project=${project.id}&tab=overview`);
+        return;
+      default:
+        // Generic fallback: jump to the matching Gantt tab.
+        navigate(`/gantt?project=${project.id}&tab=${event.targetTabId}`);
+    }
+  };
 
   const roleLabel = currentProfile
     ? SECURITY_GROUP_LABELS[currentProfile.securityGroup]
@@ -78,9 +147,7 @@ export default function Dashboard() {
     : '';
 
   return (
-    <div className="dashboard-root min-h-full bg-[#FAFAF7]">
-      <style>{FONT_STYLES}</style>
-
+    <div className="editorial-root min-h-full bg-[#FAFAF7]">
       {/* ─── Editorial Header ─── */}
       <header className="relative overflow-hidden border-b border-slate-200/70 bg-white">
         <div className="grid-bg absolute inset-0 opacity-50" />
@@ -126,18 +193,21 @@ export default function Dashboard() {
               )}
             </div>
 
-            <button
+            <EditorialButton
+              variant="pill"
               onClick={() => navigate('/reports')}
-              className="group inline-flex items-center justify-center gap-2.5 self-start whitespace-nowrap rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white transition-all hover:-translate-y-0.5 hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-700/20 active:bg-emerald-800"
+              className="self-start"
             >
               <Sparkles className="h-4 w-4 transition-transform group-hover:-translate-y-px" />
               Open report deck
-              <ArrowUpRight className="h-3.5 w-3.5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
-            </button>
+            </EditorialButton>
           </div>
 
-          {/* Stat strip */}
-          <div className="mt-10 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200 md:grid-cols-4">
+          {/* Stat strip — every tile is scoped to the active project. New
+              manager-tier tiles (AI hazards, Pending review) lift two of the
+              most actionable Phase C states straight onto the Dashboard so
+              you don't have to walk to /safety or /review-queue to spot them. */}
+          <div className="mt-10 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200 sm:grid-cols-3 lg:grid-cols-6">
             <StatCell
               label="Tasks Complete"
               value={`${stats.tasksComplete}/${stats.totalTasks}`}
@@ -162,6 +232,28 @@ export default function Dashboard() {
               caption={stats.delayedTasks > 0 ? `${stats.delayedTasks} delayed` : 'Schedule holding'}
               accent="#6D28D9"
             />
+            {canSeeHazardTile && (
+              <StatCell
+                label="Open AI hazards"
+                value={dashboardCounts.loading ? '—' : dashboardCounts.openHazards.toString()}
+                caption={dashboardCounts.openHazards > 0 ? 'Action required' : 'No open hazards in this project'}
+                accent={dashboardCounts.openHazards > 0 ? '#DC2626' : '#10B981'}
+                onClick={() => navigate(`/safety?project=${project.id}&tab=hazards`)}
+                ariaLabel={`Open AI hazards: ${dashboardCounts.openHazards} in this project`}
+                pulse={hazardPulse}
+              />
+            )}
+            {canSeeReviewTile && (
+              <StatCell
+                label="Pending review"
+                value={dashboardCounts.loading ? '—' : dashboardCounts.pendingReview.toString()}
+                caption={dashboardCounts.pendingReview > 0 ? 'AI calls awaiting confirmation' : 'No analyses pending in this project'}
+                accent={dashboardCounts.pendingReview > 0 ? '#F59E0B' : '#10B981'}
+                onClick={() => navigate(`/review-queue?project=${project.id}`)}
+                ariaLabel={`Pending review: ${dashboardCounts.pendingReview} AI analyses awaiting your confirmation in this project`}
+                pulse={reviewPulse}
+              />
+            )}
           </div>
         </div>
       </header>
@@ -272,48 +364,58 @@ export default function Dashboard() {
             </div>
           </section>
 
-          {/* Upcoming Tasks */}
+          {/* Upcoming Tasks — project-scoped via the TopNav project pill.
+              Each row is a button that deep-links into the Gantt task drawer
+              so a tester can jump from "what's next" straight into the task
+              detail without re-navigating + searching. */}
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
             <SectionHeader
               eyebrow="Coming up"
               title="Upcoming tasks"
-              description="Priority milestones and deadlines"
+              description={`Priority milestones for ${project.name}`}
               actionLabel="See all"
-              onAction={() => navigate('/gantt')}
+              onAction={() => navigate(`/gantt?project=${project.id}&tab=tasks`)}
             />
             <div className="divide-y divide-slate-100">
               {upcomingTasks.length === 0 && (
                 <p className="px-6 py-8 text-center text-sm text-slate-400 italic">
-                  No upcoming tasks.
+                  No upcoming tasks for {project.name}.
                 </p>
               )}
               {upcomingTasks.map((task) => {
                 const zone = zones.find((z) => z.id === task.zoneId);
+                const startsIn = differenceInCalendarDays(parseISO(task.startDate), new Date());
+                const accent = PHASE_ACCENT[task.phase] ?? 'bg-slate-300';
+                const startBadge =
+                  startsIn < 0  ? { label: `Overdue · ${Math.abs(startsIn)}d`, tone: 'border-red-200 bg-red-50 text-red-700' }
+                  : startsIn === 0 ? { label: 'Starts today',                  tone: 'border-emerald-200 bg-emerald-50 text-emerald-700' }
+                  : startsIn <= 7  ? { label: `In ${startsIn}d`,               tone: 'border-amber-200 bg-amber-50 text-amber-700' }
+                  :                  { label: `In ${startsIn}d`,               tone: 'border-slate-200 bg-slate-50 text-slate-600' };
                 return (
-                  <div
+                  <button
                     key={task.id}
-                    className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 transition-colors hover:bg-slate-50/60"
+                    type="button"
+                    onClick={() => navigate(`/gantt?project=${project.id}&tab=tasks&task=${task.id}`)}
+                    aria-label={`Open task ${task.name}, ${startBadge.label.toLowerCase()}`}
+                    className="group flex w-full flex-wrap items-center justify-between gap-3 px-6 py-4 text-left transition-colors hover:bg-emerald-50/40 active:bg-emerald-50"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-slate-50">
-                        <div className="h-3.5 w-3.5 rounded border-2 border-slate-300" />
-                      </div>
-                      <div>
-                        <p className="font-medium text-slate-900">{task.name}</p>
-                        <p className="text-xs text-slate-500">
-                          {zone?.name ?? 'No zone'} · {task.phase}
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className={`block h-8 w-1 flex-shrink-0 rounded-full ${accent}`} aria-hidden />
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-slate-900">{task.name}</p>
+                        <p className="truncate text-xs text-slate-500">
+                          {zone?.name ?? 'No zone'} · <span className="capitalize">{task.phase}</span>
+                          {' · '}Starts {format(parseISO(task.startDate), 'MMM d')}
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] font-medium capitalize text-slate-600">
-                        {task.phase}
+                    <div className="flex flex-shrink-0 items-center gap-2">
+                      <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium tabular-nums ${startBadge.tone}`}>
+                        {startBadge.label}
                       </span>
-                      <span className="text-xs tabular-nums text-slate-500">
-                        Starts {format(parseISO(task.startDate), 'MMM d')}
-                      </span>
+                      <ArrowUpRight className="h-3.5 w-3.5 flex-shrink-0 text-slate-300 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-emerald-600" aria-hidden />
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -325,44 +427,25 @@ export default function Dashboard() {
           {/* What's new — auto-generated from git log on each build/dev start. */}
           <WhatsNewCard />
 
-          {/* Recent activity */}
-          <section className="rounded-2xl border border-slate-200 bg-white p-5">
-            <div className="mb-4 flex items-center justify-between">
+          {/* Recent activity — derived from the active project via
+              useProjectActivity. Phase D will swap the hook's body for a
+              Supabase audit_log query without changing the props here. */}
+          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+            <div className="flex items-center justify-between px-5 pt-5 pb-3">
               <div>
                 <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
-                  Live feed
+                  In this project
                 </p>
                 <h3 className="display text-lg font-medium text-slate-900">Recent activity</h3>
               </div>
-              <Clock className="h-4 w-4 text-slate-400" />
+              <Clock className="h-4 w-4 text-slate-400" aria-hidden />
             </div>
-            <ul className="space-y-4">
-              {activityFeed.slice(0, 6).map((activity) => {
-                const user = users.find((u) => u.id === activity.userId);
-                return (
-                  <li key={activity.id} className="flex gap-3">
-                    <Avatar className="h-8 w-8 flex-shrink-0">
-                      <AvatarImage src={user?.avatar} />
-                      <AvatarFallback className="text-[10px]">
-                        {user?.fullName.split(' ').map((n) => n[0]).join('')}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm text-slate-700">
-                        <span className="font-medium text-slate-900">{activity.userName}</span>{' '}
-                        <span className="text-slate-500">{activity.message}</span>
-                      </p>
-                      <p className="mt-0.5 text-[11px] text-slate-400">
-                        {format(new Date(activity.timestamp), 'MMM d, h:mm a')}
-                      </p>
-                    </div>
-                  </li>
-                );
-              })}
-              {activityFeed.length === 0 && (
-                <li className="text-sm text-slate-400 italic">Nothing yet.</li>
-              )}
-            </ul>
+            <ActivityFeed
+              events={recentActivity}
+              onSelect={handleActivitySelect}
+              dense
+              emptyLabel="Nothing yet — uploads, comments, and updates will appear here."
+            />
           </section>
 
           {/* Team */}
@@ -425,16 +508,53 @@ export default function Dashboard() {
 }
 
 function StatCell({
-  label, value, caption, accent,
-}: { label: string; value: string; caption: string; accent: string }) {
-  return (
-    <div className="relative overflow-hidden bg-white p-4 sm:p-5">
+  label, value, caption, accent, onClick, ariaLabel, pulse,
+}: {
+  label: string;
+  value: string;
+  caption: string;
+  accent: string;
+  /** When set, the cell renders as a clickable <button> with hover state. */
+  onClick?: () => void;
+  ariaLabel?: string;
+  /** When true, the value briefly pulses (700ms) — fired by the Dashboard
+   *  on cross-browser count changes. Driven by the `statPulse` keyframe in
+   *  index.css via `data-just-updated`. */
+  pulse?: boolean;
+}) {
+  const inner = (
+    <>
       <div className="absolute left-0 top-0 h-1 w-12 rounded-br-full" style={{ backgroundColor: accent }} />
       <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500 sm:text-[11px] sm:tracking-[0.15em]">{label}</p>
       {/* Scales down on phones so values like "$150,000" or "10 days" don't
           overflow at grid-cols-2 (~150px usable per cell at 375px). */}
-      <p className="num mt-2 text-2xl font-medium text-slate-900 sm:text-3xl md:text-4xl">{value}</p>
+      <p
+        className="num mt-2 text-2xl font-medium text-slate-900 sm:text-3xl md:text-4xl"
+        data-just-updated={pulse ? 'true' : undefined}
+      >
+        {value}
+      </p>
       <p className="mt-1 text-xs text-slate-400">{caption}</p>
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={ariaLabel ?? `${label}: ${value}, ${caption}`}
+        className="group relative overflow-hidden bg-white p-4 text-left transition-colors hover:bg-slate-50 active:bg-slate-100 sm:p-5"
+      >
+        {inner}
+        <ArrowUpRight className="absolute right-3 top-3 h-3.5 w-3.5 text-slate-300 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-slate-700" aria-hidden />
+      </button>
+    );
+  }
+
+  return (
+    <div className="relative overflow-hidden bg-white p-4 sm:p-5">
+      {inner}
     </div>
   );
 }

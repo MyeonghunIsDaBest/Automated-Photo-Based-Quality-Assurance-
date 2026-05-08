@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  AlertCircle, ArrowLeft, ArrowRight, Box, Check, ChevronDown,
-  Package, Plus, Truck, X,
+  AlertCircle, ArrowLeft, ArrowRight, Box, Check,
+  Package, Truck, X,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
-import type { Project } from '../../../types';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { Badge } from '../../../components/ui/badge';

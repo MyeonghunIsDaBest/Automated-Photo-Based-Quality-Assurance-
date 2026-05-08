@@ -129,9 +129,10 @@ export async function getPhotoUrl(storagePath: string, expiresInSeconds = 3600):
 }
 
 // Find photos in the same project whose perceptual_hash is within a given
-// distance of the new candidate. The DB-side filter trims the search to the
-// project + non-null hash; the Hamming distance is computed via the
-// `phash_distance` SQL helper from `02_phase_c_seam.sql`.
+// distance of the new candidate. Phase D-3 pushed this filter into Postgres
+// via the `find_similar_photos` RPC (migration 05_phash_rpc.sql) so the
+// client only sees the matching rows — at thousand-photo projects the
+// previous client-side scan locked up the upload page.
 export async function findSimilarPhotos(
   projectId: string,
   hash: string,
@@ -140,22 +141,13 @@ export async function findSimilarPhotos(
   if (!supabaseConfigured()) return [];
   if (!hash || hash.length !== 16) return [];
 
-  // Pull every photo with a hash for this project, then filter client-side.
-  // For projects with thousands of photos this should switch to a SQL RPC
-  // (`find_similar_photos`) — flagged in the canonical Phase C plan as TBD.
-  const { data, error } = await supabase
-    .from('photos')
-    .select('*')
-    .eq('project_id', projectId)
-    .not('perceptual_hash', 'is', null);
+  const { data, error } = await supabase.rpc('find_similar_photos', {
+    p_project_id: projectId,
+    p_hash:       hash,
+    p_threshold:  maxDistance,
+  });
   if (error) throw error;
-
-  // Reuse the client-side phashDistance helper so the filter matches the
-  // SQL helper bit-for-bit.
-  const { phashDistance } = await import('../ai/perceptualHash');
-  return ((data ?? []) as PhotoRow[]).filter(
-    (p) => phashDistance(p.perceptual_hash, hash) <= maxDistance,
-  );
+  return (data ?? []) as PhotoRow[];
 }
 
 export async function deletePhoto(photo: PhotoRow): Promise<void> {

@@ -108,15 +108,6 @@ export const createTaskUpdate = (taskId: string, taskName: string, oldProgress: 
   metadata: { oldProgress, newProgress },
 });
 
-export const createChatMessage = (userId: string, userName: string, message: string) => ({
-  type: 'chat_message' as NotificationType,
-  priority: 'medium' as NotificationPriority,
-  title: '💬 New Message',
-  message: `${userName}: ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`,
-  userId,
-  metadata: { userName, preview: message },
-});
-
 export const createAIAnalysisAlert = (taskId: string, taskName: string, phase: string, confidence: number) => ({
   type: 'ai_analysis' as NotificationType,
   priority: 'high' as NotificationPriority,

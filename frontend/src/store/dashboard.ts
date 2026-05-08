@@ -50,27 +50,34 @@ export function useDashboardStats() {
   }, [tasks, documents, project]);
 }
 
-// Top 3 in-progress tasks closest to their end date — replaces the hardcoded
-// `activeJobs` array on the Dashboard.
+// Top in-progress tasks for the active project, closest to their end date.
+// Project scoping was missing pre-Phase D-readiness; switching projects via
+// the TopNav pill left the Dashboard showing tasks from the previous project
+// until a manual refresh.
 export function useActiveJobs(limit = 3): Task[] {
   const tasks = useFeatureStore((s) => s.tasks);
+  const projectId = useAppStore((s) => s.project.id);
   return useMemo(() => {
-    return [...tasks]
+    return tasks
+      .filter((t) => t.projectId === projectId)
       .filter((t) => t.status === 'in_progress' || t.status === 'delayed')
       .sort((a, b) => parseISO(a.endDate).getTime() - parseISO(b.endDate).getTime())
       .slice(0, limit);
-  }, [tasks, limit]);
+  }, [tasks, projectId, limit]);
 }
 
-// Upcoming tasks that haven't started yet, soonest first.
+// Upcoming tasks for the active project that haven't started yet, soonest
+// first. Same project-scope fix as useActiveJobs.
 export function useUpcomingTasks(limit = 4): Task[] {
   const tasks = useFeatureStore((s) => s.tasks);
+  const projectId = useAppStore((s) => s.project.id);
   return useMemo(() => {
-    return [...tasks]
+    return tasks
+      .filter((t) => t.projectId === projectId)
       .filter((t) => t.status === 'not_started')
       .sort((a, b) => parseISO(a.startDate).getTime() - parseISO(b.startDate).getTime())
       .slice(0, limit);
-  }, [tasks, limit]);
+  }, [tasks, projectId, limit]);
 }
 
 function safeIsToday(iso: string): boolean {

@@ -1,4 +1,4 @@
-import { Project, Zone, Task, Photo, User, AuditLog, Comment, Report, DashboardStats, ActivityFeedItem } from '../types';
+import { Project, Zone, Task, Photo, User, AuditLog, Comment, Report, DashboardStats } from '../types';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Live test bed for the photo-based QA pipeline.
@@ -74,8 +74,6 @@ export const mockDashboardStats: DashboardStats = {
   tasksInProgress: 0,
   delayedTasks: 0,
 };
-
-export const mockActivityFeed: ActivityFeedItem[] = [];
 
 // Helpers — unchanged shape, but they now operate on the empty seeds and will
 // pick up live data as it lands in the stores.

@@ -1,17 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Activity as ActivityIcon, AlertCircle, Calendar, ChevronRight, Copy,
+  Activity as ActivityIcon, Calendar, Copy,
   ListChecks, Package, Plus, ShoppingCart, Trash2, Truck, X,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
-import type { Project, Task, Zone } from '../../../types';
+import type { Task, Zone } from '../../../types';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { Badge } from '../../../components/ui/badge';
 import { useFeatureStore } from '../../../store/features';
 import { useAppStore } from '../../../store';
 import {
-  useGanttSideStore, useOrdersForProject, useDeliveries, orderTotal,
+  useGanttSideStore, useDeliveries,
 } from '../store';
 import type { Order, OrderLineItem, OrderStatus } from '../types';
 import { useProjectActivity, ACTIVITY_VERBS } from '../lib/useProjectActivity';
@@ -74,7 +74,6 @@ export default function OrderDrawer({
 
   // Project tasks for the "link to task" dropdown.
   const tasks = useFeatureStore((s) => s.tasks);
-  const project = useAppStore((s) => s.project);
   const zones = useAppStore((s) => s.zones);
   const projectTasks = useMemo(
     () => tasks.filter((t) => t.projectId === projectId),
@@ -431,7 +430,7 @@ function DetailsPane({
         <Field label="Linked task (optional)">
           <select
             value={draft.taskId ?? ''}
-            onChange={(e) => commitField('taskId', e.target.value || (undefined as unknown as Order['taskId']))}
+            onChange={(e) => commitField('taskId', e.target.value || undefined)}
             disabled={readOnly}
             className="block w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:bg-slate-50"
           >
@@ -445,7 +444,7 @@ function DetailsPane({
         <Field label="Zone (optional)">
           <select
             value={draft.zoneId ?? ''}
-            onChange={(e) => commitField('zoneId', e.target.value || (undefined as unknown as Order['zoneId']))}
+            onChange={(e) => commitField('zoneId', e.target.value || undefined)}
             disabled={readOnly}
             className="block w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:bg-slate-50"
           >

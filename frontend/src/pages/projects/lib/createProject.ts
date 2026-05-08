@@ -91,13 +91,10 @@ export function createProject(input: NewProjectInput): CreatedProjectResult {
   useProjectsListStore.getState().addProject(listEntry);
 
   // 2. Make this the active project (updates the TopNav subheader site-wide)
-  useAppStore.setState((state) => ({
-    project: newProject,
-    dashboardStats: { ...state.dashboardStats, overallProgress: 0 },
-  }));
+  useAppStore.getState().setActiveProjectFromCreate(newProject);
 
   // 3. Append milestones to the Gantt task list (source of truth: feature store)
-  useFeatureStore.setState((state) => ({ tasks: [...state.tasks, ...tasks] }));
+  useFeatureStore.getState().appendTasks(tasks);
 
   // 3b. Seed the finance store with this project's budget
   useFinanceStore.getState().setBudget({
@@ -146,11 +143,9 @@ export function createProject(input: NewProjectInput): CreatedProjectResult {
   });
 
   // 6. Toast confirmation
-  useAppStore.setState({
-    notification: {
-      type: 'success',
-      message: `Project "${input.name}" created`,
-    },
+  useAppStore.getState().setNotification({
+    type: 'success',
+    message: `Project "${input.name}" created`,
   });
 
   return { project: newProject, listEntry, tasks };

@@ -3,8 +3,8 @@ import {
   AlertTriangle, Calendar, CheckCircle2, CheckSquare, ChevronRight,
   Circle, Clock, ListTodo, Plus, Square, User as UserIcon,
 } from 'lucide-react';
-import { differenceInDays, endOfWeek, format, parseISO, startOfWeek } from 'date-fns';
-import type { Project, Task, User, Zone } from '../../../types';
+import { differenceInDays, endOfWeek, format, parseISO } from 'date-fns';
+import type { Project, Task, Zone } from '../../../types';
 import { Card, CardContent } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
 import { Badge } from '../../../components/ui/badge';

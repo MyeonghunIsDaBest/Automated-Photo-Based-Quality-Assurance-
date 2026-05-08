@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { Task, Comment, Report } from '../types';
-import { mockTasks, mockPhotos, mockComments, mockReports } from '../data/mockData';
-import { useNotificationStore, createTaskUpdate, createSafetyAlert, createAIAnalysisAlert, createWeeklyReport } from './notifications';
+import { updateTaskProgress as apiUpdateTaskProgress } from '../lib/api/tasks';
+import { supabaseConfigured } from '../lib/supabase';
+import { useNotificationStore, createTaskUpdate, createAIAnalysisAlert, createWeeklyReport } from './notifications';
 
 // Progress Trend Data Point
 export interface ProgressDataPoint {
@@ -62,7 +63,20 @@ interface FeatureState {
   tasks: Task[];
   updateTaskProgress: (taskId: string, newProgress: number, source: 'ai_auto' | 'manual') => void;
   addTask: (task: Task) => void;
+  // Idempotent — replace if a task with the same id exists, append otherwise.
+  // Used by `useProjectTasksRealtime` so INSERT and UPDATE both route through
+  // one action and a stale duplicate INSERT can't double the row.
+  upsertTask: (task: Task) => void;
+  // Replace one task in place (no-op if absent). Used by `saveTaskShared` to
+  // mirror an authoritative DB row into the cache without filter-and-map at
+  // every call site.
+  updateTask: (task: Task) => void;
   deleteTask: (taskId: string) => void;
+  // Bulk append used by `createProject` after creating milestones in one shot.
+  appendTasks: (tasks: Task[]) => void;
+  // Replace every task for a single project — used by realtime hydration
+  // (`useProjectTasksRealtime`) on mount and on project switch.
+  setTasksForProject: (projectId: string, tasks: Task[]) => void;
   getTasksByZone: (zoneId: string) => Task[];
   getTasksByStatus: (status: Task['status']) => Task[];
   getOverdueTasks: () => Task[];
@@ -132,33 +146,32 @@ export const useFeatureStore = create<FeatureState>((set, get) => ({
   },
 
   // Task Management
-  tasks: mockTasks,
+  tasks: [],
 
+  // Write-through: optimistic local update, then Supabase persist. The
+  // realtime channel subscribes via `useProjectTasksRealtime` and will
+  // re-apply the canonical row when it lands, so a failed PATCH self-heals
+  // on the next reconnect. Source-of-truth split:
+  //   - manual user updates flow through here
+  //   - Edge Functions (analyze-photo, confirm-analysis) write directly to
+  //     Supabase and rely on realtime to push back into the cache.
+  // Safety incidents are inserted by analyze-photo on detection — no need
+  // to scan local photos here (the legacy mock-data scan was a no-op).
   updateTaskProgress: (taskId, newProgress, source) => {
     const { tasks } = get();
     const task = tasks.find((t) => t.id === taskId);
-    
+
     if (!task) return;
 
     const oldProgress = task.percentComplete;
-    
-    // Create notification
+
     if (newProgress !== oldProgress) {
       useNotificationStore.getState().addNotification(
         createTaskUpdate(taskId, task.name, oldProgress, newProgress)
       );
     }
 
-    // Check for safety flags from AI
-    const recentPhotos = mockPhotos.filter(p => p.taskId === taskId && p.aiAnalysis);
-    const safetyFlags = recentPhotos.flatMap(p => p.aiAnalysis?.safetyFlags || []);
-    
-    if (safetyFlags.length > 0) {
-      useNotificationStore.getState().addNotification(
-        createSafetyAlert(taskId, task.name, safetyFlags)
-      );
-    }
-
+    // Optimistic local update so the UI moves instantly.
     set({
       tasks: tasks.map((t) =>
         t.id === taskId
@@ -172,6 +185,15 @@ export const useFeatureStore = create<FeatureState>((set, get) => ({
           : t
       ),
     });
+
+    // Persist to Supabase. No-op when not configured (dev / demo). Errors
+    // are logged but not surfaced — realtime will reconcile on retry.
+    if (supabaseConfigured() && newProgress !== oldProgress) {
+      void apiUpdateTaskProgress(taskId, newProgress).catch((e) => {
+        // eslint-disable-next-line no-console
+        console.error('[updateTaskProgress] persist failed:', e);
+      });
+    }
 
     // Append a point to the progress trend on EVERY change (deduped by day —
     // the latest write of the day wins). The Dashboard/Reports chart subscribes
@@ -189,7 +211,11 @@ export const useFeatureStore = create<FeatureState>((set, get) => ({
         const newPoint = {
           date: today,
           progress: overall,
-          photosUploaded: mockPhotos.length,
+          // photosUploaded was previously sourced from the mock photos seed
+          // (always empty); the real photo count is in useAppStore.photos
+          // and isn't snapshotted into the trend. Phase E will wire it to a
+          // proper aggregate query.
+          photosUploaded: 0,
           tasksCompleted: completed,
         };
         if (lastEntry?.date === today) {
@@ -206,8 +232,37 @@ export const useFeatureStore = create<FeatureState>((set, get) => ({
     set((state) => ({ tasks: [...state.tasks, task] }));
   },
 
+  upsertTask: (task) => {
+    set((state) => {
+      const idx = state.tasks.findIndex((t) => t.id === task.id);
+      if (idx < 0) return { tasks: [...state.tasks, task] };
+      const next = state.tasks.slice();
+      next[idx] = task;
+      return { tasks: next };
+    });
+  },
+
+  updateTask: (task) => {
+    set((state) => ({
+      tasks: state.tasks.map((t) => (t.id === task.id ? task : t)),
+    }));
+  },
+
   deleteTask: (taskId) => {
     set((state) => ({ tasks: state.tasks.filter((t) => t.id !== taskId) }));
+  },
+
+  appendTasks: (incoming) => {
+    set((state) => ({ tasks: [...state.tasks, ...incoming] }));
+  },
+
+  setTasksForProject: (projectId, projectTasks) => {
+    set((state) => ({
+      tasks: [
+        ...state.tasks.filter((t) => t.projectId !== projectId),
+        ...projectTasks,
+      ],
+    }));
   },
 
   getTasksByZone: (zoneId) => {
@@ -321,8 +376,10 @@ export const useFeatureStore = create<FeatureState>((set, get) => ({
     return documents.filter((d) => d.category === category);
   },
 
-  // Comments
-  comments: mockComments,
+  // Comments — populated via lib/api/realtime + addComment. Pre-Phase D-2
+  // there's no Supabase comments table, so this stays empty until a comment
+  // is posted via the task drawer.
+  comments: [],
 
   addComment: (comment) => {
     const newComment: Comment = {
@@ -338,8 +395,9 @@ export const useFeatureStore = create<FeatureState>((set, get) => ({
     return comments.filter((c) => c.taskId === taskId);
   },
 
-  // Reports
-  reports: mockReports,
+  // Reports — generated via generateReport() calls; pre-Phase E there's
+  // no persistent reports table, so this stays empty across reload.
+  reports: [],
 
   generateWeeklyReport: (projectId) => get().generateReport(projectId, 'weekly'),
 
@@ -367,11 +425,14 @@ export const useFeatureStore = create<FeatureState>((set, get) => ({
       dateFrom: new Date(Date.now() - windowMs).toISOString().split('T')[0],
       dateTo: new Date().toISOString().split('T')[0],
       summary: {
-        photosUploaded: mockPhotos.length,
+        // photosUploaded + safetyFlags previously sourced from the mock
+        // photos seed (always empty). Phase E wires these to real aggregate
+        // queries against `photos` + `safety_incidents`.
+        photosUploaded: 0,
         tasksUpdated: tasks.filter((t) => new Date(t.lastUpdated) > new Date(Date.now() - windowMs)).length,
         overallProgress: currentProgress,
         progressChange,
-        safetyFlags: mockPhotos.filter((p) => p.aiAnalysis?.safetyFlags && p.aiAnalysis.safetyFlags.length > 0).length,
+        safetyFlags: 0,
       },
     };
 

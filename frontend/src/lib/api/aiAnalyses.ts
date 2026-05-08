@@ -47,10 +47,30 @@ export function rowToAnalysis(row: AIAnalysisRow): AIAnalysis {
 }
 
 // Manual retry — invoked from the gallery's "Re-analyse" affordance.
-export async function requestAnalysis(photoId: string): Promise<void> {
+//
+// Phase D-4: optional `forceNew` flag asks the Edge Function to insert a
+// fresh ai_analyses row instead of claiming a queued one (re-analysis with
+// a confirmed/rejected previous result). `model` and `phaseHint` are
+// pass-through hints for Phase D's real vision call; today's stub ignores
+// them but the audit log records the requested model on the new row.
+export interface RequestAnalysisOptions {
+  forceNew?: boolean;
+  model?: string;
+  phaseHint?: import('../../types').ConstructionPhase;
+}
+
+export async function requestAnalysis(
+  photoId: string,
+  opts?: RequestAnalysisOptions,
+): Promise<void> {
   if (!supabaseConfigured()) throw NOT_CONFIGURED;
   const { error } = await supabase.functions.invoke('analyze-photo', {
-    body: { photoId },
+    body: {
+      photoId,
+      ...(opts?.forceNew  ? { forceNew:  true }            : {}),
+      ...(opts?.model     ? { model:     opts.model }      : {}),
+      ...(opts?.phaseHint ? { phaseHint: opts.phaseHint }  : {}),
+    },
   });
   if (error) throw error;
 }
@@ -78,6 +98,25 @@ export async function rejectAnalysis(photoId: string, notes?: string): Promise<v
     body: { photoId, action: 'rejected', notes },
   });
   if (error) throw error;
+}
+
+// Cheap count-only query for the Dashboard tile. Uses Supabase's
+// `count: 'exact', head: true` so no row data crosses the wire — just the
+// integer. The implicit filter narrows to analyses awaiting review:
+// `analysis_status='analysed'` AND `action_taken='pending'`.
+//
+// Note: filters by `photos.project_id` via an inner join so the count only
+// covers the current project. The `head: true` flag means we ship no rows.
+export async function countPendingAnalyses(projectId: string): Promise<number> {
+  if (!supabaseConfigured()) return 0;
+  const { count, error } = await supabase
+    .from('ai_analyses')
+    .select('*, photos!inner(project_id)', { count: 'exact', head: true })
+    .eq('analysis_status', 'analysed')
+    .eq('action_taken', 'pending')
+    .eq('photos.project_id', projectId);
+  if (error) throw error;
+  return count ?? 0;
 }
 
 // Pulls the pending review queue for the manager+ tier. Joins the photo so the

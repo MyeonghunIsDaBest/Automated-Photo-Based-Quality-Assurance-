@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { Search, Filter, MapPin, Eye, X, Grid, List, Upload as UploadIcon, AlertTriangle } from 'lucide-react';
+import { useFeatureStore } from '../store/features';
+import { useUrlHydration } from '../lib/hooks/useUrlHydration';
+import { Search, Filter, MapPin, Eye, X, Grid, List, Upload as UploadIcon, AlertTriangle, ListChecks } from 'lucide-react';
 import { format } from 'date-fns';
 import { Photo, SafetyFlag, SafetySeverity, AnalysisStatus } from '../types';
 import { Card, CardContent } from '../components/ui/card';
@@ -60,13 +62,33 @@ export default function Gallery() {
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
   const [filterZone, setFilterZone] = useState('');
   const [filterPhase, setFilterPhase] = useState('');
+  const [filterTaskId, setFilterTaskId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [pendingOnly, setPendingOnly] = useState(false);
 
+  // Connectedness Pass 2: read `?task=&photo=` and apply on mount.
+  // Project param is handled inside useUrlHydration. Photo param resolves
+  // against the in-memory photos array — silent skip if not found (deleted
+  // entity or stale link).
+  useUrlHydration({
+    onApplyExtras: ({ task, photo }) => {
+      if (task) setFilterTaskId(task);
+      if (photo) {
+        const found = photos.find((p) => p.id === photo);
+        if (found) setSelectedPhoto(found);
+      }
+    },
+  });
+
+  // Look up the filtered task for the chip + lightbox link.
+  const tasks = useFeatureStore((s) => s.tasks);
+  const filterTask = filterTaskId ? tasks.find((t) => t.id === filterTaskId) ?? null : null;
+
   const filteredPhotos = photos.filter(photo => {
     if (filterZone && photo.zoneId !== filterZone) return false;
     if (filterPhase && photo.aiAnalysis?.phaseDetected !== filterPhase) return false;
+    if (filterTaskId && photo.taskId !== filterTaskId) return false;
     if (searchQuery && !photo.filename.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     if (pendingOnly) {
       // Pending review = analysed by AI but supervisor hasn't confirmed/rejected.
@@ -200,6 +222,26 @@ export default function Gallery() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Task-filter chip — appears when the gallery was opened via a deep
+          link with `?task=<id>`. Click the X to clear and see every photo
+          again. The chip is the only UI affordance for "we're filtering by
+          a task" so a user landing here from the activity feed knows what
+          they're looking at. */}
+      {filterTask && (
+        <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-800">
+          <ListChecks className="h-3.5 w-3.5" aria-hidden />
+          Filtered by task — {filterTask.name}
+          <button
+            type="button"
+            onClick={() => setFilterTaskId(null)}
+            aria-label="Clear task filter"
+            className="ml-1 rounded-full p-0.5 text-emerald-700 hover:bg-emerald-100"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      )}
 
       {/* Photo Count */}
       <p className="mb-4 text-sm text-slate-500">
@@ -351,7 +393,26 @@ export default function Gallery() {
               
               <div className="border-l border-slate-200 p-6">
                 <h3 className="text-lg font-semibold text-slate-900">Photo Details</h3>
-                
+
+                {/* Connectedness Pass 2: cross-link from the photo to its
+                    parent task (when one is set). Plain semantic <a> rather
+                    than a button so middle-click + cmd-click open in a new
+                    tab. ?project=&tab=tasks&task=<id> is the canonical deep
+                    link Gantt's URL-hydration consumes. */}
+                {selectedPhoto.taskId && (
+                  <a
+                    href={`/gantt?project=${selectedPhoto.projectId}&tab=tasks&task=${selectedPhoto.taskId}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      navigate(`/gantt?project=${selectedPhoto.projectId}&tab=tasks&task=${selectedPhoto.taskId}`);
+                    }}
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-800 transition-colors hover:bg-emerald-100"
+                  >
+                    <ListChecks className="h-3.5 w-3.5" aria-hidden />
+                    View task
+                  </a>
+                )}
+
                 <div className="mt-4 space-y-4">
                   <div>
                     <p className="text-sm text-slate-500">Zone</p>

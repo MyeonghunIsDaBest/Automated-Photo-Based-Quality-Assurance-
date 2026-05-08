@@ -183,6 +183,31 @@ html {
   filter: brightness(1.1);
 }
 
+/* ─── Live-update accents ──────────────────────────────────────────────── */
+/* Pass 2: pulse a Dashboard count tile when its value changes from a
+   teammate's update. Toggled via `data-just-updated="true"` for ~700ms by
+   the Dashboard `useEffect` that compares prev/current value. */
+@keyframes statPulse {
+  0%   { transform: scale(1);    color: rgb(15 23 42); }
+  35%  { transform: scale(1.06); color: rgb(5 150 105); }
+  100% { transform: scale(1);    color: rgb(15 23 42); }
+}
+[data-just-updated="true"] {
+  animation: statPulse 700ms ease-out;
+}
+
+/* Pass 2: highlight a newly-inserted activity row for 1500ms so a
+   teammate's just-arrived event reads as live, not just rendered. The
+   ActivityFeed component sets `data-just-arrived` on rows whose id wasn't
+   in the previous render. */
+@keyframes activityHighlight {
+  0%   { background-color: rgb(236 253 245); }
+  100% { background-color: transparent; }
+}
+[data-just-arrived="true"] {
+  animation: activityHighlight 1500ms ease-out;
+}
+
 /* Print styles */
 @media print {
   .no-print {

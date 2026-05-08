@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Receipt, X } from 'lucide-react';
+import { Receipt, X } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
