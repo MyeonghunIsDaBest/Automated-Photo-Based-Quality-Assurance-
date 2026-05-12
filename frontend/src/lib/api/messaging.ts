@@ -327,6 +327,67 @@ export async function markRead(conversationId: string): Promise<void> {
     .eq('user_id', user.id);
 }
 
+// Rename a group. RLS allows the creator (and admins via DB policy) to
+// rename; ordinary members will see a permission error which the caller
+// surfaces to the user.
+export async function updateConversationName(
+  conversationId: string,
+  name: string,
+): Promise<Conversation> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error('Group name is required.');
+  const { data, error } = await supabase
+    .from('conversations')
+    .update({ name: trimmed })
+    .eq('id', conversationId)
+    .select('*')
+    .single();
+  if (error) throw error;
+  return rowToConversation(data as ConversationRow);
+}
+
+// Add one or more members to a group. Dedupes against the existing member
+// list so re-adding someone is a no-op rather than a unique-constraint
+// error. Callers are expected to refresh the conversation row afterwards
+// to pick up the new members (or rely on realtime).
+export async function addConversationMembers(
+  conversationId: string,
+  userIds: string[],
+): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  if (userIds.length === 0) return;
+  const unique = Array.from(new Set(userIds));
+  const rows = unique.map((id) => ({ conversation_id: conversationId, user_id: id }));
+  const { error } = await supabase
+    .from('conversation_members')
+    .upsert(rows, { onConflict: 'conversation_id,user_id', ignoreDuplicates: true });
+  if (error) throw error;
+}
+
+// Remove a single member from a group. Used by both admin-driven kicks
+// and the "Leave group" action (with userId === current user).
+export async function removeConversationMember(
+  conversationId: string,
+  userId: string,
+): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { error } = await supabase
+    .from('conversation_members')
+    .delete()
+    .eq('conversation_id', conversationId)
+    .eq('user_id', userId);
+  if (error) throw error;
+}
+
+// Convenience wrapper — removes the current user from a group.
+export async function leaveConversation(conversationId: string): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not signed in.');
+  return removeConversationMember(conversationId, user.id);
+}
+
 // ─── Profile search (used by NewConversationModal) ─────────────────────────
 
 interface SearchOpts {

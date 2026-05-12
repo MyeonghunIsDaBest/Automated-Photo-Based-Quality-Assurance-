@@ -21,6 +21,7 @@ import { useGanttSideStore, orderTotal } from '../store';
 import { useProjectActivity } from '../lib/useProjectActivity';
 import ActivityFeed from '../../../components/activity/ActivityFeed';
 import { TabHeader } from '../components/TabHeader';
+import MockAnalysisButton from '../../../components/mockAi/MockAnalysisButton';
 import type { TabId } from '../types';
 
 interface OverviewTabProps {
@@ -201,6 +202,15 @@ export function OverviewTab({
         />
       ) : (
         <>
+          {/* ── Mock-AI runner card ──────────────────────────────────── */}
+          {/* Demo-only: click to pick pending photos for this project and  */}
+          {/* bump each linked task by 4-10%. The runtime gates itself on   */}
+          {/* `project_config.ai_default_model === 'mvp-stub@v0'` so a real  */}
+          {/* Phase D rollout silently bypasses it.                         */}
+          <div className="mb-6">
+            <MockAnalysisButton projectId={project.id} variant="card" viewHref="/gantt?tab=review" />
+          </div>
+
           {/* ── Top KPI strip ────────────────────────────────────────── */}
           <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <KpiCell

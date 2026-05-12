@@ -15,6 +15,7 @@ import { Badge } from '../../../components/ui/badge';
 import TaskDrawer from './TaskDrawer';
 import { TabHeader } from '../components/TabHeader';
 import { EmptyState } from '../components/EmptyState';
+import MockAnalysisButton from '../../../components/mockAi/MockAnalysisButton';
 
 interface TasksTabProps {
   project: Project;
@@ -365,6 +366,7 @@ export function TasksTab({
         action={
           canEdit ? (
             <div className="flex flex-wrap items-center gap-2">
+              <MockAnalysisButton projectId={project.id} variant="compact" viewHref="/gantt?tab=review" />
               <Button
                 variant={selectMode ? 'default' : 'outline'}
                 onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
@@ -379,10 +381,13 @@ export function TasksTab({
               </Button>
             </div>
           ) : (
-            <Badge variant="secondary" className="gap-1.5 px-3 py-1.5">
-              <Lock className="h-3.5 w-3.5" />
-              Read-only
-            </Badge>
+            <div className="flex items-center gap-2">
+              <MockAnalysisButton projectId={project.id} variant="compact" viewHref="/gantt?tab=review" />
+              <Badge variant="secondary" className="gap-1.5 px-3 py-1.5">
+                <Lock className="h-3.5 w-3.5" />
+                Read-only
+              </Badge>
+            </div>
           )
         }
       />

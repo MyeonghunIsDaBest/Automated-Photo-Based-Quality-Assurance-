@@ -271,3 +271,40 @@ async function adminCreateUserFallback(input: AdminCreateUserInput): Promise<Pro
   }
   return rowToProfile(profileRow as ProfileRowResponse);
 }
+
+// ─── Owner-tier rescue (migration 11 + admin-rescue-user Edge function) ─────
+// Lets an `is_owner=true` caller reset another admin's password, set a temp
+// password, edit profile fields, or grant/revoke ownership — all without
+// touching Supabase Studio. The Edge function rejects callers who aren't
+// owners, so this wrapper doesn't double-check the gate.
+
+export type RescueAction = 'send_reset' | 'set_temp_password' | 'edit_profile' | 'set_owner';
+
+export interface RescueRequest {
+  targetUserId: string;
+  action: RescueAction;
+  tempPassword?: string;
+  profilePatch?: {
+    email?: string;
+    first_name?: string;
+    last_name?: string;
+    mobile?: string;
+    security_group?: string;
+    is_active?: boolean;
+  };
+  isOwner?: boolean;
+}
+
+export async function rescueUser(req: RescueRequest): Promise<{ ok: true } & Record<string, unknown>> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { data, error } = await supabase.functions.invoke<{ ok: true } & Record<string, unknown>>(
+    'admin-rescue-user',
+    { body: req },
+  );
+  if (error) {
+    const detail = await describeInvokeError(error, data);
+    throw new Error(detail);
+  }
+  if (!data) throw new Error('rescueUser: empty response');
+  return data;
+}

@@ -1,6 +1,30 @@
 {
-  "generatedAt": "2026-05-08T01:36:16.820Z",
+  "generatedAt": "2026-05-11T04:06:19.094Z",
   "entries": [
+    {
+      "id": "31d7672",
+      "date": "2026-05-09T04:44:39+08:00",
+      "surface": "frontend",
+      "kind": "change",
+      "headline": "Fronend update.",
+      "filesChanged": 23
+    },
+    {
+      "id": "3836461",
+      "date": "2026-05-08T13:32:05+08:00",
+      "surface": "frontend",
+      "kind": "change",
+      "headline": "Move supabase/ under backend/ so Vercel sees the shared contract.",
+      "filesChanged": 34
+    },
+    {
+      "id": "c4c9454",
+      "date": "2026-05-08T13:21:49+08:00",
+      "surface": "frontend",
+      "kind": "change",
+      "headline": "Big update.",
+      "filesChanged": 83
+    },
     {
       "id": "0f96e0d",
       "date": "2026-05-07T15:11:30+08:00",
@@ -72,30 +96,6 @@
       "kind": "improve",
       "headline": "Refactor ui pt1.",
       "filesChanged": 21
-    },
-    {
-      "id": "d0acb21",
-      "date": "2026-04-28T20:21:26+08:00",
-      "surface": "frontend",
-      "kind": "fix",
-      "headline": "Fix GanttChart filename casing for Linux builds.",
-      "filesChanged": 1
-    },
-    {
-      "id": "3df659c",
-      "date": "2026-04-28T20:19:09+08:00",
-      "surface": "infra",
-      "kind": "new",
-      "headline": "Add vercel.json for frontend subdirectory build.",
-      "filesChanged": 1
-    },
-    {
-      "id": "8ee7bc0",
-      "date": "2026-04-28T20:13:31+08:00",
-      "surface": "frontend",
-      "kind": "change",
-      "headline": "Initial frontend commit.",
-      "filesChanged": 44
     }
   ]
 }

@@ -7,6 +7,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
 import { Separator } from '../components/ui/separator';
+import { EditorialPageHeader } from '../components/editorial';
 
 export default function Settings() {
   const { currentUser } = useAppStore();
@@ -86,13 +87,15 @@ export default function Settings() {
   ];
 
   return (
-    <div className="p-4 sm:p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-slate-900">Settings</h1>
-        <p className="text-slate-500">Manage your account settings and preferences</p>
-      </div>
+    <div className="editorial-root min-h-full bg-[#FAFAF7]">
+      <EditorialPageHeader
+        eyebrow="Workspace · Account"
+        title="Your"
+        accent="preferences"
+        description="Profile, security, and the notification rules that decide which events page you."
+      />
 
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-5xl px-4 py-8 sm:px-8 sm:py-10">
         {/* Sidebar stacks above the panel on mobile; sits beside it on md+. */}
         <div className="flex flex-col gap-6 md:flex-row">
           {/* Sidebar */}

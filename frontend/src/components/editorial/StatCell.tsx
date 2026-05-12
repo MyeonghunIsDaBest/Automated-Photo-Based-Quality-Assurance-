@@ -2,8 +2,11 @@ import { statCard, cn } from '../../lib/editorial';
 
 type Accent = 'emerald' | 'blue' | 'amber' | 'rose' | 'violet' | 'slate';
 
-const ACCENT_BAR: Record<Accent, string> = {
-  emerald: 'bg-emerald-500',
+// Non-emerald tokens stay as Tailwind classes (status colours that should not
+// be re-coloured by the per-project accent). The `emerald` token resolves to
+// `var(--accent-color)` so unconfigured projects keep the emerald look while
+// configured ones flip every accent at once via Layout's outer style.
+const ACCENT_BAR: Record<Exclude<Accent, 'emerald'>, string> = {
   blue:    'bg-blue-500',
   amber:   'bg-amber-500',
   rose:    'bg-rose-500',
@@ -35,14 +38,24 @@ export default function StatCell({
   unit,
   className,
 }: StatCellProps) {
+  // Resolve the accent: explicit `accentColor` prop wins; `emerald` token →
+  // CSS variable (per-project); other named tokens → fixed Tailwind class.
+  const resolvedBar: { className?: string; style?: React.CSSProperties } = (() => {
+    if (accentColor) return { style: { backgroundColor: accentColor } };
+    if (accent === 'emerald') {
+      return { style: { backgroundColor: 'var(--accent-color, #10B981)' } };
+    }
+    return { className: ACCENT_BAR[accent] };
+  })();
+
   return (
     <div className={cn(statCard, className)}>
       <span
         className={cn(
           'absolute top-0 left-0 h-1 w-12 rounded-br-full',
-          accentColor ? undefined : ACCENT_BAR[accent],
+          resolvedBar.className,
         )}
-        style={accentColor ? { backgroundColor: accentColor } : undefined}
+        style={resolvedBar.style}
         aria-hidden
       />
       <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500">

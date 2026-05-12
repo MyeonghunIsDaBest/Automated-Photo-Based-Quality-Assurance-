@@ -20,6 +20,9 @@ interface ProfileRow {
   emergency_contact_mobile: string | null;
   security_group: SecurityGroup;
   is_active: boolean;
+  // Migration 11 — optional in the type so pre-11 fetches still parse.
+  // Falls back to false at the mapper layer.
+  is_owner?: boolean | null;
   avatar_url: string | null;
   created_at: string;
   updated_at: string;
@@ -37,6 +40,7 @@ export function rowToProfile(r: ProfileRow): Profile {
     emergencyContactMobile: r.emergency_contact_mobile ?? undefined,
     securityGroup: r.security_group,
     isActive: r.is_active,
+    isOwner: Boolean(r.is_owner),
     avatarUrl: r.avatar_url ?? undefined,
     createdAt: r.created_at,
     updatedAt: r.updated_at,

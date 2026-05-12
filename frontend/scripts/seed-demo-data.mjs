@@ -116,6 +116,31 @@ if (projectErr) {
 }
 console.log(`Created project ${project.id}.`);
 
+// ─── Project config ────────────────────────────────────────────────────────
+// Migration 09's `trg_create_project_config` trigger has already inserted a
+// default row for this project. Customise a handful of fields so the demo
+// shows non-default values in the admin tab + on the dashboard accent bar.
+
+const { error: configErr } = await supabase
+  .from('project_config')
+  .update({
+    progression_mode:       'human_assisted',
+    weight_checklist:       50,
+    weight_photos:          20,
+    weight_ai:              30,
+    target_photos_per_task: 3,
+    accent_color:           '#0F766E',
+    report_cadence:         'weekly',
+    updated_by:             owner.id,
+  })
+  .eq('project_id', project.id);
+if (configErr) {
+  // Non-fatal: defaults still ship via the trigger. Warn and continue.
+  console.warn(`seed-demo-data: failed to customise project_config: ${configErr.message}`);
+} else {
+  console.log(`Customised project_config for ${project.id}.`);
+}
+
 // ─── Zones ─────────────────────────────────────────────────────────────────
 
 const { data: zones, error: zonesErr } = await supabase

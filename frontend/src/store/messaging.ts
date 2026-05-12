@@ -19,6 +19,10 @@ interface MessagingState {
 
   setConversations: (rows: Conversation[]) => void;
   upsertConversation: (row: Conversation) => void;
+  /** Patch a single conversation's fields without replacing its members. */
+  patchConversation: (id: string, patch: Partial<Conversation>) => void;
+  /** Drop a conversation from the cache — used after the user leaves a group. */
+  removeConversation: (id: string) => void;
   setMessages: (conversationId: string, msgs: Message[]) => void;
   appendMessage: (msg: Message) => void;
   updateLastRead: (conversationId: string, ts: string) => void;
@@ -39,6 +43,22 @@ export const useMessagingStore = create<MessagingState>((set) => ({
       const next = state.conversations.slice();
       next[idx] = { ...next[idx], ...row };
       return { conversations: next };
+    }),
+
+  patchConversation: (id, patch) =>
+    set((state) => ({
+      conversations: state.conversations.map((c) =>
+        c.id === id ? { ...c, ...patch } : c,
+      ),
+    })),
+
+  removeConversation: (id) =>
+    set((state) => {
+      const { [id]: _dropped, ...rest } = state.messagesByConv;
+      return {
+        conversations: state.conversations.filter((c) => c.id !== id),
+        messagesByConv: rest,
+      };
     }),
 
   setMessages: (conversationId, msgs) =>

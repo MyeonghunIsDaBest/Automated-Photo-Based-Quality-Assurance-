@@ -8,4 +8,6 @@ export { default as EyebrowLabel } from './EyebrowLabel';
 export { default as ResponsiveDataTable } from './ResponsiveDataTable';
 export { default as SectionHeader } from './SectionHeader';
 export { default as StatCell } from './StatCell';
+export { default as AccentBar } from './AccentBar';
+export { default as EditorialPageHeader } from './EditorialPageHeader';
 export type { ColumnDef } from './ResponsiveDataTable';

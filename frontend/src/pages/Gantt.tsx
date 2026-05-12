@@ -4,7 +4,7 @@ import { useAppStore } from '../store';
 import { useFeatureStore } from '../store/features';
 import {
   ArrowLeft, CalendarDays, CheckSquare,
-  FileBox, Layers, LayoutDashboard, ListChecks, Package,
+  FileBox, Inbox, Layers, LayoutDashboard, ListChecks, Package,
   Upload as UploadIcon,
   type LucideIcon,
 } from 'lucide-react';
@@ -20,9 +20,11 @@ import { useGanttSideStore } from './gantt/store';
 import type { TabId } from './gantt/types';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 import { useUrlHydration } from '../lib/hooks/useUrlHydration';
+import { EditorialPageHeader } from '../components/editorial';
 
 import { OverviewTab }     from './gantt/tabs/OverviewTab';
 import { TasksTab }        from './gantt/tabs/TasksTab';
+import { ReviewQueueTab }  from './gantt/tabs/ReviewQueueTab';
 import { PunchListTab }    from './gantt/tabs/PunchListTab';
 import { InventoryTab }    from './gantt/tabs/InventoryTab';
 import { PlansTab }        from './gantt/tabs/PlansTab';
@@ -47,6 +49,7 @@ interface TabSpec {
 const TAB_SPECS: TabSpec[] = [
   { id: 'overview',    label: 'Overview',   icon: LayoutDashboard },
   { id: 'tasks',       label: 'Tasks',      icon: ListChecks },
+  { id: 'review',      label: 'Review',     icon: Inbox },
   { id: 'site_diary',  label: 'Site Diary', icon: CalendarDays },
   { id: 'punch_list',  label: 'Punch List', icon: CheckSquare },
   { id: 'supplier',    label: 'Supplier',   icon: Package },
@@ -166,21 +169,24 @@ export default function Gantt() {
   };
 
   return (
-    <div className="p-4 sm:p-6">
-      {/* ─── Page header: back link only ─── */}
-      {/* The project name is already shown by each tab's eyebrow            */}
-      {/* breadcrumb (Workspace · Tasks · {project.name}, etc.) and by the   */}
-      {/* TopNav project switcher. Removing the duplicate `<h1>` here keeps  */}
-      {/* the title from "hanging" beside every tab.                         */}
-      <div className="mb-4 flex items-center gap-3">
-        <Link
-          to="/projects"
-          className="group inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 transition-colors hover:text-slate-900"
-        >
-          <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
-          All projects
-        </Link>
-      </div>
+    <div className="editorial-root min-h-full bg-[#FAFAF7]">
+      <EditorialPageHeader
+        eyebrow="Plan · Schedule"
+        title="The schedule,"
+        accent="moving"
+        description="Tasks, milestones, supplier orders, inventory, plans, uploads, and the punch list — all keyed to the active project."
+        actions={
+          <Link
+            to="/projects"
+            className="group inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 transition-colors hover:text-slate-900"
+          >
+            <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
+            All projects
+          </Link>
+        }
+      />
+
+      <div className="px-4 py-8 sm:px-8 sm:py-10">
 
       {/* ─── Tab strip ─── */}
       <div className="mb-6 -mx-4 overflow-x-auto px-4 pb-1 sm:-mx-6 sm:px-6">
@@ -250,6 +256,14 @@ export default function Gantt() {
           />
         )}
 
+        {activeTab === 'review' && (
+          <ReviewQueueTab
+            project={project}
+            tasks={projectTasks}
+            currentUser={currentUser}
+          />
+        )}
+
         {activeTab === 'site_diary' && (
           <SiteDiaryTab project={project} currentUser={currentUser} canEdit={canEdit} />
         )}
@@ -277,6 +291,7 @@ export default function Gantt() {
           <UploadsTab project={project} currentUser={currentUser} canUpload={canUpload} />
         )}
       </ErrorBoundary>
+      </div>
     </div>
   );
 }

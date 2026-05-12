@@ -1,5 +1,8 @@
-import { Outlet, Navigate } from 'react-router-dom';
+import type { CSSProperties } from 'react';
+import { Outlet, Navigate, useLocation } from 'react-router-dom';
 import TopNav from './TopNav';
+import MissingEnvBanner from './MissingEnvBanner';
+import { ErrorBoundary } from '../ui/ErrorBoundary';
 import { useAppStore } from '../../store';
 import { canViewSafetyIncident } from '../../lib/permissions';
 import { useSafetyIncidentsCache } from '../../lib/hooks/useSafetyIncidentsCache';
@@ -8,6 +11,7 @@ import { useProjectPhotosRealtime } from '../../lib/hooks/useProjectPhotosRealti
 import { useProjectCommentsRealtime } from '../../lib/hooks/useProjectCommentsRealtime';
 import { useProjectAnalysesRealtime } from '../../lib/hooks/useProjectAnalysesRealtime';
 import { useMessagingRealtime } from '../../lib/hooks/useMessagingRealtime';
+import { useProjectConfig } from '../../lib/hooks/useProjectConfig';
 
 export default function Layout() {
   const { isAuthenticated, project, currentProfile, currentUser } = useAppStore();
@@ -30,15 +34,31 @@ export default function Layout() {
   // projects, so the channel is scoped to the signed-in user's id.
   useMessagingRealtime(isAuthenticated ? currentUser?.id ?? null : null);
 
+  // Per-project accent colour. The CSS variable is read by AccentBar +
+  // everywhere `text-[var(--accent-color)]` is used. Falls back to the
+  // editorial emerald default so unconfigured projects look identical.
+  const { config: projectConfig } = useProjectConfig(activeProjectId ?? undefined);
+  const accentStyle = {
+    '--accent-color': projectConfig?.accentColor ?? '#10B981',
+  } as CSSProperties;
+
+  // Path keys the route-level ErrorBoundary so a crash on one page doesn't
+  // sticky into the next. When the user navigates away from a broken route,
+  // the new pathname resets the boundary's internal error state.
+  const location = useLocation();
+
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50" style={accentStyle}>
+      <MissingEnvBanner />
       <TopNav />
       <main className="">
-        <Outlet />
+        <ErrorBoundary key={location.pathname} label={`Page · ${location.pathname}`}>
+          <Outlet />
+        </ErrorBoundary>
       </main>
     </div>
   );

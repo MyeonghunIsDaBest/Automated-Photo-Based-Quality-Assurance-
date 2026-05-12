@@ -4,6 +4,7 @@ import { EyebrowLabel } from '../components/editorial';
 import UsersTab from './admin/components/UsersTab';
 import StakeholdersTab from './admin/components/StakeholdersTab';
 import SuppliersTab from './admin/components/SuppliersTab';
+import ProjectConfigTab from './admin/components/ProjectConfigTab';
 
 // Phase B follow-up: drops the per-page FONT_STYLES injection in favour of
 // the global `.editorial-root` selector + Google Fonts @import declared in
@@ -26,7 +27,7 @@ export default function Admin() {
             className="display mt-3 text-2xl font-medium leading-tight text-slate-900 sm:text-4xl md:text-5xl"
             style={{ textWrap: 'balance' }}
           >
-            People &amp; <em className="font-normal italic text-emerald-700">partners</em>.
+            People &amp; <em className="font-normal italic" style={{ color: 'var(--accent-color, #047857)' }}>partners</em>.
           </h1>
           <p className="mt-3 max-w-xl text-sm leading-relaxed text-slate-500 sm:text-[15px]">
             Manage every account on the system, the external stakeholders kept in the
@@ -60,6 +61,14 @@ export default function Admin() {
           description="Material and equipment suppliers, with branches and contacts. Used by the project preview's supplier-order flow to spawn Gantt tasks."
         >
           <SuppliersTab />
+        </Section>
+
+        <Section
+          eyebrow="Section · Project config"
+          title="Per-project knobs."
+          description="AI thresholds, progression mode, dedup distance, accent colour, report cadence. Pick a project and edit; the change applies the next time the photo-QA pipeline or task drawer runs."
+        >
+          <ProjectConfigTab />
         </Section>
       </div>
     </div>

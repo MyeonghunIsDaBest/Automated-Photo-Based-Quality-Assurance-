@@ -26,7 +26,10 @@ describe('Login page', () => {
 
   it('renders sign-in heading by default', () => {
     renderLogin();
-    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent(/sign/i);
+    // The signin-mode H2 reads "Welcome back." in the redesigned editorial
+    // layout; the literal "Sign in" lives on the active tab + submit button.
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent(/welcome back/i);
+    expect(screen.getByRole('button', { name: /^sign in$/i })).toBeInTheDocument();
     expect(screen.getByPlaceholderText('you@example.com')).toBeInTheDocument();
   });
 

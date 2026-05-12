@@ -1,15 +1,30 @@
+// ReviewQueueTab — the AI Analysis hub, mounted as a Gantt tab.
+//
+// Was a standalone `/review-queue` page (`frontend/src/pages/ReviewQueue.tsx`)
+// until the demo cleanup pass pulled it under the project-scoped Gantt module.
+// `/review-queue?project=X` still resolves via a redirect in App.tsx, so old
+// links + the Dashboard's "Pending review" tile keep working.
+//
+// Layout (top to bottom):
+//   1. Upload affordance card — link to /upload for roles that can upload.
+//   2. Mock-AI runner card — picks pending photos, bumps 4-10% each.
+//   3. Schedule-context Gantt chart — bars move as the runner walks.
+//   4. Review queue list — items with confidence in the 0.50-0.85 band.
+
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, ImageOff, Inbox } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { AlertTriangle, ImageOff, Inbox, Upload as UploadIcon } from 'lucide-react';
 import { format } from 'date-fns';
-import { useAppStore } from '../store';
-import { canConfirmAIAnalysis } from '../lib/permissions';
-import { supabase, supabaseConfigured } from '../lib/supabase';
-import { listPendingAnalyses } from '../lib/api/aiAnalyses';
-import { getPhotoUrl } from '../lib/api/photos';
-import { EyebrowLabel } from '../components/editorial';
-import NotAuthorized from '../components/NotAuthorized';
-import PhotoReviewDrawer, { type ReviewQueueItem } from '../components/photos/PhotoReviewDrawer';
-import type { SafetyFlag, SafetySeverity } from '../types';
+import { canConfirmAIAnalysis, canUploadPhotos } from '../../../lib/permissions';
+import { supabase, supabaseConfigured } from '../../../lib/supabase';
+import { listPendingAnalyses } from '../../../lib/api/aiAnalyses';
+import { getPhotoUrl } from '../../../lib/api/photos';
+import NotAuthorized from '../../../components/NotAuthorized';
+import PhotoReviewDrawer, { type ReviewQueueItem } from '../../../components/photos/PhotoReviewDrawer';
+import MockAnalysisButton from '../../../components/mockAi/MockAnalysisButton';
+import { GanttChart } from '../../../components/ui/GanttChart';
+import { TabHeader } from '../components/TabHeader';
+import type { Project, Task, User, SafetyFlag, SafetySeverity } from '../../../types';
 
 const SAFETY_SEVERITY: Record<SafetyFlag, SafetySeverity> = {
   exposed_wiring:  'critical',
@@ -26,12 +41,18 @@ const SEVERITY_TONE: Record<SafetySeverity, string> = {
   low:      'border-slate-200 bg-slate-50 text-slate-700',
 };
 
-export default function ReviewQueue() {
-  const { currentProfile, project } = useAppStore();
+interface ReviewQueueTabProps {
+  project: Project;
+  tasks: Task[];          // already scoped to this project by the parent Gantt page
+  currentUser: User | null;
+}
 
-  if (!canConfirmAIAnalysis(currentProfile)) {
+export function ReviewQueueTab({ project, tasks, currentUser }: ReviewQueueTabProps) {
+  if (!canConfirmAIAnalysis(currentUser)) {
     return <NotAuthorized surface="the review queue" />;
   }
+
+  const canUpload = canUploadPhotos(currentUser);
 
   const [items, setItems] = useState<ReviewQueueItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,8 +63,6 @@ export default function ReviewQueue() {
     setLoading(true);
     setError(null);
     try {
-      // `listPendingAnalyses` returns the same join shape as ReviewQueueItem
-      // declares; types are structurally compatible — no cast needed.
       const data = await listPendingAnalyses(project.id);
       setItems(data);
     } catch (e) {
@@ -76,46 +95,91 @@ export default function ReviewQueue() {
   }, [project.id]);
 
   return (
-    <div className="editorial-root min-h-full bg-[#FAFAF7]">
-      <header className="relative overflow-hidden border-b border-slate-200/70 bg-white">
-        <div className="grid-bg absolute inset-0 opacity-50" />
-        <div className="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-emerald-100/40 blur-3xl" />
-        <div className="relative px-4 py-8 sm:px-8 sm:py-10">
-          <EyebrowLabel>Workspace · Review queue</EyebrowLabel>
-          <h1
-            className="display mt-3 text-2xl font-medium leading-tight text-slate-900 sm:text-4xl md:text-5xl"
-            style={{ textWrap: 'balance' }}
-          >
-            Pending <em className="font-normal italic text-emerald-700">AI calls</em>.
-          </h1>
-          <p className="mt-3 max-w-xl text-sm leading-relaxed text-slate-500 sm:text-[15px]">
-            The AI analysed these photos but wasn't confident enough to update the schedule on
-            its own. Confirm the % complete it suggested, override it, or reject the analysis
-            entirely. Every action lands in the audit log.
-          </p>
-        </div>
-      </header>
+    <>
+      <TabHeader
+        eyebrow="Workspace · AI analysis"
+        title="Run, review, confirm."
+        description="Kick off a mock AI pass on unanalysed photos, or work through the queue of analyses the AI wasn't confident enough to apply on its own. Every action lands in the audit log."
+      />
 
-      <div className="px-4 py-6 sm:px-8 sm:py-8">
+      <div className="space-y-6">
+        {/* ── Upload affordance ─────────────────────────────────────── */}
+        {canUpload && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4">
+            <div className="min-w-0">
+              <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
+                Need more photos?
+              </p>
+              <p className="mt-1 text-sm text-slate-700">
+                Upload from the field — every photo becomes a candidate for the AI analysis below.
+              </p>
+            </div>
+            <Link
+              to="/gantt?tab=uploads"
+              className="inline-flex items-center gap-1.5 rounded-full bg-slate-900 px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-slate-800"
+            >
+              <UploadIcon className="h-3.5 w-3.5" />
+              Upload photos
+            </Link>
+          </div>
+        )}
+
+        {/* ── Mock-AI runner ───────────────────────────────────────── */}
+        <MockAnalysisButton projectId={project.id} variant="card" />
+
+        {/* ── Gantt chart context ─────────────────────────────────── */}
+        {tasks.length > 0 && (
+          <div className="rounded-2xl border border-slate-200 bg-white p-5">
+            <div className="mb-4 flex items-baseline justify-between">
+              <div>
+                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
+                  Schedule context
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {tasks.length} task{tasks.length === 1 ? '' : 's'} in this project. Bars move as analyses complete.
+                </p>
+              </div>
+            </div>
+            <GanttChart
+              tasks={tasks}
+              startDate={project.startDate}
+              endDate={project.endDate}
+              compact
+              showMonths
+            />
+          </div>
+        )}
+
         {error && (
-          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
             {error}
           </div>
         )}
 
-        {loading ? (
-          <div className="rounded-xl border border-slate-200 bg-white px-4 py-12 text-center text-sm text-slate-400">
-            Loading…
+        {/* ── Review queue ─────────────────────────────────────────── */}
+        <div>
+          <div className="mb-3 flex items-baseline justify-between">
+            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
+              Review queue
+            </p>
+            <p className="text-[11px] text-slate-400">
+              {loading ? '…' : `${items.length} pending`}
+            </p>
           </div>
-        ) : items.length === 0 ? (
-          <EmptyState />
-        ) : (
-          <ul className="space-y-3">
-            {items.map((item) => (
-              <Row key={item.id} item={item} onClick={() => setActive(item)} />
-            ))}
-          </ul>
-        )}
+          {loading ? (
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-12 text-center text-sm text-slate-400">
+              Loading…
+            </div>
+          ) : items.length === 0 ? (
+            <EmptyState />
+          ) : (
+            <ul className="space-y-3">
+              {items.map((item) => (
+                <Row key={item.id} item={item} onClick={() => setActive(item)} />
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
 
       {active && (
@@ -127,7 +191,7 @@ export default function ReviewQueue() {
           }}
         />
       )}
-    </div>
+    </>
   );
 }
 

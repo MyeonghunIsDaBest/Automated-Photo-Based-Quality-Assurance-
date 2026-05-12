@@ -7,30 +7,43 @@ import {
   LayoutDashboard, FolderOpen, MessageSquare,
   DollarSign, Bell, Settings, LogOut, Building2,
   Menu, X, Shield, MessageCircle, TrendingUp, FileCheck, HardHat,
-  ShieldCheck, ChevronDown, Check,
+  ShieldCheck, ChevronDown, Check, Crown,
 } from 'lucide-react';
-import { canSeeAdminDashboard, SECURITY_GROUP_LABELS } from '../../lib/permissions';
+import {
+  canSeeAdminDashboard,
+  SECURITY_GROUP_LABELS,
+} from '../../lib/permissions';
+import type { User } from '../../types';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { ScrollArea } from '../ui/scroll-area';
 import { format } from 'date-fns';
+
+// Every gate accepts at least `User | null` (canUploadPhotos is the narrowest);
+// the wider AdminPrincipal-based gates accept it too. Pass currentUser, which
+// has `securityGroup` mirrored from the Profile, so capability checks work
+// across all gates without per-helper casting.
+type GatePrincipal = User | null;
 
 type NavItem = {
   label: string;
   icon: typeof LayoutDashboard;
   path: string;
-  adminOnly?: boolean;
+  /** Optional visibility gate. Omitted → always visible. */
+  gate?: (p: GatePrincipal) => boolean;
 };
 
-// Files moved into each project's Gantt overview as a sub-tab; no longer a
-// top-level route. Same for project messages — the /messages page remains for
-// general/cross-project chat, but project-scoped chat lives in Gantt.
+// Gantt / Gallery / Upload / Review / Audit moved off the primary nav —
+// Gallery/Upload/Files are reachable as tabs inside a project's Gantt view,
+// Review and Audit are reachable from links in the Dashboard and Admin
+// surfaces, and Settings stays in the user-menu dropdown below. Routes for
+// the removed pages remain in App.tsx so existing bookmarks still resolve.
 const navItems: NavItem[] = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
   { label: 'Projects',  icon: FolderOpen,      path: '/projects' },
   { label: 'Messages',  icon: MessageSquare,   path: '/messages' },
   { label: 'Reports',   icon: DollarSign,      path: '/reports' },
   { label: 'Safety',    icon: HardHat,         path: '/safety' },
-  { label: 'Admin',     icon: ShieldCheck,     path: '/admin', adminOnly: true },
+  { label: 'Admin',     icon: ShieldCheck,     path: '/admin',        gate: canSeeAdminDashboard },
 ];
 
 const getNotificationIcon = (type: string) => {
@@ -64,8 +77,9 @@ export default function TopNav() {
   const activeProjectId = useProjectsListStore((s) => s.activeProjectId);
   const setActiveProject = useProjectsListStore((s) => s.setActiveProject);
 
-  const isAdmin = canSeeAdminDashboard(currentProfile);
-  const visibleNav = navItems.filter((item) => !item.adminOnly || isAdmin);
+  // currentUser carries `securityGroup` mirrored from the Profile, so every
+  // gate (User-only or AdminPrincipal-based) can read it without ceremony.
+  const visibleNav = navItems.filter((item) => (item.gate ? item.gate(currentUser) : true));
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -107,10 +121,8 @@ export default function TopNav() {
 
   return (
     // Solid white background — `bg-white/85 backdrop-blur` ghosted content
-    // through on mobile WebKit (visible in screenshots as "EMAIL" / "URITY"
-    // peeking behind the logo), and the editorial design reads cleaner with
-    // a hard edge anyway. Desktop loses the frosted-glass effect, which the
-    // sticky border already implies visually.
+    // through on mobile WebKit, and the editorial design reads cleaner with
+    // a hard edge anyway.
     <header className="sticky top-0 z-40 border-b border-slate-200 bg-white">
       <div className="flex h-16 items-center justify-between gap-6 px-6">
         {/* ─── Left: brand + primary nav ─── */}
@@ -122,10 +134,7 @@ export default function TopNav() {
             <span className="hidden text-lg font-semibold tracking-tight text-slate-900 sm:inline">SiteProof</span>
           </Link>
 
-          {/* Project switcher pill — visible on every page so the active
-              project context is unambiguous. Dropdown lists every project
-              from useProjectsListStore. Below 360px the name collapses to a
-              tooltip-only state so nothing overflows on narrow phones. */}
+          {/* Project switcher pill */}
           {activeProject && (
             <div className="relative min-w-0">
               <button
@@ -233,7 +242,7 @@ export default function TopNav() {
                 <Link
                   key={item.path}
                   to={item.path}
-                  className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                  className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors lg:gap-2 lg:px-3 lg:text-sm ${
                     isActive
                       ? 'bg-slate-900 text-white'
                       : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 active:bg-slate-200'
@@ -342,8 +351,7 @@ export default function TopNav() {
             )}
           </div>
 
-          {/* User menu — collapses Settings + Logout + role chip into one
-              dropdown so the right side is visually consistent across roles. */}
+          {/* User menu — Settings + Sign out + role chip in one dropdown. */}
           <div className="relative">
             <button
               type="button"
@@ -357,10 +365,21 @@ export default function TopNav() {
               aria-haspopup="menu"
               aria-expanded={userMenuOpen}
             >
-              <Avatar className="h-7 w-7">
-                <AvatarImage src={currentUser.avatar} />
-                <AvatarFallback className="text-[10px] font-semibold">{initials}</AvatarFallback>
-              </Avatar>
+              <div className="relative">
+                <Avatar className="h-7 w-7">
+                  <AvatarImage src={currentUser.avatar} />
+                  <AvatarFallback className="text-[10px] font-semibold">{initials}</AvatarFallback>
+                </Avatar>
+                {currentProfile?.isOwner && (
+                  <span
+                    className="absolute -right-1 -top-1 grid h-3.5 w-3.5 place-items-center rounded-full bg-amber-500 ring-1 ring-white"
+                    title="Owner"
+                    aria-label="Owner"
+                  >
+                    <Crown className="h-2 w-2 text-white" />
+                  </span>
+                )}
+              </div>
               <span className="hidden text-xs font-medium text-slate-700 lg:inline">
                 {currentUser.fullName.split(' ')[0]}
               </span>
@@ -386,9 +405,17 @@ export default function TopNav() {
                       {currentUser.fullName}
                     </p>
                     <p className="mt-0.5 truncate text-xs text-slate-500">{currentUser.email}</p>
-                    <span className="mt-2 inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-emerald-700">
-                      {roleLabel}
-                    </span>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-emerald-700">
+                        {roleLabel}
+                      </span>
+                      {currentProfile?.isOwner && (
+                        <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-700">
+                          <Crown className="h-2.5 w-2.5" />
+                          Owner
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <button

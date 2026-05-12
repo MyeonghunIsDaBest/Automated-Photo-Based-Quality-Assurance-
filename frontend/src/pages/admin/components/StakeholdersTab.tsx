@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  ArrowDown, ArrowUp, ArrowUpDown, Mail, Pencil, Phone, Plus, Search, Trash2, X,
+} from 'lucide-react';
 import {
   listStakeholders,
   createStakeholder,
@@ -21,6 +23,34 @@ import {
 } from '../../../components/editorial';
 import { useProjectsListStore } from '../../projects/store';
 
+// ─── Filter / sort types ──────────────────────────────────────────────────
+
+type FilterId = 'all' | 'linked' | 'unlinked' | 'has-email' | 'no-email';
+type SortCol = 'company' | 'contact' | 'contacts' | 'projects';
+interface SortState {
+  col: SortCol;
+  dir: 'asc' | 'desc';
+}
+
+function primaryContactName(s: Stakeholder): string {
+  return [s.firstName, s.lastName].filter(Boolean).join(' ').trim();
+}
+
+function compareStakeholders(a: Stakeholder, b: Stakeholder, col: SortCol, dir: 'asc' | 'desc'): number {
+  const sign = dir === 'asc' ? 1 : -1;
+  switch (col) {
+    case 'company':
+      return sign * a.companyName.toLowerCase().localeCompare(b.companyName.toLowerCase());
+    case 'contact':
+      return sign * (primaryContactName(a) || '').toLowerCase()
+        .localeCompare((primaryContactName(b) || '').toLowerCase());
+    case 'contacts':
+      return sign * ((a.contacts?.length ?? 0) - (b.contacts?.length ?? 0));
+    case 'projects':
+      return sign * ((a.projectIds?.length ?? 0) - (b.projectIds?.length ?? 0));
+  }
+}
+
 // ─── Page component ───────────────────────────────────────────────────────
 
 export default function StakeholdersTab() {
@@ -29,6 +59,17 @@ export default function StakeholdersTab() {
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Stakeholder | null>(null);
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<FilterId>('all');
+  const [sort, setSort] = useState<SortState>({ col: 'company', dir: 'asc' });
+
+  // Project list for the inline project chips. Same store the modal already
+  // uses for the multi-select.
+  const projects = useProjectsListStore((s) => s.projects);
+  const projectsById = useMemo(
+    () => new Map(projects.map((p) => [p.id, p])),
+    [projects],
+  );
 
   const refresh = async () => {
     setLoading(true);
@@ -54,34 +95,150 @@ export default function StakeholdersTab() {
     }
   };
 
+  const toggleSort = (col: SortCol) => {
+    setSort((prev) => prev.col === col
+      ? { col, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+      : { col, dir: 'asc' });
+  };
+
+  // Per-filter counts — drive the chip badges.
+  const counts = useMemo(() => {
+    let linked = 0, unlinked = 0, hasEmail = 0, noEmail = 0;
+    for (const s of items) {
+      if ((s.projectIds?.length ?? 0) > 0) linked++; else unlinked++;
+      if (s.email && s.email.trim()) hasEmail++; else noEmail++;
+    }
+    return { all: items.length, linked, unlinked, 'has-email': hasEmail, 'no-email': noEmail };
+  }, [items]);
+
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const matchesSearch = (s: Stakeholder) => {
+      if (!q) return true;
+      return (
+        s.companyName.toLowerCase().includes(q) ||
+        primaryContactName(s).toLowerCase().includes(q) ||
+        (s.email ?? '').toLowerCase().includes(q) ||
+        (s.role ?? '').toLowerCase().includes(q) ||
+        (s.contacts ?? []).some((c) =>
+          c.name.toLowerCase().includes(q) ||
+          (c.email ?? '').toLowerCase().includes(q),
+        )
+      );
+    };
+    const matchesFilter = (s: Stakeholder) => {
+      const linkedCount = s.projectIds?.length ?? 0;
+      const hasEmail = !!(s.email && s.email.trim());
+      switch (filter) {
+        case 'linked':    return linkedCount > 0;
+        case 'unlinked':  return linkedCount === 0;
+        case 'has-email': return hasEmail;
+        case 'no-email':  return !hasEmail;
+        default:          return true;
+      }
+    };
+    return items
+      .filter(matchesSearch)
+      .filter(matchesFilter)
+      .sort((a, b) => compareStakeholders(a, b, sort.col, sort.dir));
+  }, [items, search, filter, sort]);
+
+  const clearFilters = () => { setFilter('all'); setSearch(''); };
+  const filtersActive = filter !== 'all' || search.trim() !== '';
+
+  // Inline project chips — show up to 3, then "+N more".
+  const renderProjectChips = (s: Stakeholder) => {
+    const ids = s.projectIds ?? [];
+    if (ids.length === 0) {
+      return <span className="text-xs italic text-slate-400">Not linked</span>;
+    }
+    const names = ids.map((id) => projectsById.get(id)?.name ?? '(removed)');
+    const head = names.slice(0, 3);
+    const extra = names.length - head.length;
+    return (
+      <div className="flex flex-wrap gap-1">
+        {head.map((n, i) => (
+          <span
+            key={`${s.id}-${i}`}
+            className="inline-flex max-w-[10rem] items-center truncate rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-800"
+            title={n}
+          >
+            {n}
+          </span>
+        ))}
+        {extra > 0 && (
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] tabular-nums text-slate-600">
+            +{extra}
+          </span>
+        )}
+      </div>
+    );
+  };
+
+  // Mailto / tel quick actions next to email + mobile.
+  const renderEmail = (s: Stakeholder) => {
+    if (!s.email) return <span className="text-slate-400">—</span>;
+    return (
+      <a
+        href={`mailto:${s.email}`}
+        onClick={(e) => e.stopPropagation()}
+        className="inline-flex items-center gap-1 text-slate-600 hover:text-emerald-700"
+      >
+        <Mail className="h-3 w-3 flex-shrink-0 text-slate-400" />
+        <span className="truncate">{s.email}</span>
+      </a>
+    );
+  };
+  const renderMobile = (s: Stakeholder) => {
+    if (!s.mobile) return <span className="text-slate-400">—</span>;
+    return (
+      <a
+        href={`tel:${s.mobile}`}
+        onClick={(e) => e.stopPropagation()}
+        className="inline-flex items-center gap-1 text-slate-600 hover:text-emerald-700"
+      >
+        <Phone className="h-3 w-3 flex-shrink-0 text-slate-400" />
+        <span className="truncate tabular-nums">{s.mobile}</span>
+      </a>
+    );
+  };
+
   const columns: ColumnDef<Stakeholder>[] = [
     {
       key: 'company',
-      header: 'Company',
-      cell: (s) => <span className="font-medium text-slate-900">{s.companyName}</span>,
+      header: <SortBtn col="company" sort={sort} onToggle={toggleSort}>Company</SortBtn>,
+      cell: (s) => (
+        <div className="min-w-0">
+          <p className="truncate font-medium text-slate-900">{s.companyName}</p>
+          {s.role && <p className="truncate text-[11px] text-slate-500">{s.role}</p>}
+        </div>
+      ),
     },
     {
       key: 'contact',
-      header: 'Primary contact',
+      header: <SortBtn col="contact" sort={sort} onToggle={toggleSort}>Primary contact</SortBtn>,
       cell: (s) => (
-        <span className="text-slate-600">
-          {[s.firstName, s.lastName].filter(Boolean).join(' ') || '—'}
+        <span className="text-slate-700">
+          {primaryContactName(s) || <span className="italic text-slate-400">—</span>}
         </span>
       ),
     },
-    { key: 'email',  header: 'Email',  cell: (s) => <span className="text-slate-600">{s.email ?? '—'}</span> },
-    { key: 'mobile', header: 'Mobile', cell: (s) => <span className="text-slate-600">{s.mobile ?? '—'}</span> },
-    { key: 'role',   header: 'Role',   cell: (s) => <span className="text-slate-600">{s.role ?? '—'}</span> },
+    { key: 'email',  header: 'Email',  cell: renderEmail },
+    { key: 'mobile', header: 'Mobile', cell: renderMobile, desktopOnly: true },
     {
-      key: 'extras',
-      header: 'Linked',
+      key: 'contacts',
+      header: <SortBtn col="contacts" sort={sort} onToggle={toggleSort}>Contacts</SortBtn>,
       cell: (s) => (
-        <span className="text-xs text-slate-500">
-          {(s.contacts?.length ?? 0)} contact{(s.contacts?.length ?? 0) === 1 ? '' : 's'}
-          {' · '}
-          {(s.projectIds?.length ?? 0)} project{(s.projectIds?.length ?? 0) === 1 ? '' : 's'}
+        <span className="tabular-nums text-xs text-slate-500">
+          {s.contacts?.length ?? 0}
         </span>
       ),
+      desktopOnly: true,
+    },
+    {
+      key: 'projects',
+      header: <SortBtn col="projects" sort={sort} onToggle={toggleSort}>Linked projects</SortBtn>,
+      cell: renderProjectChips,
     },
     {
       key: 'actions',
@@ -116,17 +273,23 @@ export default function StakeholdersTab() {
   const closeModal = () => { setAdding(false); setEditing(null); };
   const onSaved = () => { closeModal(); void refresh(); };
 
+  const FILTER_CHIPS: { id: FilterId; label: string; count: number }[] = [
+    { id: 'all',       label: 'All',          count: counts.all },
+    { id: 'linked',    label: 'Linked',       count: counts.linked },
+    { id: 'unlinked',  label: 'Unlinked',     count: counts.unlinked },
+    { id: 'has-email', label: 'Has email',    count: counts['has-email'] },
+    { id: 'no-email',  label: 'Missing email', count: counts['no-email'] },
+  ];
+
   return (
     <div>
+      {/* ─── Header row ─── */}
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <h2 className="text-lg font-semibold text-slate-900">
-            Stakeholders ({items.length})
-          </h2>
-          <p className="text-sm text-slate-500">
-            External contacts (clients, consultants, council reps). Each company can carry
-            multiple contacts and link to one or more projects.
-          </p>
+        <div className="flex items-baseline gap-2">
+          <h2 className="text-lg font-semibold text-slate-900">External contacts</h2>
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium tabular-nums text-slate-600">
+            {items.length}
+          </span>
         </div>
         <EditorialButton
           variant="pill"
@@ -134,8 +297,66 @@ export default function StakeholdersTab() {
           onClick={() => setAdding(true)}
           className="self-start sm:self-auto"
         >
-          <Plus className="h-4 w-4" aria-hidden /> Add Stakeholder
+          <Plus className="h-4 w-4" aria-hidden /> Add stakeholder
         </EditorialButton>
+      </div>
+
+      <p className="mb-4 max-w-2xl text-sm text-slate-500">
+        Clients, consultants, council reps. Each company can carry multiple contacts and
+        link to one or more projects.
+      </p>
+
+      {/* ─── Toolbar ─── */}
+      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="relative flex-1 sm:max-w-md">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search company, contact, email, role…"
+            className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-10 text-sm shadow-sm focus:border-slate-900 focus:outline-none"
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-900"
+              aria-label="Clear search"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ─── Filter chips ─── */}
+      <div className="mb-5 flex flex-wrap items-center gap-1.5">
+        {FILTER_CHIPS.map((c) => {
+          const active = filter === c.id;
+          return (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => setFilter(c.id)}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                active
+                  ? 'border-slate-900 bg-slate-900 text-white'
+                  : 'border-slate-200 bg-white text-slate-700 hover:border-slate-400'
+              }`}
+            >
+              {c.label}
+              <span className={`text-[10px] tabular-nums ${active ? 'text-white/70' : 'text-slate-400'}`}>
+                {c.count}
+              </span>
+            </button>
+          );
+        })}
+        <span className="ml-auto text-[11px] text-slate-400">
+          <span className="tabular-nums text-slate-700">{filteredRows.length}</span>
+          {' '}of{' '}
+          <span className="tabular-nums">{items.length}</span> shown
+        </span>
       </div>
 
       {error && (
@@ -144,22 +365,37 @@ export default function StakeholdersTab() {
         </div>
       )}
 
+      {/* ─── Table ─── */}
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         {loading ? (
           <div className="px-4 py-8 text-center text-sm text-slate-400">Loading…</div>
         ) : (
           <ResponsiveDataTable<Stakeholder>
             columns={columns}
-            rows={items}
+            rows={filteredRows}
             rowKey={(s) => s.id}
-            empty="No stakeholders yet."
+            empty={filtersActive ? (
+              <div className="py-6 text-center">
+                <p className="display text-base text-slate-900">No stakeholders match.</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Try a different filter or clear the search.
+                </p>
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="mt-3 text-xs font-medium text-emerald-700 hover:underline"
+                >
+                  Clear filters
+                </button>
+              </div>
+            ) : 'No stakeholders yet — add one to get started.'}
             mobileCard={(s) => (
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-slate-900">{s.companyName}</p>
                     <p className="truncate text-xs text-slate-500">
-                      {[s.firstName, s.lastName].filter(Boolean).join(' ') || '—'}
+                      {primaryContactName(s) || '—'}
                       {s.role ? ` · ${s.role}` : ''}
                     </p>
                   </div>
@@ -183,11 +419,15 @@ export default function StakeholdersTab() {
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-500">
-                  {s.email && <span>{s.email}</span>}
-                  {s.mobile && <span>{s.mobile}</span>}
+                  {s.email && (
+                    <a href={`mailto:${s.email}`} onClick={(e) => e.stopPropagation()} className="hover:text-emerald-700">{s.email}</a>
+                  )}
+                  {s.mobile && (
+                    <a href={`tel:${s.mobile}`} onClick={(e) => e.stopPropagation()} className="hover:text-emerald-700">{s.mobile}</a>
+                  )}
                   <span>{(s.contacts?.length ?? 0)} contacts</span>
-                  <span>{(s.projectIds?.length ?? 0)} projects</span>
                 </div>
+                <div className="pt-1">{renderProjectChips(s)}</div>
               </div>
             )}
           />
@@ -202,6 +442,34 @@ export default function StakeholdersTab() {
         />
       )}
     </div>
+  );
+}
+
+// Inline sort button for ResponsiveDataTable column headers.
+function SortBtn({
+  col, sort, onToggle, children,
+}: {
+  col: SortCol;
+  sort: SortState;
+  onToggle: (c: SortCol) => void;
+  children: React.ReactNode;
+}) {
+  const active = sort.col === col;
+  return (
+    <button
+      type="button"
+      onClick={onToggle.bind(null, col)}
+      className="group inline-flex items-center gap-1 transition-colors hover:text-slate-900"
+    >
+      {children}
+      {active ? (
+        sort.dir === 'asc'
+          ? <ArrowUp className="h-3 w-3 text-emerald-700" />
+          : <ArrowDown className="h-3 w-3 text-emerald-700" />
+      ) : (
+        <ArrowUpDown className="h-3 w-3 text-slate-300 opacity-0 transition-opacity group-hover:opacity-100" />
+      )}
+    </button>
   );
 }
 

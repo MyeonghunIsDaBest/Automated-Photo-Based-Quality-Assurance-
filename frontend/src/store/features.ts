@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Task, Comment, Report } from '../types';
+import { Task, Comment, Report, ProjectConfig } from '../types';
 import { updateTaskProgress as apiUpdateTaskProgress } from '../lib/api/tasks';
 import { supabaseConfigured } from '../lib/supabase';
 import { useNotificationStore, createTaskUpdate, createAIAnalysisAlert, createWeeklyReport } from './notifications';
@@ -108,6 +108,12 @@ interface FeatureState {
   // Automated Features
   runAutoProgressUpdate: () => void;
   scheduleWeeklyReports: () => void;
+
+  // Per-project configuration (migration 09). Keyed by projectId so a project
+  // switch doesn't blow away cached config for the previous one. The
+  // `useProjectConfig` hook is the only writer.
+  projectConfig: Record<string, ProjectConfig>;
+  setProjectConfig: (config: ProjectConfig) => void;
 }
 
 export const useFeatureStore = create<FeatureState>((set, get) => ({
@@ -551,5 +557,14 @@ export const useFeatureStore = create<FeatureState>((set, get) => ({
     // For demo, we'll just generate a report
     const { generateWeeklyReport } = get();
     generateWeeklyReport('project_1');
+  },
+
+  // Per-project config cache. `useProjectConfig` hydrates each project on
+  // demand and on switch; pages read from here without re-fetching.
+  projectConfig: {},
+  setProjectConfig: (config: ProjectConfig) => {
+    set((state) => ({
+      projectConfig: { ...state.projectConfig, [config.projectId]: config },
+    }));
   },
 }));

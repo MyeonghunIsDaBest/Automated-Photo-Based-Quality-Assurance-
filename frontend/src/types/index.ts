@@ -56,6 +56,13 @@ export interface Profile {
   emergencyContactMobile?: string;
   securityGroup: SecurityGroup;
   isActive: boolean;
+  // Founding-owner flag (migration 11). Orthogonal to `securityGroup` — any
+  // admin-tier user can also be an owner, and ownership grants the right to
+  // rescue other admins (reset password / edit profile) via the
+  // `admin-rescue-user` Edge Function. `is_active=false` users with
+  // `is_owner=true` still count as ownership "seats" — guards in the UI +
+  // Edge function prevent the last-owner from being revoked.
+  isOwner: boolean;
   avatarUrl?: string;
   // Phase A linkage: stakeholder/supplier accounts point at their org-wide
   // directory record so the UI can render company name, contacts, etc.
@@ -223,6 +230,30 @@ export interface Project {
   createdAt: string;
 }
 
+// Per-project configuration — sidecar to Project (one row per project, edited
+// via /admin → Project config). See migration 09 + lib/api/projectConfig.ts.
+// Every AI threshold, progression weight, branding token, and operating mode
+// the system uses lives here so two pilot sites can run on the same deploy
+// with different policies.
+export interface ProjectConfig {
+  projectId: string;
+  aiAutoUpdateThreshold: number;
+  aiReviewQueueThreshold: number;
+  aiDefaultModel: string;
+  progressionMode: 'manual' | 'human_assisted' | 'full_auto';
+  weightChecklist: number;
+  weightPhotos: number;
+  weightAi: number;
+  targetPhotosPerTask: number;
+  manualFloorAllowed: boolean;
+  phashThreshold: number;
+  accentColor: string | null;
+  logoStoragePath: string | null;
+  reportCadence: 'none' | 'weekly' | 'monthly';
+  updatedBy: string | null;
+  updatedAt: string;
+}
+
 // Zone Types
 export interface Zone {
   id: string;
@@ -326,7 +357,7 @@ export interface AuditLog {
   projectId: string;
   userId: string;
   action: string;
-  entityType: 'task' | 'photo' | 'user' | 'project';
+  entityType: 'task' | 'photo' | 'user' | 'project' | 'project_config';
   entityId?: string;
   oldValue?: any;
   newValue?: any;

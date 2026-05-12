@@ -12,6 +12,9 @@ import { useGanttSideStore, useChecklist } from '../store';
 import { canUploadPhotos } from '../../../lib/permissions';
 import { uploadPhoto, getPhotoUrl } from '../../../lib/api/photos';
 import { supabaseConfigured } from '../../../lib/supabase';
+import { useProjectConfig } from '../../../lib/hooks/useProjectConfig';
+import ProgressionBreakdown from '../../../components/progression/ProgressionBreakdown';
+import type { ProjectConfig } from '../../../types';
 
 interface TaskDrawerProps {
   task: Task | null;          // null when creating
@@ -56,6 +59,11 @@ export default function TaskDrawer({
   const [activeTab, setActiveTab] = useState<SubTab>('details');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // Per-project config drives the progression UI mode (manual slider vs.
+  // signal-driven breakdown) and whether the manager force-floor is allowed.
+  // Hook subscribes to the active projectId so a switch invalidates.
+  const { config: projectConfig } = useProjectConfig(projectId);
 
   // Track the latest committed task in a ref so rapid back-to-back
   // commits don't race on stale React state.
@@ -282,6 +290,7 @@ export default function TaskDrawer({
               zones={zones}
               readOnly={readOnly}
               isCreate={isCreate}
+              projectConfig={projectConfig}
             />
           )}
           {!isCreate && activeTab === 'checklist' && task && (
@@ -347,7 +356,7 @@ export default function TaskDrawer({
 // ─── Sub-tab panes ─────────────────────────────────────────────────────────
 
 function DetailsPane({
-  task, draft, setDraft, commitField, zones, readOnly, isCreate,
+  task, draft, setDraft, commitField, zones, readOnly, isCreate, projectConfig,
 }: {
   task: Task | null;
   draft: Partial<Task>;
@@ -356,7 +365,28 @@ function DetailsPane({
   zones: Zone[];
   readOnly: boolean;
   isCreate: boolean;
+  projectConfig: ProjectConfig | null;
 }) {
+  const checklistItems = useChecklist(task?.id ?? '');
+  const checklistDonePct = useMemo(() => {
+    if (checklistItems.length === 0) return 0;
+    return Math.round(
+      (checklistItems.filter((i) => i.done).length / checklistItems.length) * 100,
+    );
+  }, [checklistItems]);
+
+  // Mode-derived UI flags. When the config hasn't hydrated yet, fall back to
+  // 'manual' so the existing slider stays visible — never less-functional than
+  // pre-config behaviour.
+  const progressionMode = projectConfig?.progressionMode ?? 'manual';
+  const manualFloorAllowed = projectConfig?.manualFloorAllowed ?? true;
+  const showSlider =
+    isCreate ||
+    progressionMode === 'manual' ||
+    (progressionMode === 'human_assisted' && manualFloorAllowed);
+  const showBreakdown = !!task && !!projectConfig && progressionMode !== 'manual';
+  const sliderLabelPrefix =
+    progressionMode === 'human_assisted' && !isCreate ? 'Force progress' : 'Progress';
   const dateError = useMemo(() => {
     if (!draft.startDate || !draft.endDate) return null;
     return draft.endDate < draft.startDate ? 'End date is before start date.' : null;
@@ -445,26 +475,54 @@ function DetailsPane({
         </select>
       </Field>
 
-      <Field label={`Progress — ${draft.percentComplete ?? 0}%`}>
-        <input
-          type="range"
-          min={0}
-          max={100}
-          step={5}
-          value={draft.percentComplete ?? 0}
-          onChange={(e) => setDraft((d) => ({ ...d, percentComplete: Number(e.target.value) }))}
-          // Pointer covers mouse + touch + stylus. KeyUp covers keyboard nav.
-          // Blur is the catch-all if focus moves away mid-drag.
-          onPointerUp={(e) => !isCreate && commitPercent((e.target as HTMLInputElement).value)}
-          onKeyUp={(e) => !isCreate && commitPercent((e.target as HTMLInputElement).value)}
-          onBlur={(e) => !isCreate && commitPercent(e.target.value)}
-          disabled={readOnly}
-          className="w-full accent-emerald-600"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={draft.percentComplete ?? 0}
-        />
-      </Field>
+      {showBreakdown && task && projectConfig && (
+        <Field label="Signals">
+          <ProgressionBreakdown
+            signals={{
+              checklistPct: checklistDonePct,
+              photoCount: task.photoCount,
+              // AI signal proxy until the AI-confidence rollup hook lands.
+              // task.percentComplete is what analyse-photo auto-writes to, so
+              // it's a reasonable AI-signal stand-in for now.
+              aiAvgPct: task.percentComplete,
+            }}
+            weights={{
+              checklist: projectConfig.weightChecklist,
+              photos:    projectConfig.weightPhotos,
+              ai:        projectConfig.weightAi,
+            }}
+            targetPhotos={projectConfig.targetPhotosPerTask}
+          />
+          {progressionMode === 'full_auto' && (
+            <p className="mt-1 text-[11px] text-slate-500">
+              Full-auto mode — progress is derived from the signals above. Manual override is disabled for this project.
+            </p>
+          )}
+        </Field>
+      )}
+
+      {showSlider && (
+        <Field label={`${sliderLabelPrefix} — ${draft.percentComplete ?? 0}%`}>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={5}
+            value={draft.percentComplete ?? 0}
+            onChange={(e) => setDraft((d) => ({ ...d, percentComplete: Number(e.target.value) }))}
+            // Pointer covers mouse + touch + stylus. KeyUp covers keyboard nav.
+            // Blur is the catch-all if focus moves away mid-drag.
+            onPointerUp={(e) => !isCreate && commitPercent((e.target as HTMLInputElement).value)}
+            onKeyUp={(e) => !isCreate && commitPercent((e.target as HTMLInputElement).value)}
+            onBlur={(e) => !isCreate && commitPercent(e.target.value)}
+            disabled={readOnly}
+            className="w-full accent-emerald-600"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={draft.percentComplete ?? 0}
+          />
+        </Field>
+      )}
 
       {!isCreate && task && (
         <div className="grid grid-cols-2 gap-3 rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-500">

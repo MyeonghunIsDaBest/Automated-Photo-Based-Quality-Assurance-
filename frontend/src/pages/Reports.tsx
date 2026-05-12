@@ -39,6 +39,8 @@ import {
 } from 'recharts';
 import { AuditLog, Report } from '../types';
 import { EditorialButton, StatCell } from '../components/editorial';
+import { useEffect } from 'react';
+import { listProjectReports } from '../lib/api/reports';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tokens & helpers
@@ -307,6 +309,8 @@ export default function Reports() {
                 />
               }
             />
+
+            <ScheduledReportsCard projectId={progressProjectId} />
 
             {!progressProjectId ? (
               <BlankState
@@ -1007,6 +1011,82 @@ function ReportKpi({ tone, label, value, hint }: { tone: string; label: string; 
       <p className="num text-4xl font-medium">{value}</p>
       <p className="mt-1 text-sm">{label}</p>
       {hint && <p className="mt-2 text-xs opacity-80">{hint}</p>}
+    </div>
+  );
+}
+
+// Scheduled reports — populated by the `generate-reports` Edge Function based
+// on each project's `report_cadence`. Reads `project_reports` rows (migration
+// 10) for the active project. Renders quietly when none exist so the section
+// only shows up once a cadence has fired at least once.
+function ScheduledReportsCard({ projectId }: { projectId: string | null }) {
+  const [rows, setRows] = useState<Report[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!projectId) {
+      setRows([]);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    listProjectReports(projectId, 8)
+      .then((data) => {
+        if (!cancelled) setRows(data);
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          // eslint-disable-next-line no-console
+          console.warn('[reports] listProjectReports failed:', e instanceof Error ? e.message : e);
+          setRows([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
+  if (!projectId) return null;
+  if (loading && rows.length === 0) return null;
+  if (!loading && rows.length === 0) return null;
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5">
+      <div className="mb-4 flex items-baseline justify-between">
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
+            Scheduled reports
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Generated automatically per the project&apos;s configured cadence ({rows.length} recent).
+          </p>
+        </div>
+      </div>
+      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {rows.map((r) => (
+          <li key={r.id} className="rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
+                {r.reportType}
+              </span>
+              <span className="text-[11px] text-slate-400">
+                {format(new Date(r.generatedAt), 'MMM d, HH:mm')}
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-slate-700">
+              {format(new Date(r.dateFrom), 'MMM d')} → {format(new Date(r.dateTo), 'MMM d, yyyy')}
+            </p>
+            <div className="mt-2 grid grid-cols-3 gap-2 text-[11px] text-slate-600">
+              <span>📷 {r.summary.photosUploaded}</span>
+              <span>📋 {r.summary.tasksUpdated}</span>
+              <span>⚠️ {r.summary.safetyFlags}</span>
+            </div>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

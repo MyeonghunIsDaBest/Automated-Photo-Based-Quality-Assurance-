@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Pencil, X, ListChecks, ArrowUpRight, Truck, Plus } from 'lucide-react';
+import { Pencil, X, ListChecks, ArrowUpRight, Truck, Plus, Sliders } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { Badge } from '../../../components/ui/badge';
 import { useAppStore } from '../../../store';
 import { useFeatureStore } from '../../../store/features';
 import { canEditProjects } from '../../../lib/permissions';
+import { useProjectConfig } from '../../../lib/hooks/useProjectConfig';
 import { useProjectsListStore } from '../store';
 import { Project, ProjectStatus } from '../types';
-import type { Task, TaskStatus } from '../../../types';
+import type { Task, TaskStatus, ProjectConfig } from '../../../types';
 import { SupplierOrderModal } from './SupplierOrderModal';
 
 interface ProjectDetailModalProps {
@@ -432,6 +433,9 @@ export function ProjectDetailModal({ project, onClose }: ProjectDetailModalProps
                 </button>
               </div>
 
+              {/* ── Configuration (read-only mirror of /admin → Project config) ── */}
+              <ConfigPanel projectId={project.id} />
+
               {!canEdit && (
                 <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
                   You're viewing this project in read-only mode. Editing is reserved for the
@@ -524,6 +528,68 @@ function ReadCell({ label, children }: { label: string; children: React.ReactNod
     <div className="bg-white p-4">
       <p className="text-[11px] font-medium uppercase tracking-[0.15em] text-slate-500">{label}</p>
       <div className="mt-2">{children}</div>
+    </div>
+  );
+}
+
+// Read-only Configuration panel. Mirrors the columns admins edit via
+// /admin → Project config so non-admins see what's set without an edit
+// affordance. Reuses `useProjectConfig` so the cache stays warm between
+// surfaces.
+function ConfigPanel({ projectId }: { projectId: string }) {
+  const { config, isLoading } = useProjectConfig(projectId);
+  if (isLoading || !config) return null;
+  return (
+    <div>
+      <div className="mb-3 flex items-center gap-2">
+        <Sliders className="h-4 w-4 text-slate-400" />
+        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">Configuration</p>
+      </div>
+      <div className="grid gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200 sm:grid-cols-3">
+        <ConfigCell label="Auto-update ≥" value={config.aiAutoUpdateThreshold.toFixed(2)} />
+        <ConfigCell label="Review queue ≥" value={config.aiReviewQueueThreshold.toFixed(2)} />
+        <ConfigCell label="Default model" value={config.aiDefaultModel} mono />
+        <ConfigCell label="Progression" value={describeProgressionMode(config.progressionMode)} />
+        <ConfigCell label="Manager force-floor" value={config.manualFloorAllowed ? 'Allowed' : 'Disabled'} />
+        <ConfigCell label="Dedup distance" value={`${config.phashThreshold}`} />
+        <ConfigCell label="Accent" value={config.accentColor ?? 'Default (emerald)'} dot={config.accentColor ?? '#10B981'} />
+        <ConfigCell label="Logo" value={config.logoStoragePath ?? '—'} mono />
+        <ConfigCell label="Report cadence" value={describeReportCadence(config.reportCadence)} />
+      </div>
+    </div>
+  );
+}
+
+function describeProgressionMode(m: ProjectConfig['progressionMode']): string {
+  switch (m) {
+    case 'manual':         return 'Manual slider';
+    case 'human_assisted': return 'Human-assisted';
+    case 'full_auto':      return 'Full auto';
+  }
+}
+
+function describeReportCadence(c: ProjectConfig['reportCadence']): string {
+  switch (c) {
+    case 'none':    return 'Off';
+    case 'weekly':  return 'Weekly';
+    case 'monthly': return 'Monthly';
+  }
+}
+
+function ConfigCell({ label, value, mono, dot }: { label: string; value: string; mono?: boolean; dot?: string }) {
+  return (
+    <div className="bg-white p-3">
+      <p className="text-[10px] font-medium uppercase tracking-[0.15em] text-slate-500">{label}</p>
+      <p className={`mt-1 flex items-center gap-2 text-sm text-slate-900 ${mono ? 'font-mono text-xs' : ''}`}>
+        {dot && (
+          <span
+            className="inline-block h-2.5 w-2.5 rounded-full border border-slate-200"
+            style={{ backgroundColor: dot }}
+            aria-hidden
+          />
+        )}
+        <span className="truncate">{value}</span>
+      </p>
     </div>
   );
 }

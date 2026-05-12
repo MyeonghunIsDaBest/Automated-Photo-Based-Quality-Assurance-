@@ -11,6 +11,7 @@
 export type TabId =
   | 'overview'
   | 'tasks'
+  | 'review'        // AI analysis hub — Mock-AI runner + review queue
   | 'site_diary'
   | 'punch_list'
   | 'supplier'      // merged: orders + deliveries + invoices + warranties

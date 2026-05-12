@@ -37,6 +37,7 @@ function makeProfile(group: SecurityGroup, overrides: Partial<Profile> = {}): Pr
     lastName: 'User',
     securityGroup: group,
     isActive: true,
+    isOwner: false,
     createdAt: '2026-01-01T00:00:00Z',
     updatedAt: '2026-01-01T00:00:00Z',
     ...overrides,

@@ -155,6 +155,33 @@ export function canManageSuppliers(user: AdminPrincipal): boolean {
   return caps(user).manageSuppliers;
 }
 
+// Per-project config (migration 09) — same admin-tier gate as suppliers /
+// stakeholders. Worker / inspector / stakeholder / supplier tiers see the
+// read-only mirror in ProjectDetailModal but can't reach the edit surface.
+export function canManageProjectConfig(p: AdminPrincipal): boolean {
+  return caps(p).manageStakeholders;
+}
+
+// ─── Owner-tier gates (migration 11) ────────────────────────────────────────
+// `is_owner` is orthogonal to the security_group capability matrix — it's a
+// flag any admin can have, and it grants the right to rescue other admins
+// (reset password, edit profile, grant/revoke ownership). Permission helpers
+// below check `profile.isOwner` directly because the capability table is
+// keyed by security_group, not by this flag.
+
+function isOwnerPrincipal(p: AdminPrincipal): boolean {
+  if (!p) return false;
+  return 'isOwner' in p ? p.isOwner === true : false;
+}
+
+export function canRescueAdmin(p: AdminPrincipal): boolean {
+  return isOwnerPrincipal(p);
+}
+
+export function canGrantOwnership(p: AdminPrincipal): boolean {
+  return isOwnerPrincipal(p);
+}
+
 // Only Company Admin can change a user's security_group to/from
 // `company_admin` itself — Administrators can manage everyone else.
 export function canAssignSecurityGroup(actor: AdminPrincipal, target: SecurityGroup): boolean {
