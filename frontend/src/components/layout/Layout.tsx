@@ -2,6 +2,8 @@ import type { CSSProperties } from 'react';
 import { Outlet, Navigate, useLocation } from 'react-router-dom';
 import TopNav from './TopNav';
 import MissingEnvBanner from './MissingEnvBanner';
+import DemoModeBanner from './DemoModeBanner';
+import QuickUploadFab from './QuickUploadFab';
 import { ErrorBoundary } from '../ui/ErrorBoundary';
 import { useAppStore } from '../../store';
 import { canViewSafetyIncident } from '../../lib/permissions';
@@ -54,12 +56,14 @@ export default function Layout() {
   return (
     <div className="min-h-screen bg-slate-50" style={accentStyle}>
       <MissingEnvBanner />
+      <DemoModeBanner />
       <TopNav />
       <main className="">
         <ErrorBoundary key={location.pathname} label={`Page · ${location.pathname}`}>
           <Outlet />
         </ErrorBoundary>
       </main>
+      <QuickUploadFab />
     </div>
   );
 }

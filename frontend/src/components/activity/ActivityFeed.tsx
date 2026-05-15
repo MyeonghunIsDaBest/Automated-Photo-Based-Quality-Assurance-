@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   AlertTriangle,
   Calendar as CalendarIcon,
@@ -17,6 +18,7 @@ import {
 import { format, parseISO } from 'date-fns';
 import { ACTIVITY_VERBS } from '../../lib/hooks/useProjectActivity';
 import type { ActivityEvent, ActivityKind } from '../../lib/activity/types';
+import { fadeUp } from '../../lib/motion/variants';
 
 interface ActivityFeedProps {
   events: ActivityEvent[];
@@ -86,34 +88,48 @@ export default function ActivityFeed({
 
   return (
     <ul className="divide-y divide-slate-100">
-      {events.map((e) => (
-        <li key={e.id} data-just-arrived={justArrived.has(e.id) ? 'true' : undefined}>
-          <button
-            type="button"
-            onClick={() => onSelect?.(e)}
-            disabled={!onSelect}
-            aria-label={`${e.actorName} ${ACTIVITY_VERBS[e.kind]} ${e.targetLabel}, ${timeAgo(e.timestamp)}`}
-            className={`flex w-full items-center gap-3 text-left transition-colors hover:bg-slate-50 active:bg-slate-100 disabled:hover:bg-transparent disabled:active:bg-transparent disabled:cursor-default ${
-              dense ? 'px-3 py-2.5' : 'px-4 py-3 sm:px-5'
-            }`}
+      {/* `initial={false}` prevents the entrance animation from firing on the
+          first paint — the activityHighlight keyframe already handles new
+          arrivals via data-just-arrived, and a big stagger on initial mount
+          would feel slow. New events still get the motion.li entrance. */}
+      <AnimatePresence initial={false}>
+        {events.map((e) => (
+          <motion.li
+            key={e.id}
+            layout
+            variants={fadeUp}
+            initial="hidden"
+            animate="visible"
+            exit={{ opacity: 0, height: 0, transition: { duration: 0.2 } }}
+            data-just-arrived={justArrived.has(e.id) ? 'true' : undefined}
           >
-            <div className={`flex flex-shrink-0 items-center justify-center rounded-full ${
-              dense ? 'h-8 w-8' : 'h-9 w-9'
-            } ${ICON_TONE[e.kind] ?? 'bg-slate-50'}`}>
-              <ActivityIcon kind={e.kind} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm text-slate-800">
-                <span className="font-medium text-slate-900">{e.actorName}</span>{' '}
-                <span className="text-slate-500">{ACTIVITY_VERBS[e.kind]}</span>{' '}
-                {e.targetLabel}
-              </p>
-              <p className="text-[11px] text-slate-400">{timeAgo(e.timestamp)}</p>
-            </div>
-            {onSelect && <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-300" />}
-          </button>
-        </li>
-      ))}
+            <button
+              type="button"
+              onClick={() => onSelect?.(e)}
+              disabled={!onSelect}
+              aria-label={`${e.actorName} ${ACTIVITY_VERBS[e.kind]} ${e.targetLabel}, ${timeAgo(e.timestamp)}`}
+              className={`flex w-full items-center gap-3 text-left transition-colors hover:bg-slate-50 active:bg-slate-100 disabled:hover:bg-transparent disabled:active:bg-transparent disabled:cursor-default ${
+                dense ? 'px-3 py-2.5' : 'px-4 py-3 sm:px-5'
+              }`}
+            >
+              <div className={`flex flex-shrink-0 items-center justify-center rounded-full ${
+                dense ? 'h-8 w-8' : 'h-9 w-9'
+              } ${ICON_TONE[e.kind] ?? 'bg-slate-50'}`}>
+                <ActivityIcon kind={e.kind} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm text-slate-800">
+                  <span className="font-medium text-slate-900">{e.actorName}</span>{' '}
+                  <span className="text-slate-500">{ACTIVITY_VERBS[e.kind]}</span>{' '}
+                  {e.targetLabel}
+                </p>
+                <p className="text-[11px] text-slate-400">{timeAgo(e.timestamp)}</p>
+              </div>
+              {onSelect && <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-300" />}
+            </button>
+          </motion.li>
+        ))}
+      </AnimatePresence>
     </ul>
   );
 }

@@ -5,6 +5,15 @@
 
 import { supabase, supabaseConfigured } from '../supabase';
 
+// Demo / generated projects live entirely in the client store with non-UUID
+// IDs ("project_demo_inflight", "proj_<timestamp>", "hampstead-heights-demo",
+// etc.). Postgres' `uuid` column type rejects those with an "invalid input
+// syntax" error before any RLS check runs, so the gallery / Uploads / AI
+// tabs would surface a red banner just for selecting a demo project. We
+// short-circuit at the API boundary instead.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isUuid = (id: string): boolean => UUID_RE.test(id);
+
 export interface PhotoRow {
   id: string;
   project_id: string;
@@ -106,6 +115,10 @@ export async function uploadPhoto({
 
 export async function listPhotos(projectId: string, taskId?: string): Promise<PhotoRow[]> {
   if (!supabaseConfigured()) return [];
+  // Demo projects have non-UUID IDs — Postgres rejects the `.eq('project_id', …)`
+  // before RLS even runs. Treat them as "no rows on the server" instead of
+  // bubbling an error up to the UI.
+  if (!isUuid(projectId)) return [];
   let q = supabase
     .from('photos')
     .select('*')

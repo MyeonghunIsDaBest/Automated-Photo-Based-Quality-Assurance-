@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
 import {
-  Calendar, ChevronLeft, ChevronRight, Cloud, CloudRain,
+  Calendar, CheckSquare, ChevronLeft, ChevronRight, Cloud, CloudRain,
   CloudSnow, Plus, Sun, Trash2, Users, Wrench,
 } from 'lucide-react';
 import {
@@ -16,19 +17,31 @@ import { TabHeader } from '../components/TabHeader';
 import { EmptyState } from '../components/EmptyState';
 import { useGanttSideStore, useDiaryEntries } from '../store';
 import type { DiaryEntry, DiaryPersonnel, WeatherKind } from '../types';
+import { PunchView } from './PunchView';
+import WritingAssistButton from '../../../components/writingAssist';
 
 interface SiteDiaryTabProps {
   project: Project;
   currentUser: User | null;
   canEdit: boolean;
+  /** Required for the absorbed Punch sub-view — gates the delete-item path
+   *  in PunchItemDrawer. */
+  canDelete: boolean;
+  /** Optional sub-view to open on mount — used when callers deep-link
+   *  via the legacy `punch_list` Tab id (e.g. Overview's "punch open" tile). */
+  initialSubView?: SubView | null;
+  /** Fired once the initial sub-view has been consumed so the parent can
+   *  clear its one-shot state. */
+  onInitialSubViewConsumed?: () => void;
 }
 
-type SubView = 'today' | 'workers' | 'calendar';
+export type SubView = 'today' | 'workers' | 'calendar' | 'punch';
 
 const SUB_VIEWS: { id: SubView; label: string; icon: typeof Calendar }[] = [
-  { id: 'today',    label: 'Today',    icon: Calendar },
-  { id: 'workers',  label: 'Workers',  icon: Users },
-  { id: 'calendar', label: 'Calendar', icon: Calendar },
+  { id: 'today',    label: 'Today',      icon: Calendar },
+  { id: 'workers',  label: 'Workers',    icon: Users },
+  { id: 'calendar', label: 'Calendar',   icon: Calendar },
+  { id: 'punch',    label: 'Punch List', icon: CheckSquare },
 ];
 
 const WEATHER_OPTS: { value: WeatherKind; label: string; Icon: typeof Sun }[] = [
@@ -38,18 +51,47 @@ const WEATHER_OPTS: { value: WeatherKind; label: string; Icon: typeof Sun }[] = 
   { value: 'storm',  label: 'Storm',  Icon: CloudSnow },
 ];
 
+// Common work-types — tapping a chip appends a starter line to the
+// description so the diary entry stays consistent across days. Bias toward
+// electrical / civil because that's the trades on this project.
+const WORK_SNIPPETS: string[] = [
+  'Excavation works continued',
+  'Conduit rough-in',
+  'Cable pull / wire dressing',
+  'Switchgear set + termination',
+  'Slab pour',
+  'Framing / blocking',
+  'Drywall + ceiling grid',
+  'Inspection / authority visit',
+  'Material delivery received',
+  'Safety toolbox talk',
+];
+
 const today = () => new Date().toISOString().slice(0, 10);
 
-export function SiteDiaryTab({ project, currentUser, canEdit }: SiteDiaryTabProps) {
-  const [view, setView] = useState<SubView>('today');
+export function SiteDiaryTab({
+  project, currentUser, canEdit, canDelete,
+  initialSubView, onInitialSubViewConsumed,
+}: SiteDiaryTabProps) {
+  const [view, setView] = useState<SubView>(initialSubView ?? 'today');
   const entries = useDiaryEntries(project.id);
+
+  // If the parent passes a new initialSubView (e.g. user clicks Overview's
+  // "punch open" tile while already on Site Diary), honour it and clear the
+  // parent's one-shot state.
+  useEffect(() => {
+    if (!initialSubView) return;
+    setView(initialSubView);
+    onInitialSubViewConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSubView]);
 
   return (
     <>
       <TabHeader
         eyebrow={`Workspace · Site Diary · ${project.name}`}
         title="Who was here, what got done."
-        description="The end-of-day record. Hours and headcount roll up by worker; the calendar gives you a month-at-a-glance heat map of activity."
+        description="The end-of-day record + outstanding punch items in one place. Hours and headcount roll up by worker; the calendar gives you a month-at-a-glance heatmap; the punch list captures loose-end defects that don't deserve a Gantt task."
       />
 
       {/* Sub-view strip */}
@@ -63,14 +105,21 @@ export function SiteDiaryTab({ project, currentUser, canEdit }: SiteDiaryTabProp
                 key={sv.id}
                 type="button"
                 onClick={() => setView(sv.id)}
-                className={`flex flex-shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+                className={`relative flex flex-shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
                   isActive
-                    ? 'bg-slate-900 text-white'
+                    ? 'text-white'
                     : 'text-slate-600 hover:bg-slate-50'
                 }`}
               >
-                <Icon className="h-3.5 w-3.5" />
-                {sv.label}
+                {isActive && (
+                  <motion.span
+                    layoutId="sitediary-subview-pill"
+                    className="absolute inset-0 rounded-full bg-slate-900"
+                    transition={{ type: 'spring', damping: 30, stiffness: 360 }}
+                  />
+                )}
+                <Icon className="relative z-10 h-3.5 w-3.5" />
+                <span className="relative z-10">{sv.label}</span>
               </button>
             );
           })}
@@ -85,6 +134,9 @@ export function SiteDiaryTab({ project, currentUser, canEdit }: SiteDiaryTabProp
       )}
       {view === 'calendar' && (
         <CalendarView entries={entries} onJumpToDay={() => setView('today')} />
+      )}
+      {view === 'punch' && (
+        <PunchView project={project} canEdit={canEdit} canDelete={canDelete} />
       )}
     </>
   );
@@ -298,9 +350,44 @@ function EntryForm({
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
               required
-              placeholder="Foundation pour started in zone B; framing crew finished L1 corridor; inspector visited at 14:00…"
+              placeholder="e.g. Excavation continued at L14 south slab; conduit pull crew dressed back-boxes on L13 east; electrical inspector walked the high-voltage switchgear room at 14:00."
               className="block w-full rounded-md border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
             />
+            <div className="mt-1.5 flex flex-wrap items-center gap-1">
+              <span className="self-center text-[10px] font-medium uppercase tracking-wider text-slate-400">
+                Common works
+              </span>
+              {WORK_SNIPPETS.map((snippet) => (
+                <button
+                  key={snippet}
+                  type="button"
+                  onClick={() => setDescription(
+                    description.trim()
+                      ? `${description.trim()}\n${snippet} — `
+                      : `${snippet} — `,
+                  )}
+                  className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-600 transition-colors hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700"
+                >
+                  + {snippet}
+                </button>
+              ))}
+              {/* Divider between manual "append a starter" chips (above) and
+                  the AI "rewrite what I have" assist (right). The chips help
+                  someone who knows exactly what they want; the assist helps
+                  someone whose wording is rough and wants it cleaned up. */}
+              <span aria-hidden className="mx-1 h-4 w-px self-center bg-slate-200" />
+              <WritingAssistButton
+                value={description}
+                onAccept={(next) => setDescription(next)}
+                context={{
+                  date,
+                  weather: weather || undefined,
+                  temperatureF: temperatureF ? Number(temperatureF) : undefined,
+                  personnel,
+                }}
+                disabled={description.trim().length < 3}
+              />
+            </div>
           </div>
 
           {/* Personnel rows */}
@@ -322,17 +409,17 @@ function EntryForm({
                   <Input
                     value={p.workerName}
                     onChange={(e) => updatePerson(idx, { workerName: e.target.value })}
-                    placeholder="Name"
+                    placeholder="e.g. Marcus Holm"
                   />
                   <Input
                     value={p.role}
                     onChange={(e) => updatePerson(idx, { role: e.target.value })}
-                    placeholder="Role (electrician)"
+                    placeholder="Sparky / Apprentice / Excavator op."
                   />
                   <Input
                     value={p.company}
                     onChange={(e) => updatePerson(idx, { company: e.target.value })}
-                    placeholder="Company"
+                    placeholder="e.g. Casone Electrical"
                   />
                   <Input
                     type="number"

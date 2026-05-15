@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
 import {
   DollarSign, Receipt, ShieldCheck, ShoppingCart, Truck,
   type LucideIcon,
@@ -129,17 +130,24 @@ export function SupplierTab({
                 key={sec.id}
                 type="button"
                 onClick={() => setSection(sec.id)}
-                className={`flex flex-shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
+                className={`relative flex flex-shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
                   isActive
-                    ? 'bg-slate-900 text-white shadow-sm'
+                    ? 'text-white'
                     : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 active:bg-slate-100'
                 }`}
               >
-                <Icon className="h-4 w-4" />
-                {sec.label}
+                {isActive && (
+                  <motion.span
+                    layoutId="supplier-section-pill"
+                    className="absolute inset-0 rounded-xl bg-slate-900 shadow-sm"
+                    transition={{ type: 'spring', damping: 30, stiffness: 360 }}
+                  />
+                )}
+                <Icon className="relative z-10 h-4 w-4" />
+                <span className="relative z-10">{sec.label}</span>
                 {count > 0 && (
                   <span
-                    className={`tabular-nums rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                    className={`relative z-10 tabular-nums rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
                       isActive ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-600'
                     }`}
                   >
@@ -188,17 +196,24 @@ export function SupplierTab({
                   key={view.id}
                   type="button"
                   onClick={() => setInvoiceView(view.id)}
-                  className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                  className={`relative flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
                     isActive
-                      ? 'bg-slate-900 text-white shadow-sm'
+                      ? 'text-white'
                       : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                   }`}
                 >
-                  <Icon className="h-3.5 w-3.5" />
-                  {view.label}
+                  {isActive && (
+                    <motion.span
+                      layoutId="supplier-invoice-view-pill"
+                      className="absolute inset-0 rounded-lg bg-slate-900 shadow-sm"
+                      transition={{ type: 'spring', damping: 30, stiffness: 360 }}
+                    />
+                  )}
+                  <Icon className="relative z-10 h-3.5 w-3.5" />
+                  <span className="relative z-10">{view.label}</span>
                   {view.count > 0 && (
                     <span
-                      className={`tabular-nums rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                      className={`relative z-10 tabular-nums rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
                         isActive ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-600'
                       }`}
                     >

@@ -8,6 +8,7 @@ import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { Badge } from '../../../components/ui/badge';
 import { useGanttSideStore } from '../store';
+import MotionDrawer from '../../../components/ui/MotionDrawer';
 import type { PunchItem } from '../types';
 
 interface PunchItemDrawerProps {
@@ -57,16 +58,12 @@ export default function PunchItemDrawer({
   };
 
   return (
-    <>
-      <div
-        className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      <aside
-        className="fixed inset-x-0 bottom-0 z-50 flex max-h-[92dvh] flex-col rounded-t-2xl bg-white shadow-2xl sm:inset-y-0 sm:right-0 sm:left-auto sm:max-h-none sm:w-[460px] sm:rounded-l-2xl sm:rounded-tr-none lg:w-[520px]"
-        role="dialog"
-        aria-modal="true"
-      >
+    <MotionDrawer
+      open={isOpen}
+      onClose={onClose}
+      sizeClass="sm:w-[460px] lg:w-[520px]"
+      ariaLabel="Punch item"
+    >
         {/* Mobile drag handle */}
         <div className="flex justify-center pt-2 sm:hidden">
           <span className="h-1 w-10 rounded-full bg-slate-300" />
@@ -256,8 +253,7 @@ export default function PunchItemDrawer({
             )
           )}
         </footer>
-      </aside>
-    </>
+    </MotionDrawer>
   );
 }
 

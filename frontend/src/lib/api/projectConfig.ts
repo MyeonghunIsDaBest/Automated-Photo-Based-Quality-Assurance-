@@ -10,6 +10,7 @@
 
 import { supabase, supabaseConfigured } from '../supabase';
 import type { ProjectConfig } from '../../types';
+import { DEMO_PROJECT_CONFIG_OVERRIDES } from '../../data/demoExtraSites';
 
 export interface ProjectConfigRow {
   project_id: string;
@@ -73,9 +74,15 @@ function rowToConfig(row: ProjectConfigRow): ProjectConfig {
 }
 
 function defaultsFor(projectId: string): ProjectConfig {
+  // Known demo projects carry curated overrides (different accent colour
+  // per project + different report cadence) so the three demo projects feel
+  // distinct in the Admin panel and across surfaces that read accentColor.
+  const override = DEMO_PROJECT_CONFIG_OVERRIDES[projectId];
   return {
     ...DEFAULT_PROJECT_CONFIG,
     projectId,
+    accentColor: override?.accentColor ?? null,
+    reportCadence: override?.reportCadence ?? DEFAULT_PROJECT_CONFIG.reportCadence,
     updatedBy: null,
     updatedAt: new Date(0).toISOString(),
   };

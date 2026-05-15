@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useAppStore } from '../../store';
 import { useProjectsListStore } from '../../pages/projects/store';
 import { useNotificationStore } from '../../store/notifications';
+import { fadeIn, popover } from '../../lib/motion/variants';
 import {
   LayoutDashboard, FolderOpen, MessageSquare,
   DollarSign, Bell, Settings, LogOut, Building2,
@@ -16,6 +18,8 @@ import {
 import type { User } from '../../types';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { ScrollArea } from '../ui/scroll-area';
+import ReconnectionPill from './ReconnectionPill';
+import { useProjectConfig } from '../../lib/hooks/useProjectConfig';
 import { format } from 'date-fns';
 
 // Every gate accepts at least `User | null` (canUploadPhotos is the narrowest);
@@ -88,6 +92,10 @@ export default function TopNav() {
 
   const activeProject = projects.find((p) => p.id === activeProjectId) ?? null;
   const projectPillRef = useRef<HTMLButtonElement | null>(null);
+  // Accent colour for the active project — surfaced as a tiny dot on the
+  // pill so the switcher reads at a glance which project is live.
+  const { config: activeConfig } = useProjectConfig(activeProjectId ?? undefined);
+  const activeAccent = activeConfig?.accentColor ?? '#10B981';
 
   // Close the project switcher on Escape; return focus to the trigger so
   // keyboard users land back on the same control.
@@ -149,24 +157,37 @@ export default function TopNav() {
                 aria-haspopup="menu"
                 aria-expanded={projectMenuOpen}
                 title={activeProject.name}
-                className="group flex h-9 min-w-0 max-w-[60vw] items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 sm:max-w-[260px]"
+                className="group flex h-9 min-w-0 max-w-[60vw] items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition-all hover:border-slate-300 hover:bg-slate-50 hover:ring-1 hover:ring-[color-mix(in_srgb,var(--accent-color,#10b981)_40%,transparent)] active:bg-slate-100 sm:max-w-[260px]"
               >
-                <FolderOpen className="h-4 w-4 flex-shrink-0 text-slate-500" aria-hidden />
+                <span
+                  className="h-2 w-2 flex-shrink-0 rounded-full"
+                  style={{ backgroundColor: activeAccent }}
+                  aria-hidden
+                />
                 <span className="hidden truncate min-[480px]:inline">{activeProject.name}</span>
                 <ChevronDown className={`h-3.5 w-3.5 flex-shrink-0 text-slate-400 transition-transform ${projectMenuOpen ? 'rotate-180' : ''}`} aria-hidden />
               </button>
 
-              {projectMenuOpen && (
-                <>
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setProjectMenuOpen(false)}
-                  />
-                  <div
-                    role="menu"
-                    aria-label="Switch project"
-                    className="absolute left-0 z-50 mt-2 w-72 max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg"
-                  >
+              <AnimatePresence>
+                {projectMenuOpen && (
+                  <>
+                    <motion.div
+                      variants={fadeIn}
+                      initial="hidden"
+                      animate="visible"
+                      exit="exit"
+                      className="fixed inset-0 z-40"
+                      onClick={() => setProjectMenuOpen(false)}
+                    />
+                    <motion.div
+                      variants={popover}
+                      initial="hidden"
+                      animate="visible"
+                      exit="exit"
+                      role="menu"
+                      aria-label="Switch project"
+                      className="absolute left-0 z-50 mt-2 w-72 max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg"
+                    >
                     <div className="border-b border-slate-100 px-4 py-2.5">
                       <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Active project</p>
                       <p className="mt-0.5 truncate text-sm font-medium text-slate-900">{activeProject.name}</p>
@@ -226,9 +247,10 @@ export default function TopNav() {
                         <span aria-hidden>→</span>
                       </Link>
                     </div>
-                  </div>
-                </>
-              )}
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
             </div>
           )}
 
@@ -258,6 +280,7 @@ export default function TopNav() {
 
         {/* ─── Right: notifications · user menu ─── */}
         <div className="flex items-center gap-2">
+          <ReconnectionPill />
           {/* Notifications */}
           <div className="relative">
             <button
@@ -277,13 +300,24 @@ export default function TopNav() {
               )}
             </button>
 
-            {notificationsOpen && (
-              <>
-                <div
-                  className="fixed inset-0 z-40"
-                  onClick={() => setNotificationsOpen(false)}
-                />
-                <div className="absolute right-0 z-50 mt-2 w-[calc(100vw-1rem)] max-w-96 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg sm:w-96">
+            <AnimatePresence>
+              {notificationsOpen && (
+                <>
+                  <motion.div
+                    variants={fadeIn}
+                    initial="hidden"
+                    animate="visible"
+                    exit="exit"
+                    className="fixed inset-0 z-40"
+                    onClick={() => setNotificationsOpen(false)}
+                  />
+                  <motion.div
+                    variants={popover}
+                    initial="hidden"
+                    animate="visible"
+                    exit="exit"
+                    className="absolute right-0 z-50 mt-2 w-[calc(100vw-1rem)] max-w-96 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg sm:w-96"
+                  >
                   <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
                     <h3 className="text-sm font-semibold text-slate-900">Notifications</h3>
                     {unreadCount > 0 && (
@@ -346,9 +380,10 @@ export default function TopNav() {
                       </div>
                     )}
                   </ScrollArea>
-                </div>
-              </>
-            )}
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* User menu — Settings + Sign out + role chip in one dropdown. */}
@@ -390,16 +425,25 @@ export default function TopNav() {
               />
             </button>
 
-            {userMenuOpen && (
-              <>
-                <div
-                  className="fixed inset-0 z-40"
-                  onClick={() => setUserMenuOpen(false)}
-                />
-                <div
-                  className="absolute right-0 z-50 mt-2 w-[calc(100vw-1rem)] max-w-xs overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg sm:w-64"
-                  role="menu"
-                >
+            <AnimatePresence>
+              {userMenuOpen && (
+                <>
+                  <motion.div
+                    variants={fadeIn}
+                    initial="hidden"
+                    animate="visible"
+                    exit="exit"
+                    className="fixed inset-0 z-40"
+                    onClick={() => setUserMenuOpen(false)}
+                  />
+                  <motion.div
+                    variants={popover}
+                    initial="hidden"
+                    animate="visible"
+                    exit="exit"
+                    className="absolute right-0 z-50 mt-2 w-[calc(100vw-1rem)] max-w-xs overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg sm:w-64"
+                    role="menu"
+                  >
                   <div className="border-b border-slate-100 px-4 py-3">
                     <p className="truncate text-sm font-medium text-slate-900">
                       {currentUser.fullName}
@@ -443,9 +487,10 @@ export default function TopNav() {
                     <LogOut className="h-4 w-4 text-slate-400" />
                     Sign out
                   </button>
-                </div>
-              </>
-            )}
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Mobile hamburger */}
@@ -460,34 +505,42 @@ export default function TopNav() {
         </div>
       </div>
 
-      {/* Mobile nav drawer */}
-      {mobileMenuOpen && (
-        <div className="border-t border-slate-200 bg-white md:hidden">
-          <nav className="space-y-1 p-4">
-            {visibleNav.map((item) => {
-              const Icon = item.icon;
-              const isActive =
-                location.pathname === item.path ||
-                location.pathname.startsWith(`${item.path}/`);
-              return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium ${
-                    isActive
-                      ? 'bg-slate-900 text-white'
-                      : 'text-slate-600 hover:bg-slate-50 active:bg-slate-100'
-                  }`}
-                >
-                  <Icon className="h-5 w-5" />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
-        </div>
-      )}
+      {/* Mobile nav drawer — slides down from under the header on toggle. */}
+      <AnimatePresence initial={false}>
+        {mobileMenuOpen && (
+          <motion.div
+            key="mobile-nav-drawer"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1, transition: { duration: 0.3, ease: [0.22, 1, 0.36, 1] } }}
+            exit={{ height: 0, opacity: 0, transition: { duration: 0.2 } }}
+            className="overflow-hidden border-t border-slate-200 bg-white md:hidden"
+          >
+            <nav className="space-y-1 p-4">
+              {visibleNav.map((item) => {
+                const Icon = item.icon;
+                const isActive =
+                  location.pathname === item.path ||
+                  location.pathname.startsWith(`${item.path}/`);
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium ${
+                      isActive
+                        ? 'bg-slate-900 text-white'
+                        : 'text-slate-600 hover:bg-slate-50 active:bg-slate-100'
+                    }`}
+                  >
+                    <Icon className="h-5 w-5" />
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </nav>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </header>
   );
 }

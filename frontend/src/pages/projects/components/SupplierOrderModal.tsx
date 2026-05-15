@@ -158,6 +158,7 @@ export function SupplierOrderModal({ open, project, onClose }: SupplierOrderModa
           lastUpdated: new Date().toISOString(),
           updateSource: 'manual',
           notes: [noteLine],
+          isPhaseAnchor: false,
         });
       }
       onClose();

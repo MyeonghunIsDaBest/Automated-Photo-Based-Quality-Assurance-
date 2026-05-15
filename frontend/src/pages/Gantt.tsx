@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { useAppStore } from '../store';
 import { useFeatureStore } from '../store/features';
 import {
-  ArrowLeft, CalendarDays, CheckSquare,
+  ArrowLeft, CalendarDays,
   FileBox, Inbox, Layers, LayoutDashboard, ListChecks, Package,
   Upload as UploadIcon,
   type LucideIcon,
@@ -25,11 +26,10 @@ import { EditorialPageHeader } from '../components/editorial';
 import { OverviewTab }     from './gantt/tabs/OverviewTab';
 import { TasksTab }        from './gantt/tabs/TasksTab';
 import { ReviewQueueTab }  from './gantt/tabs/ReviewQueueTab';
-import { PunchListTab }    from './gantt/tabs/PunchListTab';
 import { InventoryTab }    from './gantt/tabs/InventoryTab';
 import { PlansTab }        from './gantt/tabs/PlansTab';
 import { UploadsTab }      from './gantt/tabs/UploadsTab';
-import { SiteDiaryTab }    from './gantt/tabs/SiteDiaryTab';
+import { SiteDiaryTab, type SubView as DiarySubView } from './gantt/tabs/SiteDiaryTab';
 // SupplierTab merges OrdersTab + DeliveriesTab + InvoicesTab + WarrantiesTab
 // under one editorial header so the procurement surface area collapses from
 // four nav entries to one. Each child tab is reused as-is via a `hideHeader`
@@ -46,12 +46,13 @@ interface TabSpec {
 // Overview lands first so clicking into a project always opens the briefing.
 // 'supplier' merges Orders + Deliveries + Invoices + Warranties into one
 // procurement-side tab; 'inventory' is the rebrand of the old Selections.
+// Punch List used to be its own tab — it's now folded into Site Diary as a
+// 4th sub-view alongside Today / Workers / Calendar.
 const TAB_SPECS: TabSpec[] = [
   { id: 'overview',    label: 'Overview',   icon: LayoutDashboard },
   { id: 'tasks',       label: 'Tasks',      icon: ListChecks },
-  { id: 'review',      label: 'Review',     icon: Inbox },
+  { id: 'review',      label: 'AI-Analysis', icon: Inbox },
   { id: 'site_diary',  label: 'Site Diary', icon: CalendarDays },
-  { id: 'punch_list',  label: 'Punch List', icon: CheckSquare },
   { id: 'supplier',    label: 'Supplier',   icon: Package },
   { id: 'inventory',   label: 'Inventory',  icon: Layers },
   { id: 'plans',       label: 'Plans',      icon: FileBox },
@@ -80,12 +81,21 @@ export default function Gantt() {
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
   const [initialOpenTaskId, setInitialOpenTaskId] = useState<string | null>(null);
+  // One-shot: when Overview's "punch open" tile (or a legacy `?tab=punch_list`
+  // deep-link) routes here, we set this so Site Diary opens directly on its
+  // Punch sub-view. SiteDiaryTab clears it back via onInitialSubViewConsumed.
+  const [initialDiarySubView, setInitialDiarySubView] = useState<DiarySubView | null>(null);
 
   // Connectedness Pass 2: read `?project=&tab=&task=` and hydrate page state.
   // The hook handles `?project=` itself; the callback applies the rest.
+  // Legacy `?tab=punch_list` resolves to Site Diary's Punch sub-view so old
+  // links keep working after the standalone Punch List tab was retired.
   useUrlHydration({
     onApplyExtras: ({ tab, task }) => {
-      if (tab && TAB_SPECS.some((s) => s.id === tab)) {
+      if (tab === 'punch_list') {
+        setActiveTab('site_diary');
+        setInitialDiarySubView('punch');
+      } else if (tab && TAB_SPECS.some((s) => s.id === tab)) {
         setActiveTab(tab as ActiveTab);
       }
       if (task) setInitialOpenTaskId(task);
@@ -123,10 +133,13 @@ export default function Gantt() {
       return Number.isFinite(exp) && exp <= thirtyDays;
     }).length;
 
+    // The Site Diary badge counts diary entries + open punch items now that
+    // the two surfaces share a tab. Either kind of unfinished business is
+    // surfaced together.
+    const punchOpen = (todos?.[project.id] ?? []).filter((p) => p.status === 'open').length;
     return {
       overview:    undefined as number | undefined,
-      site_diary:  (dailyLogs?.[project.id] ?? []).length,
-      punch_list:  (todos?.[project.id]     ?? []).filter((p) => p.status === 'open').length,
+      site_diary:  (dailyLogs?.[project.id] ?? []).length + punchOpen,
       tasks:       projectTasks.length,
       supplier:    ordersOpen + invoicesUnpaid + warrantiesSoon,
       inventory:   0, // selections list — count when quantity tracking lands
@@ -149,11 +162,18 @@ export default function Gantt() {
   // on its 'orders' sub-section by default; we'd pass `initialSection`
   // here once SupplierTab supports honouring it from props.
   const handleJumpToTab = (tabId: TabId) => {
+    // `punch_list` is a legacy id — the standalone tab is gone; we land on
+    // Site Diary's Punch sub-view instead so Overview's "punch open" tile
+    // and any old deep-links still resolve.
+    if (tabId === 'punch_list') {
+      setActiveTab('site_diary');
+      setInitialDiarySubView('punch');
+      return;
+    }
     const map: Partial<Record<TabId, ActiveTab>> = {
       overview:   'overview',
       tasks:      'tasks',
       site_diary: 'site_diary',
-      punch_list: 'punch_list',
       supplier:   'supplier',
       orders:     'supplier',
       deliveries: 'supplier',
@@ -189,6 +209,10 @@ export default function Gantt() {
       <div className="px-4 py-8 sm:px-8 sm:py-10">
 
       {/* ─── Tab strip ─── */}
+      {/* The active dark pill is a single motion.div with layoutId — when the
+          user clicks another tab framer-motion FLIPs the pill into its new
+          position with a spring. The pill sits *behind* the icon+label content
+          via `absolute inset-0`; foreground content uses `relative z-10`. */}
       <div className="mb-6 -mx-4 overflow-x-auto px-4 pb-1 sm:-mx-6 sm:px-6">
         <div className="inline-flex items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
           {TAB_SPECS.map((tab) => {
@@ -200,17 +224,24 @@ export default function Gantt() {
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex flex-shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
+                className={`relative flex flex-shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
                   isActive
-                    ? 'bg-slate-900 text-white shadow-sm'
+                    ? 'text-white'
                     : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
-                <Icon className="h-4 w-4" />
-                {tab.label}
+                {isActive && (
+                  <motion.span
+                    layoutId="gantt-primary-tab-pill"
+                    className="absolute inset-0 rounded-xl bg-slate-900 shadow-sm"
+                    transition={{ type: 'spring', damping: 30, stiffness: 360 }}
+                  />
+                )}
+                <Icon className="relative z-10 h-4 w-4" />
+                <span className="relative z-10">{tab.label}</span>
                 {typeof count === 'number' && count > 0 && (
                   <span
-                    className={`tabular-nums rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                    className={`relative z-10 tabular-nums rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
                       isActive ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-600'
                     }`}
                   >
@@ -260,16 +291,20 @@ export default function Gantt() {
           <ReviewQueueTab
             project={project}
             tasks={projectTasks}
+            zones={projectZones}
             currentUser={currentUser}
           />
         )}
 
         {activeTab === 'site_diary' && (
-          <SiteDiaryTab project={project} currentUser={currentUser} canEdit={canEdit} />
-        )}
-
-        {activeTab === 'punch_list' && (
-          <PunchListTab project={project} canEdit={canEdit} canDelete={canDelete} />
+          <SiteDiaryTab
+            project={project}
+            currentUser={currentUser}
+            canEdit={canEdit}
+            canDelete={canDelete}
+            initialSubView={initialDiarySubView}
+            onInitialSubViewConsumed={() => setInitialDiarySubView(null)}
+          />
         )}
 
         {activeTab === 'supplier' && (

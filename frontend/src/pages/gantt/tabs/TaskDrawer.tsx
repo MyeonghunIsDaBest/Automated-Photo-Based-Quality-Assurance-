@@ -9,11 +9,13 @@ import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { useAppStore } from '../../../store';
 import { useGanttSideStore, useChecklist } from '../store';
-import { canUploadPhotos } from '../../../lib/permissions';
+import { canUploadPhotos, canForceTaskProgress } from '../../../lib/permissions';
 import { uploadPhoto, getPhotoUrl } from '../../../lib/api/photos';
 import { supabaseConfigured } from '../../../lib/supabase';
 import { useProjectConfig } from '../../../lib/hooks/useProjectConfig';
+import { useTaskAiSignal } from '../../../lib/hooks/useTaskAiSignal';
 import ProgressionBreakdown from '../../../components/progression/ProgressionBreakdown';
+import MotionDrawer from '../../../components/ui/MotionDrawer';
 import type { ProjectConfig } from '../../../types';
 
 interface TaskDrawerProps {
@@ -175,6 +177,7 @@ export default function TaskDrawer({
         assigneeId: draft.assigneeId || undefined,
         dependencies: draft.dependencies ?? [],
         notes: [],
+        isPhaseAnchor: false,
       });
       onClose();
     } finally {
@@ -182,26 +185,15 @@ export default function TaskDrawer({
     }
   };
 
-  if (!isOpen) return null;
-
   const titleId = 'task-drawer-title';
 
   return (
-    <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm transition-opacity"
-        onClick={onClose}
-        aria-hidden="true"
-      />
-
-      {/* Drawer panel — bottom sheet on mobile, right sheet on desktop. */}
-      <aside
-        className="fixed inset-x-0 bottom-0 z-50 flex max-h-[92dvh] flex-col rounded-t-2xl bg-white shadow-2xl sm:inset-y-0 sm:right-0 sm:left-auto sm:max-h-none sm:w-[480px] sm:rounded-l-2xl sm:rounded-tr-none lg:w-[560px]"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-      >
+    <MotionDrawer
+      open={isOpen}
+      onClose={onClose}
+      sizeClass="sm:w-[480px] lg:w-[560px]"
+      ariaLabel="Task"
+    >
         {/* Mobile drag handle */}
         <div className="flex justify-center pt-2 sm:hidden">
           <span className="h-1 w-10 rounded-full bg-slate-300" aria-hidden="true" />
@@ -348,8 +340,7 @@ export default function TaskDrawer({
             </>
           )}
         </footer>
-      </aside>
-    </>
+    </MotionDrawer>
   );
 }
 
@@ -375,18 +366,31 @@ function DetailsPane({
     );
   }, [checklistItems]);
 
+  // Real AI signal from ai_analyses (replaces the old percentComplete proxy).
+  const aiSignal = useTaskAiSignal(task?.id ?? null);
+
+  // Force-progress is owner-only — site managers / admins can still edit task
+  // metadata but must let AI / photos / checklist drive percentComplete.
+  const currentProfile = useAppStore((s) => s.currentProfile);
+  const isOwner = canForceTaskProgress(currentProfile);
+
   // Mode-derived UI flags. When the config hasn't hydrated yet, fall back to
   // 'manual' so the existing slider stays visible — never less-functional than
   // pre-config behaviour.
   const progressionMode = projectConfig?.progressionMode ?? 'manual';
   const manualFloorAllowed = projectConfig?.manualFloorAllowed ?? true;
-  const showSlider =
+  // Slider is gated on owner-tier. Create flow always shows it (every task
+  // needs a starting percentage); for existing tasks only the owner can pull
+  // the override.
+  const sliderAllowedByMode =
     isCreate ||
     progressionMode === 'manual' ||
     (progressionMode === 'human_assisted' && manualFloorAllowed);
+  const showSlider = sliderAllowedByMode && (isCreate || isOwner);
+  const showSliderLocked = sliderAllowedByMode && !showSlider;
   const showBreakdown = !!task && !!projectConfig && progressionMode !== 'manual';
   const sliderLabelPrefix =
-    progressionMode === 'human_assisted' && !isCreate ? 'Force progress' : 'Progress';
+    progressionMode === 'human_assisted' && !isCreate ? 'Override progress' : 'Progress';
   const dateError = useMemo(() => {
     if (!draft.startDate || !draft.endDate) return null;
     return draft.endDate < draft.startDate ? 'End date is before start date.' : null;
@@ -481,10 +485,7 @@ function DetailsPane({
             signals={{
               checklistPct: checklistDonePct,
               photoCount: task.photoCount,
-              // AI signal proxy until the AI-confidence rollup hook lands.
-              // task.percentComplete is what analyse-photo auto-writes to, so
-              // it's a reasonable AI-signal stand-in for now.
-              aiAvgPct: task.percentComplete,
+              aiAvgPct: aiSignal.signalPct,
             }}
             weights={{
               checklist: projectConfig.weightChecklist,
@@ -493,6 +494,12 @@ function DetailsPane({
             }}
             targetPhotos={projectConfig.targetPhotosPerTask}
           />
+          <p className="mt-1 text-[11px] text-slate-500">
+            AI signal: {aiSignal.sampleSize === 0
+              ? 'no qualifying analyses yet'
+              : `${aiSignal.signalPct}% across ${aiSignal.sampleSize} analyses`}
+            {aiSignal.lastAnalysedAt && ` · last ${format(parseISO(aiSignal.lastAnalysedAt), 'MMM d, h:mm a')}`}
+          </p>
           {progressionMode === 'full_auto' && (
             <p className="mt-1 text-[11px] text-slate-500">
               Full-auto mode — progress is derived from the signals above. Manual override is disabled for this project.
@@ -503,6 +510,12 @@ function DetailsPane({
 
       {showSlider && (
         <Field label={`${sliderLabelPrefix} — ${draft.percentComplete ?? 0}%`}>
+          {!isCreate && isOwner && (
+            <p className="mb-1.5 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700 ring-1 ring-amber-200">
+              <Lock className="h-3 w-3" />
+              Override · bypasses AI signal
+            </p>
+          )}
           <input
             type="range"
             min={0}
@@ -521,6 +534,26 @@ function DetailsPane({
             aria-valuemax={100}
             aria-valuenow={draft.percentComplete ?? 0}
           />
+        </Field>
+      )}
+
+      {showSliderLocked && task && (
+        <Field label={`Progress — ${task.percentComplete}%`}>
+          <div
+            className="group relative"
+            title="Progress is owner-only. It moves automatically from AI analyses, photo coverage, and checklist completion."
+          >
+            <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-2 rounded-full bg-emerald-500 transition-all"
+                style={{ width: `${task.percentComplete}%` }}
+              />
+            </div>
+            <p className="mt-1.5 flex items-center gap-1 text-[11px] text-slate-500">
+              <Lock className="h-3 w-3" />
+              Owner-only override. Progress is derived from AI confidence, photos, and checklist.
+            </p>
+          </div>
         </Field>
       )}
 

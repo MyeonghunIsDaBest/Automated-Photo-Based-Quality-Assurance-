@@ -16,10 +16,13 @@ interface ProjectsListState {
   loadProjects: () => Promise<void>;
 }
 
-// When Supabase is configured we boot empty — `loadProjects` runs on auth
-// bootstrap (see `store/index.ts`) and fills the list. When it isn't, fall
-// back to the demo mock data so the app still renders without env keys.
-const initialProjects: Project[] = supabaseConfigured() ? [] : mockProjects;
+// The Hampstead Heights demo project is always present in the projects list
+// so users can flip to it via the switcher and see the editable Gantt with
+// realistic phase progression — regardless of whether real projects exist
+// in Supabase yet. In live mode `loadProjects()` appends server rows
+// alongside the demo; in mock mode the rest of mockProjects also loads.
+const DEMO_ONLY = mockProjects.filter((p) => p.id === 'project_demo_inflight');
+const initialProjects: Project[] = supabaseConfigured() ? DEMO_ONLY : mockProjects;
 const initialActive = initialProjects[0]?.id ?? null;
 
 function projectRowToProject(row: ProjectRow): Project {
@@ -59,11 +62,13 @@ export const useProjectsListStore = create<ProjectsListState>((set) => ({
     set({ isLoading: true });
     try {
       const rows = await listProjects();
-      const projects = rows.map(projectRowToProject);
+      const serverProjects = rows.map(projectRowToProject);
+      // Always keep the Hampstead Heights demo at the top so users can see
+      // the editable Gantt's realistic phase progression even before any
+      // real projects exist on the server.
+      const projects = [...DEMO_ONLY, ...serverProjects];
       set((state) => ({
         projects,
-        // Preserve current selection if it still exists; otherwise pick the
-        // first project (or null when the list is empty).
         activeProjectId:
           projects.find((p) => p.id === state.activeProjectId)?.id
             ?? projects[0]?.id
@@ -71,11 +76,11 @@ export const useProjectsListStore = create<ProjectsListState>((set) => ({
         isLoading: false,
       }));
     } catch (e) {
-      // Don't fail loud — leave the list empty so the UI shows the
-      // create-first-project empty state.
+      // Don't fail loud — keep the demo project visible so the UI still has
+      // something to render.
       // eslint-disable-next-line no-console
       console.error('[projects] failed to load:', e);
-      set({ isLoading: false });
+      set({ projects: DEMO_ONLY, isLoading: false });
     }
   },
 }));

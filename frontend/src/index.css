@@ -20,6 +20,17 @@
   /* Editorial radii — the design language uses two distinct corner sizes:
      2xl (1rem) for cards and pill (9999px) for buttons. */
   --radius-pill: 9999px;
+
+  /* Elevation shadows (Demo-week pass). Three steps so cards-at-rest reach for
+     elev-1, hover lifts reach for elev-2, and modal/popover headers reach for
+     elev-3. Tuned to the slate-900 anchor like the existing card shadow. */
+  --shadow-elev-1: 0 1px 2px rgb(15 23 42 / 0.04);
+  --shadow-elev-2: 0 6px 14px -6px rgb(15 23 42 / 0.10);
+  --shadow-elev-3: 0 18px 30px -12px rgb(15 23 42 / 0.15);
+
+  /* Inline-SVG noise overlay used on hero strips for paper-grain texture.
+     0.08 alpha keeps it sub-perceptual on slate-50 / cream backgrounds. */
+  --bg-grain: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.08 0'/%3E%3C/filter%3E%3Crect width='80' height='80' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 /* Form inputs inside editorial modals + admin pages. Sits on a white card
@@ -223,6 +234,61 @@ html {
 }
 [data-just-arrived="true"] {
   animation: activityHighlight 1500ms ease-out;
+}
+
+/* ─── Motion polish (Demo-week pass) ───────────────────────────────────── */
+/* Bar grow — one-shot scaleX on mount for header rolled-up progress bars. */
+@keyframes barGrow {
+  from { transform-origin: left; transform: scaleX(0.001); }
+  to   { transform-origin: left; transform: scaleX(1); }
+}
+.animate-bar-grow { animation: barGrow 700ms cubic-bezier(0.4, 0, 0.2, 1) both; }
+
+/* AI shimmer — one-shot diagonal sweep on the violet AI-signal chip when
+   currentlyAnalysingTaskId lands or aiSignal.sampleSize ticks. The chip
+   layers this gradient over its base bg-violet-50 for ~1200ms. */
+@keyframes aiShimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.animate-ai-shimmer {
+  background-size: 200% 100%;
+  animation: aiShimmer 1200ms ease-out 1;
+}
+
+/* Today-line pulse — soft 3s loop on the Gantt's vertical today indicator
+   so it reads as alive, not as a stuck border. */
+@keyframes todayPulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 0.95; }
+}
+.animate-today-pulse { animation: todayPulse 3s ease-in-out infinite; }
+
+/* Slide-in variants (small movements) for one-shot mount affordances —
+   lastSummary chips and the DemoModeBanner. The existing .slide-in-from-*
+   utilities translate 100% which is too aggressive for inline chips. */
+@keyframes chipSlideIn {
+  from { transform: translateX(0.5rem); opacity: 0; }
+  to   { transform: translateX(0);      opacity: 1; }
+}
+.animate-chip-slide-in { animation: chipSlideIn 500ms ease-out both; }
+
+@keyframes bannerSlideDown {
+  from { transform: translateY(-0.25rem); opacity: 0; }
+  to   { transform: translateY(0);        opacity: 1; }
+}
+.animate-banner-slide-down { animation: bannerSlideDown 500ms ease-out both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-bar-grow,
+  .animate-ai-shimmer,
+  .animate-today-pulse,
+  .animate-chip-slide-in,
+  .animate-banner-slide-down,
+  [data-just-updated="true"],
+  [data-just-arrived="true"] {
+    animation: none !important;
+  }
 }
 
 /* Print styles */

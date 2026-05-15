@@ -9,6 +9,7 @@ import { Input } from '../../../components/ui/input';
 import { Badge } from '../../../components/ui/badge';
 import { useGanttSideStore } from '../store';
 import { useAppStore } from '../../../store';
+import MotionDrawer from '../../../components/ui/MotionDrawer';
 import type { Order, OrderLineItem } from '../types';
 
 interface DeliveryWizardProps {
@@ -71,8 +72,6 @@ export default function DeliveryWizard({
     setReceived(initial);
   }, [order?.id]);
 
-  if (!isOpen) return null;
-
   const totalReceiving = Object.values(received).reduce((s, n) => s + (Number(n) || 0), 0);
   const anyReceiving = totalReceiving > 0;
 
@@ -111,16 +110,12 @@ export default function DeliveryWizard({
   };
 
   return (
-    <>
-      <div
-        className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      <aside
-        className="fixed inset-x-0 bottom-0 z-50 flex max-h-[92dvh] flex-col rounded-t-2xl bg-white shadow-2xl sm:inset-y-0 sm:right-0 sm:left-auto sm:max-h-none sm:w-[520px] sm:rounded-l-2xl sm:rounded-tr-none lg:w-[600px]"
-        role="dialog"
-        aria-modal="true"
-      >
+    <MotionDrawer
+      open={isOpen}
+      onClose={onClose}
+      sizeClass="sm:w-[520px] lg:w-[600px]"
+      ariaLabel="Delivery wizard"
+    >
         {/* Mobile drag handle */}
         <div className="flex justify-center pt-2 sm:hidden">
           <span className="h-1 w-10 rounded-full bg-slate-300" />
@@ -234,8 +229,7 @@ export default function DeliveryWizard({
             </Button>
           )}
         </footer>
-      </aside>
-    </>
+    </MotionDrawer>
   );
 }
 
@@ -481,6 +475,19 @@ function SummaryRow({
 
 // ─── Step 3: Meta (date / receiver / notes) ─────────────────────────────────
 
+// Trade-flavoured quick flags for delivery notes. Tapping appends to the
+// notes textarea — common issues that need to surface in the receiving
+// record (damaged crate, short shipment, substituted SKU, etc.).
+const DELIVERY_FLAGS: string[] = [
+  'Damaged on arrival',
+  'Short shipment',
+  'Substituted item',
+  'Wrong gauge/colour',
+  'Missing documentation',
+  'Late — schedule impact',
+  'Pallet returned to driver',
+];
+
 function MetaStep({
   receivedDate, setReceivedDate, receivedBy, setReceivedBy, notes, setNotes,
 }: {
@@ -491,6 +498,9 @@ function MetaStep({
   notes: string;
   setNotes: (s: string) => void;
 }) {
+  const appendFlag = (flag: string) =>
+    setNotes(notes.trim() ? `${notes.trim()}\n${flag}` : flag);
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
@@ -507,7 +517,7 @@ function MetaStep({
           <Input
             value={receivedBy}
             onChange={(e) => setReceivedBy(e.target.value)}
-            placeholder="Your name"
+            placeholder="e.g. Marcus Holm (Foreman)"
           />
         </label>
       </div>
@@ -520,9 +530,21 @@ function MetaStep({
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           rows={3}
-          placeholder="Anything to flag — damaged crate, missing piece, courier name…"
+          placeholder="e.g. 200ft EMT conduit short by 1 length; driver to redeliver Friday. Schneider switchgear arrived undamaged."
           className="block w-full rounded-md border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
         />
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {DELIVERY_FLAGS.map((f) => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => appendFlag(f)}
+              className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-600 transition-colors hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700"
+            >
+              + {f}
+            </button>
+          ))}
+        </div>
       </label>
 
       <p className="rounded-md bg-slate-50 px-3 py-2 text-[11px] text-slate-500">

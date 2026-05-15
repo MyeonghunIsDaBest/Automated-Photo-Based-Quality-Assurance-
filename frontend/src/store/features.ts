@@ -3,6 +3,8 @@ import { Task, Comment, Report, ProjectConfig } from '../types';
 import { updateTaskProgress as apiUpdateTaskProgress } from '../lib/api/tasks';
 import { supabaseConfigured } from '../lib/supabase';
 import { useNotificationStore, createTaskUpdate, createAIAnalysisAlert, createWeeklyReport } from './notifications';
+import { demoInflightTasks } from '../data/demoInflightProject';
+import { demoExtraSiteTasks } from '../data/demoExtraSites';
 
 // Progress Trend Data Point
 export interface ProgressDataPoint {
@@ -151,8 +153,14 @@ export const useFeatureStore = create<FeatureState>((set, get) => ({
     return Math.round(total / tasks.length);
   },
 
-  // Task Management
-  tasks: [],
+  // Task Management.
+  // All three demo projects (Hampstead Heights + Bondi + Marrickville) seed
+  // the editable Gantt unconditionally so the realistic phasing is always
+  // visible — even when Supabase is configured. Realtime subscribes per-
+  // project so it never overwrites these rows (their IDs don't exist on the
+  // server). Live projects fill the slice normally via
+  // `useProjectTasksRealtime`.
+  tasks: [...demoInflightTasks, ...demoExtraSiteTasks],
 
   // Write-through: optimistic local update, then Supabase persist. The
   // realtime channel subscribes via `useProjectTasksRealtime` and will

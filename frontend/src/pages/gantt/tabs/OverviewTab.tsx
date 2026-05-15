@@ -20,6 +20,8 @@ import { useFeatureStore } from '../../../store/features';
 import { useGanttSideStore, orderTotal } from '../store';
 import { useProjectActivity } from '../lib/useProjectActivity';
 import ActivityFeed from '../../../components/activity/ActivityFeed';
+import { navigateActivityEvent } from '../../../lib/activity/navigate';
+import { useNavigate } from 'react-router-dom';
 import { TabHeader } from '../components/TabHeader';
 import MockAnalysisButton from '../../../components/mockAi/MockAnalysisButton';
 import type { TabId } from '../types';
@@ -54,6 +56,7 @@ type HeroMode = 'trend' | 'timeline' | 'calendar';
 export function OverviewTab({
   project, tasks, zones, canEdit, onJumpToTab,
 }: OverviewTabProps) {
+  const navigate = useNavigate();
   const [heroMode, setHeroMode] = useState<HeroMode>('trend');
 
   // ── Live tick — bumps every 30s so relative timestamps stay current ──
@@ -361,7 +364,7 @@ export function OverviewTab({
                 </div>
                 <ActivityFeed
                   events={activity}
-                  onSelect={(e) => onJumpToTab?.(e.targetTabId)}
+                  onSelect={(e) => navigateActivityEvent(e, project.id, navigate)}
                   emptyLabel="Nothing has happened on this project yet."
                 />
               </CardContent>

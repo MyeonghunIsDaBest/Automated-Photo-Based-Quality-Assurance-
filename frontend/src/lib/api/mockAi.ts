@@ -24,9 +24,11 @@
 // `supabase functions deploy`, so the demo runs even when the backend isn't
 // fully provisioned.
 
-import type { AIAnalysis, AnalysisStatus, ConstructionPhase, Photo, Task } from '../../types';
+import type { AIAnalysis, AnalysisStatus, ConstructionPhase, Photo, SafetyFlag, SafetySeverity, Task } from '../../types';
 import { useAppStore } from '../../store';
 import { useFeatureStore } from '../../store/features';
+import { useSafetyIncidentsStore } from '../../store/safetyIncidents';
+import type { SafetyIncident } from './safetyIncidents';
 
 // Stamped on every analysis row this module produces so the pending-photo
 // filter knows what's already been mock-bumped. Distinct from the
@@ -79,6 +81,32 @@ function randomIncrement(): number {
   return 4 + Math.floor(Math.random() * 7);
 }
 
+// Low-tier safety flags ONLY. The mock never emits panic-level flags
+// (`exposed_wiring` / `fall_hazard`) — those would imply a real on-site
+// emergency and the demo can't ground them in evidence. `housekeeping` +
+// `signage_missing` are believable, mid-impact, won't startle the audience.
+const LOW_TIER_SAFETY_FLAGS: SafetyFlag[] = ['housekeeping', 'signage_missing'];
+const SAFETY_FLAG_PROBABILITY = 1 / 6;
+
+// Severity lookup, inlined so we don't depend on the Deno-only `safetyTaxonomy.ts`.
+const SAFETY_FLAG_SEVERITY: Record<SafetyFlag, SafetySeverity> = {
+  exposed_wiring:  'critical',
+  fall_hazard:     'critical',
+  no_hard_hat:     'high',
+  unsecured_load:  'high',
+  housekeeping:    'medium',
+  signage_missing: 'low',
+};
+
+// Roll the safety dice for one photo. Returns null most of the time;
+// occasionally picks one low-tier flag at random. Deterministic for tests
+// when `Math.random` is mocked.
+function rollSafetyFlag(): SafetyFlag | null {
+  if (Math.random() >= SAFETY_FLAG_PROBABILITY) return null;
+  const idx = Math.floor(Math.random() * LOW_TIER_SAFETY_FLAGS.length);
+  return LOW_TIER_SAFETY_FLAGS[idx];
+}
+
 function rationaleFor(phase: ConstructionPhase | null, increment: number, oldPct: number, newPct: number): string {
   // Vary the rationale a touch so a demo with several photos doesn't feel
   // copy-pasted. Phase D will overwrite this with the real model's response.
@@ -95,8 +123,16 @@ function buildAnalysis(
   oldPct: number,
   newPct: number,
   increment: number,
+  safetyFlag: SafetyFlag | null,
 ): AIAnalysis {
   const phase = task?.phase ?? null;
+  const safetyFlags: SafetyFlag[] = safetyFlag ? [safetyFlag] : [];
+  // Action mirrors the real `decideAction` rule: any safety flag → 'pending'
+  // (review queue), no task bump. Mock keeps the bar moving on the OTHER
+  // photos in the batch so the demo still feels productive.
+  const actionTaken: AIAnalysis['actionTaken'] = safetyFlag
+    ? 'pending'
+    : newPct > oldPct ? 'auto_updated' : 'skipped';
   return {
     id: `mock_${photo.id}_${Date.now().toString(36)}`,
     photoId: photo.id,
@@ -104,14 +140,14 @@ function buildAnalysis(
     phaseDetected: phase,
     completionPct: newPct,
     confidence: 0.92,            // above the default 0.85 auto-update threshold
-    safetyFlags: [],
+    safetyFlags,
     qualityFlags: [],
     materials: phase ? defaultMaterialsFor(phase) : [],
     suggestedTask: null,
-    actionTaken: newPct > oldPct ? 'auto_updated' : 'skipped',
+    actionTaken,
     analysisStatus: 'analysed' as AnalysisStatus,
     rationale: rationaleFor(phase, increment, oldPct, newPct),
-    rawResponse: { mock: true, increment },
+    rawResponse: { mock: true, increment, safetyFlag },
     analyzedAt: new Date().toISOString(),
   };
 }
@@ -133,7 +169,10 @@ function defaultMaterialsFor(phase: ConstructionPhase): string[] {
 // Run the mock for a single photo. Always resolves; the caller drives the
 // batch loop. Doesn't throw on benign failures (no task, task at 100%) —
 // returns a result with `newPct === oldPct` so the UI can summarise.
-export async function runMockAnalysisForPhoto(photoId: string): Promise<MockAnalysisResult> {
+export async function runMockAnalysisForPhoto(
+  photoId: string,
+  opts: { allowSafetyFlag?: boolean } = {},
+): Promise<MockAnalysisResult> {
   const app = useAppStore.getState();
   const features = useFeatureStore.getState();
 
@@ -146,10 +185,18 @@ export async function runMockAnalysisForPhoto(photoId: string): Promise<MockAnal
   const task = taskId ? features.tasks.find((t) => t.id === taskId) : undefined;
   const oldPct = task?.percentComplete ?? 0;
 
-  const increment = randomIncrement();
-  const newPct = task ? Math.min(100, oldPct + increment) : oldPct;
+  // Safety dice: only roll when the caller hasn't already emitted a flag this
+  // batch (one incident per batch keeps the demo from feeling like a crisis).
+  const safetyFlag = opts.allowSafetyFlag === false ? null : rollSafetyFlag();
 
-  const analysis = buildAnalysis(photo, task, oldPct, newPct, increment);
+  const increment = randomIncrement();
+  // Safety-flagged photos route to 'pending' instead of auto-updating —
+  // mirrors the real decideAction rule and means the bar doesn't move on
+  // those photos. Demo still feels productive because most photos in the
+  // batch bump as normal.
+  const newPct = task && !safetyFlag ? Math.min(100, oldPct + increment) : oldPct;
+
+  const analysis = buildAnalysis(photo, task, oldPct, newPct, increment, safetyFlag);
 
   // 1. Attach the fake analysis to the photo locally so the gallery shows it
   //    as AI-analysed. patchPhotoAnalysis also flips `aiAnalyzed=true`.
@@ -162,6 +209,27 @@ export async function runMockAnalysisForPhoto(photoId: string): Promise<MockAnal
   }
 
   return { photoId, taskId, oldPct, newPct, increment, analysis };
+}
+
+// Synthesize a SafetyIncident from a flagged analysis. Mirrors the shape the
+// real `analyze-photo` Edge function would write to `safety_incidents`. Local
+// only — the cache feeds the Dashboard tile + Safety page badge.
+function safetyIncidentFor(projectId: string, result: MockAnalysisResult): SafetyIncident {
+  const flag = result.analysis.safetyFlags[0];
+  return {
+    id:           `mock_incident_${result.analysis.id}`,
+    projectId,
+    photoId:      result.photoId,
+    aiAnalysisId: result.analysis.id,
+    flags:        result.analysis.safetyFlags,
+    severity:     SAFETY_FLAG_SEVERITY[flag],
+    status:       'open',
+    reportedBy:   null,
+    resolvedBy:   null,
+    resolvedAt:   null,
+    notes:        null,
+    createdAt:    new Date().toISOString(),
+  };
 }
 
 // Sequential batch runner — 600ms between photos for the "AI is thinking"
@@ -185,15 +253,24 @@ export async function runMockBatch(
   let bumped = 0;
   let skipped = 0;
   let totalDelta = 0;
+  // Cap one safety incident per batch — keeps the demo calm.
+  let incidentEmitted = false;
 
   for (let i = 0; i < total; i++) {
     const photo = targets[i];
-    const result = await runMockAnalysisForPhoto(photo.id);
+    const result = await runMockAnalysisForPhoto(photo.id, { allowSafetyFlag: !incidentEmitted });
     if (result.newPct > result.oldPct) {
       bumped += 1;
       totalDelta += result.newPct - result.oldPct;
     } else {
       skipped += 1;
+    }
+    // If a safety flag fired, mirror what the real Edge function does:
+    // write a SafetyIncident row. We hit the local cache directly because
+    // the mock is client-only.
+    if (!incidentEmitted && result.analysis.safetyFlags.length > 0) {
+      useSafetyIncidentsStore.getState().upsertIncident(safetyIncidentFor(projectId, result));
+      incidentEmitted = true;
     }
     opts.onProgress?.(result, i + 1, total);
     if (i < total - 1) await sleep(delay);

@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { AnimatePresence, MotionConfig, motion } from 'framer-motion';
 import { useAppStore } from './store';
 import Layout from './components/layout/Layout';
 import Login from './pages/Login';
@@ -7,6 +8,7 @@ import RequireAuth from './components/RequireAuth';
 import QuickActionsSidebar from './components/layout/QuickActionsSidebar';
 import { Toaster } from './components/ui/Toaster';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
+import { pageTransition } from './lib/motion/variants';
 
 // Code-split every authenticated page. Login stays eager (it's the very first
 // paint for unauthed users, so lazy-loading it just adds an extra round-trip
@@ -25,6 +27,7 @@ const Projects       = lazy(() => import('./pages/Projects'));
 const Safety         = lazy(() => import('./pages/Safety'));
 const Admin          = lazy(() => import('./pages/Admin'));
 const BootstrapAdmin = lazy(() => import('./pages/admin/BootstrapAdmin'));
+const Pricing        = lazy(() => import('./pages/Pricing'));
 
 // Lightweight fallback shown while a route chunk is loading. Mirrors the
 // editorial background colour so the page flash isn't jarring.
@@ -39,77 +42,110 @@ function RouteFallback() {
   );
 }
 
+// Routes live inside an inner component so `useLocation` can read the active
+// path. AnimatePresence keys the route-level <motion.div> by pathname so each
+// navigation runs the exit -> enter dance defined in `pageTransition`.
+// `mode="wait"` ensures the outgoing page finishes its exit before the new one
+// starts entering — prevents two pages overlapping mid-fade.
+function AppRoutes() {
+  const location = useLocation();
+  return (
+    <AnimatePresence mode="wait" initial={false}>
+      <motion.div
+        key={location.pathname}
+        variants={pageTransition}
+        initial="hidden"
+        animate="visible"
+        exit="exit"
+        // min-h ensures the fading-out page keeps occupying the viewport so the
+        // scrollbar doesn't flash during the swap.
+        className="min-h-screen"
+      >
+        <Suspense fallback={<RouteFallback />}>
+          <Routes location={location}>
+            {/* Public Routes */}
+            <Route path="/login" element={<Login />} />
+            {/* /pricing is the marketing landing for prospects — public so a
+                stakeholder can review tiers and run the ROI calculator without
+                creating an account. */}
+            <Route path="/pricing" element={<Pricing />} />
+
+            {/* Protected Routes */}
+            <Route element={<RequireAuth />}>
+              <Route path="/" element={<Layout />}>
+                <Route index element={<Navigate to="/dashboard" replace />} />
+                <Route path="dashboard" element={<Dashboard />} />
+                {/* Upload + Gallery retired as standalone pages — UploadsTab on
+                    the Gantt covers project-scoped capture + a recent-photos
+                    grid. Old links + Dashboard / Safety / Tasks click-throughs
+                    using ?photo= or ?task= deep-links resolve to the tab; the
+                    per-photo focus is a known follow-up. */}
+                <Route path="upload"  element={<Navigate to="/gantt?tab=uploads" replace />} />
+                <Route path="gallery" element={<Navigate to="/gantt?tab=uploads" replace />} />
+                {/* /files retired — files now live as a tab inside each project's */}
+                {/* Gantt overview. Soft-redirect so existing bookmarks land there. */}
+                <Route path="files" element={<Navigate to="/gantt" replace />} />
+                <Route path="projects" element={<Projects />} />
+                <Route path="gantt" element={<Gantt />} />
+                <Route path="messages" element={<Messages />} />
+                <Route path="reports" element={<Reports />} />
+                <Route path="safety" element={<Safety />} />
+                {/* Review queue is now a Gantt tab; redirect preserves any
+                    old bookmarks + the Dashboard's Pending Review tile path. */}
+                <Route path="review-queue" element={<Navigate to="/gantt?tab=review" replace />} />
+                {/* Audit page retired — system-wide audit log with CSV export
+                    has no current Gantt equivalent. Redirect to Dashboard; rebuild
+                    as an Admin section if compliance reporting comes back into scope. */}
+                <Route path="audit" element={<Navigate to="/dashboard" replace />} />
+                <Route path="finance" element={<Navigate to="/reports" replace />} />
+                <Route path="settings" element={<Settings />} />
+              </Route>
+            </Route>
+
+            {/* Admin-only routes */}
+            <Route element={<RequireAuth requireAdmin />}>
+              <Route path="/" element={<Layout />}>
+                <Route path="admin" element={<Admin />} />
+              </Route>
+            </Route>
+
+            {/* First-run bootstrap. Authenticated but NOT requireAdmin — the
+                whole point of this screen is to mint the very first admin. */}
+            <Route element={<RequireAuth />}>
+              <Route path="/bootstrap-admin" element={<BootstrapAdmin />} />
+            </Route>
+
+            {/* Catch all */}
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Routes>
+        </Suspense>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
 function App() {
   const { notification, setNotification, isAuthenticated } = useAppStore();
 
   return (
     <ErrorBoundary label="App root">
-    <BrowserRouter>
-      {isAuthenticated && <QuickActionsSidebar />}
-      <Suspense fallback={<RouteFallback />}>
-        <Routes>
-          {/* Public Routes */}
-          <Route path="/login" element={<Login />} />
+      {/* reducedMotion="user" honours the OS-level preference. Every motion
+          variant downstream becomes a no-op for users who set that flag. */}
+      <MotionConfig reducedMotion="user">
+        <BrowserRouter>
+          {isAuthenticated && <QuickActionsSidebar />}
+          <AppRoutes />
 
-          {/* Protected Routes */}
-          <Route element={<RequireAuth />}>
-            <Route path="/" element={<Layout />}>
-              <Route index element={<Navigate to="/dashboard" replace />} />
-              <Route path="dashboard" element={<Dashboard />} />
-              {/* Upload + Gallery retired as standalone pages — UploadsTab on
-                  the Gantt covers project-scoped capture + a recent-photos
-                  grid. Old links + Dashboard / Safety / Tasks click-throughs
-                  using ?photo= or ?task= deep-links resolve to the tab; the
-                  per-photo focus is a known follow-up. */}
-              <Route path="upload"  element={<Navigate to="/gantt?tab=uploads" replace />} />
-              <Route path="gallery" element={<Navigate to="/gantt?tab=uploads" replace />} />
-              {/* /files retired — files now live as a tab inside each project's */}
-              {/* Gantt overview. Soft-redirect so existing bookmarks land there. */}
-              <Route path="files" element={<Navigate to="/gantt" replace />} />
-              <Route path="projects" element={<Projects />} />
-              <Route path="gantt" element={<Gantt />} />
-              <Route path="messages" element={<Messages />} />
-              <Route path="reports" element={<Reports />} />
-              <Route path="safety" element={<Safety />} />
-              {/* Review queue is now a Gantt tab; redirect preserves any
-                  old bookmarks + the Dashboard's Pending Review tile path. */}
-              <Route path="review-queue" element={<Navigate to="/gantt?tab=review" replace />} />
-              {/* Audit page retired — system-wide audit log with CSV export
-                  has no current Gantt equivalent. Redirect to Dashboard; rebuild
-                  as an Admin section if compliance reporting comes back into scope. */}
-              <Route path="audit" element={<Navigate to="/dashboard" replace />} />
-              <Route path="finance" element={<Navigate to="/reports" replace />} />
-              <Route path="settings" element={<Settings />} />
-            </Route>
-          </Route>
-
-          {/* Admin-only routes */}
-          <Route element={<RequireAuth requireAdmin />}>
-            <Route path="/" element={<Layout />}>
-              <Route path="admin" element={<Admin />} />
-            </Route>
-          </Route>
-
-          {/* First-run bootstrap. Authenticated but NOT requireAdmin — the
-              whole point of this screen is to mint the very first admin. */}
-          <Route element={<RequireAuth />}>
-            <Route path="/bootstrap-admin" element={<BootstrapAdmin />} />
-          </Route>
-
-          {/* Catch all */}
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
-      </Suspense>
-
-      {/* Notification Toast */}
-      {notification && (
-        <Toaster
-          message={notification.message}
-          type={notification.type}
-          onClose={() => setNotification(null)}
-        />
-      )}
-    </BrowserRouter>
+          {/* Notification Toast */}
+          {notification && (
+            <Toaster
+              message={notification.message}
+              type={notification.type}
+              onClose={() => setNotification(null)}
+            />
+          )}
+        </BrowserRouter>
+      </MotionConfig>
     </ErrorBoundary>
   );
 }

@@ -16,6 +16,32 @@ interface WarrantiesTabProps {
   hideHeader?: boolean;
 }
 
+// Trade-flavoured warranty starters — tapping prefills the item field.
+const ITEM_SUGGESTIONS: string[] = [
+  'Main switchgear (MSB-1)',
+  'Generator + ATS',
+  'Variable speed drive (VSD)',
+  'Lift / hoist motor',
+  'UPS battery bank',
+  'Exit & emergency lighting',
+  'HVAC chiller compressor',
+  'Excavation shoring',
+];
+
+// Common manufacturer warranty terms in years.
+const EXPIRY_PRESETS: { years: number; label: string }[] = [
+  { years: 1,  label: '1 year' },
+  { years: 2,  label: '2 years' },
+  { years: 5,  label: '5 years' },
+  { years: 10, label: '10 years' },
+];
+
+function inYears(n: number): string {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() + n);
+  return d.toISOString().slice(0, 10);
+}
+
 function expiryBadge(expiryDate: string): string {
   const days = differenceInDays(parseISO(expiryDate), new Date());
   if (days < 0)  return 'border-red-200 bg-red-50 text-red-700';
@@ -102,18 +128,34 @@ export function WarrantiesTab({ project, canEdit, hideHeader = false }: Warranti
         <Card className="mb-6">
           <CardContent className="p-4">
             <form onSubmit={handleSubmit} className="space-y-3">
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div>
                 <Input
                   value={item}
                   onChange={(e) => setItem(e.target.value)}
-                  placeholder="Item (e.g. Lift motor)"
+                  placeholder="e.g. Switchgear MSB-1 / Generator ATS / Conduit fittings"
                 />
-                <Input
-                  value={supplier}
-                  onChange={(e) => setSupplier(e.target.value)}
-                  placeholder="Supplier"
-                />
+                {!item.trim() && (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {ITEM_SUGGESTIONS.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setItem(s)}
+                        className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-600 transition-colors hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
+
+              <Input
+                value={supplier}
+                onChange={(e) => setSupplier(e.target.value)}
+                placeholder="e.g. Schneider Electric, Eaton, Klein Tools"
+              />
+
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-xs font-medium text-slate-600">
@@ -124,6 +166,25 @@ export function WarrantiesTab({ project, canEdit, hideHeader = false }: Warranti
                     value={expiryDate}
                     onChange={(e) => setExpiryDate(e.target.value)}
                   />
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    <span className="self-center text-[10px] font-medium uppercase tracking-wider text-slate-400">
+                      Common terms
+                    </span>
+                    {EXPIRY_PRESETS.map((p) => (
+                      <button
+                        key={p.years}
+                        type="button"
+                        onClick={() => setExpiryDate(inYears(p.years))}
+                        className={`rounded-full border px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                          expiryDate === inYears(p.years)
+                            ? 'border-slate-900 bg-slate-900 text-white'
+                            : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-medium text-slate-600">
@@ -132,7 +193,7 @@ export function WarrantiesTab({ project, canEdit, hideHeader = false }: Warranti
                   <Input
                     value={fileRef}
                     onChange={(e) => setFileRef(e.target.value)}
-                    placeholder="Drive link / filename"
+                    placeholder="warranties/2026/MSB-1-schneider.pdf"
                   />
                 </div>
               </div>

@@ -19,6 +19,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     lastUpdated: '2026-01-15T00:00:00Z',
     updateSource: 'manual',
     notes: [],
+    isPhaseAnchor: false,
     ...overrides,
   };
 }

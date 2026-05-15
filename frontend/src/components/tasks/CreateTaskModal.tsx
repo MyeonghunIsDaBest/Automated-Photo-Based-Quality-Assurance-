@@ -44,6 +44,7 @@ export default function CreateTaskModal({
     onCreate({
       ...formData,
       projectId,
+      isPhaseAnchor: false,
       durationDays: Math.ceil(
         (new Date(formData.endDate).getTime() - new Date(formData.startDate).getTime()) /
           (1000 * 60 * 60 * 24)

@@ -182,6 +182,28 @@ export function canGrantOwnership(p: AdminPrincipal): boolean {
   return isOwnerPrincipal(p);
 }
 
+// Force-progress on a task (manual slider bypassing the AI-derived signal)
+// is owner-only. Site managers / admins still get full task editing — they
+// just can't override the percentage directly; it has to flow from photos,
+// checklist, or AI confidence. Reason: a manual slide used to also move the
+// AI column (proxy bug) so we now treat the slider as a privileged override.
+export function canForceTaskProgress(p: AdminPrincipal): boolean {
+  return isOwnerPrincipal(p);
+}
+
+// Project lifecycle (create + delete) is owner-only. The legacy
+// `canCreateProjects` helper lives on for any callers still wired to the
+// security-group capability matrix — the singular-named gates here are what
+// the owner-tier rework consumes. Workers / inspectors / stakeholders never
+// see the create / delete affordances.
+export function canCreateProject(p: AdminPrincipal): boolean {
+  return isOwnerPrincipal(p);
+}
+
+export function canDeleteProject(p: AdminPrincipal): boolean {
+  return isOwnerPrincipal(p);
+}
+
 // Only Company Admin can change a user's security_group to/from
 // `company_admin` itself — Administrators can manage everyone else.
 export function canAssignSecurityGroup(actor: AdminPrincipal, target: SecurityGroup): boolean {

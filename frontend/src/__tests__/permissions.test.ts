@@ -14,6 +14,8 @@ import {
   canResolveSafetyIncident,
   canLogSafetyIncident,
   canViewFinance,
+  canCreateProject,
+  canDeleteProject,
 } from '../lib/permissions';
 import { CAPABILITIES_BY_GROUP } from '../lib/auth/capabilities';
 import type { Profile, SecurityGroup } from '../types';
@@ -197,5 +199,22 @@ describe('canEditTasks (security_group path)', () => {
         securityGroup: 'worker',
       })
     ).toBe(false);
+  });
+});
+
+describe('owner-only project lifecycle', () => {
+  it('canCreateProject is true only for owners', () => {
+    expect(canCreateProject(makeProfile('company_admin', { isOwner: true }))).toBe(true);
+    expect(canCreateProject(makeProfile('company_admin'))).toBe(false);
+    expect(canCreateProject(makeProfile('administrator'))).toBe(false);
+    expect(canCreateProject(makeProfile('worker'))).toBe(false);
+    expect(canCreateProject(null)).toBe(false);
+  });
+
+  it('canDeleteProject is true only for owners', () => {
+    expect(canDeleteProject(makeProfile('company_admin', { isOwner: true }))).toBe(true);
+    expect(canDeleteProject(makeProfile('administrator', { isOwner: true }))).toBe(true);
+    expect(canDeleteProject(makeProfile('site_manager'))).toBe(false);
+    expect(canDeleteProject(null)).toBe(false);
   });
 });

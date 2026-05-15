@@ -227,7 +227,7 @@ export function InvoicesTab({ project, canEdit, canDelete, hideHeader = false }:
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search invoice #, PO, supplier…"
+            placeholder="Search INV-2026-…, PO #, Schneider…"
             className="h-9 w-full sm:w-64"
           />
         </CardContent>

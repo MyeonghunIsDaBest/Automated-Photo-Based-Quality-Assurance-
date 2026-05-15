@@ -1,7 +1,8 @@
 import { Task } from '../../types';
-import { format, differenceInDays, parseISO } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { Badge } from './badge';
 import { useMediaQuery } from '../../lib/hooks/useMediaQuery';
+import { makeTimeWindow, monthHeaders, taskBarPosition } from '../../lib/construction/ganttLayout';
 
 interface GanttChartProps {
   tasks: Task[];
@@ -10,49 +11,35 @@ interface GanttChartProps {
   /** Tighter padding on stat surfaces; the bar chart still renders. */
   compact?: boolean;
   showMonths?: boolean;
+  /** Task IDs to outline emerald + animate-pulse while a mock-AI batch is
+   *  walking through their photos. Receive multiple IDs so callers can flash
+   *  several tasks in parallel; empty / undefined = no highlight. */
+  highlightedTaskIds?: string[];
 }
 
-export function GanttChart({ tasks, startDate, endDate, compact = false, showMonths = true }: GanttChartProps) {
+export function GanttChart({ tasks, startDate, endDate, compact = false, showMonths = true, highlightedTaskIds }: GanttChartProps) {
+  const highlight = highlightedTaskIds && highlightedTaskIds.length > 0
+    ? new Set(highlightedTaskIds)
+    : null;
+  const isHighlighted = (taskId: string) => highlight ? highlight.has(taskId) : false;
+  const HIGHLIGHT_RING = 'ring-2 ring-emerald-400 ring-offset-1 ring-offset-white animate-pulse';
   // Phase B — phones can't read a horizontal bar chart. Switch to a vertical
   // task-card list under sm. matchMedia returns false in jsdom so the test
   // suite keeps exercising the desktop branch.
   const isPhone = useMediaQuery('(max-width: 639px)');
-  const start = parseISO(startDate);
-  const end = parseISO(endDate);
-  const totalDays = differenceInDays(end, start);
+  const window = makeTimeWindow(startDate, endDate);
 
-  // Generate month headers
-  const months: { name: string; start: number; width: number }[] = [];
-  let currentDate = new Date(start);
-  let dayOffset = 0;
-
-  while (currentDate <= end) {
-    const monthStart = new Date(currentDate);
-    const monthEnd = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
-    const clampedEnd = monthEnd > end ? end : monthEnd;
-    const daysInMonth = differenceInDays(clampedEnd, monthStart) + 1;
-
-    months.push({
-      name: format(monthStart, 'MMM yyyy'),
-      start: dayOffset,
-      width: (daysInMonth / totalDays) * 100,
-    });
-
-    currentDate = new Date(monthEnd);
-    currentDate.setDate(currentDate.getDate() + 1);
-    dayOffset += daysInMonth;
-  }
+  // Months for the axis header — adapted to the existing render shape
+  // (`{ name, start, width }`) so the rest of the file stays untouched.
+  const months = monthHeaders(window).map((h) => ({
+    name: h.label,
+    start: h.leftPct,
+    width: h.widthPct,
+  }));
 
   const getTaskPosition = (task: Task) => {
-    const taskStart = parseISO(task.startDate);
-    const taskEnd = parseISO(task.endDate);
-    const startOffset = differenceInDays(taskStart, start);
-    const duration = differenceInDays(taskEnd, taskStart) + 1;
-
-    return {
-      left: (startOffset / totalDays) * 100,
-      width: (duration / totalDays) * 100,
-    };
+    const { leftPct, widthPct } = taskBarPosition(task, window);
+    return { left: leftPct, width: widthPct };
   };
 
   const getStatusColor = (status: Task['status']) => {
@@ -93,7 +80,7 @@ export function GanttChart({ tasks, startDate, endDate, compact = false, showMon
           return (
             <div
               key={task.id}
-              className="relative overflow-hidden rounded-xl border border-slate-200 bg-white p-3"
+              className={`relative overflow-hidden rounded-xl border border-slate-200 bg-white p-3 ${isHighlighted(task.id) ? HIGHLIGHT_RING : ''}`}
             >
               <span
                 className="absolute left-0 top-0 h-full w-1"
@@ -153,8 +140,9 @@ export function GanttChart({ tasks, startDate, endDate, compact = false, showMon
           )}
           {tasks.map((task) => {
             const position = getTaskPosition(task);
+            const hl = isHighlighted(task.id);
             return (
-              <div key={task.id} className="flex items-center gap-4 p-3">
+              <div key={task.id} className={`flex items-center gap-4 p-3 ${hl ? 'bg-emerald-50/40' : ''}`}>
                 <div className="w-36 flex-shrink-0 sm:w-48">
                   <p className="truncate text-sm font-medium text-slate-900">{task.name}</p>
                   <p className="text-xs text-slate-500">{task.percentComplete}%</p>
@@ -162,7 +150,7 @@ export function GanttChart({ tasks, startDate, endDate, compact = false, showMon
                 <div className="flex-1">
                   <div className="relative h-6 rounded-full bg-slate-100">
                     <div
-                      className="absolute top-0 bottom-0 rounded-full"
+                      className={`absolute top-0 bottom-0 rounded-full ${hl ? HIGHLIGHT_RING : ''}`}
                       style={{
                         left: `${position.left}%`,
                         width: `${position.width}%`,
@@ -255,7 +243,7 @@ export function GanttChart({ tasks, startDate, endDate, compact = false, showMon
 
                 {/* Task Bar */}
                 <div
-                  className="absolute top-1/2 h-8 -translate-y-1/2 rounded-md shadow-sm"
+                  className={`absolute top-1/2 h-8 -translate-y-1/2 rounded-md shadow-sm ${isHighlighted(task.id) ? HIGHLIGHT_RING : ''}`}
                   style={{
                     left: `${position.left}%`,
                     width: `${position.width}%`,

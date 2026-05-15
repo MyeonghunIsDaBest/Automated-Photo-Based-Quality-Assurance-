@@ -25,6 +25,19 @@ const DUE_PRESETS: { days: number; label: string }[] = [
   { days: 14, label: '2 weeks' },
 ];
 
+// Trade-flavoured starter snippets — tapping a chip prefills the textarea
+// with a realistic punch-list defect. Ordered from most-common (defect) to
+// least (housekeeping).
+const QUICK_SNIPPETS: { label: string; text: string }[] = [
+  { label: 'Re-terminate ground',  text: 'Re-terminate ground wire at L14 panel — lug appears loose.' },
+  { label: 'Replace damaged conduit', text: 'Replace damaged EMT conduit run between J-box A12 and ceiling rough-in.' },
+  { label: 'Cap unused outlet',     text: 'Cap unused receptacle on east wall — energised and untrimmed.' },
+  { label: 'Cover plate missing',   text: 'Missing cover plate on junction box near corridor stair B.' },
+  { label: 'Excavation backfill',   text: 'Backfill open trench at service entry; compaction not signed off.' },
+  { label: 'Label panel',           text: 'Update panel schedule labels at DB-2 to match as-built drawings.' },
+  { label: 'Touch-up paint',        text: 'Touch-up paint where stub-up cores were trimmed at L13 north.' },
+];
+
 export default function NewPunchItemSheet({
   isOpen, onClose, projectId, tasks, zones, currentUser,
 }: NewPunchItemSheetProps) {
@@ -127,13 +140,29 @@ export default function NewPunchItemSheet({
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={onKey}
                 rows={3}
-                placeholder="e.g. Replace cracked tile near east entry"
+                placeholder="e.g. Re-terminate ground wire at L14 panel — lug appears loose."
                 autoFocus
                 className="block w-full rounded-md border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
               />
               <p className="mt-1 text-[10px] text-slate-400">
                 Cmd/Ctrl + Enter to capture
               </p>
+              {/* Trade snippets — tap to prefill the textarea */}
+              {!text.trim() && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {QUICK_SNIPPETS.map((s) => (
+                    <button
+                      key={s.label}
+                      type="button"
+                      onClick={() => setText(s.text)}
+                      className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-600 transition-colors hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700"
+                      title={s.text}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Linked context — task picks a zone for free */}

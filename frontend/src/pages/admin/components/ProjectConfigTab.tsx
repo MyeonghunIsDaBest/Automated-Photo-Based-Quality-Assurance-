@@ -16,12 +16,18 @@
 // auditable action in `/audit`.
 
 import { useEffect, useMemo, useState } from 'react';
+import { RotateCcw } from 'lucide-react';
 import { useProjectsListStore } from '../../projects/store';
 import { useAppStore } from '../../../store';
+import { useFeatureStore } from '../../../store/features';
 import { useProjectConfig } from '../../../lib/hooks/useProjectConfig';
 import { canManageProjectConfig } from '../../../lib/permissions';
 import type { ProjectConfig } from '../../../types';
 import type { ProjectConfigPatch } from '../../../lib/api/projectConfig';
+import {
+  demoInflightTasks,
+  DEMO_INFLIGHT_PROJECT_ID,
+} from '../../../data/demoInflightProject';
 
 type ProgressionMode = 'manual' | 'human_assisted' | 'full_auto';
 type ReportCadence = 'none' | 'weekly' | 'monthly';
@@ -184,6 +190,60 @@ export default function ProjectConfigTab() {
   const onCancel = () => {
     if (config) setDraft(configToDraft(config));
     setSaveError(null);
+  };
+
+  // ─── Reset demo state ──────────────────────────────────────────────────
+  // Clears every photo's AI analysis + resets task progress on the active
+  // project. For the canonical demo (Hampstead Heights) we snap tasks back
+  // to their seed values from `data/demoInflightProject.ts`. For any other
+  // project, we drop non-anchor tasks to 0% / not_started. Use case: re-
+  // pitching the same demo back-to-back without manual cleanup.
+  const [resetStep, setResetStep] = useState<'idle' | 'confirm' | 'busy' | 'done'>('idle');
+  const onResetDemo = () => {
+    if (!activeProjectId) return;
+    setResetStep('busy');
+
+    // 1. Strip aiAnalysis from every project photo so the Mock-AI runner
+    //    sees them as pending again.
+    useAppStore.setState((s) => ({
+      photos: s.photos.map((p) =>
+        p.projectId === activeProjectId
+          ? { ...p, aiAnalyzed: false, aiAnalysis: undefined }
+          : p,
+      ),
+    }));
+
+    // 2. Snap tasks back. Hampstead gets its seed; other projects reset to
+    //    zero. Phase anchors keep their structure (they're non-deletable).
+    if (activeProjectId === DEMO_INFLIGHT_PROJECT_ID) {
+      useFeatureStore.setState((s) => ({
+        tasks: [
+          ...s.tasks.filter((t) => t.projectId !== activeProjectId),
+          ...demoInflightTasks,
+        ],
+      }));
+    } else {
+      const now = new Date().toISOString();
+      useFeatureStore.setState((s) => ({
+        tasks: s.tasks.map((t) =>
+          t.projectId === activeProjectId && !t.isPhaseAnchor
+            ? { ...t, percentComplete: 0, status: 'not_started' as const, lastUpdated: now }
+            : t,
+        ),
+      }));
+    }
+
+    addAuditLog({
+      projectId: activeProjectId,
+      userId: currentUser?.id ?? 'system',
+      action: 'demo_reset',
+      entityType: 'project',
+      entityId: activeProjectId,
+      notes: 'Reset demo state — cleared AI analyses, restored task seed values.',
+    });
+
+    setResetStep('done');
+    window.setTimeout(() => setResetStep('idle'), 2500);
   };
 
   if (!canEdit) {
@@ -430,6 +490,56 @@ export default function ProjectConfigTab() {
                 ))}
               </div>
             </Field>
+          </SubSection>
+
+          {/* ── Demo controls ────────────────────────────────────────── */}
+          <SubSection
+            title="Demo controls"
+            description="Restart the demo flow without leaving the page. Clears all AI analyses for this project, then snaps tasks back to their seed percentages (Hampstead Heights) or to 0% (everything else). Useful when running back-to-back walk-throughs."
+          >
+            <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50/40 px-4 py-3">
+              <RotateCcw className="h-4 w-4 flex-shrink-0 text-amber-700" aria-hidden />
+              <div className="min-w-0 flex-1 text-xs text-slate-700">
+                {resetStep === 'done' ? (
+                  <span className="font-medium text-emerald-700">
+                    Demo reset · AI analyses cleared, task progress restored.
+                  </span>
+                ) : (
+                  <>
+                    <span className="font-medium text-slate-900">Reset demo state.</span>{' '}
+                    Wipes Mock-AI analyses + restores task seed values for the active project.
+                  </>
+                )}
+              </div>
+              {resetStep === 'confirm' ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setResetStep('idle')}
+                    className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 hover:border-slate-300"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onResetDemo}
+                    className="rounded-full bg-amber-600 px-3 py-1 text-xs font-medium text-white hover:bg-amber-700"
+                  >
+                    Confirm reset
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setResetStep('confirm')}
+                  disabled={resetStep === 'busy'}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-white px-3 py-1 text-xs font-medium text-amber-800 transition-colors hover:border-amber-400 hover:bg-amber-50 disabled:opacity-50"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  Reset demo
+                </button>
+              )}
+            </div>
           </SubSection>
 
           {/* ── Action bar ────────────────────────────────────────────── */}

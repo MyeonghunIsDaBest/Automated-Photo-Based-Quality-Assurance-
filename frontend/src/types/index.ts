@@ -305,6 +305,23 @@ export interface Task {
   lastUpdated: string;
   updateSource: 'ai_auto' | 'manual' | 'supervisor';
   notes: string[];
+  /** Migration 12 — true for the 8 per-project phase anchor rows that the
+   *  `trg_seed_phase_anchors` trigger creates on project insert. Anchors
+   *  are non-deletable; their `percent_complete` is rolled up from children
+   *  (`rolled_up_pct(task_id)` SQL helper, or `rolledUpPct(task, allTasks)`
+   *  on the frontend). Sub-tasks have `isPhaseAnchor=false` + a non-null
+   *  `parentTaskId` pointing at the anchor. */
+  isPhaseAnchor: boolean;
+}
+
+/** Rolled-up % for a phase anchor (avg of its children), or the task's own
+ *  `percentComplete` for leaves. Mirrors the `rolled_up_pct()` SQL helper. */
+export function rolledUpPct(task: Task, allTasks: Task[]): number {
+  if (!task.isPhaseAnchor) return task.percentComplete;
+  const children = allTasks.filter((t) => t.parentTaskId === task.id);
+  if (children.length === 0) return 0;
+  const sum = children.reduce((acc, c) => acc + c.percentComplete, 0);
+  return Math.round(sum / children.length);
 }
 
 // Photo Types

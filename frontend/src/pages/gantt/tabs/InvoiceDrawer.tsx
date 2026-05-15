@@ -11,6 +11,7 @@ import {
   useGanttSideStore, useOrdersForProject, orderTotal,
 } from '../store';
 import { useProjectActivity, ACTIVITY_VERBS } from '../lib/useProjectActivity';
+import MotionDrawer from '../../../components/ui/MotionDrawer';
 import type { Invoice, InvoiceStatus, Order, Warranty } from '../types';
 
 interface InvoiceDrawerProps {
@@ -132,16 +133,12 @@ export default function InvoiceDrawer({
   };
 
   return (
-    <>
-      <div
-        className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      <aside
-        className="fixed inset-x-0 bottom-0 z-50 flex max-h-[92dvh] flex-col rounded-t-2xl bg-white shadow-2xl sm:inset-y-0 sm:right-0 sm:left-auto sm:max-h-none sm:w-[520px] sm:rounded-l-2xl sm:rounded-tr-none lg:w-[600px]"
-        role="dialog"
-        aria-modal="true"
-      >
+    <MotionDrawer
+      open={isOpen}
+      onClose={onClose}
+      sizeClass="sm:w-[520px] lg:w-[600px]"
+      ariaLabel="Invoice"
+    >
         {/* Mobile drag handle */}
         <div className="flex justify-center pt-2 sm:hidden">
           <span className="h-1 w-10 rounded-full bg-slate-300" />
@@ -296,8 +293,7 @@ export default function InvoiceDrawer({
             )
           )}
         </footer>
-      </aside>
-    </>
+    </MotionDrawer>
   );
 }
 

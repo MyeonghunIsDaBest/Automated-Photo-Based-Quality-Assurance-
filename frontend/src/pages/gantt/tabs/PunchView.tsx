@@ -9,7 +9,6 @@ import { Card, CardContent } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
 import { Badge } from '../../../components/ui/badge';
 import { Input } from '../../../components/ui/input';
-import { TabHeader } from '../components/TabHeader';
 import { EmptyState } from '../components/EmptyState';
 import { useFeatureStore } from '../../../store/features';
 import { useAppStore } from '../../../store';
@@ -18,7 +17,13 @@ import type { PunchItem } from '../types';
 import PunchItemDrawer from './PunchItemDrawer';
 import NewPunchItemSheet from './NewPunchItemSheet';
 
-interface PunchListTabProps {
+// Punch sub-view of the Site Diary. Used to live as its own /punch_list tab —
+// the standalone Punch List was retired and the content folded into Site
+// Diary so daily activity, headcount, and outstanding defects are reachable
+// from a single tab. Behaviour is identical to the old top-level page minus
+// the editorial TabHeader (Site Diary owns the header now).
+
+interface PunchViewProps {
   project: Project;
   canEdit: boolean;
   canDelete: boolean;
@@ -33,8 +38,6 @@ const FILTERS: { id: Filter; label: string }[] = [
   { id: 'all',    label: 'All' },
 ];
 
-// Sort buckets used by the open-items list. Closed items always render last
-// in their own section, regardless of due date.
 type Bucket = 'overdue' | 'today' | 'this_week' | 'later' | 'no_due';
 
 const BUCKET_META: Record<Bucket, { label: string; tone: string; icon: typeof Calendar }> = {
@@ -57,7 +60,7 @@ function bucketFor(item: PunchItem): Bucket {
   return 'later';
 }
 
-export function PunchListTab({ project, canEdit, canDelete }: PunchListTabProps) {
+export function PunchView({ project, canEdit, canDelete }: PunchViewProps) {
   const punchItems = usePunchItems(project.id);
   const tasks = useFeatureStore((s) => s.tasks);
   const zones = useAppStore((s) => s.zones);
@@ -128,7 +131,6 @@ export function PunchListTab({ project, canEdit, canDelete }: PunchListTabProps)
       if (it.status === 'done') closed.push(it);
       else open[bucketFor(it)].push(it);
     }
-    // Sort each open bucket by due date ascending; no_due alphabetical.
     for (const b of Object.keys(open) as Bucket[]) {
       if (b === 'no_due') {
         open[b].sort((a, b) => a.text.localeCompare(b.text));
@@ -140,7 +142,6 @@ export function PunchListTab({ project, canEdit, canDelete }: PunchListTabProps)
         });
       }
     }
-    // Closed: most recently closed first.
     closed.sort((a, b) => {
       const ac = a.closedAt ? parseISO(a.closedAt).getTime() : 0;
       const bc = b.closedAt ? parseISO(b.closedAt).getTime() : 0;
@@ -156,24 +157,32 @@ export function PunchListTab({ project, canEdit, canDelete }: PunchListTabProps)
 
   return (
     <>
-      <TabHeader
-        eyebrow={`Workspace · Punch List · ${project.name}`}
-        title="Loose ends, captured."
-        description="Quick-capture items that don't deserve a Gantt task — defects, follow-ups, single-action notes. Tie them to a task or zone for context, set a due date, tick the box when handled."
-        action={
-          canEdit ? (
-            <Button onClick={() => setAddOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add item
-            </Button>
-          ) : (
-            <Badge variant="secondary" className="gap-1.5 px-3 py-1.5">
-              <ListTodo className="h-3.5 w-3.5" />
-              Read-only
-            </Badge>
-          )
-        }
-      />
+      {/* Mini-toolbar — replaces the editorial TabHeader since Site Diary
+          provides the larger frame. */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-slate-500">
+            Site Diary · Punch
+          </p>
+          <h3
+            className="mt-0.5 text-lg font-semibold text-slate-900"
+            style={{ fontFamily: "'Fraunces', Georgia, serif" }}
+          >
+            Loose ends, captured.
+          </h3>
+        </div>
+        {canEdit ? (
+          <Button onClick={() => setAddOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add item
+          </Button>
+        ) : (
+          <Badge variant="secondary" className="gap-1.5 px-3 py-1.5">
+            <ListTodo className="h-3.5 w-3.5" />
+            Read-only
+          </Badge>
+        )}
+      </div>
 
       {/* KPIs */}
       <div className="mb-4 -mx-4 overflow-x-auto px-4 pb-1 sm:-mx-0 sm:px-0">
@@ -232,7 +241,7 @@ export function PunchListTab({ project, canEdit, canDelete }: PunchListTabProps)
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search items, task, zone…"
+            placeholder="Search 'ground wire', 'L14 panel', zone, assignee…"
             className="h-9 w-full sm:w-72"
           />
         </CardContent>
@@ -247,7 +256,7 @@ export function PunchListTab({ project, canEdit, canDelete }: PunchListTabProps)
               title={`No punch items on ${project.name}.`}
               description={
                 canEdit
-                  ? 'Capture defects, follow-ups, or quick reminders. Tie each to a task or zone so they\'re easy to find later.'
+                  ? 'Capture defects, re-work, snags, missing cover plates, unterminated grounds — anything that needs handling but isn\'t worth a Gantt task. Tie each to a task or zone so they\'re easy to find later.'
                   : 'Nothing has been captured yet.'
               }
               action={
@@ -277,7 +286,6 @@ export function PunchListTab({ project, canEdit, canDelete }: PunchListTabProps)
         </Card>
       ) : (
         <div className="space-y-5">
-          {/* Open buckets — only render those with items */}
           {(['overdue', 'today', 'this_week', 'later', 'no_due'] as Bucket[]).map((b) => {
             const items = grouped.open[b];
             if (items.length === 0) return null;
@@ -295,7 +303,6 @@ export function PunchListTab({ project, canEdit, canDelete }: PunchListTabProps)
             );
           })}
 
-          {/* Closed — only when filter shows them */}
           {grouped.closed.length > 0 && (filter === 'all' || filter === 'closed' || filter === 'mine') && (
             <ClosedSection
               items={grouped.closed}
@@ -381,8 +388,6 @@ function Section({
   );
 }
 
-// ─── Closed-section (collapsed by default would be nice, kept inline for v1) ─
-
 function ClosedSection({
   items, tasks, zones, onOpen, onToggle, canEdit,
 }: {
@@ -422,8 +427,6 @@ function ClosedSection({
     </section>
   );
 }
-
-// ─── Single row ─────────────────────────────────────────────────────────────
 
 function PunchRow({
   item, task, zone, onOpen, onToggle, canEdit,
@@ -509,8 +512,6 @@ function PunchRow({
     </li>
   );
 }
-
-// ─── KPI cell ──────────────────────────────────────────────────────────────
 
 function Kpi({
   icon: Icon, label, value, tone,

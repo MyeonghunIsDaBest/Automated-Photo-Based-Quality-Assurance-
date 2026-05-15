@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   ChevronRight, Clock,
   DollarSign, Package, Plus, ShoppingCart, Truck,
@@ -16,6 +17,7 @@ import {
 } from '../store';
 import type { Order, OrderStatus } from '../types';
 import OrderDrawer from './OrderDrawer';
+import NewOrderModal from './NewOrderModal';
 
 interface OrdersTabProps {
   project: Project;
@@ -44,11 +46,15 @@ const STATUS_DOT: Record<OrderStatus, string> = {
   cancelled: 'bg-red-500',
 };
 
+// Visible label changes only — the underlying OrderStatus enum stays
+// 'submitted' so the rest of the procurement chain doesn't shift. The
+// new-order popup stamps fresh orders as 'submitted', which the supplier
+// sees as "Pending" until they confirm.
 const STATUS_FILTERS: { id: OrderStatus | 'all' | 'open'; label: string }[] = [
   { id: 'all',       label: 'All' },
   { id: 'open',      label: 'Open' },
   { id: 'draft',     label: 'Draft' },
-  { id: 'submitted', label: 'Submitted' },
+  { id: 'submitted', label: 'Pending' },
   { id: 'confirmed', label: 'Confirmed' },
   { id: 'partial',   label: 'Partial' },
   { id: 'received',  label: 'Received' },
@@ -67,6 +73,10 @@ export function OrdersTab({ project, canEdit, canDelete, hideHeader = false }: O
   const [drawerOrder, setDrawerOrder] = useState<Order | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerMode, setDrawerMode] = useState<'edit' | 'create'>('edit');
+  // Create flow is a centered popup with the tiered materials catalogue,
+  // routed through NewOrderModal. The OrderDrawer below stays mounted for
+  // the edit path — line items, receipts, activity all live there.
+  const [newOrderOpen, setNewOrderOpen] = useState(false);
 
   // ── KPIs ───────────────────────────────────────────────────────────────
   const kpis = useMemo(() => {
@@ -129,9 +139,7 @@ export function OrdersTab({ project, canEdit, canDelete, hideHeader = false }: O
   };
 
   const openCreate = () => {
-    setDrawerOrder(null);
-    setDrawerMode('create');
-    setDrawerOpen(true);
+    setNewOrderOpen(true);
   };
 
   return (
@@ -261,11 +269,24 @@ export function OrdersTab({ project, canEdit, canDelete, hideHeader = false }: O
       ) : (
         <Card>
           <CardContent className="p-0">
-            {/* Mobile cards */}
+            {/* Mobile cards — motion.li layout reorders smoothly when the sort
+                changes status or ETA. Desktop table is left as-is; `motion`
+                inside a <tr> fights the browser's table layout. */}
             <ul className="divide-y divide-slate-100 md:hidden">
-              {sorted.map((o) => (
-                <OrderRowMobile key={o.id} order={o} onOpen={() => openOrder(o)} />
-              ))}
+              <AnimatePresence initial={false}>
+                {sorted.map((o) => (
+                  <motion.div
+                    key={o.id}
+                    layout
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                  >
+                    <OrderRowMobile order={o} onOpen={() => openOrder(o)} />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
             </ul>
 
             {/* Desktop table */}
@@ -299,6 +320,16 @@ export function OrdersTab({ project, canEdit, canDelete, hideHeader = false }: O
         projectId={project.id}
         readOnly={!canEdit}
         canDelete={canDelete}
+      />
+
+      {/* Centered popup for new orders — tier-grouped material picker
+          replaces the old free-text line-item entry. Fresh orders land in
+          status='submitted' so they pop into the supplier's pending queue
+          without an extra Draft → Submit click. */}
+      <NewOrderModal
+        open={newOrderOpen}
+        onClose={() => setNewOrderOpen(false)}
+        projectId={project.id}
       />
     </>
   );

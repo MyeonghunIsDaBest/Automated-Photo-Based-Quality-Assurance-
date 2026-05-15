@@ -11,8 +11,9 @@
 //   3. Schedule-context Gantt chart — bars move as the runner walks.
 //   4. Review queue list — items with confidence in the 0.50-0.85 band.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { AnimatePresence, motion } from 'framer-motion';
 import { AlertTriangle, ImageOff, Inbox, Upload as UploadIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { canConfirmAIAnalysis, canUploadPhotos } from '../../../lib/permissions';
@@ -22,9 +23,10 @@ import { getPhotoUrl } from '../../../lib/api/photos';
 import NotAuthorized from '../../../components/NotAuthorized';
 import PhotoReviewDrawer, { type ReviewQueueItem } from '../../../components/photos/PhotoReviewDrawer';
 import MockAnalysisButton from '../../../components/mockAi/MockAnalysisButton';
-import { GanttChart } from '../../../components/ui/GanttChart';
+import { SplitPaneGantt } from '../../../components/ui/SplitPaneGantt';
+import { useMockAiUiStore } from '../../../store/mockAiUi';
 import { TabHeader } from '../components/TabHeader';
-import type { Project, Task, User, SafetyFlag, SafetySeverity } from '../../../types';
+import type { Project, Task, Zone, User, SafetyFlag, SafetySeverity } from '../../../types';
 
 const SAFETY_SEVERITY: Record<SafetyFlag, SafetySeverity> = {
   exposed_wiring:  'critical',
@@ -44,20 +46,30 @@ const SEVERITY_TONE: Record<SafetySeverity, string> = {
 interface ReviewQueueTabProps {
   project: Project;
   tasks: Task[];          // already scoped to this project by the parent Gantt page
+  zones: Zone[];          // project-scoped zones used by the split-pane Gantt
   currentUser: User | null;
 }
 
-export function ReviewQueueTab({ project, tasks, currentUser }: ReviewQueueTabProps) {
+export function ReviewQueueTab({ project, tasks, zones, currentUser }: ReviewQueueTabProps) {
   if (!canConfirmAIAnalysis(currentUser)) {
     return <NotAuthorized surface="the review queue" />;
   }
 
   const canUpload = canUploadPhotos(currentUser);
+  // Read the pulse target from the shared mock-AI store so the Gantt bar
+  // outlines emerald while the batch processes that task's photo.
+  const currentlyAnalysingTaskId = useMockAiUiStore((s) => s.currentlyAnalysingTaskId);
+  const highlightedTaskIds = currentlyAnalysingTaskId ? [currentlyAnalysingTaskId] : undefined;
 
   const [items, setItems] = useState<ReviewQueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [active, setActive] = useState<ReviewQueueItem | null>(null);
+  // Auto-scroll target: when a batch completes the freshest analysis is the
+  // first list item; flash it for 1.2 s + scroll it into view so the user's
+  // eye lands on what just changed.
+  const [flashedItemId, setFlashedItemId] = useState<string | null>(null);
+  const firstRowRef = useRef<HTMLLIElement | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -73,6 +85,30 @@ export function ReviewQueueTab({ project, tasks, currentUser }: ReviewQueueTabPr
   }, [project.id]);
 
   useEffect(() => { void refresh(); }, [refresh]);
+
+  // When a mock-AI batch finishes (`currentlyAnalysingTaskId` returns to null
+  // after being non-null), refresh the list and scroll/flash the top row —
+  // that's where Phase D's real persisted analyses would land first.
+  const prevAnalysingRef = useRef<string | null>(null);
+  useEffect(() => {
+    const prev = prevAnalysingRef.current;
+    prevAnalysingRef.current = currentlyAnalysingTaskId;
+    if (prev && !currentlyAnalysingTaskId) {
+      void refresh().then(() => {
+        // After refresh resolves the new items are in state; flash the first
+        // one. Defer to next paint so the ref is wired up.
+        requestAnimationFrame(() => {
+          firstRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          setItems((prevItems) => {
+            const top = prevItems[0];
+            if (top) setFlashedItemId(top.id);
+            return prevItems;
+          });
+          setTimeout(() => setFlashedItemId(null), 1200);
+        });
+      });
+    }
+  }, [currentlyAnalysingTaskId, refresh]);
 
   // Realtime: drop a row from the list as soon as another reviewer marks it
   // confirmed/rejected. Race losers see a fresh queue without a manual reload.
@@ -127,25 +163,25 @@ export function ReviewQueueTab({ project, tasks, currentUser }: ReviewQueueTabPr
         {/* ── Mock-AI runner ───────────────────────────────────────── */}
         <MockAnalysisButton projectId={project.id} variant="card" />
 
-        {/* ── Gantt chart context ─────────────────────────────────── */}
+        {/* ── Schedule context — split-pane Gantt mirroring the Tasks tab.
+              Bars animate in place as Mock-AI walks through analyses, and the
+              row currently being analysed pulses emerald via highlightedTaskIds. */}
         {tasks.length > 0 && (
-          <div className="rounded-2xl border border-slate-200 bg-white p-5">
-            <div className="mb-4 flex items-baseline justify-between">
-              <div>
-                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
-                  Schedule context
-                </p>
-                <p className="mt-1 text-xs text-slate-500">
-                  {tasks.length} task{tasks.length === 1 ? '' : 's'} in this project. Bars move as analyses complete.
-                </p>
-              </div>
+          <div>
+            <div className="mb-3 flex items-baseline justify-between">
+              <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
+                Schedule context
+              </p>
+              <p className="text-[11px] text-slate-400">
+                {tasks.length} task{tasks.length === 1 ? '' : 's'} · bars animate as analyses land
+              </p>
             </div>
-            <GanttChart
+            <SplitPaneGantt
               tasks={tasks}
+              zones={zones}
               startDate={project.startDate}
               endDate={project.endDate}
-              compact
-              showMonths
+              highlightedTaskIds={highlightedTaskIds}
             />
           </div>
         )}
@@ -174,9 +210,26 @@ export function ReviewQueueTab({ project, tasks, currentUser }: ReviewQueueTabPr
             <EmptyState />
           ) : (
             <ul className="space-y-3">
-              {items.map((item) => (
-                <Row key={item.id} item={item} onClick={() => setActive(item)} />
-              ))}
+              {/* AnimatePresence + motion.li layout = new analyses (from a Mock-AI
+                  run) enter via fadeUp and shift existing rows down via FLIP. */}
+              <AnimatePresence initial={false}>
+                {items.map((item, idx) => (
+                  <motion.div
+                    key={item.id}
+                    layout
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] } }}
+                    exit={{ opacity: 0, height: 0, marginTop: 0, transition: { duration: 0.2 } }}
+                  >
+                    <Row
+                      item={item}
+                      onClick={() => setActive(item)}
+                      flash={flashedItemId === item.id}
+                      rowRef={idx === 0 ? firstRowRef : undefined}
+                    />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
             </ul>
           )}
         </div>
@@ -212,7 +265,14 @@ function EmptyState() {
   );
 }
 
-function Row({ item, onClick }: { item: ReviewQueueItem; onClick: () => void }) {
+function Row({
+  item, onClick, flash = false, rowRef,
+}: {
+  item: ReviewQueueItem;
+  onClick: () => void;
+  flash?: boolean;
+  rowRef?: React.RefObject<HTMLLIElement | null>;
+}) {
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
   const [thumbErr, setThumbErr] = useState(false);
 
@@ -229,11 +289,11 @@ function Row({ item, onClick }: { item: ReviewQueueItem; onClick: () => void }) 
   const confidencePct = Math.round(item.confidence * 100);
 
   return (
-    <li>
+    <li ref={rowRef}>
       <button
         type="button"
         onClick={onClick}
-        className="flex w-full items-start gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left transition-shadow hover:shadow-sm sm:items-center sm:gap-4 sm:p-4"
+        className={`flex w-full items-start gap-3 rounded-xl border bg-white p-3 text-left transition-shadow hover:shadow-sm sm:items-center sm:gap-4 sm:p-4 ${flash ? 'border-emerald-400 ring-2 ring-emerald-300 ring-offset-1 animate-pulse' : 'border-slate-200'}`}
       >
         <div className="flex h-16 w-20 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100 sm:h-20 sm:w-28">
           {thumbUrl && !thumbErr ? (

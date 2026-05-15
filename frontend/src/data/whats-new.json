@@ -1,6 +1,14 @@
 {
-  "generatedAt": "2026-05-11T04:06:19.094Z",
+  "generatedAt": "2026-05-15T00:06:05.677Z",
   "entries": [
+    {
+      "id": "c3bf2fd",
+      "date": "2026-05-12T20:01:29+08:00",
+      "surface": "frontend",
+      "kind": "change",
+      "headline": "Huge frontend update.",
+      "filesChanged": 58
+    },
     {
       "id": "31d7672",
       "date": "2026-05-09T04:44:39+08:00",
@@ -88,14 +96,6 @@
       "kind": "change",
       "headline": "3rd enhancement of ui.",
       "filesChanged": 26
-    },
-    {
-      "id": "a66eeff",
-      "date": "2026-04-29T17:33:31+08:00",
-      "surface": "frontend",
-      "kind": "improve",
-      "headline": "Refactor ui pt1.",
-      "filesChanged": 21
     }
   ]
 }

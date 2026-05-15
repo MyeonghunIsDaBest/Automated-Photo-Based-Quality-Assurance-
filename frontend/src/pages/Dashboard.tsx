@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { useAppStore } from '../store';
 import { useFeatureStore } from '../store/features';
 import { useDashboardStats, useActiveJobs, useUpcomingTasks } from '../store/dashboard';
@@ -8,6 +9,7 @@ import { useDashboardCounts } from '../lib/hooks/useDashboardCounts';
 import { useWeather, type WeatherTone } from '../lib/hooks/useWeather';
 import ActivityFeed from '../components/activity/ActivityFeed';
 import type { ActivityEvent } from '../lib/activity/types';
+import { navigateActivityEvent } from '../lib/activity/navigate';
 import { SECURITY_GROUP_LABELS, canConfirmAIAnalysis, canViewSafetyIncident } from '../lib/permissions';
 import type { SecurityGroup } from '../types';
 import {
@@ -41,6 +43,7 @@ import {
 } from 'recharts';
 import { differenceInCalendarDays, format, parseISO } from 'date-fns';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
+import CountUp from '../components/ui/CountUp';
 import WhatsNewCard from '../components/dashboard/WhatsNewCard';
 
 // Per-role capability summary shown in the welcome strip. Keep it short —
@@ -272,29 +275,10 @@ export default function Dashboard() {
     prevReviewRef.current = dashboardCounts.pendingReview;
   }, [dashboardCounts.pendingReview, dashboardCounts.loading]);
 
-  // Activity row click → deep link to the right surface.
+  // Activity row click → deep link to the source. Shared router so the
+  // same click here behaves identically on Gantt → Overview's feed.
   const handleActivitySelect = (event: ActivityEvent) => {
-    switch (event.targetTabId) {
-      case 'tasks':
-        navigate(`/gantt?project=${project.id}&tab=tasks&task=${event.targetEntityId}`);
-        return;
-      case 'uploads':
-        if (event.kind === 'safety_flag') {
-          navigate(`/safety?project=${project.id}&tab=hazards&incident=${event.targetEntityId}`);
-          return;
-        }
-        navigate(`/gallery?project=${project.id}&photo=${event.targetEntityId}`);
-        return;
-      case 'overview':
-        if (event.kind === 'safety_flag') {
-          navigate(`/safety?project=${project.id}&tab=hazards&incident=${event.targetEntityId}`);
-          return;
-        }
-        navigate(`/gantt?project=${project.id}&tab=overview`);
-        return;
-      default:
-        navigate(`/gantt?project=${project.id}&tab=${event.targetTabId}`);
-    }
+    navigateActivityEvent(event, project.id, navigate);
   };
 
   const roleLabel = currentProfile
@@ -356,7 +340,11 @@ export default function Dashboard() {
   }), [stats, dashboardCounts.openHazards, dashboardCounts.pendingReview]);
 
   return (
-    <div className="editorial-root min-h-full bg-[#FAFAF7]">
+    <motion.div
+      className="editorial-root min-h-full bg-[#FAFAF7]"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1, transition: { duration: 0.3 } }}
+    >
       {/* ─── Alert ribbon — site-wide live conditions ─────────────── */}
       <div className="border-b border-slate-800 bg-slate-900 text-white">
         <div className="flex items-center gap-6 overflow-x-auto px-4 py-2 text-[11px] font-medium sm:px-8">
@@ -453,6 +441,8 @@ export default function Dashboard() {
             <MetricCell
               label="Overall Progress"
               value={`${stats.overallProgress}%`}
+              numericValue={stats.overallProgress}
+              format={(n) => `${Math.round(n)}%`}
               caption={stats.delayedTasks > 0 ? `${stats.delayedTasks} delayed` : 'On track'}
               spark={sparks.progress}
               color={stats.delayedTasks > 0 ? '#DC2626' : '#0F172A'}
@@ -460,6 +450,7 @@ export default function Dashboard() {
             <MetricCell
               label="Photos this week"
               value={stats.photosThisWeek.toString()}
+              numericValue={stats.photosThisWeek}
               caption={`+${stats.photosToday} today`}
               spark={sparks.photos}
               color="#2563EB"
@@ -467,6 +458,7 @@ export default function Dashboard() {
             <MetricCell
               label="Days remaining"
               value={stats.daysRemaining.toString()}
+              numericValue={stats.daysRemaining}
               caption={stats.delayedTasks > 0 ? `${stats.delayedTasks} delayed` : 'Schedule holding'}
               spark={sparks.days}
               color="#7C3AED"
@@ -475,6 +467,7 @@ export default function Dashboard() {
               <MetricCell
                 label="Open AI hazards"
                 value={dashboardCounts.loading ? '—' : dashboardCounts.openHazards.toString()}
+                numericValue={dashboardCounts.loading ? undefined : dashboardCounts.openHazards}
                 caption={dashboardCounts.openHazards > 0 ? 'Action required' : 'No open hazards'}
                 spark={sparks.hazards}
                 color="#DC2626"
@@ -486,6 +479,7 @@ export default function Dashboard() {
               <MetricCell
                 label="Pending review"
                 value={dashboardCounts.loading ? '—' : dashboardCounts.pendingReview.toString()}
+                numericValue={dashboardCounts.loading ? undefined : dashboardCounts.pendingReview}
                 caption={dashboardCounts.pendingReview > 0 ? 'AI calls awaiting you' : 'All caught up'}
                 spark={sparks.review}
                 color="#F59E0B"
@@ -692,13 +686,15 @@ export default function Dashboard() {
                   const badgeClass = STATUS_BADGE[job.status] ?? STATUS_BADGE.not_started;
                   const ringColor = job.status === 'delayed' ? '#DC2626' : '#10B981';
                   return (
-                    <div
+                    <motion.div
                       key={job.id}
-                      className="flex flex-wrap items-center justify-between gap-4 px-6 py-4 transition-colors hover:bg-slate-50/60"
+                      layout
+                      transition={{ type: 'spring', damping: 30, stiffness: 320 }}
+                      className="group flex flex-wrap items-center justify-between gap-4 px-6 py-4 transition-colors hover:bg-slate-50/60"
                     >
                       <div className="flex min-w-0 items-center gap-4">
                         <div className="flex h-1 w-1 flex-shrink-0 items-center justify-center">
-                          <span className={`h-7 w-1 rounded-full ${PHASE_ACCENT[job.phase] ?? 'bg-slate-300'}`} />
+                          <span className={`h-1 w-1 rounded-full transition-all duration-300 group-hover:h-7 group-hover:w-1.5 ${PHASE_ACCENT[job.phase] ?? 'bg-slate-300'}`} />
                         </div>
                         <div className="min-w-0">
                           <p className="truncate font-medium text-slate-900">{job.name}</p>
@@ -723,7 +719,7 @@ export default function Dashboard() {
                           </span>
                         </div>
                       </div>
-                    </div>
+                    </motion.div>
                   );
                 })}
               </div>
@@ -1064,17 +1060,19 @@ export default function Dashboard() {
           </aside>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
 // ─── Reusable cells ──────────────────────────────────────────────────────
 
 function MetricCell({
-  label, value, caption, spark, color, pulse, onClick,
+  label, value, numericValue, format, caption, spark, color, pulse, onClick,
 }: {
   label: string;
   value: string;
+  numericValue?: number;
+  format?: (n: number) => string;
   caption: string;
   spark: number[];
   color: string;
@@ -1093,7 +1091,7 @@ function MetricCell({
         className="num mt-3 text-2xl font-medium text-slate-900 sm:text-3xl"
         data-just-updated={pulse ? 'true' : undefined}
       >
-        {value}
+        {numericValue !== undefined ? <CountUp value={numericValue} format={format} /> : value}
       </p>
       <p className="mt-1 text-[11px] text-slate-400">{caption}</p>
     </>
@@ -1104,7 +1102,7 @@ function MetricCell({
       <button
         type="button"
         onClick={onClick}
-        className="group relative overflow-hidden rounded-xl border border-slate-200 bg-white p-4 text-left transition-colors hover:border-slate-300 hover:bg-slate-50"
+        className="group relative overflow-hidden rounded-xl border border-slate-200 bg-white p-4 text-left shadow-elev-1 transition-all hover:-translate-y-px hover:border-slate-300 hover:bg-slate-50 hover:shadow-elev-2"
         aria-label={`${label}: ${value}, ${caption}`}
       >
         {body}
@@ -1114,7 +1112,7 @@ function MetricCell({
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-elev-1">
       {body}
     </div>
   );

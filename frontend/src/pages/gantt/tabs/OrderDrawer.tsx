@@ -8,6 +8,7 @@ import type { Task, Zone } from '../../../types';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { Badge } from '../../../components/ui/badge';
+import MotionDrawer from '../../../components/ui/MotionDrawer';
 import { useFeatureStore } from '../../../store/features';
 import { useAppStore } from '../../../store';
 import {
@@ -197,24 +198,18 @@ export default function OrderDrawer({
     onClose();
   };
 
-  if (!isOpen) return null;
-
   const total = (draft.lineItems ?? []).reduce(
     (s, li) => s + (li.qty || 0) * (li.unitCost || 0), 0,
   );
 
   return (
-    <>
-      <div
-        className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm transition-opacity"
-        onClick={onClose}
-      />
-      <aside
-        className="fixed inset-x-0 bottom-0 z-50 flex max-h-[92dvh] flex-col rounded-t-2xl bg-white shadow-2xl sm:inset-y-0 sm:right-0 sm:left-auto sm:max-h-none sm:w-[520px] sm:rounded-l-2xl sm:rounded-tr-none lg:w-[640px]"
-        role="dialog"
-        aria-modal="true"
-      >
-        {/* Mobile drag handle */}
+    <MotionDrawer
+      open={isOpen}
+      onClose={onClose}
+      sizeClass="sm:w-[520px] lg:w-[640px]"
+      ariaLabel="Order"
+    >
+      {/* Mobile drag handle */}
         <div className="flex justify-center pt-2 sm:hidden">
           <span className="h-1 w-10 rounded-full bg-slate-300" />
         </div>
@@ -380,8 +375,7 @@ export default function OrderDrawer({
             </>
           )}
         </footer>
-      </aside>
-    </>
+    </MotionDrawer>
   );
 }
 

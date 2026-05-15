@@ -6,6 +6,13 @@
 import { supabase, supabaseConfigured } from '../supabase';
 import type { AIAnalysis, AnalysisAction, AnalysisStatus, ConstructionPhase, SafetyFlag, QualityFlag } from '../../types';
 
+// Demo / generated projects use non-UUID IDs. Postgres rejects those before
+// RLS runs, so the AI-Analysis tab + Dashboard "Pending review" tile would
+// otherwise surface "Failed to load queue." every time a demo project is
+// active. Short-circuit at the API boundary — same pattern as photos.ts.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isUuid = (id: string): boolean => UUID_RE.test(id);
+
 export interface AIAnalysisRow {
   id: string;
   photo_id: string;
@@ -109,6 +116,7 @@ export async function rejectAnalysis(photoId: string, notes?: string): Promise<v
 // covers the current project. The `head: true` flag means we ship no rows.
 export async function countPendingAnalyses(projectId: string): Promise<number> {
   if (!supabaseConfigured()) return 0;
+  if (!isUuid(projectId)) return 0;
   const { count, error } = await supabase
     .from('ai_analyses')
     .select('*, photos!inner(project_id)', { count: 'exact', head: true })
@@ -123,6 +131,7 @@ export async function countPendingAnalyses(projectId: string): Promise<number> {
 // drawer can show thumbnail + filename + uploader without a second round-trip.
 export async function listPendingAnalyses(projectId: string): Promise<Array<AIAnalysisRow & { photos: { id: string; project_id: string; storage_path: string; filename: string; uploaded_by: string | null; taken_at: string | null; gps_lat: number | null; gps_lng: number | null } }>> {
   if (!supabaseConfigured()) return [];
+  if (!isUuid(projectId)) return [];
   const { data, error } = await supabase
     .from('ai_analyses')
     .select('*, photos!inner(id, project_id, storage_path, filename, uploaded_by, taken_at, gps_lat, gps_lng)')

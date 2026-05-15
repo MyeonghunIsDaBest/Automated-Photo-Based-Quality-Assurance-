@@ -1,11 +1,31 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Receipt, X } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { differenceInCalendarDays, format, parseISO } from 'date-fns';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { Badge } from '../../../components/ui/badge';
 import { useGanttSideStore, orderTotal } from '../store';
 import type { Order } from '../types';
+
+// Net-terms presets — the four most common contractor terms. Tapping a chip
+// sets the due date to (invoice date + N days).
+const NET_TERMS: { days: number; label: string }[] = [
+  { days: 7,  label: 'Net 7' },
+  { days: 14, label: 'Net 14' },
+  { days: 30, label: 'Net 30' },
+  { days: 45, label: 'Net 45' },
+  { days: 60, label: 'Net 60' },
+];
+
+// Common notes for trade billing — appended to the textarea on tap.
+const NOTE_QUICK_FLAGS: string[] = [
+  'Progress claim · stage 1',
+  'Material delivery (electrical)',
+  'Excavation works — variation',
+  'Conduit rough-in — labour only',
+  'Switchgear partial billing',
+  'Retention release',
+];
 
 interface NewInvoiceModalProps {
   isOpen: boolean;
@@ -39,13 +59,30 @@ export default function NewInvoiceModal({
   useEffect(() => {
     if (!isOpen) return;
     setOrderId(orders[0]?.id ?? '');
-    setInvoiceNumber(`INV-${Math.floor(Math.random() * 90000 + 10000)}`);
+    // Year-prefixed invoice number matches typical contractor numbering
+    // (INV-2026-0145 etc.) rather than a bare random 5-digit string.
+    const year = new Date().getFullYear();
+    setInvoiceNumber(`INV-${year}-${String(Math.floor(Math.random() * 9000 + 1000))}`);
     setInvoiceDate(today());
     setDueDate(inDays(30));
     setAmount('0');
     setFileRef('');
     setNotes('');
   }, [isOpen, orders]);
+
+  // Helper for the "due in N days" caption + the active state on the net-terms
+  // chips. Recomputes whenever either date changes.
+  const daysToDue = useMemo(() => {
+    try {
+      return differenceInCalendarDays(parseISO(dueDate), parseISO(invoiceDate));
+    } catch {
+      return null;
+    }
+  }, [dueDate, invoiceDate]);
+
+  const appendNote = (snippet: string) => {
+    setNotes((cur) => (cur.trim() ? `${cur.trim()}\n${snippet}` : snippet));
+  };
 
   // Pre-fill amount with the order total once an order is picked.
   useEffect(() => {
@@ -134,7 +171,7 @@ export default function NewInvoiceModal({
               <Input
                 value={invoiceNumber}
                 onChange={(e) => setInvoiceNumber(e.target.value)}
-                placeholder="INV-12345"
+                placeholder="INV-2026-0145"
                 className="font-mono"
               />
             </div>
@@ -155,7 +192,43 @@ export default function NewInvoiceModal({
                   value={dueDate}
                   onChange={(e) => setDueDate(e.target.value)}
                 />
+                {daysToDue !== null && (
+                  <p className="mt-1 text-[11px] tabular-nums text-slate-500">
+                    {daysToDue < 0
+                      ? `Already ${Math.abs(daysToDue)}d overdue`
+                      : daysToDue === 0
+                        ? 'Due same day'
+                        : `Due in ${daysToDue}d`}
+                  </p>
+                )}
               </div>
+            </div>
+
+            {/* Net-terms quick-picks */}
+            <div className="flex flex-wrap gap-1.5">
+              <span className="self-center text-[10px] font-medium uppercase tracking-wider text-slate-400">
+                Terms
+              </span>
+              {NET_TERMS.map((t) => {
+                const active = daysToDue === t.days;
+                return (
+                  <button
+                    key={t.days}
+                    type="button"
+                    onClick={() => setDueDate(
+                      new Date(parseISO(invoiceDate).getTime() + t.days * 86_400_000)
+                        .toISOString().slice(0, 10),
+                    )}
+                    className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors ${
+                      active
+                        ? 'border-slate-900 bg-slate-900 text-white'
+                        : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                );
+              })}
             </div>
 
             <div>
@@ -183,7 +256,7 @@ export default function NewInvoiceModal({
               <Input
                 value={fileRef}
                 onChange={(e) => setFileRef(e.target.value)}
-                placeholder="Drive link / filename for the PDF"
+                placeholder="orders/2026/SP-L14-switchgear.pdf"
               />
             </div>
 
@@ -195,9 +268,21 @@ export default function NewInvoiceModal({
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={2}
-                placeholder="Anything to flag…"
+                placeholder="e.g. Progress claim for L14 MEP rough-in; held back 5% retention."
                 className="block w-full rounded-md border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
               />
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {NOTE_QUICK_FLAGS.map((flag) => (
+                  <button
+                    key={flag}
+                    type="button"
+                    onClick={() => appendNote(flag)}
+                    className="rounded-full border border-slate-200 px-2 py-0.5 text-[10px] text-slate-600 transition-colors hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700"
+                  >
+                    + {flag}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>

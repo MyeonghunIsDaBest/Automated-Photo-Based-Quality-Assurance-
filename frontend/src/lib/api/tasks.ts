@@ -25,6 +25,9 @@ export interface TaskRow {
   created_by: string | null;
   created_at: string;
   last_updated: string;
+  // Migration 12 — optional in the type so pre-12 fetches still parse;
+  // mapTaskRow defaults to false.
+  is_phase_anchor?: boolean | null;
 }
 
 // Translate a snake_case DB row into the camelCase frontend `Task` shape.
@@ -51,6 +54,7 @@ export function mapTaskRow(row: TaskRow): Task {
     lastUpdated: row.last_updated,
     updateSource: row.update_source,
     notes: row.notes ?? [],
+    isPhaseAnchor: Boolean(row.is_phase_anchor),
   };
 }
 
