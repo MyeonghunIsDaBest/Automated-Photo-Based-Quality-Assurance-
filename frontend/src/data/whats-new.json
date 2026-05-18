@@ -1,6 +1,14 @@
 {
-  "generatedAt": "2026-05-17T23:40:29.584Z",
+  "generatedAt": "2026-05-18T06:25:33.730Z",
   "entries": [
+    {
+      "id": "85a0b11",
+      "date": "2026-05-18T13:45:45+08:00",
+      "surface": "frontend",
+      "kind": "change",
+      "headline": "Week-0 prep: phase D backend infra + migrations 09-13 + roadmap docs.",
+      "filesChanged": 24
+    },
     {
       "id": "890cf6d",
       "date": "2026-05-15T10:58:24+08:00",
@@ -88,14 +96,6 @@
       "kind": "change",
       "headline": "Admin dashboard update and attempt patch for project/gantt task.",
       "filesChanged": 13
-    },
-    {
-      "id": "8115827",
-      "date": "2026-05-01T05:19:26+08:00",
-      "surface": "frontend",
-      "kind": "change",
-      "headline": "More functionality update for live testing.",
-      "filesChanged": 68
     }
   ]
 }

@@ -3951,3 +3951,106 @@ One real fix shipped (trash icon). No rebuilds.
 - **CountUp on the rolled-up % format param** — anchor rolled-up % in the mobile and desktop panes uses default integer format. If percentages start surfacing with a decimal somewhere, callers can pass `format={(n) => n.toFixed(1) + '%'}` without component changes.
 - **Reduced-motion verification** — the new keyframes are gated, but the typewriter rationale + CountUp manage their own `prefers-reduced-motion` checks inside `useEffect`. Visual QA at the next a11y pass should confirm both paths render instantly.
 - **`bg-grain` utility** is in the theme but unused so far — the original plan called for hero strips (Dashboard header, Project card accent strip, `/pricing` hero) but the texture overlay wasn't critical for demo week and was deferred. Available the moment someone wants paper-grain on a hero.
+
+---
+
+## 28. Phase D prep — Week-0 backend infra committed — 2026-05-18
+
+After a comprehensive source-code audit (3× parallel Explore agents covering frontend, backend, and AI/storage readiness) and a 5-section plan file written to `~/.claude/plans/review-the-entire-source-temporal-sphinx.md`, today landed the Week-0 prep work that unblocks the Phase D Mock→Real Claude Vision cutover (scheduled May 25-29).
+
+### Audit findings
+
+- `git status` showed 7 modified + 18 untracked items at session start.
+- The DEMO_ROADMAP.md "uncommitted Week-0 modules" list was mostly stale — almost every frontend module it called out had already shipped in `890cf6d Big update`. Only backend Phase D infrastructure + roadmap docs + a few shared-module updates remained untracked.
+- `tsc --noEmit` and `vite build` were already passing against the on-disk file state (the untracked files were on the filesystem; Git just hadn't tracked them yet).
+
+### Commit
+
+`85a0b11 week-0 prep: phase D backend infra + migrations 09-13 + roadmap docs` — 24 files, +6515 / -258 lines.
+
+**Backend Edge Functions (new):**
+- `_shared/anthropic.ts` — single Claude wrapper, daily call/token caps, `ANTHROPIC_DISABLED` kill switch, fire-and-forget usage recording via `record_ai_call()` RPC, consistent error shape (`disabled` / `missing_key` / `rate_limited` / `api_error`).
+- `_shared/loadProjectConfig.ts` — per-project threshold cache with 60s in-memory TTL, falls back to `thresholds.ts` defaults on miss.
+- `polish-text/` — live Anthropic call for site-diary polish (Phase D-2 V1). Already audit-logged.
+- `generate-reports/` — weekly/monthly project_reports cadence, idempotent via UNIQUE (project, type, date_from).
+- `admin-rescue-user/` — owner-tier password reset + temp password + profile patch + ownership toggle with last-owner guard.
+
+**Backend wiring (modified):**
+- `analyze-photo/index.ts` — wire `loadProjectConfig`, use `cfg.defaultModel` when caller doesn't override.
+- `confirm-analysis/index.ts` — gate manual override by `manual_floor_allowed`.
+- `_shared/decideAction.ts` — accept `thresholds` parameter (so per-project tuning works).
+- `_shared/auditLog.ts` — add `'project_config'` to `entity_type` union.
+
+**Migrations 09-13:**
+- 09 `project_config` — per-project AI thresholds, branding (accent + logo path), report cadence, weights, manual floor toggle. Auto-create on project INSERT via trigger.
+- 10 `project_reports` — cron-generated report storage with date-window idempotency.
+- 11 `is_owner` orthogonal flag on `profiles` + `is_owner()` SECURITY DEFINER helper + founding-email seed.
+- 12 `is_phase_anchor` column + `seed_phase_anchors()` RPC (8 non-deletable anchors per project) + `rolled_up_pct()` for anchor children.
+- 13 `ai_usage_daily` table + `current_ai_usage_today()` + `record_ai_call(tokens, cost_cents)` RPCs powering the daily cap enforcement in `anthropic.ts`.
+
+**Docs + CI:**
+- README rewrite, `PRODUCTION_ROADMAP.md`, `DEMO_ROADMAP.md`, `DEMO.md`.
+- `weekly_todo's.md` — appended the Phase D May 18-29 daily breakdown (2-week split: pre-key prep + cutover).
+- `backend/supabase/.env.example` documents all `ANTHROPIC_*` env vars.
+- `.github/workflows/ci.yml`, `demo/this-week-runbook.md`.
+
+### Verification
+
+- `tsc --noEmit` → clean.
+- `vite build` → clean in 15.67s. 3301 modules. PWA precache 46 entries / 1903.49 KiB.
+- Working tree leaves `.claude/settings.local.json` (local Claude Code state) intentionally unstaged.
+
+### Memory + plan artifacts
+
+- Plan file written to `C:\Users\footlong\.claude\plans\review-the-entire-source-temporal-sphinx.md` — 5 sections: audit, role × feature matrix (8 security_groups × 30+ capabilities), Mock→Real cutover (D1–D7 with code outline), pre-flight risks (13 ranked), 10-day breakdown.
+- New feedback memory `feedback_api_key_timing.md` saved so future sessions automatically split AI/integration plans into pre-key prep + cutover passes when the user's third-party key is delayed.
+
+---
+
+## 29. Vision prompt v1 + Week-1 audit (Reset Demo + notif dedup already shipped) — 2026-05-19
+
+Today's only new artefact is `backend/supabase/functions/_shared/visionPrompt.ts` — the strict-schema system prompt that Phase D's `callClaudeVision()` will wrap around each photo. Two other May 19 todos turned out to be already-done.
+
+### What landed today
+
+**`backend/supabase/functions/_shared/visionPrompt.ts`** (NEW)
+
+Three exports:
+1. `VISION_PROMPT_VERSION = '2026-05-19-v1'` — stamped on every future `audit_log` entry so a prompt iteration is replayable. Bump on every edit; never edit a published prompt in place.
+2. `VISION_SYSTEM_PROMPT` — strict JSON-only system prompt covering all 8 ConstructionPhase + 6 SafetyFlag + 6 QualityFlag enum values (mirrored from `contract.ts`).
+3. `buildUserPrompt(phaseHint?)` — builds the per-call user-message text, optionally including the operator's task-derived phase hint.
+
+The prompt enforces eight rules: JSON-only output (no markdown fences), honest confidence (drop below 0.5 when ambiguous), Australian construction English (Rondo / sparkie / GPO terminology), no invented hazards, calibrated `completionPct` (mid-pour foundation slab ≈ 30%, fully cured + stripped ≈ 90%), critical-flag override (`exposed_wiring` / `fall_hazard` emit even at 0.4 confidence), bounded materials list (max 10 short noun phrases), and short `suggestedTask` (max 80 chars).
+
+Phase definitions, safety-flag definitions, and quality-flag definitions are inlined as cheat-sheets so the model has construction-domain framing baked into the system message rather than relying on Claude's training-time priors.
+
+### What was already done
+
+Two of today's seven todos turned out to be already implemented in `890cf6d Big update`:
+
+- **Reset Demo admin action** — `frontend/src/pages/admin/components/ProjectConfigTab.tsx` lines 195-247 (handler) + 495-543 (UI). Two-step confirm (idle → confirm → busy → done), Hampstead-specific seed restore via `demoInflightTasks`, generic reset to 0% for other projects, audit-log emission with `action='demo_reset'`.
+- **Batch MockAI notification dedup** — `frontend/src/lib/hooks/useMockAnalysis.ts` lines 94-105. Single `addNotification` at end of batch instead of N per-photo toasts. Per-photo updates already live in the inline shimmer + `lastSummary` chip.
+
+The May 19 todo list was reused from `DEMO_ROADMAP.md` Week 1 (last revised pre-`890cf6d`); subsequent work superseded both items.
+
+### Verification
+
+- `vite build` → clean in 16.40s. Same precache totals as May 18 (46 entries / 1903.49 KiB). `visionPrompt.ts` is server-only Deno; doesn't enter the frontend bundle.
+- Manual enum coverage scan: prompt names every value in `contract.ts` (8 phases × 6 safety flags × 6 quality flags = 20 enum values, all present in both the SCHEMA block and the definitions cheat-sheet).
+
+### Open follow-ups
+
+- **Test harness** (May 20) — `__tests__/visionPrompt.test.ts` with `msw` HTTP mock, covering parse-success / parse-failure / confidence-clamp / unknown-flag-filtered / missing-key.
+- **`callClaudeVision()` skeleton** (May 21) — wraps `visionPrompt` + Storage download + base64 + Anthropic call. Sits idle until May 26 (key arrives May 25).
+- **Reset Demo enhancement** — current implementation is client-only (Zustand `setState`). Once Phase D real-Vision lands, also need to clear server-side `ai_analyses` rows via an Edge Function. Tracked for post-cutover.
+
+### Schedule status
+
+- May 18 ✅ (Week-0 prep committed)
+- **May 19 ✅** (vision prompt landed; reset-demo + notif-dedup already shipped, no rework)
+- May 20 — vision wrapper + test harness
+- May 21 — `callClaudeVision` skeleton + Storage download + parse/validate
+- May 22 — MockAI polish (confidence rollup, mini-dropzone, seed-data overhaul, activity-feed) + migration 14 (model default update)
+- May 25 — API key arrives → smoke-test `polish-text`
+- May 26 — flip the switch (`mockAnalyze()` → `callClaudeVision()`)
+- May 27–29 — per-project cost tracking, calibration round 1+2, prompt iteration to v2
