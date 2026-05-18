@@ -227,3 +227,174 @@ interface AnthropicResponse {
     output_tokens?: number;
   };
 }
+
+// ─── Vision call ───────────────────────────────────────────────────────────
+// Mirrors `callAnthropic()` but takes a single image content block alongside
+// the user text. Used by the analyze-photo Edge Function (Phase D). Kept as a
+// sibling rather than merged into `callAnthropic()` because:
+//   • the text path is already live in production for polish-text — minimal
+//     blast-radius rule says don't widen its signature when a vision sibling
+//     is cleaner.
+//   • the image block is order-sensitive (image first, text second; Anthropic
+//     recommends this for QA tasks where the model "sees" before being told
+//     what to look for) and that's clearer when isolated.
+// If a third caller emerges, refactor the shared cap-check + record-call
+// glue into a private helper.
+
+export interface AnthropicVisionInput {
+  /** System prompt — see _shared/visionPrompt.ts for the canonical one. */
+  system: string;
+  /** User-message text accompanying the image. */
+  userText: string;
+  /** Base64-encoded image bytes (no data: prefix). */
+  imageBase64: string;
+  /** Media type Anthropic accepts. Reject heic/mov before reaching here. */
+  mediaType: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif';
+  /** Override the env-level max_tokens. Always clamped to MAX_TOKENS_CEILING. */
+  maxTokens?: number;
+  /** Override the default model. */
+  model?: string;
+}
+
+export async function callAnthropicVision(
+  supabase: SupabaseClient,
+  input: AnthropicVisionInput,
+): Promise<AnthropicCallResult> {
+  // 1. Same kill-switch + missing-key gate as callAnthropic.
+  if (DISABLED) {
+    return { ok: false, reason: 'disabled', retryable: false };
+  }
+  if (!ANTHROPIC_API_KEY) {
+    return { ok: false, reason: 'missing_key', retryable: false };
+  }
+
+  // 2. Daily cap check via the shared RPC. Same logic as the text path —
+  // a usage-read miss is logged but not fatal; better to occasionally exceed
+  // the cap than to block legitimate work because the counter layer broke.
+  const { data: usageRows, error: usageErr } = await supabase
+    .rpc('current_ai_usage_today');
+  if (usageErr) {
+    // deno-lint-ignore no-console
+    console.warn('[anthropic.vision] usage read failed:', usageErr.message);
+  } else {
+    const usage = (Array.isArray(usageRows) ? usageRows[0] : usageRows) as UsageRow | undefined;
+    if (usage) {
+      if (usage.call_count >= DAILY_CALL_CAP) {
+        return {
+          ok: false,
+          reason: 'rate_limited',
+          detail: `Daily call cap reached (${usage.call_count}/${DAILY_CALL_CAP})`,
+          retryable: true,
+        };
+      }
+      if (usage.tokens_used >= DAILY_TOKEN_CAP) {
+        return {
+          ok: false,
+          reason: 'rate_limited',
+          detail: `Daily token cap reached (${usage.tokens_used}/${DAILY_TOKEN_CAP})`,
+          retryable: true,
+        };
+      }
+    }
+  }
+
+  // 3. Build the request. Image content block first, then text. Anthropic
+  // recommends this ordering for QA-style prompts so the model parses the
+  // visual context before the question framing.
+  const requestedMax = input.maxTokens ?? MAX_TOKENS_CEILING;
+  const maxTokens = Math.min(Math.max(64, requestedMax), MAX_TOKENS_CEILING);
+
+  const body = {
+    model: input.model ?? DEFAULT_MODEL,
+    max_tokens: maxTokens,
+    system: input.system,
+    messages: [{
+      role: 'user' as const,
+      content: [
+        {
+          type: 'image' as const,
+          source: {
+            type: 'base64' as const,
+            media_type: input.mediaType,
+            data: input.imageBase64,
+          },
+        },
+        { type: 'text' as const, text: input.userText },
+      ],
+    }],
+  };
+
+  let response: Response;
+  try {
+    response = await fetch(ANTHROPIC_BASE_URL, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': ANTHROPIC_VERSION,
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    return {
+      ok: false,
+      reason: 'api_error',
+      detail: e instanceof Error ? e.message : String(e),
+      retryable: true,
+    };
+  }
+
+  if (!response.ok) {
+    let detail = `HTTP ${response.status}`;
+    try {
+      const errBody = await response.json();
+      detail = errBody?.error?.message ?? detail;
+    } catch { /* keep status-only detail */ }
+    return {
+      ok: false,
+      reason: response.status === 429 ? 'rate_limited' : 'api_error',
+      detail,
+      retryable: response.status >= 500 || response.status === 429,
+    };
+  }
+
+  // 4. Parse + extract text from the model's content array.
+  let payload: AnthropicResponse;
+  try {
+    payload = await response.json();
+  } catch (e) {
+    return {
+      ok: false,
+      reason: 'api_error',
+      detail: 'invalid JSON from Anthropic',
+      retryable: false,
+    };
+  }
+
+  const text = (payload.content ?? [])
+    .filter((c) => c.type === 'text')
+    .map((c) => c.text ?? '')
+    .join('\n')
+    .trim();
+
+  const inputTokens = payload.usage?.input_tokens ?? 0;
+  const outputTokens = payload.usage?.output_tokens ?? 0;
+  const totalTokens = inputTokens + outputTokens;
+  const costCents = Math.ceil(totalTokens * APPROX_CENTS_PER_TOKEN);
+
+  // 5. Fire-and-forget usage record. Vision calls cost more than text calls
+  // (images burn ~1500-3000 tokens of input each) so accurate accounting is
+  // important — but a miss here doesn't justify failing the user-visible
+  // analysis. Same pattern as callAnthropic.
+  await supabase
+    .rpc('record_ai_call', { p_tokens: totalTokens, p_cost_cents: costCents })
+    .then(() => void 0, () => void 0);
+
+  return {
+    ok: true,
+    text,
+    inputTokens,
+    outputTokens,
+    model: payload.model ?? body.model,
+  };
+}

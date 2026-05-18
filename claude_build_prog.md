@@ -4054,3 +4054,83 @@ The May 19 todo list was reused from `DEMO_ROADMAP.md` Week 1 (last revised pre-
 - May 25 — API key arrives → smoke-test `polish-text`
 - May 26 — flip the switch (`mockAnalyze()` → `callClaudeVision()`)
 - May 27–29 — per-project cost tracking, calibration round 1+2, prompt iteration to v2
+
+---
+
+## 30. Vision wrapper + parser + 43-case test harness — 2026-05-20
+
+Today landed the two server-side helpers Phase D's `callClaudeVision()` needs (vision Anthropic call + JSON response parser) plus a comprehensive vitest harness against the parser and prompt. The wrapper is wired but unreachable from the analyze-photo Edge Function until tomorrow's commit — sits idle, can't accidentally fire.
+
+### What landed today
+
+**`_shared/parseVisionResponse.ts`** (NEW) — pure function, no I/O, vitest-friendly.
+
+Defends against the failure modes a real model exhibits even with a strict system prompt:
+- Markdown fence wrapping (\`\`\`json ... \`\`\`) stripped before parse.
+- `confidence` clamped to `[0, 1]`, `completionPct` clamped to `[0, 100]`.
+- Unknown `safetyFlags` / `qualityFlags` values filtered out (with dedup).
+- `materials` capped at 10 items; individual strings trimmed to 60 chars.
+- `suggestedTask` capped at 80 chars (trimmed).
+- `rationale` capped at 1000 chars.
+- Missing fields → safe defaults (null phase, 0 confidence, empty arrays, '').
+- Invalid phase enum → `null` (per contract).
+- String numerics (`"0.88"` instead of `0.88`) coerced via `Number()`.
+- Exports `failureResult(model, rationale)` — sibling marker shape used by analyze-photo for pre-call errors (Storage download fail, missing key, rate limited). Stamps `modelUsed='failed'` so audit + UI can detect it.
+
+**`_shared/anthropic.ts`** (MODIFIED) — added `AnthropicVisionInput` interface and `callAnthropicVision()` sibling to `callAnthropic()`.
+
+Key choices:
+- Sibling not merged — text path already live in prod for `polish-text`; minimal-blast-radius rule. If a third caller emerges, refactor the shared cap-check + record-call glue.
+- Image content block first, text second — Anthropic's recommended ordering for QA-style prompts (model "sees" before being told what to look for).
+- Same kill switch / missing-key / daily-cap gate / record_ai_call plumbing as the text path.
+- `mediaType` typed to `image/jpeg | image/png | image/webp | image/gif`. HEIC + MOV must be rejected before reaching here (tomorrow's analyze-photo work handles that).
+- `maxTokens` clamped to `MAX_TOKENS_CEILING` (1024 by default) regardless of caller request.
+
+**`frontend/src/__tests__/visionPrompt.test.ts`** (NEW) — 43 tests, all green.
+
+Coverage:
+- `VISION_PROMPT_VERSION` matches the dated `YYYY-MM-DD-vN` pattern (1 test).
+- `VISION_SYSTEM_PROMPT` names every value in `contract.ts` — 8 phases × 6 safety × 6 quality = 20 enum coverage tests, plus a JSON-only-output assertion (21 tests via `it.each`).
+- `buildUserPrompt` — undefined hint / null hint / explicit hint (3 tests).
+- `parseVisionResponse` — the 5 May 20 scenarios (parse-success, parse-failure, confidence-clamp, unknown-flag-filtered, the swapped-in markdown-fence-stripping) plus defensive extras (empty input, non-object JSON, completionPct clamping, dedup of repeated flags, non-array flag inputs, invalid phase, length caps for materials/suggestedTask/rationale, missing fields, string numerics) — 16 tests.
+- `failureResult` — modelUsed sentinel + attemptedModel preserved in rawResponse for replay (2 tests).
+
+Imports the Deno-side `_shared/visionPrompt` and `_shared/parseVisionResponse` directly via relative path — same pattern as `decideAction.test.ts`. Works because neither file has `https://` imports (only type/const imports from `contract.ts`).
+
+### Plan substitution
+
+The May 20 plan called for an `msw` HTTP mock to test `callAnthropicVision`'s missing-key path. `msw` isn't installed and adding it for one test is overkill — instead the test file richly covers `parseVisionResponse` (the more useful unit since `callAnthropicVision` is fundamentally a `fetch` wrapper that's easier to smoke-test than mock). The wrapper's gate-check logic (kill switch / missing key / daily cap) gets exercised tomorrow when analyze-photo invokes it through `supabase functions serve`.
+
+### Verification
+
+- `npm --prefix frontend test -- --run visionPrompt` → **43 / 43 pass** in 22ms (8.47s total with vitest setup).
+- `npm --prefix frontend test -- --run --pool=forks --poolOptions.forks.singleFork=true` (full suite) → **115 / 117 pass**. The 2 failures are in `gantt.test.tsx` ("multiple elements found" for month header text) — pre-existing flake, unrelated to today's work. Tracked for a separate cleanup pass.
+- `npm --prefix frontend run build` → clean in 14.45s. Precache **46 entries / 1903.51 KiB** (+ 0.02 KiB vs May 19; whats-new.json regen accounts for it). Contract-parity check ✓.
+- `decideAction.test.ts` solo → 6/6 pass (sanity, confirms the Deno-side test-import pattern still works).
+
+### Windows-specific test harness note
+
+Running `npm test` with the default thread-pool config crashes the tinypool workers with `FATAL ERROR: NewSpace::EnsureCurrentCapacity Allocation failed - JavaScript heap out of memory` + `spawn UNKNOWN` on this Win11 box. Workaround for running the full suite locally:
+
+\`\`\`
+npm --prefix frontend test -- --run --pool=forks --poolOptions.forks.singleFork=true
+\`\`\`
+
+The fork pool runs tests sequentially in a child process, avoiding the Tinypool thread-spawn issue. Solo test-file runs (\`-- --run <name>\`) work fine with default settings. CI config (\`.github/workflows/ci.yml\`) is not affected — needs verification once we test on Linux runners.
+
+### Open follow-ups
+
+- **May 21** — `callClaudeVision()` skeleton in `analyze-photo/index.ts`: Storage download via `sb.storage.from('photos').download()`, base64 encoding, `guessMediaType()` (with HEIC/MOV rejection via `failureResult`), call `callAnthropicVision()`, pipe through `parseVisionResponse`. Wire at line 120 alongside `mockAnalyze()` (idle path, not yet called).
+- **gantt.test.tsx flake** — `getByText(/Jan 2026/i)` matches multiple elements. Likely the chart renders the month label twice (header + sticky overlay). Fix is `getAllByText(...).[0]` or `within(...)` to scope. Outside Phase D scope; track separately.
+- **Vitest pool config** — consider committing `vitest.config.ts` change to default `--pool=forks --singleFork=true` for Win11 dev boxes, OR raise `NODE_OPTIONS=--max-old-space-size=4096` in the test script. Either fixes the local DX without slowing CI.
+
+### Schedule status
+
+- May 18 ✅
+- May 19 ✅
+- **May 20 ✅** (vision wrapper + parser + 43-case test harness)
+- May 21 — `callClaudeVision` skeleton + Storage download path + media-type rejection
+- May 22 — MockAI polish + migration 14 (model default update)
+- May 25 — API key arrives → smoke-test polish-text
+- May 26 — flip the switch
+- May 27–29 — per-project cost tracking, calibration, prompt iteration

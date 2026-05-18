@@ -1,6 +1,14 @@
 {
-  "generatedAt": "2026-05-18T06:25:33.730Z",
+  "generatedAt": "2026-05-18T09:11:31.163Z",
   "entries": [
+    {
+      "id": "7014c9a",
+      "date": "2026-05-18T14:28:38+08:00",
+      "surface": "frontend",
+      "kind": "change",
+      "headline": "May 19: vision prompt v1 + week-1 audit (reset-demo + notif-dedup already shipped).",
+      "filesChanged": 3
+    },
     {
       "id": "85a0b11",
       "date": "2026-05-18T13:45:45+08:00",
@@ -88,14 +96,6 @@
       "kind": "change",
       "headline": "Patching errors and adding errorBoundary for checker.",
       "filesChanged": 39
-    },
-    {
-      "id": "82547e8",
-      "date": "2026-05-01T09:21:26+08:00",
-      "surface": "frontend",
-      "kind": "change",
-      "headline": "Admin dashboard update and attempt patch for project/gantt task.",
-      "filesChanged": 13
     }
   ]
 }
