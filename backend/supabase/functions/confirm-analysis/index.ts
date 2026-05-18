@@ -25,6 +25,7 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 
 import { logAction } from '../_shared/auditLog.ts';
+import { loadProjectConfig } from '../_shared/loadProjectConfig.ts';
 
 // @ts-expect-error Deno globals.
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -109,6 +110,18 @@ serve(async (req: Request) => {
   }
 
   const photo = analysis.photos as unknown as { project_id: string; task_id: string | null };
+
+  // ── 4b. Per-project manual-floor gate ──────────────────────────────────
+  // If the project's admin has disabled manual overrides, a manager+ caller
+  // can still confirm/reject the analysis but can NOT pass `overridePct` to
+  // force a custom percentage. This protects against operators bypassing the
+  // AI's call in projects that want strict auto-action behaviour.
+  if (overridePct !== undefined) {
+    const cfg = await loadProjectConfig(sb, photo.project_id);
+    if (!cfg.manualFloorAllowed) {
+      return jsonError(403, 'manual floor disabled for this project');
+    }
+  }
 
   // ── 5a. Confirmed path ─────────────────────────────────────────────────
   if (action === 'confirmed') {

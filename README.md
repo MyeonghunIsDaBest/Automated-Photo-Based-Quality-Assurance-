@@ -1,246 +1,178 @@
-# BuildTrack - Automated Photo-Based Quality Assurance System
+# BuildTrack — Automated Photo-Based Quality Assurance
 
-A modern, demo-ready web application powered by React, Vite, Tailwind CSS, and shadcn/ui components. It allows construction/site teams to upload daily photos, automatically track progress, update a Gantt chart, and maintain visual proof of work for quality assurance and liability protection.
+A construction QA web app: a site lead drops a daily photo, AI reads the construction phase + completion + safety flags, the matching Gantt task auto-updates, and a permanent record is filed. Built for a stakeholder pitch but backed by real Supabase infrastructure.
 
-## 🎯 Core Value Proposition
+## Core value
 
-- **Transparency** → Visual proof of daily work
-- **Automation** → Gantt updates without manual reporting
-- **Accountability** → Timestamped records
-- **Persuasion Tool** → Demo app to convince stakeholders
+- **Transparency** — visual proof of daily work
+- **Automation** — Gantt updates without manual reporting
+- **Accountability** — timestamped records + audit log
+- **Safety** — AI-detected hazards land in a queue with toast alerts
 
-## ✨ Features
+## Tech stack
 
-### Dashboard
-- **Project Overview Cards**: Real-time stats with icons showing total tasks, completed items, in-progress work, average progress, and photo count
-- **Interactive Gantt Chart**: Visual timeline with color-coded progress bars
-- **Recent Activity Feed**: Quick view of the latest photo uploads with avatars
-- **Photo Upload Modal**: Drag-and-drop interface with smart task auto-selection
+- **React 19** + **TypeScript** + **Vite** — frontend
+- **Tailwind CSS v4** — styling, with an editorial design system in `frontend/src/components/editorial/`
+- **Zustand** — client state
+- **Supabase** — Postgres, Auth, Realtime, Storage, Edge Functions (Deno)
+- **PWA** — installable, with Workbox precaching of Storage signed URLs
 
-### Timeline View
-- **Chronological Feed**: All photos organized by date with elegant separators
-- **Visual Proof Cards**: Image thumbnails with task associations and timestamps
-- **Progress Tracking**: Shows how photos automatically update task progress
-
-### Task View
-- **Detailed Table View**: All tasks grouped by category with complete information
-- **Status Badges**: Beautiful badges with proper color coding
-- **Progress Bars**: Smooth animated progress indicators
-- **Photo Counts**: Avatar stacks showing associated photos
-- **Timeline Info**: Start/end dates and schedule status
-
-### Smart Features
-- **Auto Task Detection**: System analyzes filenames to suggest relevant tasks
-- **Progress Automation**: Photo uploads automatically increase task progress by 20%
-- **Status Transitions**: Tasks automatically move from "Not Started" → "In Progress" → "Completed"
-- **Smart Upload Modal**: With file preview and task association
-
-## 🎨 Technology Stack
-
-### Frontend
-- **React 19** - UI framework with hooks
-- **Vite** - Lightning-fast build tool and dev server
-- **TypeScript** - Full type safety
-- **Tailwind CSS v4** - Utility-first styling
-- **shadcn/ui** - Beautiful, accessible components
-
-### UI Components
-- **Radix UI** - Headless, accessible primitives
-- **Lucide React** - Modern icon library
-- **class-variance-authority** - Variant-based styling
-- **date-fns** - Modern date manipulation
-- **Recharts** - Data visualization
-
-## 🏗️ Architecture
-
-The project is split into two folders: a **Vite React frontend** and a **Node + Express + SQLite backend**.
+## Repository layout
 
 ```
 photo-based-quality-assurance-system/
-├── package.json                # Root: concurrently runs both apps
+├── DEMO.md                          # 10-minute scripted walkthrough
+├── claude_build_prog.md             # Running build log
 ├── frontend/
 │   ├── package.json
-│   ├── vite.config.ts          # Proxies /api and /uploads to :4000
+│   ├── vite.config.ts
+│   ├── scripts/
+│   │   ├── build-whats-new.mjs      # Generates the Dashboard "What's new" card from git log
+│   │   ├── check-contract-parity.mjs # Enforces Deno/Node copies of contract.ts stay byte-identical
+│   │   └── seed-demo-data.mjs       # Idempotent demo seeder (project + tasks + photo + analysis + group chat)
 │   └── src/
-│       ├── api/client.ts       # Typed fetch wrapper
-│       ├── hooks/useBuildTrackData.ts
 │       ├── components/
-│       │   ├── ui/             # shadcn/ui primitives (incl. sonner,
-│       │   │                   #   skeleton, tooltip, separator,
-│       │   │                   #   scroll-area, sheet)
-│       │   ├── Dashboard.tsx   # Stats, Gantt, recent activity
-│       │   ├── TimelineView.tsx
-│       │   ├── TaskView.tsx
-│       │   ├── Navbar.tsx      # Sheet-based mobile drawer
-│       │   ├── GanttChart.tsx
-│       │   ├── TaskList.tsx
-│       │   ├── TimelineFeed.tsx
-│       │   └── PhotoUpload.tsx
-│       ├── types/index.ts
-│       ├── utils/cn.ts
-│       ├── index.css           # Tailwind + design tokens
-│       ├── main.tsx
-│       └── App.tsx             # Wires API to views, mounts Toaster
-└── backend/
-    ├── package.json
-    ├── data/                   # SQLite db (created at runtime)
-    ├── uploads/                # Photo files (created at runtime)
-    └── src/
-        ├── server.ts           # Express app on :4000
-        ├── db.ts               # better-sqlite3 + schema
-        ├── seed.ts             # Seeds 8 demo tasks + 8 photos
-        ├── types.ts            # Mirrors frontend types
-        ├── routes/tasks.ts     # GET/POST/PATCH /api/tasks
-        ├── routes/photos.ts    # GET/POST /api/photos (multer)
-        └── middleware/error.ts # Centralized error handler
+│       │   ├── editorial/           # EditorialButton, EditorialModal, StatCell, ResponsiveDataTable, …
+│       │   ├── layout/              # TopNav, Layout (mounts realtime + safety cache)
+│       │   ├── activity/            # ActivityFeed
+│       │   ├── photos/              # PhotoReviewDrawer, DuplicateConfirmModal
+│       │   ├── messaging/           # NewConversationModal
+│       │   └── ui/                  # shadcn/ui primitives
+│       ├── pages/                   # Dashboard, Gantt, Gallery, Files, Reports, Safety, Messages, Login, Admin, …
+│       ├── lib/
+│       │   ├── api/                 # Typed Supabase wrappers (tasks, photos, suppliers, stakeholders, messaging, …)
+│       │   ├── ai/contract.ts       # Photo-QA contract — must stay in sync with the Deno mirror
+│       │   ├── ai/perceptualHash.ts # Client-side blockhash for dedup
+│       │   ├── hooks/               # useProject{Tasks,Photos,Analyses,Comments}Realtime, useSafetyRealtime, useMessagingRealtime, …
+│       │   └── permissions.ts       # Single source of truth for capability gates
+│       ├── store/                   # useAppStore, useFeatureStore, safetyIncidents, messaging, notifications, …
+│       └── types/index.ts
+└── supabase/
+    ├── config.toml
+    ├── migrations/
+    │   ├── 00_init.sql               # Base schema (projects, tasks, photos, ai_analyses, comments, …)
+    │   ├── 01_security_group_expand.sql
+    │   ├── 02_phase_c_seam.sql       # ai_analyses extras + safety_incidents
+    │   ├── 03_messaging.sql          # conversations + messages + RLS
+    │   ├── 04_stakeholder_extras.sql # stakeholder_contacts + stakeholder_projects
+    │   └── legacy/0007_suppliers.sql # Supplier directory (suppliers + branches + contacts)
+    └── functions/
+        ├── analyze-photo/            # Triggered by photos INSERT; writes ai_analyses (mock vision call today; Phase D plugs in real Claude)
+        ├── confirm-analysis/         # Manager confirms an analysis → bumps task progress
+        ├── admin-create-user/        # Admin-tier user creation
+        └── _shared/                  # contract.ts (mirrors frontend), decideAction.ts, thresholds.ts, auditLog.ts
 ```
 
-## 🚀 Getting Started
+## Roadmap
 
-### One-shot install (root + frontend + backend)
+- [`DEMO_ROADMAP.md`](./DEMO_ROADMAP.md) — 4-week path to a polished stakeholder pitch, starting with Week 0 to unbreak the working tree.
+- [`PRODUCTION_ROADMAP.md`](./PRODUCTION_ROADMAP.md) — 12-16-week path to a first paying customer, anchored on Phase D (real Claude Vision) and multi-tenant org boundaries.
+
+## Getting started
+
+### Prerequisites
+
+- Node 20+ and `npm`
+- A Supabase project (free tier works) — grab the **Project URL** + **anon key** from Project Settings → API.
+- For seeding: also grab the **service_role key** (never ship to the browser).
+
+### 1. Run the migrations
+
+In Supabase Studio → **SQL Editor**, run each file under `supabase/migrations/` in numeric order:
+
+1. `00_init.sql`
+2. `01_security_group_expand.sql`
+3. `02_phase_c_seam.sql`
+4. `03_messaging.sql`
+5. `04_stakeholder_extras.sql`
+
+All scripts are idempotent; re-running on a populated project is safe.
+
+### 2. Configure the frontend
+
+Create `frontend/.env.local` (don't commit it):
+
+```
+VITE_SUPABASE_URL=https://<project-ref>.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJ...
+```
+
+### 3. Install + run
 
 ```bash
-npm install                # installs `concurrently` at root
-npm run install:all        # installs frontend + backend deps
+npm --prefix frontend install
+npm --prefix frontend run dev
 ```
 
-### Run both servers
+App boots at `http://localhost:5173`.
+
+### 4. (Optional) Seed demo data
 
 ```bash
-npm run dev
+SUPABASE_URL=https://<ref>.supabase.co \
+SUPABASE_SERVICE_ROLE_KEY=eyJ... \
+npm --prefix frontend run seed:demo
 ```
 
-This boots the backend on `http://localhost:4000` and the frontend on `http://localhost:5173`. The backend creates `backend/data/app.db` on first run and seeds it with 8 tasks and 8 photos.
+Idempotent — short-circuits if "Casone Electrical — Demo Site" already exists.
 
-### Run individually
+### 5. Walk through the demo
+
+See [`DEMO.md`](./DEMO.md) for the full ~10-minute script: cross-page realtime, safety pulse, review queue, messaging, project pill at narrow widths, sign out.
+
+## Common scripts
 
 ```bash
-npm run dev:backend
-npm run dev:frontend
+npm --prefix frontend run dev          # dev server
+npm --prefix frontend run build        # production build (runs prebuild contract-parity check)
+npm --prefix frontend run typecheck    # tsc --noEmit
+npm --prefix frontend run test         # vitest
+npm --prefix frontend run seed:demo    # idempotent seeder (needs SUPABASE_URL + service-role key)
 ```
 
-### Build the frontend bundle
+## Edge Functions
+
+Deployed via the Supabase CLI from `supabase/functions/`:
 
 ```bash
-npm run build
+supabase functions deploy analyze-photo
+supabase functions deploy confirm-analysis
+supabase functions deploy admin-create-user
 ```
 
-### API endpoints
+`analyze-photo` is currently a deterministic stub (returns confidence=0). Phase D swaps `mockAnalyze()` for a real Claude Vision call — no other changes needed; the contract, lifecycle, dedup, and review queue are already wired.
 
-| Method | Path | Purpose |
-|---|---|---|
-| GET    | `/api/health`     | Health probe |
-| GET    | `/api/tasks`      | List tasks |
-| POST   | `/api/tasks`      | Create task |
-| PATCH  | `/api/tasks/:id`  | Update progress/status |
-| GET    | `/api/photos`     | List photos (newest first) |
-| POST   | `/api/photos`     | Upload photo (multipart, fields: `file`, `taskId`) |
-| GET    | `/uploads/:file`  | Static photo files |
+## Realtime architecture
 
-## 🎨 shadcn/ui Components Used
+Project-scoped realtime is mounted once at `frontend/src/components/layout/Layout.tsx`:
 
-- **Card / Button / Badge / Progress / Dialog / Select / Table / Avatar / Input / Alert / Tabs** - Original primitives
-- **Sonner** - Toast notifications for upload success/failure
-- **Skeleton** - Loading placeholders during initial fetch
-- **Tooltip** - Hover hints on nav, stat-cards, and photo avatars
-- **Separator** - Section dividers and timeline date markers
-- **ScrollArea** - Consistent scrollbars for the timeline feed and task tables
-- **Sheet** - Mobile navigation drawer (collapses tabs under `md:`)
+- `useSafetyIncidentsCache` — pushes `safety_incidents` into the dashboard cache
+- `useProjectTasksRealtime` — pushes task INSERT/UPDATE/DELETE into the feature store
+- `useProjectPhotosRealtime` — pushes photo INSERT into the app store
+- `useProjectAnalysesRealtime` — patches AI analysis updates onto each photo
+- `useProjectCommentsRealtime` — placeholder; comments table not yet wired
+- `useMessagingRealtime` — per-user channel for cross-browser chat sync
 
-## 📊 Demo Data
+Pages observe the stores; cross-browser updates flow Dashboard → activity feed → tile pulse → row highlight without a manual refresh.
 
-The application comes pre-seeded with:
+## Permissions
 
-- **8 Tasks** across 5 categories (Foundation, Structure, Exterior, MEP, Interior)
-- **8 Photos** with timestamps spanning a month
-- **Partial Progress** (0-100%) to simulate real project state
-- **Mixed Statuses** (completed, in-progress, not started)
+`frontend/src/lib/permissions.ts` is the single source of truth — every capability is a named gate function (`canViewSafetyIncident`, `canConfirmAIAnalysis`, `canManageSuppliers`, …). Pages and components call those, never `currentProfile.securityGroup === '…'` directly.
 
-## 💡 How to Demo
+The eight security groups: `company_admin`, `administrator`, `construction_mgr`, `project_manager`, `site_manager`, `worker`, `stakeholder`, `supplier`. The first signed-up user auto-promotes to `company_admin` via the `handle_new_user` trigger.
 
-1. **Open Dashboard**: See real-time stats in beautiful cards
-2. **Click "Upload Photo"**: Opens shadcn Dialog modal
-3. **Select an Image**: Drag & drop or click to upload
-4. **Choose a Task**: Select from dropdown (or let auto-detection help)
-5. **Click "Upload & Update"**: 
-   - Task progress +20% automatically
-   - Status may change (Not Started → In Progress → Completed)
-   - Gantt chart updates with animation
-   - New entry appears in timeline with timestamps
-6. **Navigate Views**: Use navbar tabs to explore Timeline and Task views
+## Design system
 
-## 🎨 Design System
+Editorial primitives at `frontend/src/components/editorial/`:
 
-### Color Palette
-- **Primary** - Violet/Indigo gradient for actions and branding
-- **Success** - Emerald for completed items
-- **Warning** - Amber for in-progress items
-- **Destructive** - Rose for delayed/overdue items
-- **Muted** - Slate for secondary information
+- **EditorialButton** — slate-900 → emerald-700 hover pill with the `ArrowUpRight` micro-interaction
+- **EditorialModal** — sticky header + scrollable body + sticky footer, mobile bottom-sheet on phones
+- **StatCell** — accent-bar stat tile (named token via `accent="emerald"` or hex via `accentColor="#0F766E"`)
+- **ResponsiveDataTable** — desktop columns, mobile cards
+- **EyebrowLabel**, **SectionHeader** — typography helpers
 
-### Category Colors
-- 🔵 Foundation - Blue
-- 🟣 Structure - Purple
-- 🟠 Exterior - Orange
-- 🩵 MEP - Cyan
-- 🩷 Interior - Pink
+Global styling tokens (Fraunces + DM Sans, shadow-card / shadow-pill / shadow-modal, rounded-pill) live in `frontend/src/index.css` under `@theme`. Pages wrap their root `<div>` with `className="editorial-root"` to opt into the typography.
 
-### Status Indicators
-- 🟢 Completed - Green badge
-- 🟡 In Progress - Amber badge
-- 🔴 Delayed/Overdue - Rose badge
-- ⚪ Not Started - Gray outline badge
+## License
 
-## 🎬 Feature Highlights
-
-### Smart Upload Detection
-The system analyzes filenames for keywords like:
-- `site`, `clear`, `prepare` → Site Preparation
-- `foundation`, `concrete` → Foundation Pour
-- `steel`, `structure` → Steel Structure
-- `roof`, `roofing` → Roofing Installation
-- `electrical`, `wire` → Electrical Rough-In
-- `plumbing`, `pipe` → Plumbing Installation
-
-### UI Components
-- **Cards** with subtle shadows and borders
-- **Avatars** for photo thumbnails and user images
-- **Badges** with proper color variants
-- **Progress bars** with smooth animations
-- **Dialogs** for the upload modal
-- **Tables** for detailed task views
-- **Inputs** and **Selects** for form handling
-
-## 🔜 Future Enhancements
-
-### Backend (next iterations)
-- Swap SQLite for PostgreSQL with Prisma or Drizzle for production
-- Cloud storage (S3 / Cloudinary) instead of the local `uploads/` folder
-- Auth (sessions or JWT) and per-user task scoping
-- Real-time updates via WebSockets / SSE so multiple clients see new uploads instantly
-
-### AI Features
-- Image recognition for automatic task tagging
-- Progress estimation from photos
-- Anomaly detection (missing work, quality issues)
-- Smart scheduling based on photo data
-
-### Advanced Features
-- Multi-user support with permissions
-- PDF report generation
-- Email notifications
-- Mobile responsive app
-- AR photo overlay
-- Drone integration
-
-## 📝 License
-
-This is a demo project for stakeholder presentation purposes.
-
-## 🤝 Contributing
-
-This is a demonstration project designed to showcase the concept of photo-based quality assurance for construction projects. Built with modern web technologies and beautiful UI components.
-
----
-
-**Built with ❤️ using React, Vite, Tailwind CSS, and shadcn/ui**
+Demo project; not for distribution.

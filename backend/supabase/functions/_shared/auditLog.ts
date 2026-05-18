@@ -10,7 +10,7 @@ export interface AuditLogInput {
   projectId: string | null;
   userId: string | null;
   action: string;                  // verb-form, snake_case ('photo_analysed', 'analysis_confirmed')
-  entityType: 'photo' | 'task' | 'ai_analysis' | 'safety_incident' | 'project' | 'user';
+  entityType: 'photo' | 'task' | 'ai_analysis' | 'safety_incident' | 'project' | 'project_config' | 'user';
   entityId: string;
   oldValue?: unknown;
   newValue?: unknown;

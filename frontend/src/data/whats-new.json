@@ -1,6 +1,14 @@
 {
-  "generatedAt": "2026-05-15T00:06:05.677Z",
+  "generatedAt": "2026-05-17T23:40:29.584Z",
   "entries": [
+    {
+      "id": "890cf6d",
+      "date": "2026-05-15T10:58:24+08:00",
+      "surface": "frontend",
+      "kind": "change",
+      "headline": "Big update.",
+      "filesChanged": 83
+    },
     {
       "id": "c3bf2fd",
       "date": "2026-05-12T20:01:29+08:00",
@@ -88,14 +96,6 @@
       "kind": "change",
       "headline": "More functionality update for live testing.",
       "filesChanged": 68
-    },
-    {
-      "id": "82f2779",
-      "date": "2026-04-29T21:24:11+08:00",
-      "surface": "frontend",
-      "kind": "change",
-      "headline": "3rd enhancement of ui.",
-      "filesChanged": 26
     }
   ]
 }

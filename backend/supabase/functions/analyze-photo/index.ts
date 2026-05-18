@@ -33,6 +33,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 
 import type { AnalysisResult, SafetyFlag } from '../_shared/contract.ts';
 import { decideAction } from '../_shared/decideAction.ts';
+import { loadProjectConfig } from '../_shared/loadProjectConfig.ts';
 import { maxSeverity } from '../_shared/safetyTaxonomy.ts';
 import { logAction } from '../_shared/auditLog.ts';
 
@@ -42,6 +43,8 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 // Deterministic placeholder. Phase D replaces this with a real vision call.
+// The `modelUsed` field is overwritten by the caller below — keep this value
+// as a clearly-fake marker so anything that bypasses the override surfaces.
 function mockAnalyze(): AnalysisResult {
   return {
     modelUsed: 'mvp-stub@v0',
@@ -66,8 +69,8 @@ interface InvokePayload {
   // and proceeds. The frontend's "Re-analyse" button passes this.
   forceNew?: boolean;
   // Optional override; passed through to the analyser. The stub ignores it
-  // and keeps writing `mvp-stub@v0`. Phase D's real vision call reads it
-  // to switch model versions for replay / A-B testing.
+  // and keeps writing whatever modelUsed it was given. Phase D's real vision
+  // call reads it to switch model versions for replay / A-B testing.
   model?: string;
   // Optional phase hint to bias the analyser toward a known phase. Today's
   // stub ignores it; Phase D plumbs it into the prompt.
@@ -95,12 +98,29 @@ serve(async (req: Request) => {
     auth: { persistSession: false },
   });
 
-  const result = mockAnalyze();
-  // Override the stub's modelUsed with the caller's request when set —
-  // prepares the audit trail for Phase D's real vision call.
-  if (body.model) result.modelUsed = body.model;
+  // ── 1. Fetch the photo (project_id / task_id / storage_path) ────────────
+  // Done before the ai_analyses claim so we can load the per-project config
+  // and stamp the right default model on the row from the very first write.
+  const { data: photoRow, error: photoErr } = await sb
+    .from('photos')
+    .select('project_id, task_id, storage_path')
+    .eq('id', photoId)
+    .single();
 
-  // ── 1. Acquire an ai_analyses row to write into ────────────────────────
+  if (photoErr || !photoRow) {
+    return jsonError(404, photoErr?.message ?? 'photo missing');
+  }
+
+  // ── 2. Load per-project config (thresholds + default model + dedup) ─────
+  const cfg = await loadProjectConfig(sb, photoRow.project_id);
+
+  // ── 3. Build the analyser result. The body.model override wins;
+  //      otherwise the project's configured default model is recorded so
+  //      replays + audit trails reflect "what would have been used".
+  const result = mockAnalyze();
+  result.modelUsed = body.model ?? cfg.defaultModel;
+
+  // ── 4. Acquire an ai_analyses row to write into ────────────────────────
   // Two paths:
   //   - Webhook flow (default): claim the queued row pre-inserted by the
   //     Postgres trigger. Atomic state transition `queued → analysing`
@@ -144,20 +164,11 @@ serve(async (req: Request) => {
     aiAnalysisId = claimed.id as string;
   }
 
-  // ── 2. Fetch the photo for project_id / task_id / storage_path ──────────
-  const { data: photoRow, error: photoErr } = await sb
-    .from('photos')
-    .select('project_id, task_id, storage_path')
-    .eq('id', photoId)
-    .single();
-
-  if (photoErr || !photoRow) {
-    await markFailed(sb, aiAnalysisId, photoErr?.message ?? 'photo missing');
-    return jsonError(500, photoErr?.message ?? 'photo missing');
-  }
-
-  // ── 3. UPDATE the ai_analyses row with results + decideAction ───────────
-  const action = decideAction(result);
+  // ── 5. UPDATE the ai_analyses row with results + decideAction ───────────
+  const action = decideAction(result, {
+    autoUpdate: cfg.autoUpdate,
+    reviewQueue: cfg.reviewQueue,
+  });
   const { error: writeErr } = await sb
     .from('ai_analyses')
     .update({
@@ -181,9 +192,9 @@ serve(async (req: Request) => {
     return jsonError(500, writeErr.message);
   }
 
-  // ── 4. Side-effects ─────────────────────────────────────────────────────
+  // ── 6. Side-effects ─────────────────────────────────────────────────────
 
-  // 4a. Safety flags → safety_incidents row (service role bypasses RLS).
+  // 6a. Safety flags → safety_incidents row (service role bypasses RLS).
   if (result.safetyFlags.length > 0) {
     const severity = maxSeverity(result.safetyFlags);
     const { data: incident, error: incidentErr } = await sb
@@ -213,7 +224,7 @@ serve(async (req: Request) => {
     }
   }
 
-  // 4b. Auto-updated path → bump tasks.percent_complete (guarded so retries
+  // 6b. Auto-updated path → bump tasks.percent_complete (guarded so retries
   //     can't roll progress backward).
   if (action === 'auto_updated' && photoRow.task_id) {
     const { data: oldTask } = await sb
@@ -249,10 +260,10 @@ serve(async (req: Request) => {
     }
   }
 
-  // 4c. Mark the photo so the gallery's "Pending AI" badge clears.
+  // 6c. Mark the photo so the gallery's "Pending AI" badge clears.
   await sb.from('photos').update({ ai_analyzed: true }).eq('id', photoId);
 
-  // 4d. Audit the analysis itself.
+  // 6d. Audit the analysis itself.
   await logAction({
     supabase:   sb,
     projectId:  photoRow.project_id,
