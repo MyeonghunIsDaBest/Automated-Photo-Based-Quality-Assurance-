@@ -1,6 +1,14 @@
 {
-  "generatedAt": "2026-05-18T09:11:31.163Z",
+  "generatedAt": "2026-05-19T00:08:39.613Z",
   "entries": [
+    {
+      "id": "462b4c6",
+      "date": "2026-05-18T17:14:48+08:00",
+      "surface": "frontend",
+      "kind": "change",
+      "headline": "May 20: vision wrapper + parser + 43-case test harness.",
+      "filesChanged": 5
+    },
     {
       "id": "7014c9a",
       "date": "2026-05-18T14:28:38+08:00",
@@ -88,14 +96,6 @@
       "kind": "new",
       "headline": "New day new updates for demo site.",
       "filesChanged": 33
-    },
-    {
-      "id": "f66af9a",
-      "date": "2026-05-04T05:52:15+08:00",
-      "surface": "frontend",
-      "kind": "change",
-      "headline": "Patching errors and adding errorBoundary for checker.",
-      "filesChanged": 39
     }
   ]
 }

@@ -12,20 +12,20 @@
 //   4. Review queue list — items with confidence in the 0.50-0.85 band.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { AlertTriangle, ImageOff, Inbox, Upload as UploadIcon } from 'lucide-react';
+import { AlertTriangle, ImageOff, Inbox } from 'lucide-react';
 import { format } from 'date-fns';
 import { canConfirmAIAnalysis, canUploadPhotos } from '../../../lib/permissions';
 import { supabase, supabaseConfigured } from '../../../lib/supabase';
 import { listPendingAnalyses } from '../../../lib/api/aiAnalyses';
-import { getPhotoUrl } from '../../../lib/api/photos';
+import { getPhotoUrl, uploadPhoto } from '../../../lib/api/photos';
 import NotAuthorized from '../../../components/NotAuthorized';
 import PhotoReviewDrawer, { type ReviewQueueItem } from '../../../components/photos/PhotoReviewDrawer';
 import MockAnalysisButton from '../../../components/mockAi/MockAnalysisButton';
 import { SplitPaneGantt } from '../../../components/ui/SplitPaneGantt';
 import { useMockAiUiStore } from '../../../store/mockAiUi';
 import { TabHeader } from '../components/TabHeader';
+import { InlineDropzone } from '../components/InlineDropzone';
 import type { Project, Task, Zone, User, SafetyFlag, SafetySeverity } from '../../../types';
 
 const SAFETY_SEVERITY: Record<SafetyFlag, SafetySeverity> = {
@@ -86,6 +86,29 @@ export function ReviewQueueTab({ project, tasks, zones, currentUser }: ReviewQue
 
   useEffect(() => { void refresh(); }, [refresh]);
 
+  // Mini-dropzone state. Photos drop scoped to the project (no taskId) so
+  // the operator stays on the AI hub instead of routing to the Uploads tab.
+  // After each batch finishes we refresh the queue — fresh queued analyses
+  // appear in the list once the Postgres webhook fires analyze-photo.
+  const [uploadBusy, setUploadBusy] = useState(0);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const handleFiles = useCallback(async (files: File[]) => {
+    if (files.length === 0) return;
+    setUploadError(null);
+    setUploadBusy(files.length);
+    try {
+      for (const file of files) {
+        await uploadPhoto({ file, projectId: project.id });
+      }
+      void refresh();
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : 'Upload failed.');
+    } finally {
+      setUploadBusy(0);
+    }
+  }, [project.id, refresh]);
+
   // When a mock-AI batch finishes (`currentlyAnalysingTaskId` returns to null
   // after being non-null), refresh the list and scroll/flash the top row —
   // that's where Phase D's real persisted analyses would land first.
@@ -139,24 +162,37 @@ export function ReviewQueueTab({ project, tasks, zones, currentUser }: ReviewQue
       />
 
       <div className="space-y-6">
-        {/* ── Upload affordance ─────────────────────────────────────── */}
+        {/* ── Mini dropzone ─────────────────────────────────────────────
+              Embedded directly so the operator stays on the AI hub end-to-
+              end. Photos drop scoped to the project (no taskId required);
+              the Postgres webhook fires analyze-photo, which writes a
+              queued ai_analyses row that lands in the review queue below. */}
         {canUpload && (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4">
-            <div className="min-w-0">
+          <div>
+            <div className="mb-3 flex items-baseline justify-between">
               <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
                 Need more photos?
               </p>
-              <p className="mt-1 text-sm text-slate-700">
-                Upload from the field — every photo becomes a candidate for the AI analysis below.
+              <p className="text-[11px] text-slate-400">
+                Drops scoped to {project.name}
               </p>
             </div>
-            <Link
-              to="/gantt?tab=uploads"
-              className="inline-flex items-center gap-1.5 rounded-full bg-slate-900 px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-slate-800"
-            >
-              <UploadIcon className="h-3.5 w-3.5" />
-              Upload photos
-            </Link>
+            <InlineDropzone
+              onFiles={handleFiles}
+              helperText="Drop site photos here or click to browse — no task selection needed."
+              badges={['JPG', 'PNG', 'WebP', 'HEIC']}
+              maxFiles={12}
+            />
+            {uploadBusy > 0 && (
+              <p className="mt-3 text-xs text-slate-500">
+                Uploading {uploadBusy} photo{uploadBusy === 1 ? '' : 's'}…
+              </p>
+            )}
+            {uploadError && (
+              <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                {uploadError}
+              </p>
+            )}
           </div>
         )}
 

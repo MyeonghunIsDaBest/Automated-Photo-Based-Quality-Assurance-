@@ -4219,3 +4219,89 @@ Tracked for a separate cleanup pass. Likely fix: `npm ci` to reinstall node_modu
 - May 25 — API key arrives → smoke-test polish-text
 - May 26 — flip the switch
 - May 27–29 — per-project cost tracking, calibration, prompt iteration
+
+---
+
+## 32. Week-1 polish complete: mini-dropzone + seed-v2 + migration 14 — 2026-05-22
+
+Today closes out the DEMO_ROADMAP.md Week-1 items and ships migration 14 to bump the per-project default model name ahead of next week's cutover. Audit found 2 of the 4 frontend Week-1 items already shipped in prior sessions — actual new work was mini-dropzone + seed overhaul + migration.
+
+### Audit findings (already done — no rework needed)
+
+- **AI confidence rollup hook** — `useTaskAiSignal` (`frontend/src/lib/hooks/useTaskAiSignal.ts`) was already wired. Its header comment literally states "Replaces the `task.percentComplete` proxy that used to power ProgressionBreakdown's AI column." It computes `avg(confidence) where action_taken in ('auto_updated','confirmed')` either via the live `getTaskAiSignal()` RPC or the in-memory store fallback (mock-AI mode). `TaskDrawer.tsx` already passes its `signalPct` into `<ProgressionBreakdown signals={{ aiAvgPct: aiSignal.signalPct, ... }}>`.
+- **Activity-feed `task_progress_updated` emission** — `frontend/src/store/index.ts` (line 273) already emits `action: 'task_progress_updated'` on every `updateTaskProgress()` call. `lib/api/mockAi.ts` invokes that store action when bumping tasks, so the activity feed naturally picks up each Mock-AI batch step.
+
+### What landed today
+
+**`backend/supabase/migrations/14_default_model_update.sql`** (NEW)
+
+Two-line migration: `UPDATE project_config SET ai_default_model='claude-sonnet-4-6' WHERE ai_default_model='mvp-stub@v0'` + `ALTER TABLE project_config ALTER COLUMN ai_default_model SET DEFAULT 'claude-sonnet-4-6'`. Idempotent — re-running post-cutover is a no-op because the WHERE clause matches nothing. Bumps both existing rows AND the default so analyses created after the May 26 flip stamp the model name `callClaudeVision()` actually invokes.
+
+**Manual apply step:** I cannot apply this from the Claude session. Run it via:
+
+```
+supabase db push                 # if using the local supabase CLI workflow
+# OR paste the file contents into Supabase Studio's SQL editor → Run
+```
+
+Plan to verify by querying `select project_id, ai_default_model from project_config` and confirming every row reads `claude-sonnet-4-6`.
+
+**`frontend/src/pages/gantt/tabs/ReviewQueueTab.tsx`** (MODIFIED — mini-dropzone)
+
+Replaced the "Upload affordance" link card (which routed to `/gantt?tab=uploads`) with an embedded `InlineDropzone`. Now the operator stays on the AI hub end-to-end:
+
+- Drop / click-to-browse → `uploadPhoto({ file, projectId })` per file → Postgres trigger inserts a queued `ai_analyses` row → after each batch, `refresh()` pulls the new queued analyses into the review list.
+- `uploadBusy` count + `uploadError` state surface inline below the dropzone.
+- Accepts JPG/PNG/WebP/HEIC; max 12 files per drop. No taskId selection — drops are project-scoped.
+- Dropped unused imports: `Link` from react-router-dom, `Upload as UploadIcon` from lucide-react (the dropzone has its own icon).
+
+`typecheck` → clean. The 43-case visionPrompt test suite still green (regression check).
+
+**`frontend/scripts/seed-demo-data.mjs`** (REWRITTEN — Demo v2)
+
+Replaces the single "Casone Electrical — Demo Site" project with three side-by-side sites covering different accent colours + report cadences + build phases:
+
+| Project | Accent | Cadence | Build state |
+|---|---|---|---|
+| Casone — North Site | emerald `#10B981` | weekly | mid-build (framing + electrical active) |
+| Casone — South Site | rose `#BE123C` | monthly | early (site clearance + foundation) |
+| Casone — Workshop Fitout | indigo `#4338CA` | none | late (finishing phase) |
+
+Per project the seeder creates:
+- Customised `project_config` (accent, cadence, weights, mode, target_photos).
+- 2 zones (`Zone A` accent-coloured, `Zone B` neutral).
+- 7 tasks, one per construction phase, with `progressionByPhase` mapping cfg → realistic completion percentages.
+- 10 photos: 5 already-confirmed analyses + 5 unanalysed (drives the live Mock-AI demo).
+- 1 historical resolved safety incident, severity per cfg (low / high / low).
+
+Cross-project group conversation (`Casone — Coord (all sites)`) seeded if ≥2 confirmed auth users exist.
+
+**Idempotency:** queries `projects` for all three names in one call. Skips silently if all three exist; fails LOUDLY if only 1-2 exist (partial state is a signal to delete-and-re-seed manually). Demo v1 project is left untouched — backward compat handled by the new script targeting different names.
+
+**Manual apply step:** run `SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npm --prefix frontend run seed:demo`. Like migration 14, this isn't something the Claude session can do — needs your Supabase credentials.
+
+### Verification
+
+- `tsc --noEmit -p frontend/tsconfig.json` → **clean** (0 errors).
+- `node --check frontend/scripts/seed-demo-data.mjs` → syntax OK.
+- `node frontend/scripts/check-contract-parity.mjs` → ✓ in sync (Deno _shared/contract.ts still byte-equal to frontend mirror).
+- `npm --prefix frontend test -- --run visionPrompt` → **43 / 43 pass** (regression sanity).
+- `vite build` not run — pre-existing Win11 Lightning CSS segfault tracked in section 31; today's edits are surface-level (ReviewQueueTab presentational change, no new bundle deps beyond `uploadPhoto` which was already imported elsewhere).
+
+### Open follow-ups
+
+- **Apply migration 14** — pending user action against dev Supabase.
+- **Re-seed dev Supabase with v2 data** — pending user action; old "Casone Electrical — Demo Site" can be deleted at the same time if desired.
+- **vite build flake** — same as section 31; unchanged. Won't gate Phase D cutover since the May 26 work touches Edge Functions, not the frontend bundle.
+
+### Schedule status
+
+- May 18 ✅
+- May 19 ✅
+- May 20 ✅
+- May 21 ✅
+- **May 22 ✅** (Week-1 polish: mini-dropzone wired, seed v2 ready to run, migration 14 ready to apply)
+- May 23-24 — weekend buffer (no scheduled work)
+- May 25 — API key arrives → smoke-test polish-text
+- May 26 — flip the switch (mockAnalyze → callClaudeVision)
+- May 27-29 — per-project cost tracking, calibration, prompt iteration
