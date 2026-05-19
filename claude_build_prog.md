@@ -4134,3 +4134,88 @@ The fork pool runs tests sequentially in a child process, avoiding the Tinypool 
 - May 25 — API key arrives → smoke-test polish-text
 - May 26 — flip the switch
 - May 27–29 — per-project cost tracking, calibration, prompt iteration
+
+---
+
+## 31. callClaudeVision skeleton wired (idle) + guessMediaType — 2026-05-21
+
+Today's work lands the last server-side piece Phase D needs before the May 26 cutover. `callClaudeVision()` now sits next to `mockAnalyze()` in `analyze-photo/index.ts`, fully connected to its dependencies (Storage download, base64 encode, `callAnthropicVision`, `parseVisionResponse`) but unreachable from the runtime path. The call site at line 237 still invokes `mockAnalyze()`. MockAI demo unchanged.
+
+### What landed today
+
+**`backend/supabase/functions/analyze-photo/index.ts`** (MODIFIED)
+
+Imports added:
+- `ConstructionPhase` (extended the existing contract.ts type-only import).
+- `callAnthropicVision` from `_shared/anthropic.ts` (May 20 sibling).
+- `failureResult`, `parseVisionResponse` from `_shared/parseVisionResponse.ts` (May 20).
+- `buildUserPrompt`, `VISION_SYSTEM_PROMPT` from `_shared/visionPrompt.ts` (May 19).
+- `encodeBase64` from `https://deno.land/std@0.224.0/encoding/base64.ts` — matches the existing std version pin.
+
+New functions (slotted between `mockAnalyze()` and `interface InvokePayload`):
+
+1. `callClaudeVision(sb, args)` — 5-step pipeline:
+   - **Media type resolution** via `guessMediaType()`. HEIC/HEIF and video formats fail-fast into `failureResult()` so the bad-format rationale lands in the audit log unmodified.
+   - **Storage download** via `sb.storage.from('photos').download(args.storagePath)`. Service-role client bypasses RLS for read.
+   - **Base64 encode** via std `encodeBase64()`. Photos at 1-5 MB encode in ~10ms; std handles large buffers without the call-stack risk of `btoa(String.fromCharCode(...buf))`.
+   - **Vision call** through `callAnthropicVision()`. Kill switch / daily caps / rate-limit detection / usage recording all live inside that wrapper.
+   - **Response parse** through `parseVisionResponse()`. Never throws — malformed model output collapses into `failureResult` shape (`modelUsed='failed'`).
+
+   Returns `AnalysisResult` on every code path. Failures get the marker shape so audit + UI can detect them without exception handling.
+
+2. `guessMediaType(storagePath)` — tagged-union helper returning either `{ ok: true, mediaType: 'image/jpeg' | ... }` or `{ ok: false, reason: string }`. Reasons are specific strings that flow through to the audit log:
+   - `unsupported_media_type: HEIC not accepted by Claude Vision — convert to JPEG upstream`
+   - `unsupported_media_type: video formats not supported in Phase D (photos only)`
+   - `unsupported_media_type: .<ext>` for everything else.
+
+### What's intentionally NOT changed today
+
+- **Line 237 still calls `mockAnalyze()`.** Verified with `grep`. May 26 flips this single line.
+- **The `result.modelUsed = body.model ?? cfg.defaultModel;` override on line 238** stays for now. On May 26 we remove it because `callClaudeVision()` stamps the real model name (or `'failed'`) itself; overriding would clobber the `'failed'` marker.
+- **No audit-log prompt_version stamping yet.** Deferred to May 26 — if we stamp it now, every mock-AI run gets misleading `prompt_version='2026-05-19-v1'` in its audit row.
+- **No re-analyse cap.** Plan §4.11 tracks this for May 27.
+
+### Verification
+
+- `npm --prefix frontend test -- --run visionPrompt` → **43 / 43 pass** in 27ms. No regression to the parser / prompt tests since today's work is in `analyze-photo` which isn't imported by any test.
+- `npm --prefix frontend run check:contract` (via prebuild) → **contract parity ✓**. Confirms my changes don't drift contract.ts.
+- `grep "const result = " backend/supabase/functions/analyze-photo/index.ts` → single match, `mockAnalyze()` (line 237). callClaudeVision sits idle.
+- Manual code-review of imports + function bodies — types align with `_shared/anthropic.ts`'s `AnthropicVisionInput`, `_shared/parseVisionResponse.ts`'s `parseVisionResponse(text, model)`, etc.
+
+### Win11 vite build flake (NOT my code)
+
+`vite build` segfaults consistently today during the CSS optimization stage with a pre-existing Lightning CSS warning about `@import url(...)` ordering. Exit code 139. Same warning text appeared in May 18-20 builds without crashing. The CSS being optimized is unrelated to today's changes — my edits are server-side Deno (`analyze-photo/index.ts`) which never enters the vite bundle.
+
+Reproducer:
+```
+node frontend/node_modules/vite/bin/vite.js build
+# exit 139 after "Found 1 warning while optimizing generated CSS"
+```
+
+Hypotheses:
+- Lightning CSS native binary on Win11 got into an inconsistent state (node_modules half-updated).
+- The Google Fonts `@import` rule placement is order-dependent and a Tailwind 4 / Lightning CSS regression hit.
+
+Not blocking the May 21 commit because:
+- Contract parity passes (the only frontend-side check that touches Deno helpers).
+- All 43 visionPrompt tests pass.
+- Today's code is entirely backend Deno that doesn't enter vite's transform pipeline.
+
+Tracked for a separate cleanup pass. Likely fix: `npm ci` to reinstall node_modules, OR fix the `@import` ordering in `frontend/src/index.css` to put the Google Fonts import at the very top (before any other rules).
+
+### Open follow-ups
+
+- **May 22** — DEMO_ROADMAP Week-1 polish (confidence rollup hook, mini-dropzone, seed-data overhaul, activity-feed spot-check) + migration 14 (model default `'mvp-stub@v0'` → `'claude-sonnet-4-6'`).
+- **vite build flake** — diagnose Win11 Lightning CSS crash. Try `npm ci` or `@import` reorder. Confirms whether CI on Linux runners would be affected.
+- **callClaudeVision smoke test** — once API key lands May 25, do a manual `supabase functions serve analyze-photo` + `curl` with a sample photoId to verify the wiring works end-to-end before the public flip on May 26.
+
+### Schedule status
+
+- May 18 ✅
+- May 19 ✅
+- May 20 ✅
+- **May 21 ✅** (callClaudeVision + guessMediaType wired, idle)
+- May 22 — DEMO_ROADMAP Week-1 polish + migration 14
+- May 25 — API key arrives → smoke-test polish-text
+- May 26 — flip the switch
+- May 27–29 — per-project cost tracking, calibration, prompt iteration

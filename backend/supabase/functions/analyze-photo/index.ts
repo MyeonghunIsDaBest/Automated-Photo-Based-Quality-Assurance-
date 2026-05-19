@@ -31,11 +31,19 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 // @ts-expect-error Deno-only import.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 
-import type { AnalysisResult, SafetyFlag } from '../_shared/contract.ts';
+import type { AnalysisResult, ConstructionPhase, SafetyFlag } from '../_shared/contract.ts';
 import { decideAction } from '../_shared/decideAction.ts';
 import { loadProjectConfig } from '../_shared/loadProjectConfig.ts';
 import { maxSeverity } from '../_shared/safetyTaxonomy.ts';
 import { logAction } from '../_shared/auditLog.ts';
+// Phase D vision call dependencies. Imported but not yet reached from the
+// runtime call site at line 120 — the flip from mockAnalyze() to
+// callClaudeVision() happens May 26 when the ANTHROPIC_API_KEY lands.
+import { callAnthropicVision } from '../_shared/anthropic.ts';
+import { failureResult, parseVisionResponse } from '../_shared/parseVisionResponse.ts';
+import { buildUserPrompt, VISION_SYSTEM_PROMPT } from '../_shared/visionPrompt.ts';
+// @ts-expect-error Deno-only import.
+import { encodeBase64 } from 'https://deno.land/std@0.224.0/encoding/base64.ts';
 
 // @ts-expect-error Deno globals.
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -58,6 +66,115 @@ function mockAnalyze(): AnalysisResult {
     rationale: 'Stub analyser — no vision model wired yet.',
     rawResponse: { stub: true },
   };
+}
+
+// ─── Phase D vision call (idle until May 26 cutover) ────────────────────────
+// callClaudeVision is the eventual replacement for mockAnalyze(). Wired here
+// so the May 26 flip is a 4-line swap at the call site (~line 130), not a
+// scramble through Storage code + imports under deploy pressure.
+//
+// Steps:
+//   1. Resolve the photo's media type from its storage path. Claude Vision
+//      accepts jpeg/png/webp/gif only — HEIC (iOS default) and video
+//      formats return failureResult with a specific rationale.
+//   2. Download the photo bytes from the `photos` Storage bucket via the
+//      service-role client (storage RLS allows authed read; service role
+//      bypasses it).
+//   3. Base64-encode the bytes. std/encoding/base64 handles large buffers
+//      without spreading them through String.fromCharCode (which blows the
+//      call stack at ~100k bytes).
+//   4. Call Anthropic via the shared wrapper. Kill switch + daily call/
+//      token caps + rate-limit detection + usage recording all live there.
+//   5. Parse the model's JSON response into AnalysisResult. parseVision-
+//      Response is defensive: markdown fence stripping, clamping, enum
+//      filtering, length caps. It never throws — malformed output collapses
+//      into a failureResult shape with modelUsed='failed'.
+//
+// Returns AnalysisResult on every code path. Failures get the marker shape
+// so the audit log + UI can detect them without exception handling.
+
+async function callClaudeVision(
+  sb: any,
+  args: {
+    storagePath: string;
+    phaseHint?: ConstructionPhase | null;
+    model: string;
+  },
+): Promise<AnalysisResult> {
+  // 1. Media type from extension.
+  const media = guessMediaType(args.storagePath);
+  if (!media.ok) {
+    return failureResult(args.model, media.reason);
+  }
+
+  // 2. Storage download.
+  const { data: blob, error: dlErr } = await sb
+    .storage
+    .from('photos')
+    .download(args.storagePath);
+  if (dlErr || !blob) {
+    return failureResult(args.model, `storage_download_failed: ${dlErr?.message ?? 'unknown'}`);
+  }
+
+  // 3. Base64.
+  const buf = new Uint8Array(await blob.arrayBuffer());
+  const base64 = encodeBase64(buf);
+
+  // 4. Vision call.
+  const call = await callAnthropicVision(sb, {
+    system:      VISION_SYSTEM_PROMPT,
+    userText:    buildUserPrompt(args.phaseHint ?? null),
+    imageBase64: base64,
+    mediaType:   media.mediaType,
+    model:       args.model,
+  });
+  if (!call.ok) {
+    return failureResult(args.model, `${call.reason}${call.detail ? `: ${call.detail}` : ''}`);
+  }
+
+  // 5. Parse.
+  return parseVisionResponse(call.text, call.model);
+}
+
+// Resolve a photo's Anthropic-compatible media type from its storage path
+// extension. Phase D rejects HEIC (iOS native default) and video formats —
+// Claude Vision doesn't accept them. Uploaders should convert / extract
+// frames upstream. The tagged-union result lets the caller surface a
+// specific rationale to the audit log.
+
+type GuessMediaResult =
+  | { ok: true; mediaType: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif' }
+  | { ok: false; reason: string };
+
+function guessMediaType(storagePath: string): GuessMediaResult {
+  const ext = storagePath.toLowerCase().split('.').pop() ?? '';
+  switch (ext) {
+    case 'jpg':
+    case 'jpeg':
+      return { ok: true, mediaType: 'image/jpeg' };
+    case 'png':
+      return { ok: true, mediaType: 'image/png' };
+    case 'webp':
+      return { ok: true, mediaType: 'image/webp' };
+    case 'gif':
+      return { ok: true, mediaType: 'image/gif' };
+    case 'heic':
+    case 'heif':
+      return {
+        ok: false,
+        reason: 'unsupported_media_type: HEIC not accepted by Claude Vision — convert to JPEG upstream',
+      };
+    case 'mov':
+    case 'mp4':
+    case 'm4v':
+    case 'webm':
+      return {
+        ok: false,
+        reason: 'unsupported_media_type: video formats not supported in Phase D (photos only)',
+      };
+    default:
+      return { ok: false, reason: `unsupported_media_type: .${ext || '<no extension>'}` };
+  }
 }
 
 interface InvokePayload {
