@@ -68,7 +68,7 @@ const quickActionCategories: QuickActionCategory[] = [
         label: 'Task Dashboard',
         description: 'Manage and track all project tasks',
         icon: CheckSquare,
-        path: '/gantt',
+        path: '/projects',
         color: 'bg-indigo-50 text-indigo-600',
         requires: 'edit_tasks',
       },

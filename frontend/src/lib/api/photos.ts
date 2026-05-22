@@ -68,6 +68,19 @@ export async function uploadPhoto({
 }: UploadInput): Promise<PhotoRow> {
   if (!supabaseConfigured()) throw NOT_CONFIGURED;
 
+  // Demo / mock projects use non-UUID ids ("project_demo_inflight" etc.) and
+  // were never inserted into Postgres. The `photos.project_id` column is uuid,
+  // so the INSERT would reject with "invalid input syntax for type uuid".
+  // Fail fast with a clear message instead of leaving an orphan file in
+  // Storage. Live-mode users only see real Supabase projects after the
+  // projects store load, so this guard is a belt for any code path that
+  // still hands us a demo id.
+  if (!isUuid(projectId)) {
+    throw new Error(
+      'Cannot upload to this project — it lives in the local demo only. Create or select a real project to upload photos.',
+    );
+  }
+
   // crypto.randomUUID() is in every modern browser Vite supports.
   const photoId = crypto.randomUUID();
   const storagePath = `${projectId}/${photoId}.${extOf(file.name)}`;

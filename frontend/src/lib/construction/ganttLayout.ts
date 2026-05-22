@@ -203,6 +203,26 @@ export interface WeekendInterval {
   widthPct: number;
 }
 
+/** Minimum width per day, by zoom level, so axis labels stay readable.
+ *  At day zoom, "31" needs roughly 14px + padding; at quarter zoom, the
+ *  natural container width is usually plenty so we keep the per-day budget
+ *  small. The Gantt right-pane sets `min-width: totalDays * pxPerDay` and
+ *  enables `overflow-x-auto`, so this number only triggers scroll when the
+ *  natural container width can't fit it. */
+export const PX_PER_DAY: Record<GanttZoom, number> = {
+  day:     28,
+  week:    12,
+  month:   4,
+  quarter: 2,
+};
+
+/** Minimum pixel width the inner timeline needs to render its labels
+ *  legibly. The outer pane sets `overflow-x: auto`, so this only forces
+ *  horizontal scroll when the natural width can't accommodate it. */
+export function timelineMinWidthPx(zoom: GanttZoom, totalDays: number): number {
+  return Math.max(1, Math.round(totalDays * PX_PER_DAY[zoom]));
+}
+
 /** Compute weekend (Sat-Sun) intervals within the window. The caller renders
  *  a faint column behind the timeline at each interval. Used at day + week zoom
  *  levels — at month/quarter zoom the columns would be invisible-thin. */

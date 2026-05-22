@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import Login from '../pages/Login';
 
@@ -9,6 +9,18 @@ const registerMock = vi.fn(async () => ({ error: null as string | null }));
 vi.mock('../store', () => ({
   useAppStore: () => ({ login: loginMock, register: registerMock }),
 }));
+
+// Spy on react-router-dom's navigate so we can assert where the form sends
+// the user post-submit. The rest of react-router-dom (MemoryRouter, Routes,
+// etc.) flows through normally.
+const navigateSpy = vi.fn();
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
+  return {
+    ...actual,
+    useNavigate: () => navigateSpy,
+  };
+});
 
 function renderLogin() {
   return render(
@@ -22,6 +34,7 @@ describe('Login page', () => {
   beforeEach(() => {
     loginMock.mockClear();
     registerMock.mockClear();
+    navigateSpy.mockClear();
   });
 
   it('renders sign-in heading by default', () => {
@@ -58,5 +71,22 @@ describe('Login page', () => {
     fireEvent.click(buttons[0]);
     expect(screen.getByPlaceholderText('Jordan')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Casone')).toBeInTheDocument();
+  });
+
+  // Regression: workers / stakeholders / suppliers used to land on /dashboard
+  // because Login hard-coded the post-submit destination. Now it routes
+  // through `/` so RoleHomeRedirect picks the right home per role.
+  it('navigates to / (not /dashboard) on a successful sign-in', async () => {
+    const { container } = renderLogin();
+    fireEvent.change(screen.getByPlaceholderText('you@example.com'), {
+      target: { value: 'sam@siteproof.com' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('••••••••'), {
+      target: { value: 'hunter2x' },
+    });
+    fireEvent.submit(container.querySelector('form')!);
+    await waitFor(() => expect(navigateSpy).toHaveBeenCalled());
+    expect(navigateSpy).toHaveBeenCalledWith('/', { replace: true });
+    expect(navigateSpy).not.toHaveBeenCalledWith('/dashboard');
   });
 });

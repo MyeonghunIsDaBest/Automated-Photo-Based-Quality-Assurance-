@@ -27,8 +27,12 @@ export function navigateActivityEvent(
 
     case 'photo_upload':
     case 'ai_analysed':
-      // Photo lightbox in the gallery.
-      navigate(`/gallery${q(`photo=${event.targetEntityId}`)}`);
+      // Go directly to the Uploads tab and pass the photo id forward.
+      // The previous `/gallery?photo=…` path hit the App-level redirect
+      // (Navigate to=`/gantt?tab=uploads`) which discards the query string,
+      // so the photo context was lost. Routing straight to the Gantt
+      // preserves `?photo=` for UploadsTab to consume.
+      navigate(`/gantt${q(`tab=uploads&photo=${event.targetEntityId}`)}`);
       return;
 
     case 'safety_flag':
@@ -37,24 +41,26 @@ export function navigateActivityEvent(
 
     case 'order_placed':
     case 'order_received':
+      navigate(`/gantt${q(`tab=supplier&order=${event.targetEntityId}`)}`);
+      return;
+
     case 'delivery_received':
+      navigate(`/gantt${q(`tab=supplier&delivery=${event.targetEntityId}`)}`);
+      return;
+
     case 'invoice_paid':
-      // All procurement events resolve to the merged Supplier tab. Per-
-      // entity deep-link inside Supplier isn't wired yet (Supplier's URL
-      // hydration doesn't recognise `?order=` etc.) — landing the user on
-      // the tab is the first step; entity scroll-to comes in a follow-up.
-      navigate(`/gantt${q('tab=supplier')}`);
+      navigate(`/gantt${q(`tab=supplier&invoice=${event.targetEntityId}`)}`);
       return;
 
     case 'punch_item_added':
     case 'punch_item_closed':
       // Punch list lives as a sub-view under Site Diary. The legacy
       // `?tab=punch_list` alias in Gantt.tsx resolves to it.
-      navigate(`/gantt${q('tab=punch_list')}`);
+      navigate(`/gantt${q(`tab=punch_list&punch=${event.targetEntityId}`)}`);
       return;
 
     case 'diary_entry':
-      navigate(`/gantt${q('tab=site_diary')}`);
+      navigate(`/gantt${q(`tab=site_diary&diary=${event.targetEntityId}`)}`);
       return;
   }
 }

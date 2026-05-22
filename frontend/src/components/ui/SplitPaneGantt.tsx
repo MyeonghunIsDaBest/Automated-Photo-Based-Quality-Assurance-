@@ -4,9 +4,9 @@
 //
 // Used by ReviewQueueTab to give the AI-Analysis hub the same rich Gantt
 // context the Tasks tab carries, without the editing/inline-add affordances
-// of the live editor. Honours `useMockAiUiStore.currentlyAnalysingTaskId`
-// so the chip shimmer + bar pulse fire on the same rows that the Tasks tab
-// would, during a Mock-AI batch.
+// of the live editor. The chip shimmer + bar pulse fire when a new
+// ai_analyses row lands for a task (sampleSize increment), matching the
+// TasksTab behaviour now that real analyze-photo drives the signal.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
@@ -19,8 +19,8 @@ import {
   xPositionPct,
   type TimeWindow,
 } from '../../lib/construction/ganttLayout';
-import { useMockAiUiStore } from '../../store/mockAiUi';
 import { useTaskAiSignal } from '../../lib/hooks/useTaskAiSignal';
+import { phaseColor } from '../../lib/construction/phaseColors';
 import CountUp from './CountUp';
 
 interface SplitPaneGanttProps {
@@ -275,6 +275,11 @@ function LeftAnchorRow({
           ? <ChevronRight className="h-3.5 w-3.5" />
           : <ChevronDown className="h-3.5 w-3.5" />}
       </button>
+      <span
+        aria-hidden
+        className="inline-block h-2 w-2 flex-shrink-0 rounded-full"
+        style={{ backgroundColor: phaseColor(anchor.phase).color }}
+      />
       <span className="min-w-0 flex-1 truncate text-[13px] font-semibold capitalize text-slate-900">
         {anchor.phase}
       </span>
@@ -293,7 +298,6 @@ function LeftChildRow({
   onClick?: () => void;
 }) {
   const aiSignal = useTaskAiSignal(task.id);
-  const isAnalysing = useMockAiUiStore((s) => s.currentlyAnalysingTaskId === task.id);
   const [shimmer, setShimmer] = useState(false);
   const lastSampleRef = useRef(aiSignal.sampleSize);
   const zone = zones.find((z) => z.id === task.zoneId);
@@ -301,12 +305,12 @@ function LeftChildRow({
   useEffect(() => {
     const grew = aiSignal.sampleSize > lastSampleRef.current;
     lastSampleRef.current = aiSignal.sampleSize;
-    if (isAnalysing || grew) {
+    if (grew) {
       setShimmer(true);
       const t = setTimeout(() => setShimmer(false), 1200);
       return () => clearTimeout(t);
     }
-  }, [isAnalysing, aiSignal.sampleSize]);
+  }, [aiSignal.sampleSize]);
 
   const content = (
     <>
@@ -376,21 +380,30 @@ function TimelineAnchorRow({
   const pos = taskBarPosition(anchor, w);
   const leftPct = Math.max(0, Math.min(100, pos.leftPct));
   const widthPct = Math.max(0.5, Math.min(100 - leftPct, pos.widthPct));
+  const palette = phaseColor(anchor.phase);
   return (
     <div
       className="relative border-b border-slate-100 bg-white"
       style={{ height: ROW_HEIGHT_PX }}
     >
       <div
-        className={`absolute top-1/2 -translate-y-1/2 overflow-hidden rounded-md border border-emerald-300 bg-emerald-50 ${
+        className={`absolute top-1/2 -translate-y-1/2 overflow-hidden rounded-md ${
           highlight ? HIGHLIGHT_RING : ''
         }`}
-        style={{ left: `${leftPct}%`, width: `${widthPct}%`, height: 18 }}
+        style={{
+          left: `${leftPct}%`,
+          width: `${widthPct}%`,
+          height: 18,
+          borderWidth: 1,
+          borderStyle: 'solid',
+          borderColor: palette.color,
+          backgroundColor: palette.tint,
+        }}
         title={`${anchor.phase} · ${rolled}%`}
       >
         <div
-          className="h-full bg-emerald-400/60 transition-[width] duration-700 ease-out"
-          style={{ width: `${rolled}%` }}
+          className="h-full transition-[width] duration-700 ease-out"
+          style={{ width: `${rolled}%`, backgroundColor: palette.fill }}
         />
       </div>
     </div>
@@ -448,6 +461,11 @@ function MobileGroup({
         {isCollapsed
           ? <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-500" />
           : <ChevronDown className="h-4 w-4 flex-shrink-0 text-slate-500" />}
+        <span
+          aria-hidden
+          className="inline-block h-2 w-2 flex-shrink-0 rounded-full"
+          style={{ backgroundColor: phaseColor(phase.anchor.phase).color }}
+        />
         <span className="flex-1 truncate text-left text-sm font-semibold capitalize text-slate-900">
           {phase.anchor.phase}
         </span>
@@ -457,8 +475,11 @@ function MobileGroup({
       </button>
       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
         <div
-          className="h-1.5 rounded-full bg-emerald-500 transition-[width] duration-700 ease-out"
-          style={{ width: `${phase.rolled}%` }}
+          className="h-1.5 rounded-full transition-[width] duration-700 ease-out"
+          style={{
+            width: `${phase.rolled}%`,
+            backgroundColor: phaseColor(phase.anchor.phase).color,
+          }}
         />
       </div>
       {!isCollapsed && (

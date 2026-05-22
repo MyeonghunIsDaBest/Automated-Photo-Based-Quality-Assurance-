@@ -2,7 +2,7 @@
 // See `projects.ts` for the same conventions (throw on error, no-op on
 // missing env, snake_case row shape).
 
-import { supabase, supabaseConfigured } from '../supabase';
+import { supabase, supabaseConfigured, isUuid } from '../supabase';
 import { differenceInDays, parseISO } from 'date-fns';
 import type { Task, ConstructionPhase, TaskStatus } from '../../types';
 
@@ -64,6 +64,7 @@ const NOT_CONFIGURED = new Error(
 
 export async function listTasks(projectId?: string): Promise<TaskRow[]> {
   if (!supabaseConfigured()) return [];
+  if (projectId !== undefined && !isUuid(projectId)) return [];
   const q = supabase.from('tasks').select('*').order('start_date');
   const { data, error } = projectId ? await q.eq('project_id', projectId) : await q;
   if (error) throw error;

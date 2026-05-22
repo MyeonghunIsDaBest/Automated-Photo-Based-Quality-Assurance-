@@ -16,13 +16,13 @@ interface ProjectsListState {
   loadProjects: () => Promise<void>;
 }
 
-// The Hampstead Heights demo project is always present in the projects list
-// so users can flip to it via the switcher and see the editable Gantt with
-// realistic phase progression — regardless of whether real projects exist
-// in Supabase yet. In live mode `loadProjects()` appends server rows
-// alongside the demo; in mock mode the rest of mockProjects also loads.
-const DEMO_ONLY = mockProjects.filter((p) => p.id === 'project_demo_inflight');
-const initialProjects: Project[] = supabaseConfigured() ? DEMO_ONLY : mockProjects;
+// In mock mode the full mockProjects list seeds the switcher so the demo
+// experience works offline. In live mode we start empty and let
+// `loadProjects()` populate from Supabase — the old hardcoded Hampstead
+// Heights demo (`project_demo_inflight`) was injected here too, but its
+// non-UUID id caused every Supabase-backed write (uploads, budget save,
+// stakeholder save) to fail with "invalid input syntax for type uuid".
+const initialProjects: Project[] = supabaseConfigured() ? [] : mockProjects;
 const initialActive = initialProjects[0]?.id ?? null;
 
 function projectRowToProject(row: ProjectRow): Project {
@@ -62,11 +62,7 @@ export const useProjectsListStore = create<ProjectsListState>((set) => ({
     set({ isLoading: true });
     try {
       const rows = await listProjects();
-      const serverProjects = rows.map(projectRowToProject);
-      // Always keep the Hampstead Heights demo at the top so users can see
-      // the editable Gantt's realistic phase progression even before any
-      // real projects exist on the server.
-      const projects = [...DEMO_ONLY, ...serverProjects];
+      const projects = rows.map(projectRowToProject);
       set((state) => ({
         projects,
         activeProjectId:
@@ -76,11 +72,9 @@ export const useProjectsListStore = create<ProjectsListState>((set) => ({
         isLoading: false,
       }));
     } catch (e) {
-      // Don't fail loud — keep the demo project visible so the UI still has
-      // something to render.
       // eslint-disable-next-line no-console
       console.error('[projects] failed to load:', e);
-      set({ projects: DEMO_ONLY, isLoading: false });
+      set({ projects: [], isLoading: false });
     }
   },
 }));

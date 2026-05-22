@@ -16,17 +16,16 @@ import { Badge } from '../../../components/ui/badge';
 import TaskDrawer from './TaskDrawer';
 import { TabHeader } from '../components/TabHeader';
 import { EmptyState } from '../components/EmptyState';
-import MockAnalysisButton from '../../../components/mockAi/MockAnalysisButton';
 import { useTaskAiSignal } from '../../../lib/hooks/useTaskAiSignal';
-import { useMockAiUiStore } from '../../../store/mockAiUi';
 import CountUp from '../../../components/ui/CountUp';
 import {
   makeTimeWindow, monthHeaders, dayHeaders, weekHeaders, quarterHeaders,
-  weekendIntervals, taskBarPosition, xPositionPct,
+  weekendIntervals, taskBarPosition, xPositionPct, timelineMinWidthPx,
   type GanttZoom, type TimeWindow,
 } from '../../../lib/construction/ganttLayout';
 import GanttToolbar from '../../../components/ui/GanttToolbar';
 import PhaseEditModal from './PhaseEditModal';
+import { phaseColor } from '../../../lib/construction/phaseColors';
 
 interface TasksTabProps {
   project: Project;
@@ -440,7 +439,6 @@ export function TasksTab({
         action={
           canEdit ? (
             <div className="flex flex-wrap items-center gap-2">
-              <MockAnalysisButton projectId={project.id} variant="compact" viewHref="/gantt?tab=review" />
               <Button
                 variant={selectMode ? 'default' : 'outline'}
                 size="sm"
@@ -455,13 +453,10 @@ export function TasksTab({
               </Button>
             </div>
           ) : (
-            <div className="flex items-center gap-2">
-              <MockAnalysisButton projectId={project.id} variant="compact" viewHref="/gantt?tab=review" />
-              <Badge variant="secondary" className="gap-1.5 px-2.5 py-1 text-[11px]">
-                <Lock className="h-3 w-3" />
-                Read-only
-              </Badge>
-            </div>
+            <Badge variant="secondary" className="gap-1.5 px-2.5 py-1 text-[11px]">
+              <Lock className="h-3 w-3" />
+              Read-only
+            </Badge>
           )
         }
       />
@@ -512,7 +507,7 @@ export function TasksTab({
             <EmptyState
               icon={CheckSquare}
               title={`No tasks on ${project.name} yet.`}
-              description="This project hasn't been seeded with the eight construction phases. Try Generate demo project from the Projects page, or create a one-off task."
+              description="This project's phase anchors haven't loaded yet. Refresh if this persists, or create a one-off task below."
               action={
                 canEdit ? (
                   <Button size="sm" onClick={openCreate}>
@@ -589,7 +584,18 @@ export function TasksTab({
                 </div>
 
                 {/* ─── Right pane: timeline ─── */}
-                <div ref={timelineScrollRef} className="relative min-w-0 flex-1 overflow-hidden">
+                {/* overflow-x-auto on the outer pane + an inner wrapper with
+                     min-width = totalDays × pxPerDay keeps axis labels
+                     legible. At month/quarter zoom (or short windows) the
+                     min-width is below the natural pane width so nothing
+                     scrolls; at day/week zoom on a multi-month window the
+                     timeline grows past the viewport and scrolls horizontally
+                     while the left pane stays anchored. */}
+                <div ref={timelineScrollRef} className="relative min-w-0 flex-1 overflow-x-auto">
+                  <div
+                    className="relative"
+                    style={{ minWidth: timelineMinWidthPx(zoom, timeWindow.totalDays) }}
+                  >
                   {/* Axis — labels follow the current zoom. The label set
                        cycles between day / week / month / quarter but the
                        positioning math is identical (percentages over the
@@ -683,6 +689,7 @@ export function TasksTab({
                       window={timeWindow}
                     />
                   ))}
+                  </div>
                 </div>
               </div>
             </CardContent>
@@ -900,6 +907,11 @@ function LeftAnchorRow({
       >
         {isCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
       </button>
+      <span
+        aria-hidden
+        className="inline-block h-2 w-2 flex-shrink-0 rounded-full"
+        style={{ backgroundColor: phaseColor(anchor.phase).color }}
+      />
       <span className="min-w-0 flex-1 truncate text-[13px] font-semibold capitalize text-slate-900">
         {anchor.phase}
       </span>
@@ -940,20 +952,23 @@ function LeftChildRow({
   onOpen: () => void;
 }) {
   const aiSignal = useTaskAiSignal(task.id);
-  const isAnalysing = useMockAiUiStore((s) => s.currentlyAnalysingTaskId === task.id);
   const [shimmer, setShimmer] = useState(false);
   const lastSampleRef = useRef(aiSignal.sampleSize);
   const zone = zones.find((z) => z.id === task.zoneId);
 
+  // Trigger the shimmer when a new ai_analyses row lands for this task. The
+  // old "currently analysing" pulse used the mock runner's transient store;
+  // real AI is fire-and-forget server-side, so the sample-size increment is
+  // now the only observable "AI just touched this task" signal.
   useEffect(() => {
     const grew = aiSignal.sampleSize > lastSampleRef.current;
     lastSampleRef.current = aiSignal.sampleSize;
-    if (isAnalysing || grew) {
+    if (grew) {
       setShimmer(true);
       const t = setTimeout(() => setShimmer(false), 1200);
       return () => clearTimeout(t);
     }
-  }, [isAnalysing, aiSignal.sampleSize]);
+  }, [aiSignal.sampleSize]);
 
   return (
     <button
@@ -1027,22 +1042,30 @@ function TimelineRowRender({
 
   if (item.kind === 'anchor') {
     const rolled = item.rolledPct ?? 0;
+    const palette = phaseColor(item.task?.phase);
     return (
       <div
         className="relative border-b border-slate-100 bg-white"
         style={{ height: ROW_HEIGHT_PX }}
       >
         <div
-          className="absolute top-1/2 -translate-y-1/2 overflow-hidden rounded-md border border-emerald-300 bg-emerald-50"
+          className="absolute top-1/2 -translate-y-1/2 overflow-hidden rounded-md"
           style={{
             left: `${leftPct}%`,
             width: `${widthPct}%`,
             height: 18,
+            borderWidth: 1,
+            borderStyle: 'solid',
+            borderColor: palette.color,
+            backgroundColor: palette.tint,
           }}
         >
           <div
-            className="h-full bg-emerald-400/60 transition-[width] duration-700 ease-out"
-            style={{ width: `${rolled}%` }}
+            className="h-full transition-[width] duration-700 ease-out"
+            style={{
+              width: `${rolled}%`,
+              backgroundColor: palette.fill,
+            }}
           />
         </div>
       </div>
@@ -1104,10 +1127,23 @@ function MobileRow({
           {item.isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
         </button>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold capitalize text-slate-900">{item.task.phase}</p>
+          <p className="flex items-center gap-1.5 truncate text-sm font-semibold capitalize text-slate-900">
+            <span
+              aria-hidden
+              className="inline-block h-2 w-2 flex-shrink-0 rounded-full"
+              style={{ backgroundColor: phaseColor(item.task.phase).color }}
+            />
+            {item.task.phase}
+          </p>
           <div className="mt-1 flex items-center gap-2">
             <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
-              <div className="h-1.5 rounded-full bg-emerald-500 transition-[width] duration-700 ease-out" style={{ width: `${rolled}%` }} />
+              <div
+                className="h-1.5 rounded-full transition-[width] duration-700 ease-out"
+                style={{
+                  width: `${rolled}%`,
+                  backgroundColor: phaseColor(item.task.phase).color,
+                }}
+              />
             </div>
             <span className="tabular-nums text-[11px] text-slate-600"><CountUp value={rolled} />%</span>
           </div>

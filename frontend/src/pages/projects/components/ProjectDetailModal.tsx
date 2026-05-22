@@ -12,6 +12,7 @@ import { useProjectsListStore } from '../store';
 import { Project, ProjectStatus } from '../types';
 import type { Task, TaskStatus, ProjectConfig } from '../../../types';
 import { SupplierOrderModal } from './SupplierOrderModal';
+import { TeamSection } from './TeamSection';
 
 interface ProjectDetailModalProps {
   project: Project | null;
@@ -432,6 +433,9 @@ export function ProjectDetailModal({ project, onClose }: ProjectDetailModalProps
                   <ArrowUpRight className="h-3 w-3" />
                 </button>
               </div>
+
+              {/* ── Team — per-project membership list + invite affordance ── */}
+              <TeamSection projectId={project.id} projectName={project.name} />
 
               {/* ── Configuration (read-only mirror of /admin → Project config) ── */}
               <ConfigPanel projectId={project.id} />

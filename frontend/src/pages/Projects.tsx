@@ -1,14 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowUpRight, ChevronDown, Plus, Search, Sparkles, X } from 'lucide-react';
+import { ArrowUpRight, ChevronDown, Plus, Search, X } from 'lucide-react';
 import { useAppStore } from '../store';
 import { fadeUp, staggerContainer } from '../lib/motion/variants';
 import { canCreateProject, canDeleteProject } from '../lib/permissions';
 import { useProjectsListStore } from './projects/store';
 import { ProjectsListTab } from './projects/components/ProjectsListTab';
 import { NewProjectModal } from './projects/components/NewProjectModal';
-import { generateDemoProject } from './projects/lib/generateDemoProject';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 import type { Project, ProjectStatus } from './projects/types';
 
@@ -234,17 +233,6 @@ export default function Projects() {
 
             {canCreate ? (
               <div className="flex flex-wrap items-center gap-2 self-start">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const result = generateDemoProject();
-                    setActiveProject(result.project.id);
-                  }}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700"
-                >
-                  <Sparkles className="h-3.5 w-3.5" />
-                  Generate demo project
-                </button>
                 <button
                   type="button"
                   onClick={() => setNewProjectOpen(true)}

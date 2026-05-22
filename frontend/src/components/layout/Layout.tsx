@@ -26,8 +26,13 @@ export default function Layout() {
   // incidents cache also requires the manager-tier permission since workers
   // don't see hazards.
   const canSeeHazards = canViewSafetyIncident(currentProfile);
-  const activeProjectId = isAuthenticated ? project.id : null;
-  useSafetyIncidentsCache(isAuthenticated && canSeeHazards ? project.id : null);
+  // Defensive: `project` is typed Project but in practice resolves through
+  // `toLegacyProject(selectActiveProject(...))` which can yield a placeholder
+  // with no id (brand-new user, pre-first-project, store mid-hydration). A
+  // raw `project.id` access there would crash Layout and unmount the entire
+  // authenticated shell, which reads as a white page in both dev and prod.
+  const activeProjectId = isAuthenticated ? (project?.id ?? null) : null;
+  useSafetyIncidentsCache(isAuthenticated && canSeeHazards ? activeProjectId : null);
   useProjectTasksRealtime(activeProjectId);
   useProjectPhotosRealtime(activeProjectId);
   useProjectCommentsRealtime(activeProjectId);

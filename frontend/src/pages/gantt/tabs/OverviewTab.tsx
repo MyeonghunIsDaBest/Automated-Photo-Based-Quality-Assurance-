@@ -20,10 +20,10 @@ import { useFeatureStore } from '../../../store/features';
 import { useGanttSideStore, orderTotal } from '../store';
 import { useProjectActivity } from '../lib/useProjectActivity';
 import ActivityFeed from '../../../components/activity/ActivityFeed';
-import { navigateActivityEvent } from '../../../lib/activity/navigate';
+import ActivityDetailModal from '../../../components/activity/ActivityDetailModal';
+import type { ActivityEvent } from '../../../lib/activity/types';
 import { useNavigate } from 'react-router-dom';
 import { TabHeader } from '../components/TabHeader';
-import MockAnalysisButton from '../../../components/mockAi/MockAnalysisButton';
 import type { TabId } from '../types';
 
 interface OverviewTabProps {
@@ -58,6 +58,13 @@ export function OverviewTab({
 }: OverviewTabProps) {
   const navigate = useNavigate();
   const [heroMode, setHeroMode] = useState<HeroMode>('trend');
+
+  // Activity row click → modal-first detail surface. The modal shows the
+  // event metadata (who/what/when) and a single "Open detail" action that
+  // deep-links to the entity via the shared router. Switching from
+  // immediate-navigate to modal-first means the row is "usable" — the user
+  // sees full context first, then chooses to drill in.
+  const [activeActivityEvent, setActiveActivityEvent] = useState<ActivityEvent | null>(null);
 
   // ── Live tick — bumps every 30s so relative timestamps stay current ──
   const [, setTick] = useState(0);
@@ -175,6 +182,12 @@ export function OverviewTab({
     };
   }, [tasks, orders, deliveries, invoices, punch, warranties, project.endDate, progressHistory]);
 
+  // Empty state used to bail to a separate `SetupGuide` panel — but the user-
+  // facing Overview is more useful when the layout is *always* present and the
+  // individual cards carry their own zero-states. The KPI tiles already render
+  // "0%" / "0" cleanly; the Activity feed shows its own empty caption; the
+  // hero card is happy with an empty task list. So drop the gate and let the
+  // structure carry through.
   const hasData = totals.total > 0 || orders.length > 0 || invoices.length > 0;
 
   const dateRange = project.startDate && project.endDate
@@ -197,190 +210,186 @@ export function OverviewTab({
         }
       />
 
-      {!hasData ? (
+      {!hasData && (
         <SetupGuide
           project={project}
           canEdit={canEdit}
           onJumpToTab={onJumpToTab}
         />
-      ) : (
-        <>
-          {/* ── Mock-AI runner card ──────────────────────────────────── */}
-          {/* Demo-only: click to pick pending photos for this project and  */}
-          {/* bump each linked task by 4-10%. The runtime gates itself on   */}
-          {/* `project_config.ai_default_model === 'mvp-stub@v0'` so a real  */}
-          {/* Phase D rollout silently bypasses it.                         */}
-          <div className="mb-6">
-            <MockAnalysisButton projectId={project.id} variant="card" viewHref="/gantt?tab=review" />
-          </div>
+      )}
 
-          {/* ── Top KPI strip ────────────────────────────────────────── */}
-          <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <KpiCell
-              icon={TrendingUp}
-              label="Overall progress"
-              value={`${totals.overall}%`}
-              accent="emerald"
-              caption={
-                totals.deltaWeek === 0
-                  ? 'No change this week'
-                  : `${totals.deltaWeek > 0 ? '+' : ''}${totals.deltaWeek}% this week`
-              }
-            />
-            <KpiCell
-              icon={Activity}
-              label="Schedule"
-              value={
-                totals.scheduleHealth === 'on_track' ? 'On track' :
-                totals.scheduleHealth === 'at_risk'  ? 'At risk'  : 'Behind'
-              }
-              accent={
-                totals.scheduleHealth === 'on_track' ? 'emerald' :
-                totals.scheduleHealth === 'at_risk'  ? 'amber'   : 'red'
-              }
-              caption={`${totals.delayed} delayed · ${totals.complete} complete`}
-            />
-            <KpiCell
-              icon={ListChecks}
-              label="Tasks"
-              value={String(totals.total)}
-              accent="slate"
-              caption={`${totals.inProgress} in progress · ${totals.notStarted} not started`}
-            />
-            <KpiCell
-              icon={AlertTriangle}
-              label="Open issues"
-              value={String(totals.openIssues)}
-              accent={totals.openIssues > 0 ? 'red' : 'emerald'}
-              caption={`${totals.delayed} delayed · ${totals.punchOpen} punch`}
-            />
-          </div>
+      {/* ── Top KPI strip ────────────────────────────────────────── */}
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <KpiCell
+          icon={TrendingUp}
+          label="Overall progress"
+          value={`${totals.overall}%`}
+          accent="emerald"
+          caption={
+            totals.deltaWeek === 0
+              ? 'No change this week'
+              : `${totals.deltaWeek > 0 ? '+' : ''}${totals.deltaWeek}% this week`
+          }
+        />
+        <KpiCell
+          icon={Activity}
+          label="Schedule"
+          value={
+            totals.scheduleHealth === 'on_track' ? 'On track' :
+            totals.scheduleHealth === 'at_risk'  ? 'At risk'  : 'Behind'
+          }
+          accent={
+            totals.scheduleHealth === 'on_track' ? 'emerald' :
+            totals.scheduleHealth === 'at_risk'  ? 'amber'   : 'red'
+          }
+          caption={`${totals.delayed} delayed · ${totals.complete} complete`}
+        />
+        <KpiCell
+          icon={ListChecks}
+          label="Tasks"
+          value={String(totals.total)}
+          accent="slate"
+          caption={`${totals.inProgress} in progress · ${totals.notStarted} not started`}
+        />
+        <KpiCell
+          icon={AlertTriangle}
+          label="Open issues"
+          value={String(totals.openIssues)}
+          accent={totals.openIssues > 0 ? 'red' : 'emerald'}
+          caption={`${totals.delayed} delayed · ${totals.punchOpen} punch`}
+        />
+      </div>
 
-          {/* ── Hero: Schedule & progress (Trend ⇆ Timeline ⇆ Calendar) ─ */}
-          <Card className="mb-6 overflow-hidden">
-            <CardContent className="p-0">
-              <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-end sm:justify-between sm:px-5 sm:py-4">
-                <div className="min-w-0">
-                  <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
-                    Schedule &amp; progress
-                  </p>
-                  <h3
-                    className="mt-1 text-lg font-medium leading-tight text-slate-900 sm:text-xl"
-                    style={{ fontFamily: "'Fraunces', Georgia, serif", letterSpacing: '-0.02em', textWrap: 'balance' }}
-                  >
-                    {heroMode === 'trend'    ? 'Progress trend.'   :
-                     heroMode === 'timeline' ? 'Timeline view.'    : 'Calendar view.'}
-                  </h3>
-                </div>
-                <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 sm:mx-0 sm:overflow-visible sm:px-0">
-                  <ModeButton
-                    active={heroMode === 'trend'}
-                    onClick={() => setHeroMode('trend')}
-                    icon={TrendingUp}
-                    label="Trend"
-                  />
-                  <ModeButton
-                    active={heroMode === 'timeline'}
-                    onClick={() => setHeroMode('timeline')}
-                    icon={GanttChartSquare}
-                    label="Timeline"
-                  />
-                  <ModeButton
-                    active={heroMode === 'calendar'}
-                    onClick={() => setHeroMode('calendar')}
-                    icon={CalendarIcon}
-                    label="Calendar"
-                  />
-                </div>
-              </div>
-
-              {heroMode === 'trend' && (
-                <TrendBody trend={totals.trend} overall={totals.overall} delta={totals.deltaWeek} />
-              )}
-              {heroMode === 'timeline' && (
-                <div className="p-2 sm:p-3">
-                  <GanttChart
-                    tasks={tasks}
-                    startDate={project.startDate}
-                    endDate={project.endDate}
-                  />
-                </div>
-              )}
-              {heroMode === 'calendar' && (
-                <CalendarMode tasks={tasks} zones={zones} />
-              )}
-            </CardContent>
-          </Card>
-
-          {/* ── Mid grid: Finance · Task breakdown · Watchlist ──────── */}
-          <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
-            <FinanceCard
-              ordersOpen={totals.ordersOpen}
-              ordersPending={totals.ordersPending}
-              ordersCommitted={totals.ordersCommitted}
-              deliveriesPending={totals.deliveriesPending}
-              deliveriesThisWeek={totals.deliveriesThisWeek}
-              invoicesOutstanding={totals.invoicesOutstanding}
-              invoicesPaid={totals.invoicesPaid}
-              invoicesOverdue={totals.invoicesOverdue}
-              invoicesPending={totals.invoicesPending}
-              onJumpToTab={onJumpToTab}
-            />
-
-            <TaskBreakdownCard
-              total={totals.total}
-              inProgress={totals.inProgress}
-              notStarted={totals.notStarted}
-              complete={totals.complete}
-              delayed={totals.delayed}
-              blocked={totals.blocked}
-              onJumpToTab={onJumpToTab}
-            />
-
-            <WatchlistCard
-              punchOpen={totals.punchOpen}
-              warrantiesExpiringSoon={totals.warrantiesExpiringSoon.length}
-              daysRemaining={totals.daysRemaining}
-              endDate={project.endDate}
-              onJumpToTab={onJumpToTab}
-            />
-          </div>
-
-          {/* ── Bottom grid: Activity · (Files + Notes) ─────────────── */}
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            <Card className="lg:col-span-2">
-              <CardContent className="p-0">
-                <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 sm:px-5">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span className="relative flex h-2 w-2 flex-shrink-0">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-                      <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-                    </span>
-                    <h3 className="text-sm font-medium text-slate-900">Live activity</h3>
-                  </div>
-                  <span className="whitespace-nowrap text-[11px] tabular-nums text-slate-400">
-                    {activity.length} latest
-                  </span>
-                </div>
-                <ActivityFeed
-                  events={activity}
-                  onSelect={(e) => navigateActivityEvent(e, project.id, navigate)}
-                  emptyLabel="Nothing has happened on this project yet."
-                />
-              </CardContent>
-            </Card>
-
-            <div className="flex flex-col gap-4">
-              <RecentFilesCard files={projectFiles} onJumpToTab={onJumpToTab} />
-              <RecentNotesCard
-                comments={projectComments}
-                tasks={tasks}
-                onJumpToTab={onJumpToTab}
+      {/* ── Hero: Schedule & progress (Trend ⇆ Timeline ⇆ Calendar) ─ */}
+      <Card className="mb-6 overflow-hidden">
+        <CardContent className="p-0">
+          <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-end sm:justify-between sm:px-5 sm:py-4">
+            <div className="min-w-0">
+              <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
+                Schedule &amp; progress
+              </p>
+              <h3
+                className="mt-1 text-lg font-medium leading-tight text-slate-900 sm:text-xl"
+                style={{ fontFamily: "'Fraunces', Georgia, serif", letterSpacing: '-0.02em', textWrap: 'balance' }}
+              >
+                {heroMode === 'trend'    ? 'Progress trend.'   :
+                 heroMode === 'timeline' ? 'Timeline view.'    : 'Calendar view.'}
+              </h3>
+            </div>
+            <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 sm:mx-0 sm:overflow-visible sm:px-0">
+              <ModeButton
+                active={heroMode === 'trend'}
+                onClick={() => setHeroMode('trend')}
+                icon={TrendingUp}
+                label="Trend"
+              />
+              <ModeButton
+                active={heroMode === 'timeline'}
+                onClick={() => setHeroMode('timeline')}
+                icon={GanttChartSquare}
+                label="Timeline"
+              />
+              <ModeButton
+                active={heroMode === 'calendar'}
+                onClick={() => setHeroMode('calendar')}
+                icon={CalendarIcon}
+                label="Calendar"
               />
             </div>
           </div>
-        </>
-      )}
+
+          {heroMode === 'trend' && (
+            <TrendBody trend={totals.trend} overall={totals.overall} delta={totals.deltaWeek} />
+          )}
+          {heroMode === 'timeline' && (
+            <div className="p-2 sm:p-3">
+              <GanttChart
+                tasks={tasks}
+                startDate={project.startDate}
+                endDate={project.endDate}
+              />
+            </div>
+          )}
+          {heroMode === 'calendar' && (
+            <CalendarMode tasks={tasks} zones={zones} />
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Mid grid: Finance · Task breakdown · Watchlist ──────── */}
+      <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <FinanceCard
+          ordersOpen={totals.ordersOpen}
+          ordersPending={totals.ordersPending}
+          ordersCommitted={totals.ordersCommitted}
+          deliveriesPending={totals.deliveriesPending}
+          deliveriesThisWeek={totals.deliveriesThisWeek}
+          invoicesOutstanding={totals.invoicesOutstanding}
+          invoicesPaid={totals.invoicesPaid}
+          invoicesOverdue={totals.invoicesOverdue}
+          invoicesPending={totals.invoicesPending}
+          onJumpToTab={onJumpToTab}
+        />
+
+        <TaskBreakdownCard
+          total={totals.total}
+          inProgress={totals.inProgress}
+          notStarted={totals.notStarted}
+          complete={totals.complete}
+          delayed={totals.delayed}
+          blocked={totals.blocked}
+          onJumpToTab={onJumpToTab}
+        />
+
+        <WatchlistCard
+          punchOpen={totals.punchOpen}
+          warrantiesExpiringSoon={totals.warrantiesExpiringSoon.length}
+          daysRemaining={totals.daysRemaining}
+          endDate={project.endDate}
+          onJumpToTab={onJumpToTab}
+        />
+      </div>
+
+      {/* ── Bottom grid: Activity · (Files + Notes) ─────────────── */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardContent className="p-0">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 sm:px-5">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="relative flex h-2 w-2 flex-shrink-0">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                </span>
+                <h3 className="text-sm font-medium text-slate-900">Live activity</h3>
+              </div>
+              <span className="whitespace-nowrap text-[11px] tabular-nums text-slate-400">
+                {activity.length} latest
+              </span>
+            </div>
+            <ActivityFeed
+              events={activity}
+              onSelect={(e) => setActiveActivityEvent(e)}
+              emptyLabel="Nothing has happened on this project yet."
+            />
+          </CardContent>
+        </Card>
+
+        <div className="flex flex-col gap-4">
+          <RecentFilesCard files={projectFiles} onJumpToTab={onJumpToTab} />
+          <RecentNotesCard
+            comments={projectComments}
+            tasks={tasks}
+            onJumpToTab={onJumpToTab}
+          />
+        </div>
+      </div>
+
+      <ActivityDetailModal
+        event={activeActivityEvent}
+        projectId={project.id}
+        navigate={navigate}
+        onClose={() => setActiveActivityEvent(null)}
+      />
     </>
   );
 }

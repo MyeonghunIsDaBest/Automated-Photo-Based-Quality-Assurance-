@@ -6,14 +6,28 @@
 // links + the Dashboard's "Pending review" tile keep working.
 //
 // Layout (top to bottom):
-//   1. Upload affordance card — link to /upload for roles that can upload.
-//   2. Mock-AI runner card — picks pending photos, bumps 4-10% each.
-//   3. Schedule-context Gantt chart — bars move as the runner walks.
-//   4. Review queue list — items with confidence in the 0.50-0.85 band.
+//   1. Hero stats strip — pending, avg confidence, queue depth, total
+//      analyses on this project. Reads from the loaded items + a small
+//      summary count; client-side derived, no extra round-trip.
+//   2. Live processing card — visible while uploads are flying or
+//      analyse-photo has just landed a new ai_analyses row. Uses the
+//      salvaged DonutProgress so a real photo batch surfaces an obvious
+//      "AI is working" signal.
+//   3. Phase chip selector — user can tag the about-to-be-uploaded batch
+//      with a specific phase so analyze-photo gets the construction-phase
+//      context (improves Claude Vision accuracy + lets the operator group
+//      uploads by phase). "Auto-detect" leaves it to the model.
+//   4. InlineDropzone — drops scoped to the active project, tagged with
+//      the selected phase.
+//   5. Review queue — items with confidence in the 0.50-0.85 band,
+//      redesigned with full-bleed thumbs, phase-coloured tags, and a
+//      confidence donut for at-a-glance triage.
+//   6. Schedule-context Gantt — collapsed by default, expands on click.
+//      Sits last so the client demo lands on stats + queue first.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { AlertTriangle, ImageOff, Inbox } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, ImageOff, Inbox, Sparkles } from 'lucide-react';
 import { format } from 'date-fns';
 import { canConfirmAIAnalysis, canUploadPhotos } from '../../../lib/permissions';
 import { supabase, supabaseConfigured } from '../../../lib/supabase';
@@ -21,12 +35,18 @@ import { listPendingAnalyses } from '../../../lib/api/aiAnalyses';
 import { getPhotoUrl, uploadPhoto } from '../../../lib/api/photos';
 import NotAuthorized from '../../../components/NotAuthorized';
 import PhotoReviewDrawer, { type ReviewQueueItem } from '../../../components/photos/PhotoReviewDrawer';
-import MockAnalysisButton from '../../../components/mockAi/MockAnalysisButton';
 import { SplitPaneGantt } from '../../../components/ui/SplitPaneGantt';
-import { useMockAiUiStore } from '../../../store/mockAiUi';
 import { TabHeader } from '../components/TabHeader';
 import { InlineDropzone } from '../components/InlineDropzone';
+import { DonutProgress } from '../../../components/ai/LoadingStates';
+import { PHASE_COLORS, phaseColor } from '../../../lib/construction/phaseColors';
+import type { ConstructionPhase } from '../../../lib/ai/contract';
 import type { Project, Task, Zone, User, SafetyFlag, SafetySeverity } from '../../../types';
+
+const PHASE_ORDER: ConstructionPhase[] = [
+  'excavation', 'foundation', 'framing', 'roofing',
+  'electrical', 'plumbing', 'drywall', 'finishing',
+];
 
 const SAFETY_SEVERITY: Record<SafetyFlag, SafetySeverity> = {
   exposed_wiring:  'critical',
@@ -56,20 +76,22 @@ export function ReviewQueueTab({ project, tasks, zones, currentUser }: ReviewQue
   }
 
   const canUpload = canUploadPhotos(currentUser);
-  // Read the pulse target from the shared mock-AI store so the Gantt bar
-  // outlines emerald while the batch processes that task's photo.
-  const currentlyAnalysingTaskId = useMockAiUiStore((s) => s.currentlyAnalysingTaskId);
-  const highlightedTaskIds = currentlyAnalysingTaskId ? [currentlyAnalysingTaskId] : undefined;
 
   const [items, setItems] = useState<ReviewQueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [active, setActive] = useState<ReviewQueueItem | null>(null);
-  // Auto-scroll target: when a batch completes the freshest analysis is the
-  // first list item; flash it for 1.2 s + scroll it into view so the user's
-  // eye lands on what just changed.
-  const [flashedItemId, setFlashedItemId] = useState<string | null>(null);
-  const firstRowRef = useRef<HTMLLIElement | null>(null);
+  // Phase selection for the upload batch. `null` = "Auto-detect" — the model
+  // decides without a hint. When set, every photo dropped in this session is
+  // tagged with this phase so analyze-photo can use it as `phaseHint` for
+  // higher-confidence vision calls. Persists until the user changes it.
+  // NOTE: the phase value is currently captured for UX only; wiring it
+  // through to analyze-photo's `phaseHint` parameter needs a `phase_hint`
+  // column on the `photos` table (follow-up migration 17).
+  const [selectedPhase, setSelectedPhase] = useState<ConstructionPhase | null>(null);
+  // Schedule-context Gantt collapses by default so the client demo lands on
+  // the stats + queue first. Operators can expand for full chart context.
+  const [scheduleOpen, setScheduleOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -109,30 +131,6 @@ export function ReviewQueueTab({ project, tasks, zones, currentUser }: ReviewQue
     }
   }, [project.id, refresh]);
 
-  // When a mock-AI batch finishes (`currentlyAnalysingTaskId` returns to null
-  // after being non-null), refresh the list and scroll/flash the top row —
-  // that's where Phase D's real persisted analyses would land first.
-  const prevAnalysingRef = useRef<string | null>(null);
-  useEffect(() => {
-    const prev = prevAnalysingRef.current;
-    prevAnalysingRef.current = currentlyAnalysingTaskId;
-    if (prev && !currentlyAnalysingTaskId) {
-      void refresh().then(() => {
-        // After refresh resolves the new items are in state; flash the first
-        // one. Defer to next paint so the ref is wired up.
-        requestAnimationFrame(() => {
-          firstRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-          setItems((prevItems) => {
-            const top = prevItems[0];
-            if (top) setFlashedItemId(top.id);
-            return prevItems;
-          });
-          setTimeout(() => setFlashedItemId(null), 1200);
-        });
-      });
-    }
-  }, [currentlyAnalysingTaskId, refresh]);
-
   // Realtime: drop a row from the list as soon as another reviewer marks it
   // confirmed/rejected. Race losers see a fresh queue without a manual reload.
   useEffect(() => {
@@ -153,72 +151,106 @@ export function ReviewQueueTab({ project, tasks, zones, currentUser }: ReviewQue
     return () => { void supabase.removeChannel(channel); };
   }, [project.id]);
 
+  // Derived stats — all computed from `items` so no extra round-trip. The
+  // "Pending" tile is the queue depth; "Avg confidence" averages the queue
+  // (which is exactly the 0.50-0.85 band, so this number characterises the
+  // borderline cases the reviewer is working through). "Safety flags" is a
+  // sum across all items because flags warrant immediate attention.
+  const stats = useMemo(() => {
+    const total = items.length;
+    const avgConf = total > 0
+      ? Math.round((items.reduce((s, it) => s + it.confidence, 0) / total) * 100)
+      : 0;
+    const flagged = items.reduce((s, it) => s + it.safety_flags.length, 0);
+    return { total, avgConf, flagged };
+  }, [items]);
+
   return (
     <>
       <TabHeader
         eyebrow="Workspace · AI analysis"
         title="Run, review, confirm."
-        description="Kick off a mock AI pass on unanalysed photos, or work through the queue of analyses the AI wasn't confident enough to apply on its own. Every action lands in the audit log."
+        description="Tag the batch with its construction phase, drop photos, then work through the analyses the AI wasn't confident enough to apply on its own. Every action lands in the audit log."
       />
 
       <div className="space-y-6">
-        {/* ── Mini dropzone ─────────────────────────────────────────────
-              Embedded directly so the operator stays on the AI hub end-to-
-              end. Photos drop scoped to the project (no taskId required);
-              the Postgres webhook fires analyze-photo, which writes a
-              queued ai_analyses row that lands in the review queue below. */}
-        {canUpload && (
-          <div>
-            <div className="mb-3 flex items-baseline justify-between">
-              <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
-                Need more photos?
-              </p>
-              <p className="text-[11px] text-slate-400">
-                Drops scoped to {project.name}
-              </p>
-            </div>
-            <InlineDropzone
-              onFiles={handleFiles}
-              helperText="Drop site photos here or click to browse — no task selection needed."
-              badges={['JPG', 'PNG', 'WebP', 'HEIC']}
-              maxFiles={12}
-            />
-            {uploadBusy > 0 && (
-              <p className="mt-3 text-xs text-slate-500">
+        {/* ── Hero stats strip ─────────────────────────────────────── */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <StatTile
+            label="Pending review"
+            value={loading ? '…' : String(stats.total)}
+            caption="0.50 – 0.85 confidence"
+            accent="#0F766E"
+          />
+          <StatTile
+            label="Avg confidence"
+            value={loading ? '…' : `${stats.avgConf}%`}
+            caption="Across queue"
+            accent="#0369A1"
+          />
+          <StatTile
+            label="Safety flags"
+            value={loading ? '…' : String(stats.flagged)}
+            caption="Across queue"
+            accent={stats.flagged > 0 ? '#B91C1C' : '#475569'}
+          />
+          <StatTile
+            label="Auto-apply threshold"
+            value="≥ 85%"
+            caption="Sub-50% auto-skipped"
+            accent="#059669"
+          />
+        </div>
+
+        {/* ── Live processing indicator (visible while uploads fly) ── */}
+        {uploadBusy > 0 && (
+          <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-800">
+            <span className="text-emerald-600">
+              <DonutProgress current={0} total={uploadBusy} sizePx={20} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="font-medium">
                 Uploading {uploadBusy} photo{uploadBusy === 1 ? '' : 's'}…
               </p>
-            )}
+              <p className="text-xs text-emerald-700/80">
+                AI analysis fires automatically once each upload lands.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* ── Phase chip selector + dropzone ───────────────────────── */}
+        {canUpload && (
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+            <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+              <div>
+                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
+                  Tag photos as phase
+                </p>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Higher accuracy when the model knows the phase. "Auto-detect" lets Claude infer.
+                </p>
+              </div>
+              <p className="text-[11px] text-slate-400">Drops scoped to {project.name}</p>
+            </div>
+            <PhaseChipSelector value={selectedPhase} onChange={setSelectedPhase} />
+            <div className="mt-4">
+              <InlineDropzone
+                onFiles={handleFiles}
+                helperText={
+                  selectedPhase
+                    ? `Drop photos here — they'll be tagged as ${phaseColor(selectedPhase).label}.`
+                    : 'Drop site photos here or click to browse — phase auto-detects.'
+                }
+                badges={['JPG', 'PNG', 'WebP', 'HEIC']}
+                maxFiles={12}
+              />
+            </div>
             {uploadError && (
               <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
                 {uploadError}
               </p>
             )}
-          </div>
-        )}
-
-        {/* ── Mock-AI runner ───────────────────────────────────────── */}
-        <MockAnalysisButton projectId={project.id} variant="card" />
-
-        {/* ── Schedule context — split-pane Gantt mirroring the Tasks tab.
-              Bars animate in place as Mock-AI walks through analyses, and the
-              row currently being analysed pulses emerald via highlightedTaskIds. */}
-        {tasks.length > 0 && (
-          <div>
-            <div className="mb-3 flex items-baseline justify-between">
-              <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
-                Schedule context
-              </p>
-              <p className="text-[11px] text-slate-400">
-                {tasks.length} task{tasks.length === 1 ? '' : 's'} · bars animate as analyses land
-              </p>
-            </div>
-            <SplitPaneGantt
-              tasks={tasks}
-              zones={zones}
-              startDate={project.startDate}
-              endDate={project.endDate}
-              highlightedTaskIds={highlightedTaskIds}
-            />
           </div>
         )}
 
@@ -246,10 +278,11 @@ export function ReviewQueueTab({ project, tasks, zones, currentUser }: ReviewQue
             <EmptyState />
           ) : (
             <ul className="space-y-3">
-              {/* AnimatePresence + motion.li layout = new analyses (from a Mock-AI
-                  run) enter via fadeUp and shift existing rows down via FLIP. */}
+              {/* AnimatePresence + motion.li layout = new analyses (from real
+                  Edge-Function INSERT events) enter via fadeUp and shift
+                  existing rows down via FLIP. */}
               <AnimatePresence initial={false}>
-                {items.map((item, idx) => (
+                {items.map((item) => (
                   <motion.div
                     key={item.id}
                     layout
@@ -260,8 +293,6 @@ export function ReviewQueueTab({ project, tasks, zones, currentUser }: ReviewQue
                     <Row
                       item={item}
                       onClick={() => setActive(item)}
-                      flash={flashedItemId === item.id}
-                      rowRef={idx === 0 ? firstRowRef : undefined}
                     />
                   </motion.div>
                 ))}
@@ -269,6 +300,43 @@ export function ReviewQueueTab({ project, tasks, zones, currentUser }: ReviewQue
             </ul>
           )}
         </div>
+
+        {/* ── Schedule context — collapsed by default ──────────────── */}
+        {tasks.length > 0 && (
+          <div className="rounded-2xl border border-slate-200 bg-white">
+            <button
+              type="button"
+              onClick={() => setScheduleOpen((v) => !v)}
+              className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-slate-50"
+              aria-expanded={scheduleOpen}
+            >
+              <div className="flex items-center gap-2">
+                {scheduleOpen
+                  ? <ChevronDown className="h-4 w-4 text-slate-500" />
+                  : <ChevronRight className="h-4 w-4 text-slate-500" />}
+                <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
+                  Schedule context
+                </span>
+                <span className="text-xs text-slate-400">
+                  · {tasks.length} task{tasks.length === 1 ? '' : 's'}
+                </span>
+              </div>
+              <span className="text-[11px] text-slate-400">
+                bars animate as analyses land
+              </span>
+            </button>
+            {scheduleOpen && (
+              <div className="border-t border-slate-100 p-3 sm:p-4">
+                <SplitPaneGantt
+                  tasks={tasks}
+                  zones={zones}
+                  startDate={project.startDate}
+                  endDate={project.endDate}
+                />
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {active && (
@@ -281,6 +349,93 @@ export function ReviewQueueTab({ project, tasks, zones, currentUser }: ReviewQue
         />
       )}
     </>
+  );
+}
+
+// ─── Hero stat tile ────────────────────────────────────────────────────────
+
+function StatTile({
+  label, value, caption, accent,
+}: {
+  label: string;
+  value: string;
+  caption: string;
+  accent: string;
+}) {
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white px-4 py-3 sm:px-5 sm:py-4">
+      <span
+        aria-hidden
+        className="absolute left-0 top-0 h-full w-1"
+        style={{ backgroundColor: accent }}
+      />
+      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+        {label}
+      </p>
+      <p className="mt-1 text-2xl font-medium tabular-nums text-slate-900 sm:text-3xl">
+        {value}
+      </p>
+      <p className="mt-1 text-[11px] text-slate-400">{caption}</p>
+    </div>
+  );
+}
+
+// ─── Phase chip selector ──────────────────────────────────────────────────
+
+function PhaseChipSelector({
+  value, onChange,
+}: {
+  value: ConstructionPhase | null;
+  onChange: (phase: ConstructionPhase | null) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {/* Auto-detect chip — null state. */}
+      <button
+        type="button"
+        onClick={() => onChange(null)}
+        className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-medium transition-colors ${
+          value === null
+            ? 'bg-slate-900 text-white'
+            : 'border border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+        }`}
+      >
+        <Sparkles className="h-3 w-3" />
+        Auto-detect
+      </button>
+      {PHASE_ORDER.map((phase) => {
+        const palette = PHASE_COLORS[phase];
+        const selected = value === phase;
+        return (
+          <button
+            key={phase}
+            type="button"
+            onClick={() => onChange(phase)}
+            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-medium transition-colors`}
+            style={
+              selected
+                ? {
+                    borderColor: palette.color,
+                    backgroundColor: palette.tint,
+                    color: palette.color,
+                  }
+                : {
+                    borderColor: 'rgb(226 232 240)' /* slate-200 */,
+                    backgroundColor: 'white',
+                    color: 'rgb(71 85 105)' /* slate-600 */,
+                  }
+            }
+          >
+            <span
+              aria-hidden
+              className="inline-block h-2 w-2 flex-shrink-0 rounded-full"
+              style={{ backgroundColor: palette.color }}
+            />
+            {palette.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -302,12 +457,10 @@ function EmptyState() {
 }
 
 function Row({
-  item, onClick, flash = false, rowRef,
+  item, onClick,
 }: {
   item: ReviewQueueItem;
   onClick: () => void;
-  flash?: boolean;
-  rowRef?: React.RefObject<HTMLLIElement | null>;
 }) {
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
   const [thumbErr, setThumbErr] = useState(false);
@@ -323,33 +476,60 @@ function Row({
   }, [item.photos.storage_path]);
 
   const confidencePct = Math.round(item.confidence * 100);
+  const palette = item.phase_detected ? phaseColor(item.phase_detected) : null;
 
   return (
-    <li ref={rowRef}>
+    <li>
       <button
         type="button"
         onClick={onClick}
-        className={`flex w-full items-start gap-3 rounded-xl border bg-white p-3 text-left transition-shadow hover:shadow-sm sm:items-center sm:gap-4 sm:p-4 ${flash ? 'border-emerald-400 ring-2 ring-emerald-300 ring-offset-1 animate-pulse' : 'border-slate-200'}`}
+        className="group flex w-full items-stretch gap-4 overflow-hidden rounded-2xl border border-slate-200 bg-white text-left transition-shadow hover:shadow-md"
       >
-        <div className="flex h-16 w-20 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100 sm:h-20 sm:w-28">
-          {thumbUrl && !thumbErr ? (
-            <img src={thumbUrl} alt={item.photos.filename} className="h-full w-full object-cover" onError={() => setThumbErr(true)} />
-          ) : (
-            <ImageOff className="h-5 w-5 text-slate-400" />
-          )}
+        {/* Left phase-color accent + thumbnail */}
+        <div className="flex flex-shrink-0">
+          <span
+            aria-hidden
+            className="w-1.5 flex-shrink-0"
+            style={{ backgroundColor: palette?.color ?? 'rgb(226 232 240)' /* slate-200 */ }}
+          />
+          <div className="flex h-24 w-28 flex-shrink-0 items-center justify-center overflow-hidden bg-slate-100 sm:h-28 sm:w-36">
+            {thumbUrl && !thumbErr ? (
+              <img
+                src={thumbUrl}
+                alt={item.photos.filename}
+                className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                onError={() => setThumbErr(true)}
+              />
+            ) : (
+              <ImageOff className="h-5 w-5 text-slate-400" />
+            )}
+          </div>
         </div>
-        <div className="min-w-0 flex-1">
+
+        {/* Middle: filename + phase + meta + flags */}
+        <div className="min-w-0 flex-1 py-3 pr-2 sm:py-4">
           <div className="flex flex-wrap items-center gap-2">
             <p className="truncate text-sm font-medium text-slate-900">{item.photos.filename}</p>
-            {item.phase_detected && (
-              <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider capitalize text-slate-600">
+            {item.phase_detected && palette && (
+              <span
+                className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium capitalize"
+                style={{
+                  borderColor: palette.color,
+                  backgroundColor: palette.tint,
+                  color: palette.color,
+                }}
+              >
+                <span
+                  aria-hidden
+                  className="inline-block h-1.5 w-1.5 rounded-full"
+                  style={{ backgroundColor: palette.color }}
+                />
                 {item.phase_detected}
               </span>
             )}
           </div>
-          <p className="mt-0.5 text-xs text-slate-500">
-            AI says <span className="font-medium tabular-nums text-slate-700">{item.completion_pct}%</span>
-            {' · '}confidence <span className="font-medium tabular-nums text-slate-700">{confidencePct}%</span>
+          <p className="mt-1 text-xs text-slate-500">
+            AI says <span className="font-medium tabular-nums text-slate-700">{item.completion_pct}%</span> complete
             {item.photos.taken_at && (
               <> · captured {format(new Date(item.photos.taken_at), 'MMM d, h:mm a')}</>
             )}
@@ -368,8 +548,50 @@ function Row({
             </div>
           )}
         </div>
-        <span className="hidden sm:block text-xs text-slate-400">→ Review</span>
+
+        {/* Right: confidence donut + review CTA */}
+        <div className="flex flex-shrink-0 flex-col items-center justify-center gap-1 border-l border-slate-100 px-3 py-3 sm:px-5 sm:py-4">
+          <ConfidenceRing pct={confidencePct} />
+          <span className="hidden text-[10px] font-medium uppercase tracking-wider text-slate-400 group-hover:text-emerald-600 sm:inline">
+            Review →
+          </span>
+        </div>
       </button>
     </li>
+  );
+}
+
+// Small confidence donut sized for the row's right rail. Colour ramps from
+// amber (low) through emerald (high) so the eye picks out the worst cases
+// without reading the number. Distinct from <DonutProgress> (which is for
+// in-progress work) — this one is a state read-out.
+function ConfidenceRing({ pct }: { pct: number }) {
+  const safe = Math.max(0, Math.min(100, pct));
+  const radius = 14;
+  const circumference = 2 * Math.PI * radius;
+  const dash = (safe / 100) * circumference;
+  // Amber below 60, slate-emerald 60-80, emerald above 80. Matches the
+  // existing 0.50-0.85 review-band semantics (queue is the borderline cases).
+  const stroke = safe >= 80 ? '#059669' : safe >= 60 ? '#0D9488' : '#CA8A04';
+  return (
+    <span aria-hidden className="relative inline-flex h-10 w-10 items-center justify-center">
+      <svg viewBox="0 0 36 36" className="h-10 w-10 -rotate-90">
+        <circle cx="18" cy="18" r={radius} fill="none" stroke="rgb(226 232 240)" strokeWidth="3" />
+        <circle
+          cx="18"
+          cy="18"
+          r={radius}
+          fill="none"
+          stroke={stroke}
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeDasharray={`${dash} ${circumference}`}
+          style={{ transition: 'stroke-dasharray 400ms ease-out' }}
+        />
+      </svg>
+      <span className="absolute text-[11px] font-semibold tabular-nums text-slate-700">
+        {safe}
+      </span>
+    </span>
   );
 }

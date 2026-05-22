@@ -21,6 +21,7 @@ import { useGanttSideStore } from './gantt/store';
 import type { TabId } from './gantt/types';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 import { useUrlHydration } from '../lib/hooks/useUrlHydration';
+import { useProjectAccessGuard } from '../lib/hooks/useProjectAccessGuard';
 import { EditorialPageHeader } from '../components/editorial';
 
 import { OverviewTab }     from './gantt/tabs/OverviewTab';
@@ -64,6 +65,18 @@ type ActiveTab = TabSpec['id'];
 export default function Gantt() {
   const { tasks, zones, project, currentUser } = useAppStore();
   const documents = useFeatureStore((s) => s.documents);
+  // Defensive: store can briefly hold a placeholder project (mid-hydration,
+  // brand-new user before first project create) whose .id is empty. A bare
+  // `project.id` access there throws, which crashes the page mid-route-swap
+  // and reads as a white page until hard refresh. Coalesce to a stable empty
+  // string so memo / hook deps stay primitive.
+  const projectId = project?.id ?? '';
+
+  // Field-role access guard — worker / stakeholder / supplier deep-linking
+  // into a project they were never invited to gets bounced to /home with a
+  // toast. Admins/PMs pass through. Server-side RLS is the hard line; this
+  // is the UX wrapper.
+  useProjectAccessGuard(project?.id);
 
   // Subscribe to side-store slices so badges update live. Deliveries don't
   // contribute to the Supplier badge (informational, not action-needed) so
@@ -107,12 +120,12 @@ export default function Gantt() {
   // the user is on any page, not just Gantt.
 
   const projectTasks = useMemo(
-    () => tasks.filter((t) => t.projectId === project.id),
-    [tasks, project.id],
+    () => tasks.filter((t) => t.projectId === projectId),
+    [tasks, projectId],
   );
   const projectZones = useMemo(
-    () => zones.filter((z) => z.projectId === project.id),
-    [zones, project.id],
+    () => zones.filter((z) => z.projectId === projectId),
+    [zones, projectId],
   );
 
   // Counter badges for the tab strip. The Supplier tab's badge is the sum
@@ -121,9 +134,9 @@ export default function Gantt() {
   // deliveries don't add to the badge because most are completed records;
   // they're informational, not action-needed.
   const counts = useMemo(() => {
-    const projOrders     = orders?.[project.id]     ?? [];
-    const projInvoices   = invoices?.[project.id]   ?? [];
-    const projWarranties = warranties?.[project.id] ?? [];
+    const projOrders     = orders?.[projectId]     ?? [];
+    const projInvoices   = invoices?.[projectId]   ?? [];
+    const projWarranties = warranties?.[projectId] ?? [];
     const ordersOpen     = projOrders.filter((o) => o.status !== 'received' && o.status !== 'cancelled').length;
     const invoicesUnpaid = projInvoices.filter((i) => i.status !== 'paid').length;
     const now           = Date.now();
@@ -136,19 +149,19 @@ export default function Gantt() {
     // The Site Diary badge counts diary entries + open punch items now that
     // the two surfaces share a tab. Either kind of unfinished business is
     // surfaced together.
-    const punchOpen = (todos?.[project.id] ?? []).filter((p) => p.status === 'open').length;
+    const punchOpen = (todos?.[projectId] ?? []).filter((p) => p.status === 'open').length;
     return {
       overview:    undefined as number | undefined,
-      site_diary:  (dailyLogs?.[project.id] ?? []).length + punchOpen,
+      site_diary:  (dailyLogs?.[projectId] ?? []).length + punchOpen,
       tasks:       projectTasks.length,
       supplier:    ordersOpen + invoicesUnpaid + warrantiesSoon,
       inventory:   0, // selections list — count when quantity tracking lands
       plans: (documents ?? []).filter(
-        (d) => d.projectId === project.id && (d.category === 'blueprint' || d.category === 'permit'),
+        (d) => d.projectId === projectId && (d.category === 'blueprint' || d.category === 'permit'),
       ).length,
       uploads: undefined as number | undefined,
     };
-  }, [projectTasks, project.id, dailyLogs, todos, orders, invoices, warranties, documents]);
+  }, [projectTasks, projectId, dailyLogs, todos, orders, invoices, warranties, documents]);
 
 
   // ── Task mutation handlers ────────────────────────────────────────────
@@ -188,6 +201,30 @@ export default function Gantt() {
     if (next) setActiveTab(next);
   };
 
+  // Brand-new user or store mid-hydration: there's no active project yet.
+  // Render a friendly empty state instead of letting the tabs crash on
+  // `project.name` / `project.startDate` etc.
+  if (!project || !projectId) {
+    return (
+      <div className="editorial-root min-h-full bg-[#FAFAF7]">
+        <EditorialPageHeader
+          eyebrow="Plan · Schedule"
+          title="No active project."
+          description="Pick a project from the list to see its schedule, tasks, and uploads."
+          actions={
+            <Link
+              to="/projects"
+              className="group relative z-10 inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 active:scale-[0.98]"
+            >
+              <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
+              All projects
+            </Link>
+          }
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="editorial-root min-h-full bg-[#FAFAF7]">
       <EditorialPageHeader
@@ -198,7 +235,8 @@ export default function Gantt() {
         actions={
           <Link
             to="/projects"
-            className="group inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 transition-colors hover:text-slate-900"
+            aria-label="Back to all projects"
+            className="group relative z-10 inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 active:scale-[0.98]"
           >
             <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
             All projects

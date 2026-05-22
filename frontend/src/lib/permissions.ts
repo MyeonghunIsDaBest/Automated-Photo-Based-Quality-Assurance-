@@ -204,6 +204,32 @@ export function canDeleteProject(p: AdminPrincipal): boolean {
   return isOwnerPrincipal(p);
 }
 
+// Project-administration gate — used to control the "Team" section's invite
+// affordances on `pages/projects/components/ProjectDetailModal.tsx` and the
+// "+ Invite member" button. Mirrors the SQL RLS write policy in migration 16
+// (`members_write`): admin / PM tier can invite or remove members; field
+// roles cannot.
+export function canAdminProjects(p: AdminPrincipal): boolean {
+  const sg = principalGroup(p);
+  if (!sg) return false;
+  return (
+    sg === 'company_admin'    ||
+    sg === 'administrator'    ||
+    sg === 'project_manager'  ||
+    sg === 'construction_mgr' ||
+    sg === 'site_manager'
+  );
+}
+
+// Field-role predicate. These roles get the editorial `/home` landing
+// (instead of `/dashboard`) and are subject to the per-project access guard.
+// Anyone returning false here is an admin / PM / manager and lives on the
+// data-dense Dashboard.
+export function isFieldRole(p: AdminPrincipal): boolean {
+  const sg = principalGroup(p);
+  return sg === 'worker' || sg === 'stakeholder' || sg === 'supplier';
+}
+
 // Only Company Admin can change a user's security_group to/from
 // `company_admin` itself — Administrators can manage everyone else.
 export function canAssignSecurityGroup(actor: AdminPrincipal, target: SecurityGroup): boolean {

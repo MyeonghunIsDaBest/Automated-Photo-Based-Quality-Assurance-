@@ -64,6 +64,14 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
     if (!Number.isFinite(budgetNum) || budgetNum <= 0) {
       return setError('Budget must be a positive number.');
     }
+    // The `projects.budget` column is `numeric(14, 2)` — 12 digits before the
+    // decimal, max value 999,999,999,999.99. Catch overflow client-side with
+    // a friendly message instead of letting Postgres throw a "numeric field
+    // overflow" 400 that the modal couldn't surface cleanly anyway.
+    const MAX_BUDGET = 999_999_999_999;
+    if (budgetNum > MAX_BUDGET) {
+      return setError('Budget is too large. Maximum is 999,999,999,999.');
+    }
 
     // Persist — the create path auto-seeds 8 phase anchors + 57 default
     // milestones (see `createProject.ts` / `create_project_with_tasks` RPC),
@@ -85,7 +93,18 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
         useProjectsListStore.getState().setActiveProject(newId);
       } catch (err) {
         setSubmitting(false);
-        return setError(err instanceof Error ? err.message : 'Could not create project.');
+        // Supabase RPC errors come through as `PostgrestError` — a plain
+        // object with a `.message` field, NOT an Error instance. Check for
+        // the message field directly so the user sees the real reason
+        // ("numeric field overflow", "permission denied", etc.) instead of
+        // the generic fallback.
+        const msg =
+          (err as { message?: unknown })?.message;
+        return setError(
+          typeof msg === 'string' && msg.length > 0
+            ? msg
+            : 'Could not create project.',
+        );
       }
       setSubmitting(false);
     } else {

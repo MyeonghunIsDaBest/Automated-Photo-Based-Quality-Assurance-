@@ -68,7 +68,11 @@ export default function Login() {
         setError(result.error);
         return;
       }
-      navigate('/dashboard');
+      // Land on the index route so RoleHomeRedirect picks the role-correct
+      // home (worker / stakeholder / supplier → /home; admin/PM → /dashboard).
+      // Hardcoding `/dashboard` here bypassed the role split and dumped field
+      // roles on the data-dense panel.
+      navigate('/', { replace: true });
     } finally {
       setIsLoading(false);
     }

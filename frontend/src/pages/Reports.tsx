@@ -23,10 +23,15 @@ import {
   X,
 } from 'lucide-react';
 import { useAppStore } from '../store';
+import { useProjectAccessGuard } from '../lib/hooks/useProjectAccessGuard';
 import { useFeatureStore } from '../store/features';
 import { useFinanceStore, InvoiceStatus } from '../store/finance';
 import { useProjectsListStore } from './projects/store';
 import { canViewFinance } from '../lib/permissions';
+import { updateProject } from '../lib/api/projects';
+import { supabaseConfigured } from '../lib/supabase';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 import { GanttChart } from '../components/ui/GanttChart';
 import {
   AreaChart,
@@ -98,12 +103,42 @@ const TABS: { key: ReportTab; label: string; Icon: typeof BarChart3 }[] = [
 export default function Reports() {
   const { project, auditLogs, users, currentUser } = useAppStore();
   const projectsList = useProjectsListStore((s) => s.projects);
+
+  // Bounce field-role users away from projects they weren't invited to.
+  useProjectAccessGuard(project?.id);
   const tasks = useFeatureStore((s) => s.tasks);
   const progressTrend = useFeatureStore((s) => s.progressHistory);
   const reports = useFeatureStore((s) => s.reports);
   const generateReport = useFeatureStore((s) => s.generateReport);
   const budgets = useFinanceStore((s) => s.budgets);
   const invoices = useFinanceStore((s) => s.invoices);
+  const setBudget = useFinanceStore((s) => s.setBudget);
+
+  // Wires the "Set budget" empty-state button on the Financial tab. The button
+  // existed in the markup but had no click handler — testers reported "can't
+  // set budget" because it literally did nothing. Updates the local Zustand
+  // store (so the tab refreshes immediately) and, on real Supabase projects,
+  // also persists to `projects.budget` so the value survives a reload.
+  const handleSetBudget = async () => {
+    if (!financialProjectId) return;
+    const raw = window.prompt(`Set budget for ${projectName(financialProjectId)} (USD):`);
+    if (raw == null) return;
+    const total = Number(raw.replace(/[,_$\s]/g, ''));
+    if (!Number.isFinite(total) || total <= 0) {
+      window.alert('Budget must be a positive number.');
+      return;
+    }
+    setBudget({ projectId: financialProjectId, total, spent: 0, committed: 0 });
+    if (supabaseConfigured() && UUID_RE.test(financialProjectId)) {
+      try {
+        await updateProject(financialProjectId, { budget: total });
+      } catch (e) {
+        window.alert(
+          `Saved locally but could not persist to the server: ${e instanceof Error ? e.message : 'unknown error'}.`,
+        );
+      }
+    }
+  };
 
   const [activeTab, setActiveTab] = useState<ReportTab>('progress');
 
@@ -523,7 +558,11 @@ export default function Reports() {
                 <p className="mx-auto mt-2 max-w-sm text-sm text-slate-500">
                   Set a budget for {projectName(financialProjectId)} to begin tracking spend and recording invoices.
                 </p>
-                <button className="mt-6 inline-flex items-center gap-2 rounded-full bg-slate-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-700">
+                <button
+                  type="button"
+                  onClick={() => void handleSetBudget()}
+                  className="mt-6 inline-flex items-center gap-2 rounded-full bg-slate-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
+                >
                   <Plus className="h-4 w-4" />
                   Set budget
                 </button>

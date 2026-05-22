@@ -230,6 +230,24 @@ export interface Project {
   createdAt: string;
 }
 
+// Per-project membership (migration 16). One row per (project, user) pair
+// linked by an admin/PM. `accepted_at` is stamped on the user's first /home
+// visit via `accept_all_my_pending_invites`; `removed_at` is the soft-delete
+// for uninvites. Field-role users (worker/stakeholder/supplier) only see
+// projects with an active membership row.
+export interface ProjectMember {
+  id: string;
+  projectId: string;
+  userId: string;
+  /** PM/admin who placed the invite — may be null after that user is deleted. */
+  invitedBy: string | null;
+  invitedAt: string;
+  acceptedAt: string | null;
+  /** Soft-delete timestamp. When set, the row is treated as inactive. */
+  removedAt: string | null;
+  notes: string | null;
+}
+
 // Per-project configuration — sidecar to Project (one row per project, edited
 // via /admin → Project config). See migration 09 + lib/api/projectConfig.ts.
 // Every AI threshold, progression weight, branding token, and operating mode

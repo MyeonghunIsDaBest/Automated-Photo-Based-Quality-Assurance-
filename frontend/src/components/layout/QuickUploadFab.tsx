@@ -19,7 +19,6 @@ import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Camera, X, Upload as UploadIcon, Sparkles, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '../../store';
-import { useMockAnalysis } from '../../lib/hooks/useMockAnalysis';
 import { supabaseConfigured } from '../../lib/supabase';
 import { uploadPhoto } from '../../lib/api/photos';
 import { canUploadPhotos } from '../../lib/permissions';
@@ -91,7 +90,10 @@ function QuickUploadModal({
   const inputRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
 
-  const { run: runMockAi, isRunning: aiRunning } = useMockAnalysis(projectId);
+  // Real AI fires automatically server-side via the Postgres webhook on
+  // `photos` INSERT — no client-side trigger needed. The `autoAnalyse`
+  // toggle stays as an informational opt-in (the webhook always runs; the
+  // flag is reserved for future per-upload "don't analyse" overrides).
 
   // ESC closes the modal. Stopping propagation lets nested ESCs (in inputs)
   // behave normally — the listener only fires when nothing else catches it.
@@ -189,12 +191,7 @@ function QuickUploadModal({
       setSuccess(`Uploaded ${files.length} ${files.length === 1 ? 'photo' : 'photos'}.`);
       setFiles([]);
 
-      if (autoAnalyse) {
-        // Fire-and-forget — the modal stays open with the AI running banner.
-        // useMockAnalysis tracks completion globally so even if the user
-        // closes the modal, the toast still lands.
-        runMockAi();
-      }
+      // Real AI runs server-side on photo INSERT; no client-side trigger.
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Upload failed.');
     } finally {
@@ -344,12 +341,6 @@ function QuickUploadModal({
             </div>
           )}
 
-          {aiRunning && (
-            <div className="flex items-center gap-2 rounded-md border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-700">
-              <Sparkles className="h-3 w-3 animate-pulse" />
-              AI is analysing the queue…
-            </div>
-          )}
         </div>
 
         <footer className="flex flex-shrink-0 items-center justify-between gap-3 border-t border-slate-100 px-5 py-3">

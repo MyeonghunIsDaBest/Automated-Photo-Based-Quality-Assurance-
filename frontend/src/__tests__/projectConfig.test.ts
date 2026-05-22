@@ -46,7 +46,14 @@ vi.mock('../lib/supabase', () => {
       };
     }),
   };
-  return { supabase, supabaseConfigured: () => true };
+  return {
+    supabase,
+    supabaseConfigured: () => true,
+    // getProjectConfig now short-circuits on non-UUID ids; the test fixture
+    // uses 'project-1' (kept stable for snapshots) which is not a UUID, so we
+    // stub isUuid to true so the production code path still executes.
+    isUuid: () => true,
+  };
 });
 
 beforeEach(() => {

@@ -8,8 +8,8 @@ import { useProjectActivity } from '../lib/hooks/useProjectActivity';
 import { useDashboardCounts } from '../lib/hooks/useDashboardCounts';
 import { useWeather, type WeatherTone } from '../lib/hooks/useWeather';
 import ActivityFeed from '../components/activity/ActivityFeed';
+import ActivityDetailModal from '../components/activity/ActivityDetailModal';
 import type { ActivityEvent } from '../lib/activity/types';
-import { navigateActivityEvent } from '../lib/activity/navigate';
 import { SECURITY_GROUP_LABELS, canConfirmAIAnalysis, canViewSafetyIncident } from '../lib/permissions';
 import type { SecurityGroup } from '../types';
 import {
@@ -275,11 +275,16 @@ export default function Dashboard() {
     prevReviewRef.current = dashboardCounts.pendingReview;
   }, [dashboardCounts.pendingReview, dashboardCounts.loading]);
 
-  // Activity row click → deep link to the source. Shared router so the
-  // same click here behaves identically on Gantt → Overview's feed.
+  // Activity row click → open the detail modal. The modal surfaces full
+  // event metadata (who/what/when) and exposes a single "Open detail"
+  // button that does the deep-link via the shared router. Switching from
+  // immediate-navigate to modal-first means users get the full context
+  // before being redirected to the entity that was made or updated.
+  const [activeActivityEvent, setActiveActivityEvent] = useState<ActivityEvent | null>(null);
   const handleActivitySelect = (event: ActivityEvent) => {
-    navigateActivityEvent(event, project.id, navigate);
+    setActiveActivityEvent(event);
   };
+  const closeActivityModal = () => setActiveActivityEvent(null);
 
   const roleLabel = currentProfile
     ? SECURITY_GROUP_LABELS[currentProfile.securityGroup]
@@ -673,7 +678,7 @@ export default function Dashboard() {
                 title="Active jobs"
                 description="The work currently in motion"
                 actionLabel="View all"
-                onAction={() => navigate('/gantt')}
+                onAction={() => navigate('/projects')}
               />
               <div className="divide-y divide-slate-100">
                 {activeJobs.length === 0 && (
@@ -1060,6 +1065,13 @@ export default function Dashboard() {
           </aside>
         </div>
       </div>
+
+      <ActivityDetailModal
+        event={activeActivityEvent}
+        projectId={project.id}
+        navigate={navigate}
+        onClose={closeActivityModal}
+      />
     </motion.div>
   );
 }

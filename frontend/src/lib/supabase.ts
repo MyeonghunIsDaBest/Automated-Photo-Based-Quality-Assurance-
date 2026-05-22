@@ -36,3 +36,14 @@ export const supabase: SupabaseClient = createClient(url ?? '', anonKey ?? '', {
 export function supabaseConfigured(): boolean {
   return Boolean(url && anonKey);
 }
+
+// Mock / demo project IDs are plain strings ("project_1", "project_demo_*").
+// Any Supabase column typed `uuid` rejects those with "invalid input syntax"
+// before RLS even runs. Helpers that query Postgres on a project_id should
+// short-circuit at the API boundary so a non-UUID active project (e.g. the
+// `mockProject` fallback during the auth bootstrap window) doesn't surface
+// a red error banner on the Dashboard / Reports tiles.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export function isUuid(id: string | null | undefined): boolean {
+  return typeof id === 'string' && UUID_RE.test(id);
+}

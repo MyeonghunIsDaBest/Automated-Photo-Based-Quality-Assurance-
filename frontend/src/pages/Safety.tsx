@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../store';
 import { useUrlHydration } from '../lib/hooks/useUrlHydration';
+import { useProjectAccessGuard } from '../lib/hooks/useProjectAccessGuard';
 import { canEditProjects, canResolveSafetyIncident, canViewSafetyIncident } from '../lib/permissions';
 import { useSafetyStore } from './safety/store';
 import {
@@ -99,6 +100,9 @@ export default function Safety() {
   const currentUser = useAppStore((s) => s.currentUser);
   const currentProfile = useAppStore((s) => s.currentProfile);
   const project = useAppStore((s) => s.project);
+
+  // Bounce field-role users away from projects they weren't invited to.
+  useProjectAccessGuard(project?.id);
   const documents = useSafetyStore((s) => s.documents);
   const incidents = useSafetyStore((s) => s.incidents);
   const removeDocument = useSafetyStore((s) => s.removeDocument);

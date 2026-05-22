@@ -8,7 +8,7 @@
 // save handler) catches and surfaces. Falls back to in-memory defaults when
 // Supabase isn't configured so the mock-data demo still renders the admin UI.
 
-import { supabase, supabaseConfigured } from '../supabase';
+import { supabase, supabaseConfigured, isUuid } from '../supabase';
 import type { ProjectConfig } from '../../types';
 import { DEMO_PROJECT_CONFIG_OVERRIDES } from '../../data/demoExtraSites';
 
@@ -94,6 +94,7 @@ const NOT_CONFIGURED = new Error(
 
 export async function getProjectConfig(projectId: string): Promise<ProjectConfig> {
   if (!supabaseConfigured()) return defaultsFor(projectId);
+  if (!isUuid(projectId)) return defaultsFor(projectId);
 
   const { data, error } = await supabase
     .from('project_config')

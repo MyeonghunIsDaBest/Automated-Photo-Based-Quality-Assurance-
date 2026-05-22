@@ -13,9 +13,10 @@ import {
 } from 'lucide-react';
 import {
   canSeeAdminDashboard,
+  isFieldRole,
   SECURITY_GROUP_LABELS,
 } from '../../lib/permissions';
-import type { User } from '../../types';
+import type { User, Profile } from '../../types';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { ScrollArea } from '../ui/scroll-area';
 import ReconnectionPill from './ReconnectionPill';
@@ -41,14 +42,24 @@ type NavItem = {
 // Review and Audit are reachable from links in the Dashboard and Admin
 // surfaces, and Settings stays in the user-menu dropdown below. Routes for
 // the removed pages remain in App.tsx so existing bookmarks still resolve.
-const navItems: NavItem[] = [
-  { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-  { label: 'Projects',  icon: FolderOpen,      path: '/projects' },
-  { label: 'Messages',  icon: MessageSquare,   path: '/messages' },
-  { label: 'Reports',   icon: DollarSign,      path: '/reports' },
-  { label: 'Safety',    icon: HardHat,         path: '/safety' },
-  { label: 'Admin',     icon: ShieldCheck,     path: '/admin',        gate: canSeeAdminDashboard },
+//
+// The first item is role-aware: field roles (worker / stakeholder /
+// supplier) see "Home → /home" (their editorial landing); admins/PMs see
+// "Dashboard → /dashboard" (the data-dense panel). The rest of the strip
+// is shared.
+const SHARED_NAV_TAIL: NavItem[] = [
+  { label: 'Projects', icon: FolderOpen,    path: '/projects' },
+  { label: 'Messages', icon: MessageSquare, path: '/messages' },
+  { label: 'Reports',  icon: DollarSign,    path: '/reports' },
+  { label: 'Safety',   icon: HardHat,       path: '/safety' },
+  { label: 'Admin',    icon: ShieldCheck,   path: '/admin',  gate: canSeeAdminDashboard },
 ];
+
+function homeNavItemFor(principal: User | Profile | null): NavItem {
+  return isFieldRole(principal)
+    ? { label: 'Home',      icon: LayoutDashboard, path: '/home' }
+    : { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' };
+}
 
 const getNotificationIcon = (type: string) => {
   switch (type) {
@@ -83,6 +94,13 @@ export default function TopNav() {
 
   // currentUser carries `securityGroup` mirrored from the Profile, so every
   // gate (User-only or AdminPrincipal-based) can read it without ceremony.
+  // First nav item swaps Home/Dashboard based on role; the tail is shared.
+  // `currentProfile` carries the canonical securityGroup; `currentUser`
+  // covers the legacy mock-data path that doesn't have a profile yet.
+  const navItems: NavItem[] = [
+    homeNavItemFor(currentProfile ?? currentUser ?? null),
+    ...SHARED_NAV_TAIL,
+  ];
   const visibleNav = navItems.filter((item) => (item.gate ? item.gate(currentUser) : true));
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);

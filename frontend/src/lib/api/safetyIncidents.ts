@@ -3,7 +3,7 @@
 // ai_analysis_id) are inserted server-side by the analyze-photo Edge
 // Function; manual incidents flow through `createManualIncident()` here.
 
-import { supabase, supabaseConfigured } from '../supabase';
+import { supabase, supabaseConfigured, isUuid } from '../supabase';
 import type { SafetyFlag, SafetySeverity } from '../../types';
 
 export type SafetyIncidentStatus = 'open' | 'acknowledged' | 'resolved' | 'dismissed';
@@ -65,6 +65,7 @@ export async function countSafetyIncidents(
   filter?: { status?: SafetyIncidentStatus },
 ): Promise<number> {
   if (!supabaseConfigured()) return 0;
+  if (!isUuid(projectId)) return 0;
   let q = supabase
     .from('safety_incidents')
     .select('*', { count: 'exact', head: true })
@@ -77,6 +78,7 @@ export async function countSafetyIncidents(
 
 export async function listSafetyIncidents(projectId: string): Promise<SafetyIncident[]> {
   if (!supabaseConfigured()) return [];
+  if (!isUuid(projectId)) return [];
   const { data, error } = await supabase
     .from('safety_incidents')
     .select('*')

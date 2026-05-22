@@ -1,10 +1,11 @@
 import { create } from 'zustand';
-import { Task, Comment, Report, ProjectConfig } from '../types';
+import { Task, Comment, Report, ProjectConfig, ProjectMember } from '../types';
 import { updateTaskProgress as apiUpdateTaskProgress } from '../lib/api/tasks';
 import { supabaseConfigured } from '../lib/supabase';
 import { useNotificationStore, createTaskUpdate, createAIAnalysisAlert, createWeeklyReport } from './notifications';
-import { demoInflightTasks } from '../data/demoInflightProject';
+import { demoInflightTasks, DEMO_INFLIGHT_PROJECT_ID } from '../data/demoInflightProject';
 import { demoExtraSiteTasks } from '../data/demoExtraSites';
+import { DEMO_BONDI_META, DEMO_MARRICKVILLE_META } from '../data/demoExtraSites';
 
 // Progress Trend Data Point
 export interface ProgressDataPoint {
@@ -116,6 +117,19 @@ interface FeatureState {
   // `useProjectConfig` hook is the only writer.
   projectConfig: Record<string, ProjectConfig>;
   setProjectConfig: (config: ProjectConfig) => void;
+
+  // Per-project membership (migration 16). Keyed by userId so the worker
+  // /home page can read `projectMemberships[userId]` in O(1). The slice is
+  // the source of truth in mock mode; in live mode the `projectMembers.ts`
+  // API helpers read/write through to Supabase and mirror into this cache.
+  projectMemberships: Record<string, ProjectMember[]>;
+  /** Idempotent — replaces the row with the same id if present, else appends. */
+  upsertProjectMembership: (member: ProjectMember) => void;
+  /** Soft-delete: stamps removed_at on the matching row. */
+  removeProjectMembership: (membershipId: string) => void;
+  /** Stamps accepted_at on every pending row for the given user. Returns the
+   *  count of rows touched so callers can match the live-mode RPC signature. */
+  acceptUserPendingInvites: (userId: string) => number;
 }
 
 export const useFeatureStore = create<FeatureState>((set, get) => ({
@@ -575,4 +589,100 @@ export const useFeatureStore = create<FeatureState>((set, get) => ({
       projectConfig: { ...state.projectConfig, [config.projectId]: config },
     }));
   },
+
+  // Per-project memberships. Seeded so the mock-mode demo experience works
+  // out of the box: the admin is invited to every demo project (as PM), and
+  // the stakeholder visitor is invited to Hampstead Heights so the
+  // StakeholderHome demo shows a real project chip. All seeds have
+  // `accepted_at` set so the implicit-accept hook is a no-op on first render.
+  projectMemberships: seedProjectMemberships(),
+  upsertProjectMembership: (member) => {
+    set((state) => {
+      const list = state.projectMemberships[member.userId] ?? [];
+      const next = list.some((m) => m.id === member.id)
+        ? list.map((m) => (m.id === member.id ? member : m))
+        : [...list, member];
+      return {
+        projectMemberships: {
+          ...state.projectMemberships,
+          [member.userId]: next,
+        },
+      };
+    });
+  },
+  removeProjectMembership: (membershipId) => {
+    set((state) => {
+      const now = new Date().toISOString();
+      const next: Record<string, ProjectMember[]> = {};
+      for (const [uid, list] of Object.entries(state.projectMemberships)) {
+        next[uid] = list.map((m) =>
+          m.id === membershipId ? { ...m, removedAt: now } : m,
+        );
+      }
+      return { projectMemberships: next };
+    });
+  },
+  acceptUserPendingInvites: (userId) => {
+    let touched = 0;
+    set((state) => {
+      const list = state.projectMemberships[userId] ?? [];
+      const now = new Date().toISOString();
+      const next = list.map((m) => {
+        if (m.acceptedAt || m.removedAt) return m;
+        touched += 1;
+        return { ...m, acceptedAt: now };
+      });
+      if (touched === 0) return state;
+      return {
+        projectMemberships: {
+          ...state.projectMemberships,
+          [userId]: next,
+        },
+      };
+    });
+    return touched;
+  },
 }));
+
+// ─── Seed helper ─────────────────────────────────────────────────────────
+function seedProjectMemberships(): Record<string, ProjectMember[]> {
+  const ADMIN_ID = 'user_admin';
+  const VISITOR_ID = 'user_visitor';
+  const NOW = '2026-04-01T08:00:00Z';
+
+  const allProjectIds = [
+    DEMO_INFLIGHT_PROJECT_ID,
+    DEMO_BONDI_META.id,
+    DEMO_MARRICKVILLE_META.id,
+    'project_1',
+  ];
+
+  const adminMemberships: ProjectMember[] = allProjectIds.map((projectId, i) => ({
+    id: `mem_admin_${projectId}`,
+    projectId,
+    userId: ADMIN_ID,
+    invitedBy: null,        // admin is the inviter, not invited
+    invitedAt: NOW,
+    acceptedAt: NOW,
+    removedAt: null,
+    notes: i === 0 ? 'Owner — Casone Electrical' : null,
+  }));
+
+  const visitorMemberships: ProjectMember[] = [
+    {
+      id: `mem_visitor_${DEMO_INFLIGHT_PROJECT_ID}`,
+      projectId: DEMO_INFLIGHT_PROJECT_ID,
+      userId: VISITOR_ID,
+      invitedBy: ADMIN_ID,
+      invitedAt: NOW,
+      acceptedAt: NOW,
+      removedAt: null,
+      notes: 'Client representative',
+    },
+  ];
+
+  return {
+    [ADMIN_ID]: adminMemberships,
+    [VISITOR_ID]: visitorMemberships,
+  };
+}

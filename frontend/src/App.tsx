@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect, type ComponentType, type LazyExoticComponent } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AnimatePresence, MotionConfig, motion } from 'framer-motion';
 import { useAppStore } from './store';
@@ -18,16 +18,52 @@ import { pageTransition } from './lib/motion/variants';
 // Vite picks up the dynamic-import call sites automatically and emits one
 // chunk per page; the route's first visit fetches the chunk, then it's
 // cached. SPA navigation between already-visited routes stays instant.
-const Dashboard      = lazy(() => import('./pages/Dashboard'));
-const Gantt          = lazy(() => import('./pages/Gantt'));
-const Reports        = lazy(() => import('./pages/Reports'));
-const Settings       = lazy(() => import('./pages/Settings'));
-const Messages       = lazy(() => import('./pages/Messages'));
-const Projects       = lazy(() => import('./pages/Projects'));
-const Safety         = lazy(() => import('./pages/Safety'));
-const Admin          = lazy(() => import('./pages/Admin'));
-const BootstrapAdmin = lazy(() => import('./pages/admin/BootstrapAdmin'));
-const Pricing        = lazy(() => import('./pages/Pricing'));
+//
+// `lazyWithRetry` wraps `lazy()` so a failed dynamic import is re-attempted
+// once before bubbling to the ErrorBoundary. Two failure modes it covers:
+//   • Prod: a stale `index.html` references a chunk hash that no longer
+//     exists after a redeploy — the retry still fails, so we fall through to
+//     a one-shot full reload that picks up the new index.html with current
+//     hashes.
+//   • Dev: a Vite dev-server / HMR hiccup drops a single fetch — the silent
+//     retry succeeds and the user sees nothing.
+const CHUNK_RELOAD_KEY = 'chunk-reload-attempted';
+const CHUNK_ERROR_RE = /Failed to fetch dynamically imported module|Importing a module script failed|ChunkLoadError/i;
+
+function lazyWithRetry<T extends ComponentType<any>>(
+  loader: () => Promise<{ default: T }>,
+): LazyExoticComponent<T> {
+  return lazy(async () => {
+    try {
+      return await loader();
+    } catch {
+      try {
+        return await loader();
+      } catch (secondErr) {
+        const msg = secondErr instanceof Error ? secondErr.message : String(secondErr);
+        if (CHUNK_ERROR_RE.test(msg) && !sessionStorage.getItem(CHUNK_RELOAD_KEY)) {
+          sessionStorage.setItem(CHUNK_RELOAD_KEY, '1');
+          window.location.reload();
+          return await new Promise<never>(() => {});
+        }
+        throw secondErr;
+      }
+    }
+  });
+}
+
+const Dashboard      = lazyWithRetry(() => import('./pages/Dashboard'));
+const Gantt          = lazyWithRetry(() => import('./pages/Gantt'));
+const Reports        = lazyWithRetry(() => import('./pages/Reports'));
+const Settings       = lazyWithRetry(() => import('./pages/Settings'));
+const Messages       = lazyWithRetry(() => import('./pages/Messages'));
+const Projects       = lazyWithRetry(() => import('./pages/Projects'));
+const Safety         = lazyWithRetry(() => import('./pages/Safety'));
+const Admin          = lazyWithRetry(() => import('./pages/Admin'));
+const BootstrapAdmin = lazyWithRetry(() => import('./pages/admin/BootstrapAdmin'));
+const Pricing        = lazyWithRetry(() => import('./pages/Pricing'));
+const RoleHome         = lazyWithRetry(() => import('./pages/home/RoleHome'));
+const RoleHomeRedirect = lazyWithRetry(() => import('./pages/home/RoleHomeRedirect'));
 
 // Lightweight fallback shown while a route chunk is loading. Mirrors the
 // editorial background colour so the page flash isn't jarring.
@@ -49,6 +85,11 @@ function RouteFallback() {
 // starts entering — prevents two pages overlapping mid-fade.
 function AppRoutes() {
   const location = useLocation();
+  // Clear the one-shot reload guard after any successful navigation, so a
+  // chunk-load failure later in the session can still trigger one reload.
+  useEffect(() => {
+    sessionStorage.removeItem(CHUNK_RELOAD_KEY);
+  }, [location.pathname]);
   return (
     <AnimatePresence mode="wait" initial={false}>
       <motion.div
@@ -73,7 +114,10 @@ function AppRoutes() {
             {/* Protected Routes */}
             <Route element={<RequireAuth />}>
               <Route path="/" element={<Layout />}>
-                <Route index element={<Navigate to="/dashboard" replace />} />
+                {/* Smart redirect: field roles → /home (editorial landing),
+                    admins / PMs → /dashboard (data-dense panel). */}
+                <Route index element={<RoleHomeRedirect />} />
+                <Route path="home" element={<RoleHome />} />
                 <Route path="dashboard" element={<Dashboard />} />
                 {/* Upload + Gallery retired as standalone pages — UploadsTab on
                     the Gantt covers project-scoped capture + a recent-photos

@@ -5,7 +5,7 @@
 // in `~/types` so the Reports page can render scheduled and ad-hoc reports
 // with the same component.
 
-import { supabase, supabaseConfigured } from '../supabase';
+import { supabase, supabaseConfigured, isUuid } from '../supabase';
 import type { Report } from '../../types';
 
 export interface ProjectReportRow {
@@ -50,6 +50,7 @@ function rowToReport(row: ProjectReportRow): Report {
 
 export async function listProjectReports(projectId: string, limit = 12): Promise<Report[]> {
   if (!supabaseConfigured()) return [];
+  if (!isUuid(projectId)) return [];
   const { data, error } = await supabase
     .from('project_reports')
     .select('*')
