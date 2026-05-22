@@ -36,12 +36,14 @@ import { decideAction } from '../_shared/decideAction.ts';
 import { loadProjectConfig } from '../_shared/loadProjectConfig.ts';
 import { maxSeverity } from '../_shared/safetyTaxonomy.ts';
 import { logAction } from '../_shared/auditLog.ts';
-// Phase D vision call dependencies. Imported but not yet reached from the
-// runtime call site at line 120 — the flip from mockAnalyze() to
-// callClaudeVision() happens May 26 when the ANTHROPIC_API_KEY lands.
+import { CORS_HEADERS, handleCorsPreflight } from '../_shared/cors.ts';
+// Phase D vision call dependencies. Wired into the runtime path at line
+// ~237 as of the May 22 cutover — `callClaudeVision()` replaces the
+// previous `mockAnalyze()` stub.
 import { callAnthropicVision } from '../_shared/anthropic.ts';
 import { failureResult, parseVisionResponse } from '../_shared/parseVisionResponse.ts';
 import { buildUserPrompt, VISION_SYSTEM_PROMPT } from '../_shared/visionPrompt.ts';
+import { resizeForVision } from '../_shared/resizeImage.ts';
 // @ts-expect-error Deno-only import.
 import { encodeBase64 } from 'https://deno.land/std@0.224.0/encoding/base64.ts';
 
@@ -116,9 +118,14 @@ async function callClaudeVision(
     return failureResult(args.model, `storage_download_failed: ${dlErr?.message ?? 'unknown'}`);
   }
 
-  // 3. Base64.
-  const buf = new Uint8Array(await blob.arrayBuffer());
-  const base64 = encodeBase64(buf);
+  // 3. Resize-if-large + base64. The resize step caps the long edge at
+  // 1568px (Anthropic's billed-resolution ceiling for Haiku/Sonnet) so a
+  // 4032×3024 phone photo doesn't pay the worst-case image-token charge.
+  // Pass-through for sub-cap images and for media types the WASM
+  // decoder doesn't handle (GIF, anything imagescript can't read).
+  const raw = new Uint8Array(await blob.arrayBuffer());
+  const resized = await resizeForVision(raw, media.mediaType);
+  const base64 = encodeBase64(resized);
 
   // 4. Vision call.
   const call = await callAnthropicVision(sb, {
@@ -195,15 +202,21 @@ interface InvokePayload {
 }
 
 serve(async (req: Request) => {
+  // CORS preflight — primarily for future frontend "Re-analyse" affordances;
+  // the Postgres webhook path doesn't need this but it's harmless and keeps
+  // both Edge Functions on the same CORS template.
+  const preflight = handleCorsPreflight(req);
+  if (preflight) return preflight;
+
   if (req.method !== 'POST') {
-    return new Response('Method Not Allowed', { status: 405 });
+    return new Response('Method Not Allowed', { status: 405, headers: CORS_HEADERS });
   }
 
   let body: InvokePayload = {};
   try {
     body = await req.json();
   } catch {
-    return new Response('Invalid JSON', { status: 400 });
+    return new Response('Invalid JSON', { status: 400, headers: CORS_HEADERS });
   }
 
   const photoId = body.photoId ?? body.record?.id;
@@ -231,11 +244,27 @@ serve(async (req: Request) => {
   // ── 2. Load per-project config (thresholds + default model + dedup) ─────
   const cfg = await loadProjectConfig(sb, photoRow.project_id);
 
-  // ── 3. Build the analyser result. The body.model override wins;
-  //      otherwise the project's configured default model is recorded so
-  //      replays + audit trails reflect "what would have been used".
-  const result = mockAnalyze();
-  result.modelUsed = body.model ?? cfg.defaultModel;
+  // ── 3. Run the analyser. Two branches:
+  //      • Project's configured model is the stub marker
+  //        ('mvp-stub@v0' — the per-project default for demo projects,
+  //        see Plan §1 lever E) → run mockAnalyze locally. The real
+  //        Anthropic API would 400 on 'mvp-stub@v0' as an unknown model,
+  //        and demo projects must never burn the API credit.
+  //      • Anything else (e.g. 'claude-haiku-4-5' on the pilot project)
+  //        → real vision. callClaudeVision stamps modelUsed itself
+  //        (real model on success, 'failed' marker on any failure path).
+  const resolvedModel = body.model ?? cfg.defaultModel;
+  let result: AnalysisResult;
+  if (resolvedModel.startsWith('mvp-stub')) {
+    result = mockAnalyze();
+    result.modelUsed = resolvedModel;
+  } else {
+    result = await callClaudeVision(sb, {
+      storagePath: photoRow.storage_path,
+      phaseHint:   (body.phaseHint as ConstructionPhase | null | undefined) ?? null,
+      model:       resolvedModel,
+    });
+  }
 
   // ── 4. Acquire an ai_analyses row to write into ────────────────────────
   // Two paths:
@@ -417,14 +446,14 @@ async function markFailed(sb: any, aiAnalysisId: string, reason: string): Promis
 function jsonOk(body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
   });
 }
 
 function jsonError(status: number, message: string): Response {
   return new Response(JSON.stringify({ error: message }), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
   });
 }
 

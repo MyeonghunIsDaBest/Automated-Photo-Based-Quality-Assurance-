@@ -22,32 +22,54 @@ import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0
 // @ts-expect-error Deno globals.
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY') ?? '';
 // @ts-expect-error Deno globals.
-const DEFAULT_MODEL = Deno.env.get('ANTHROPIC_DEFAULT_MODEL') ?? 'claude-sonnet-4-6';
+const DEFAULT_MODEL = Deno.env.get('ANTHROPIC_DEFAULT_MODEL') ?? 'claude-haiku-4-5';
 // @ts-expect-error Deno globals.
 const DAILY_CALL_CAP = Number(Deno.env.get('ANTHROPIC_DAILY_CALL_CAP') ?? 50);
 // @ts-expect-error Deno globals.
 const DAILY_TOKEN_CAP = Number(Deno.env.get('ANTHROPIC_DAILY_TOKEN_CAP') ?? 200_000);
 // @ts-expect-error Deno globals.
 const MAX_TOKENS_CEILING = Number(Deno.env.get('ANTHROPIC_MAX_TOKENS') ?? 1024);
+// Vision-specific ceiling. Vision returns small JSON (~150–250 output
+// tokens); the lower cap keeps an accidentally-verbose response cheap.
+// Falls back to the general ceiling so existing deployments aren't broken.
+// @ts-expect-error Deno globals.
+const VISION_MAX_TOKENS = Number(Deno.env.get('ANTHROPIC_VISION_MAX_TOKENS') ?? MAX_TOKENS_CEILING);
 // @ts-expect-error Deno globals.
 const DISABLED = (Deno.env.get('ANTHROPIC_DISABLED') ?? 'false').toLowerCase() === 'true';
 
 const ANTHROPIC_BASE_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION  = '2023-06-01';
 
-// Sonnet pricing (USD per million tokens) — rough estimates for tracking
-// daily spend in the usage table. Update when Anthropic changes its sheet.
-// Input $3 / 1M, output $15 / 1M → average input+output cost per token in cents.
-const APPROX_CENTS_PER_TOKEN = 0.0009; // ≈$9 per million tokens blended
+// Haiku 4.5 pricing blended ($1 input / $5 output per 1M tokens). Updated
+// from the previous Sonnet figure after the default-model swap — the
+// usage table uses this to estimate spend; off by 3× when Sonnet override
+// is set on a per-project basis, but the audit log records `model_used`
+// so finance can re-multiply for accuracy at month-end.
+const APPROX_CENTS_PER_TOKEN = 0.0003; // ≈$3 per million tokens blended (Haiku)
 
 export interface AnthropicMessage {
   role: 'user' | 'assistant';
   content: string;
 }
 
+/** System prompt input. Two shapes:
+ *    • `string` — a single block. Used unchanged for callers whose system
+ *      prompt is invariant (e.g. callAnthropicVision with VISION_SYSTEM_PROMPT).
+ *      The whole block carries a `cache_control` breakpoint so the second
+ *      call onward reads from cache.
+ *    • `{ stable, variable }` — split shape for callers whose system prompt
+ *      has a fixed preamble plus a per-call tail (e.g. polish-text appends
+ *      `Surface: <surface> — <guidance>` after a constant rules block).
+ *      Only the `stable` block gets the breakpoint, so all surfaces share
+ *      the same cached prefix instead of writing one cache entry per
+ *      surface. See `shared/prompt-caching.md` "Shared prefix, varying
+ *      suffix" pattern.
+ */
+export type AnthropicSystemInput = string | { stable: string; variable: string };
+
 export interface AnthropicCallInput {
-  /** Required system prompt; constrains tone + format. */
-  system: string;
+  /** Required system prompt; constrains tone + format. See {@link AnthropicSystemInput}. */
+  system: AnthropicSystemInput;
   /** Conversation messages, oldest first. */
   messages: AnthropicMessage[];
   /** Override the env-level max_tokens. Always clamped to MAX_TOKENS_CEILING. */
@@ -61,6 +83,13 @@ export interface AnthropicCallSuccess {
   text: string;
   inputTokens: number;
   outputTokens: number;
+  /** Tokens that hit the cache this request (paid ~0.1× of input price).
+   *  Zero on first call of a fresh prefix; positive once the cached
+   *  breakpoint warms up. */
+  cacheReadInputTokens: number;
+  /** Tokens written to the cache this request (paid ~1.25× of input).
+   *  Positive on the first call after a prefix change, zero thereafter. */
+  cacheCreationInputTokens: number;
   model: string;
 }
 
@@ -80,6 +109,33 @@ export type AnthropicCallResult = AnthropicCallSuccess | AnthropicCallFailure;
 interface UsageRow {
   call_count: number;
   tokens_used: number;
+}
+
+/** Build the `system` field for the Anthropic request. Places exactly one
+ *  `cache_control` breakpoint on the stable preamble. For string input the
+ *  whole prompt is the stable preamble. For {stable, variable} input only
+ *  the stable block is cached; the variable tail (e.g. per-surface
+ *  guidance) is appended without a breakpoint so the cache key doesn't
+ *  fragment per call. See `shared/prompt-caching.md` → "Shared prefix,
+ *  varying suffix".
+ *
+ *  Note: minimum cacheable prefix is ~2048 tokens for Haiku/Sonnet and
+ *  ~4096 for Opus — shorter stables silently won't cache (no error; the
+ *  cache_control marker just becomes a no-op). VISION_SYSTEM_PROMPT and
+ *  polish-text's SYSTEM_PROMPT are both above 2048; nothing else routes
+ *  through this helper yet. */
+function buildSystemBlocks(input: AnthropicSystemInput): Array<{
+  type: 'text';
+  text: string;
+  cache_control?: { type: 'ephemeral' };
+}> {
+  if (typeof input === 'string') {
+    return [{ type: 'text', text: input, cache_control: { type: 'ephemeral' } }];
+  }
+  return [
+    { type: 'text', text: input.stable, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: input.variable },
+  ];
 }
 
 // ─── Public API ────────────────────────────────────────────────────────────
@@ -136,7 +192,7 @@ export async function callAnthropic(
   const body = {
     model: input.model ?? DEFAULT_MODEL,
     max_tokens: maxTokens,
-    system: input.system,
+    system: buildSystemBlocks(input.system),
     messages: input.messages,
   };
 
@@ -199,6 +255,12 @@ export async function callAnthropic(
 
   const inputTokens = payload.usage?.input_tokens ?? 0;
   const outputTokens = payload.usage?.output_tokens ?? 0;
+  const cacheReadInputTokens = payload.usage?.cache_read_input_tokens ?? 0;
+  const cacheCreationInputTokens = payload.usage?.cache_creation_input_tokens ?? 0;
+  // Total tokens for cost accounting. Cache reads are charged at ~0.1× of
+  // input, so weight them down; cache writes are ~1.25× of input, but the
+  // billed `input_tokens` already includes the write premium per
+  // Anthropic's billing model — keep the simple sum to avoid double-count.
   const totalTokens = inputTokens + outputTokens;
   const costCents = Math.ceil(totalTokens * APPROX_CENTS_PER_TOKEN);
 
@@ -213,6 +275,8 @@ export async function callAnthropic(
     text,
     inputTokens,
     outputTokens,
+    cacheReadInputTokens,
+    cacheCreationInputTokens,
     model: payload.model ?? body.model,
   };
 }
@@ -225,6 +289,8 @@ interface AnthropicResponse {
   usage?: {
     input_tokens?: number;
     output_tokens?: number;
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
   };
 }
 
@@ -242,7 +308,10 @@ interface AnthropicResponse {
 // glue into a private helper.
 
 export interface AnthropicVisionInput {
-  /** System prompt — see _shared/visionPrompt.ts for the canonical one. */
+  /** System prompt — see _shared/visionPrompt.ts for the canonical one. The
+   *  whole block is cached (single `cache_control` breakpoint at the end);
+   *  the per-photo userText and image carry no breakpoint and don't
+   *  invalidate the cached prefix. */
   system: string;
   /** User-message text accompanying the image. */
   userText: string;
@@ -250,7 +319,9 @@ export interface AnthropicVisionInput {
   imageBase64: string;
   /** Media type Anthropic accepts. Reject heic/mov before reaching here. */
   mediaType: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif';
-  /** Override the env-level max_tokens. Always clamped to MAX_TOKENS_CEILING. */
+  /** Override the env-level max_tokens. Defaults to ANTHROPIC_VISION_MAX_TOKENS
+   *  (a lower per-response cap suited to the small JSON response shape);
+   *  clamped to MAX_TOKENS_CEILING if a caller asks for more. */
   maxTokens?: number;
   /** Override the default model. */
   model?: string;
@@ -301,13 +372,17 @@ export async function callAnthropicVision(
   // 3. Build the request. Image content block first, then text. Anthropic
   // recommends this ordering for QA-style prompts so the model parses the
   // visual context before the question framing.
-  const requestedMax = input.maxTokens ?? MAX_TOKENS_CEILING;
+  //
+  // max_tokens defaults to VISION_MAX_TOKENS (typically 512 — vision
+  // returns small JSON) rather than the polish-text 1024. Either way
+  // clamped to MAX_TOKENS_CEILING.
+  const requestedMax = input.maxTokens ?? VISION_MAX_TOKENS;
   const maxTokens = Math.min(Math.max(64, requestedMax), MAX_TOKENS_CEILING);
 
   const body = {
     model: input.model ?? DEFAULT_MODEL,
     max_tokens: maxTokens,
-    system: input.system,
+    system: buildSystemBlocks(input.system),
     messages: [{
       role: 'user' as const,
       content: [
@@ -379,13 +454,16 @@ export async function callAnthropicVision(
 
   const inputTokens = payload.usage?.input_tokens ?? 0;
   const outputTokens = payload.usage?.output_tokens ?? 0;
+  const cacheReadInputTokens = payload.usage?.cache_read_input_tokens ?? 0;
+  const cacheCreationInputTokens = payload.usage?.cache_creation_input_tokens ?? 0;
   const totalTokens = inputTokens + outputTokens;
   const costCents = Math.ceil(totalTokens * APPROX_CENTS_PER_TOKEN);
 
   // 5. Fire-and-forget usage record. Vision calls cost more than text calls
-  // (images burn ~1500-3000 tokens of input each) so accurate accounting is
-  // important — but a miss here doesn't justify failing the user-visible
-  // analysis. Same pattern as callAnthropic.
+  // (images burn ~1500-3000 tokens of input each, dropped to ~800-1600
+  // after the 1568px downsample in analyze-photo) so accurate accounting
+  // is important — but a miss here doesn't justify failing the
+  // user-visible analysis. Same pattern as callAnthropic.
   await supabase
     .rpc('record_ai_call', { p_tokens: totalTokens, p_cost_cents: costCents })
     .then(() => void 0, () => void 0);
@@ -395,6 +473,8 @@ export async function callAnthropicVision(
     text,
     inputTokens,
     outputTokens,
+    cacheReadInputTokens,
+    cacheCreationInputTokens,
     model: payload.model ?? body.model,
   };
 }

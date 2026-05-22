@@ -61,6 +61,11 @@ begin
   if v_start is null then v_start := current_date; end if;
   if v_end   is null then v_end   := current_date + interval '90 days'; end if;
 
+  -- `idx_tasks_phase_anchor_unique` is a partial unique INDEX, not a unique
+  -- CONSTRAINT. PG only accepts `on conflict on constraint` for the latter.
+  -- Use index inference instead: the column list + the partial WHERE
+  -- predicate must match the index's predicate for the arbiter to be
+  -- selected.
   insert into public.tasks
     (project_id, name, phase, start_date, end_date, percent_complete, status, is_phase_anchor)
   values
@@ -72,7 +77,7 @@ begin
     (p_project_id, 'Plumbing',   'plumbing',   v_start, v_end, 0, 'not_started', true),
     (p_project_id, 'Drywall',    'drywall',    v_start, v_end, 0, 'not_started', true),
     (p_project_id, 'Finishing',  'finishing',  v_start, v_end, 0, 'not_started', true)
-  on conflict on constraint idx_tasks_phase_anchor_unique do nothing;
+  on conflict (project_id, phase) where is_phase_anchor do nothing;
 end
 $$;
 

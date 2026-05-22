@@ -28,6 +28,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 
 import { callAnthropic } from '../_shared/anthropic.ts';
 import { logAction } from '../_shared/auditLog.ts';
+import { CORS_HEADERS, handleCorsPreflight } from '../_shared/cors.ts';
 
 // @ts-expect-error Deno globals.
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -75,9 +76,15 @@ const SYSTEM_PROMPT = `You are a site engineer turning a contractor's rough fiel
 6. Output ONLY the polished text. No explanations, no "Here's the revised version:", nothing else.`;
 
 serve(async (req: Request) => {
+  // CORS preflight — browsers OPTIONS-probe before any cross-origin POST.
+  // Without this the polish-text invoke from the frontend fails with
+  // "Access-Control-Allow-Origin missing" before the real handler ever runs.
+  const preflight = handleCorsPreflight(req);
+  if (preflight) return preflight;
+
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'method_not_allowed' }), {
-      status: 405, headers: { 'content-type': 'application/json' },
+      status: 405, headers: { 'content-type': 'application/json', ...CORS_HEADERS },
     });
   }
 
@@ -92,7 +99,7 @@ serve(async (req: Request) => {
     body = await req.json();
   } catch {
     return new Response(JSON.stringify({ error: 'invalid_json' }), {
-      status: 400, headers: { 'content-type': 'application/json' },
+      status: 400, headers: { 'content-type': 'application/json', ...CORS_HEADERS },
     });
   }
 
@@ -100,18 +107,18 @@ serve(async (req: Request) => {
   const text = (body.text ?? '').trim();
   if (text.length < MIN_INPUT_LENGTH) {
     return new Response(JSON.stringify({ error: 'input_too_short', minLength: MIN_INPUT_LENGTH }), {
-      status: 400, headers: { 'content-type': 'application/json' },
+      status: 400, headers: { 'content-type': 'application/json', ...CORS_HEADERS },
     });
   }
   if (text.length > MAX_INPUT_LENGTH) {
     return new Response(JSON.stringify({ error: 'input_too_long', maxLength: MAX_INPUT_LENGTH }), {
-      status: 400, headers: { 'content-type': 'application/json' },
+      status: 400, headers: { 'content-type': 'application/json', ...CORS_HEADERS },
     });
   }
   const surfaceGuidance = SURFACE_GUIDANCE[body.surface];
   if (!surfaceGuidance) {
     return new Response(JSON.stringify({ error: 'invalid_surface', validSurfaces: Object.keys(SURFACE_GUIDANCE) }), {
-      status: 400, headers: { 'content-type': 'application/json' },
+      status: 400, headers: { 'content-type': 'application/json', ...CORS_HEADERS },
     });
   }
 
@@ -120,8 +127,15 @@ serve(async (req: Request) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
+  // Split shape: stable rules block is cached across all surfaces; the
+  // per-surface tail is appended without a cache_control breakpoint so
+  // every surface (site_diary, incident_report, …) reads the same cached
+  // prefix instead of writing 5 separate cache entries.
   const result = await callAnthropic(supabase, {
-    system: `${SYSTEM_PROMPT}\n\nSurface: ${body.surface} — ${surfaceGuidance}`,
+    system: {
+      stable: SYSTEM_PROMPT,
+      variable: `\n\nSurface: ${body.surface} — ${surfaceGuidance}`,
+    },
     messages: [{ role: 'user', content: text }],
   });
 
@@ -148,11 +162,14 @@ serve(async (req: Request) => {
         detail: result.detail,
         retryable: result.retryable,
       }),
-      { status, headers: { 'content-type': 'application/json' } },
+      { status, headers: { 'content-type': 'application/json', ...CORS_HEADERS } },
     );
   }
 
   // ─── Success path ─────────────────────────────────────────────────────
+  // `cache_read` and `cache_write` in the audit notes are the cheap
+  // verification path that prompt caching is working — querying the audit
+  // log for these fields beats spelunking the Anthropic dashboard.
   await logAction({
     supabase,
     projectId: body.projectId ?? null,
@@ -160,7 +177,12 @@ serve(async (req: Request) => {
     action: 'ai_polish_succeeded',
     entityType: 'project_config',
     entityId: body.projectId ?? 'global',
-    notes: `surface=${body.surface}; tokens_in=${result.inputTokens}; tokens_out=${result.outputTokens}; model=${result.model}`,
+    notes:
+      `surface=${body.surface}; ` +
+      `tokens_in=${result.inputTokens}; tokens_out=${result.outputTokens}; ` +
+      `cache_read=${result.cacheReadInputTokens}; ` +
+      `cache_write=${result.cacheCreationInputTokens}; ` +
+      `model=${result.model}`,
   });
 
   const response: PolishResponse = {
@@ -171,7 +193,7 @@ serve(async (req: Request) => {
   };
   return new Response(JSON.stringify(response), {
     status: 200,
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...CORS_HEADERS },
   });
 });
 
