@@ -1,7 +1,5 @@
-# Backend local-only artifacts. backend/supabase IS tracked (it's the deployed
-# backend); only the local SQLite DB and scratch notes are excluded.
-backend/data/
-backend_leftover.md
+# Backend (excluded from this frontend-only repo)
+backend/
 
 # Internal planning / team docs
 team/
@@ -33,4 +31,9 @@ Thumbs.db
 .vscode/
 .idea/
 
-/migrations
+# Markdown files — all .md treated as private notes (roadmaps, weekly
+# planning, build logs, runbooks). The public-facing README at the repo
+# root is the only exception; un-comment the `!README.md` line below if
+# you want that one tracked. Everything else stays local-only.
+*.md
+# !README.md
