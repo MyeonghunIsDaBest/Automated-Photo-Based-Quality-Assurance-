@@ -116,28 +116,34 @@ serve(async (req: Request) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  // Fetch user first name + project name for the variable tail. Both calls
-  // are cheap and parallelizable. If either fails we proceed with fallbacks
-  // — the audit log still records the projectId, so finance can resolve.
+  // Fetch user first name + project name for the variable tail in parallel.
+  // Both are non-fatal lookups; failures fall back to 'mate' / 'Unknown
+  // project' so the assistant turn still completes.
   let userFirstName: string | null = null;
   let projectName = 'Unknown project';
-  if (jwt) {
-    try {
-      const { data: userData } = await supabase.auth.getUser(jwt);
-      userFirstName = (userData.user?.user_metadata?.full_name ?? userData.user?.email ?? null);
-      if (userFirstName && userFirstName.includes(' ')) {
-        userFirstName = userFirstName.split(' ')[0];
-      }
-    } catch { /* fallback used */ }
+  const [userRes, projRes] = await Promise.allSettled([
+    jwt ? supabase.auth.getUser(jwt) : Promise.resolve(null),
+    supabase.from('projects').select('name').eq('id', v.projectId).single(),
+  ]);
+  if (userRes.status === 'fulfilled' && userRes.value) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const u = (userRes.value as any)?.data?.user;
+    // Prefer `full_name` from user_metadata. Fall back to email LOCAL part
+    // only ("jordan" not "jordan@casone.com.au") so Sparky's greeting reads
+    // like a name, not an inbox.
+    const fullName: string | undefined = u?.user_metadata?.full_name;
+    const email: string | undefined = u?.email;
+    if (fullName && fullName.trim()) {
+      userFirstName = fullName.includes(' ') ? fullName.split(' ')[0] : fullName;
+    } else if (email && email.includes('@')) {
+      userFirstName = email.split('@')[0];
+    }
   }
-  try {
-    const { data: proj } = await supabase
-      .from('projects')
-      .select('name')
-      .eq('id', v.projectId)
-      .single();
+  if (projRes.status === 'fulfilled') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const proj = (projRes.value as any)?.data;
     if (proj?.name) projectName = proj.name;
-  } catch { /* fallback used */ }
+  }
 
   // Fetch last 30 days of diary entries for the project. Service-role
   // client; this is the same trust model as polish-text. The user
