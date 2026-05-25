@@ -13,6 +13,7 @@ import type { Project, User } from '../../../../types';
 import { Card, CardContent } from '../../../../components/ui/card';
 import { useAssistantChat } from './useAssistantChat';
 import { ChatThread } from './ChatThread';
+import { ComposerBar } from './ComposerBar';
 
 interface AssistantViewProps {
   project: Project;
@@ -71,35 +72,43 @@ export function AssistantView({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col gap-3">
       {chat.error && (
         <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
           {chat.error}
         </div>
       )}
-      {chat.messages.length === 0 ? (
-        <div className="rounded-xl border border-slate-200 bg-white p-6 text-center">
-          <Zap className="mx-auto h-8 w-8 text-emerald-500" />
-          <p
-            className="mt-3 text-lg font-medium text-slate-900"
-            style={{ fontFamily: "'Fraunces', Georgia, serif" }}
-          >
-            G'day{currentUser?.fullName ? `, ${currentUser.fullName.split(' ')[0]}` : ''}.
-          </p>
-          <p className="mt-1 text-sm text-slate-500">
-            Ready when you are. Bullets, voice memo, or just paste what you've got.
-          </p>
-        </div>
-      ) : (
-        <ChatThread
-          messages={chat.messages}
-          targetDate={today}
-          appliedMessageIds={appliedIds}
-          discardedMessageIds={discardedIds}
-          onApply={onApply}
-          onDiscard={onDiscard}
-        />
-      )}
+      <div className="flex-1">
+        {chat.messages.length === 0 ? (
+          <div className="rounded-xl border border-slate-200 bg-white p-6 text-center">
+            <Zap className="mx-auto h-8 w-8 text-emerald-500" />
+            <p
+              className="mt-3 text-lg font-medium text-slate-900"
+              style={{ fontFamily: "'Fraunces', Georgia, serif" }}
+            >
+              G'day{currentUser?.fullName ? `, ${currentUser.fullName.split(' ')[0]}` : ''}.
+            </p>
+            <p className="mt-1 text-sm text-slate-500">
+              Ready when you are. Bullets, voice memo, or just paste what you've got.
+            </p>
+          </div>
+        ) : (
+          <ChatThread
+            messages={chat.messages}
+            targetDate={today}
+            appliedMessageIds={appliedIds}
+            discardedMessageIds={discardedIds}
+            onApply={onApply}
+            onDiscard={onDiscard}
+          />
+        )}
+      </div>
+      <ComposerBar
+        onSend={(t) => { void chat.sendMessage(t); }}
+        disabled={chat.sending}
+        seedText={chat.seedText}
+        onSeedConsumed={chat.clearSeed}
+      />
     </div>
   );
 }
