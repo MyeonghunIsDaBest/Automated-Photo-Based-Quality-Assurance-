@@ -18,7 +18,6 @@ import { EmptyState } from '../components/EmptyState';
 import { useGanttSideStore, useDiaryEntries } from '../store';
 import type { DiaryEntry, DiaryPersonnel, WeatherKind } from '../types';
 import { PunchView } from './PunchView';
-import WritingAssistButton from '../../../components/writingAssist';
 import { AssistantView } from './assistant/AssistantView';
 
 interface SiteDiaryTabProps {
@@ -82,7 +81,6 @@ export function SiteDiaryTab({
     if (opts?.seedText) setSeedText(opts.seedText);
     setView('assistant');
   };
-  void openAssistant; // used by Plan Task 13 (wire AssistantButton in EntryForm)
 
   const entries = useDiaryEntries(project.id);
 
@@ -137,7 +135,13 @@ export function SiteDiaryTab({
       </div>
 
       {view === 'today' && (
-        <TodayView project={project} currentUser={currentUser} canEdit={canEdit} entries={entries} />
+        <TodayView
+          project={project}
+          currentUser={currentUser}
+          canEdit={canEdit}
+          entries={entries}
+          onOpenAssistant={(seedText) => openAssistant({ seedText })}
+        />
       )}
       {view === 'workers' && (
         <WorkersView entries={entries} />
@@ -166,12 +170,13 @@ export function SiteDiaryTab({
 // option to add personnel or delete the entry.
 
 function TodayView({
-  project, currentUser, canEdit, entries,
+  project, currentUser, canEdit, entries, onOpenAssistant,
 }: {
   project: Project;
   currentUser: User | null;
   canEdit: boolean;
   entries: DiaryEntry[];
+  onOpenAssistant?: (seedText: string) => void;
 }) {
   const [pickedDate, setPickedDate] = useState(today());
 
@@ -229,6 +234,7 @@ function TodayView({
           project={project}
           currentUser={currentUser}
           date={pickedDate}
+          onOpenAssistant={onOpenAssistant}
         />
       ) : (
         <EmptyState
@@ -246,11 +252,12 @@ function TodayView({
 }
 
 function EntryForm({
-  project, currentUser, date,
+  project, currentUser, date, onOpenAssistant,
 }: {
   project: Project;
   currentUser: User;
   date: string;
+  onOpenAssistant?: (seedText: string) => void;
 }) {
   const addEntry = useGanttSideStore((s) => s.addDiaryEntry);
 
@@ -433,17 +440,15 @@ function EntryForm({
                     someone who knows exactly what they want; the assist helps
                     someone whose wording is rough and wants it cleaned up. */}
                 <span aria-hidden className="mx-1 h-4 w-px self-center bg-slate-200" />
-                <WritingAssistButton
-                  value={description}
-                  onAccept={(next) => setDescription(next)}
-                  context={{
-                    date,
-                    weather: weather || undefined,
-                    temperatureF: temperatureF ? Number(temperatureF) : undefined,
-                    personnel,
-                  }}
-                  disabled={description.trim().length < 3}
-                />
+                <button
+                  type="button"
+                  onClick={() => onOpenAssistant?.(description)}
+                  disabled={!onOpenAssistant}
+                  className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-medium text-emerald-700 transition-colors hover:border-emerald-300 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Zap className="h-3 w-3" />
+                  Get help from Sparky
+                </button>
               </div>
             </section>
 
