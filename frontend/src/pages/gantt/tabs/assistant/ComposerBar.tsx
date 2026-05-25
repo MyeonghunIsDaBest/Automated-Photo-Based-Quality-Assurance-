@@ -5,7 +5,8 @@
 // on every keystroke.
 
 import { useEffect, useState } from 'react';
-import { Send } from 'lucide-react';
+import { Mic, Send } from 'lucide-react';
+import { useVoiceInput } from './useVoiceInput';
 
 interface ComposerBarProps {
   onSend: (text: string) => void;
@@ -18,6 +19,14 @@ interface ComposerBarProps {
 
 export function ComposerBar({ onSend, disabled, seedText, onSeedConsumed }: ComposerBarProps) {
   const [text, setText] = useState('');
+
+  const voice = useVoiceInput();
+
+  useEffect(() => {
+    if (voice.interim) {
+      setText(voice.interim);
+    }
+  }, [voice.interim]);
 
   useEffect(() => {
     if (seedText && seedText.trim()) {
@@ -51,6 +60,25 @@ export function ComposerBar({ onSend, disabled, seedText, onSeedConsumed }: Comp
           placeholder="Type, or paste rough notes — Sparky will clean it up."
           className="flex-1 resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
         />
+        {voice.supported && (
+          <button
+            type="button"
+            onMouseDown={voice.start}
+            onMouseUp={voice.stop}
+            onMouseLeave={voice.stop}
+            onTouchStart={(e) => { e.preventDefault(); voice.start(); }}
+            onTouchEnd={(e) => { e.preventDefault(); voice.stop(); }}
+            disabled={disabled}
+            aria-label={voice.listening ? 'Listening — release to stop' : 'Hold to talk'}
+            className={`inline-flex h-10 w-10 items-center justify-center rounded-lg border shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+              voice.listening
+                ? 'border-red-300 bg-red-50 text-red-600 animate-pulse'
+                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+            }`}
+          >
+            <Mic className="h-4 w-4" />
+          </button>
+        )}
         <button
           type="button"
           onClick={handleSend}
