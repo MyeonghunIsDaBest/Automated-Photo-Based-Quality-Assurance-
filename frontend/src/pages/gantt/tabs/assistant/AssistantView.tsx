@@ -14,6 +14,7 @@ import { Card, CardContent } from '../../../../components/ui/card';
 import { useAssistantChat } from './useAssistantChat';
 import { ChatThread } from './ChatThread';
 import { ComposerBar } from './ComposerBar';
+import { useGanttSideStore, useDiaryEntries } from '../../store';
 
 interface AssistantViewProps {
   project: Project;
@@ -34,6 +35,10 @@ export function AssistantView({
   const today = new Date().toISOString().slice(0, 10);
   const chat = useAssistantChat({ projectId: project.id, targetDate: today });
 
+  const entries = useDiaryEntries(project.id);
+  const addDiaryEntry = useGanttSideStore((s) => s.addDiaryEntry);
+  const updateDiaryEntry = useGanttSideStore((s) => s.updateDiaryEntry);
+
   useEffect(() => {
     if (initialSeedText && initialSeedText.trim()) {
       chat.seedComposer(initialSeedText);
@@ -49,9 +54,27 @@ export function AssistantView({
     setDiscardedIds((prev) => new Set(prev).add(id));
   };
 
-  // onApply is fully wired in Plan Task 11. For this task, just mark applied.
-  const onApply = (_id: string, _draft: string) => {
-    setAppliedIds((prev) => new Set(prev).add(_id));
+  const onApply = (id: string, draft: string) => {
+    if (!currentUser) return;
+    const existing = entries.find((e) => e.date === today);
+    if (!existing) {
+      addDiaryEntry(project.id, {
+        date: today,
+        description: draft,
+        personnel: [],
+        photoIds: [],
+        createdBy: currentUser.id,
+      });
+    } else if (!existing.description.trim()) {
+      updateDiaryEntry(project.id, existing.id, { description: draft });
+    } else {
+      const ok = window.confirm(
+        `An entry already exists for ${today} with a description. Replace it with the draft?`,
+      );
+      if (!ok) return;
+      updateDiaryEntry(project.id, existing.id, { description: draft });
+    }
+    setAppliedIds((prev) => new Set(prev).add(id));
   };
 
   if (!isRealAiEnabled()) {
