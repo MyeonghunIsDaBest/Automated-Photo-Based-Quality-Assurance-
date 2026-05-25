@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Calendar, CheckSquare, ChevronLeft, ChevronRight, Cloud, CloudRain,
-  CloudSnow, Plus, Sun, Trash2, Users, Wrench,
+  CloudSnow, Plus, Sun, Trash2, Users, Wrench, Zap,
 } from 'lucide-react';
 import {
   eachDayOfInterval, endOfMonth, format, isSameDay, isSameMonth,
@@ -19,6 +19,7 @@ import { useGanttSideStore, useDiaryEntries } from '../store';
 import type { DiaryEntry, DiaryPersonnel, WeatherKind } from '../types';
 import { PunchView } from './PunchView';
 import WritingAssistButton from '../../../components/writingAssist';
+import { AssistantView } from './assistant/AssistantView';
 
 interface SiteDiaryTabProps {
   project: Project;
@@ -35,13 +36,14 @@ interface SiteDiaryTabProps {
   onInitialSubViewConsumed?: () => void;
 }
 
-export type SubView = 'today' | 'workers' | 'calendar' | 'punch';
+export type SubView = 'today' | 'workers' | 'calendar' | 'punch' | 'assistant';
 
 const SUB_VIEWS: { id: SubView; label: string; icon: typeof Calendar }[] = [
-  { id: 'today',    label: 'Today',      icon: Calendar },
-  { id: 'workers',  label: 'Workers',    icon: Users },
-  { id: 'calendar', label: 'Calendar',   icon: Calendar },
-  { id: 'punch',    label: 'Punch List', icon: CheckSquare },
+  { id: 'today',     label: 'Today',      icon: Calendar },
+  { id: 'workers',   label: 'Workers',    icon: Users },
+  { id: 'calendar',  label: 'Calendar',   icon: Calendar },
+  { id: 'punch',     label: 'Punch List', icon: CheckSquare },
+  { id: 'assistant', label: 'Sparky',     icon: Zap },
 ];
 
 const WEATHER_OPTS: { value: WeatherKind; label: string; Icon: typeof Sun }[] = [
@@ -74,6 +76,14 @@ export function SiteDiaryTab({
   initialSubView, onInitialSubViewConsumed,
 }: SiteDiaryTabProps) {
   const [view, setView] = useState<SubView>(initialSubView ?? 'today');
+  const [seedText, setSeedText] = useState<string>('');
+
+  const openAssistant = (opts?: { seedText?: string }) => {
+    if (opts?.seedText) setSeedText(opts.seedText);
+    setView('assistant');
+  };
+  void openAssistant; // used by Plan Task 13 (wire AssistantButton in EntryForm)
+
   const entries = useDiaryEntries(project.id);
 
   // If the parent passes a new initialSubView (e.g. user clicks Overview's
@@ -137,6 +147,14 @@ export function SiteDiaryTab({
       )}
       {view === 'punch' && (
         <PunchView project={project} canEdit={canEdit} canDelete={canDelete} />
+      )}
+      {view === 'assistant' && (
+        <AssistantView
+          project={project}
+          currentUser={currentUser}
+          initialSeedText={seedText}
+          onSeedConsumed={() => setSeedText('')}
+        />
       )}
     </>
   );
@@ -288,176 +306,232 @@ function EntryForm({
   };
 
   return (
-    <Card>
-      <CardContent className="p-4 sm:p-5">
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div>
-            <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
-              Log day
-            </p>
-            <h3
-              className="mt-1 text-lg font-semibold text-slate-900"
-              style={{ fontFamily: "'Fraunces', Georgia, serif" }}
-            >
-              {format(parseISO(date), 'EEEE, MMMM d')}
-            </h3>
-          </div>
-
-          {/* Conditions */}
-          <div className="grid gap-3 sm:grid-cols-[1fr_120px]">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Weather</label>
-              <div className="flex flex-wrap gap-1.5">
-                {WEATHER_OPTS.map(({ value, label, Icon }) => {
-                  const isOn = weather === value;
-                  return (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setWeather(isOn ? '' : value)}
-                      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-                        isOn
-                          ? 'border-slate-900 bg-slate-900 text-white'
-                          : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
-                      }`}
-                    >
-                      <Icon className="h-3 w-3" />
-                      {label}
-                    </button>
-                  );
-                })}
+    <Card className="overflow-hidden">
+      <form onSubmit={handleSubmit}>
+        <CardContent className="p-0">
+          {/* ─── Header: date hero + tear-off card ─── */}
+          {/* Mimics the front of a foreman's logbook entry — eyebrow label, the
+              long-form date in Fraunces serif as the title, and a small
+              tear-off date card on the right (desktop-only) so the page still
+              reads as "a dated entry" at a glance. */}
+          <header className="border-b border-slate-100 bg-gradient-to-br from-slate-50/40 to-white px-5 py-5 sm:px-7 sm:py-6">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
+                  Daily log · New entry
+                </p>
+                <h3
+                  className="mt-1.5 text-xl font-semibold leading-tight text-slate-900 sm:text-2xl"
+                  style={{ fontFamily: "'Fraunces', Georgia, serif" }}
+                >
+                  {format(parseISO(date), 'EEEE, MMMM d')}
+                </h3>
+                <p className="mt-1 truncate text-xs text-slate-500">
+                  {format(parseISO(date), 'yyyy')} · {project.name}
+                </p>
+              </div>
+              <div className="hidden flex-shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-center shadow-sm sm:block">
+                <p className="text-[9px] font-medium uppercase tracking-[0.15em] text-slate-500">
+                  {format(parseISO(date), 'MMM')}
+                </p>
+                <p
+                  className="text-2xl font-semibold tabular-nums leading-none text-slate-900"
+                  style={{ fontFamily: "'Fraunces', Georgia, serif" }}
+                >
+                  {format(parseISO(date), 'd')}
+                </p>
               </div>
             </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Temp (°F)</label>
-              <Input
-                type="number"
-                inputMode="numeric"
-                value={temperatureF}
-                onChange={(e) => setTemperatureF(e.target.value)}
-                placeholder="68"
-              />
-            </div>
-          </div>
+          </header>
 
-          {/* Description */}
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">
-              Description of works
-            </label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-              required
-              placeholder="e.g. Excavation continued at L14 south slab; conduit pull crew dressed back-boxes on L13 east; electrical inspector walked the high-voltage switchgear room at 14:00."
-              className="block w-full rounded-md border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-            />
-            <div className="mt-1.5 flex flex-wrap items-center gap-1">
-              <span className="self-center text-[10px] font-medium uppercase tracking-wider text-slate-400">
-                Common works
-              </span>
-              {WORK_SNIPPETS.map((snippet) => (
-                <button
-                  key={snippet}
-                  type="button"
-                  onClick={() => setDescription(
-                    description.trim()
-                      ? `${description.trim()}\n${snippet} — `
-                      : `${snippet} — `,
-                  )}
-                  className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-600 transition-colors hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700"
-                >
-                  + {snippet}
-                </button>
-              ))}
-              {/* Divider between manual "append a starter" chips (above) and
-                  the AI "rewrite what I have" assist (right). The chips help
-                  someone who knows exactly what they want; the assist helps
-                  someone whose wording is rough and wants it cleaned up. */}
-              <span aria-hidden className="mx-1 h-4 w-px self-center bg-slate-200" />
-              <WritingAssistButton
-                value={description}
-                onAccept={(next) => setDescription(next)}
-                context={{
-                  date,
-                  weather: weather || undefined,
-                  temperatureF: temperatureF ? Number(temperatureF) : undefined,
-                  personnel,
-                }}
-                disabled={description.trim().length < 3}
-              />
-            </div>
-          </div>
-
-          {/* Personnel rows */}
-          <div>
-            <div className="mb-2 flex items-baseline justify-between">
-              <label className="text-xs font-medium text-slate-600">
-                Personnel on site
-              </label>
-              <span className="tabular-nums text-[11px] text-slate-500">
-                {personnel.length} {personnel.length === 1 ? 'row' : 'rows'} · {totalHours}h total
-              </span>
-            </div>
-            <div className="space-y-2">
-              {personnel.map((p, idx) => (
-                <div
-                  key={idx}
-                  className="grid grid-cols-1 gap-2 rounded-lg border border-slate-200 p-2 sm:grid-cols-[1fr_1fr_1fr_80px_36px]"
-                >
-                  <Input
-                    value={p.workerName}
-                    onChange={(e) => updatePerson(idx, { workerName: e.target.value })}
-                    placeholder="e.g. Marcus Holm"
-                  />
-                  <Input
-                    value={p.role}
-                    onChange={(e) => updatePerson(idx, { role: e.target.value })}
-                    placeholder="Sparky / Apprentice / Excavator op."
-                  />
-                  <Input
-                    value={p.company}
-                    onChange={(e) => updatePerson(idx, { company: e.target.value })}
-                    placeholder="e.g. Casone Electrical"
-                  />
+          {/* ─── Body: stacked sections with eyebrow + rule dividers ─── */}
+          <div className="space-y-6 px-5 py-6 sm:px-7 sm:py-7">
+            {/* Conditions */}
+            <section>
+              <div className="mb-3 flex items-center gap-2">
+                <span aria-hidden className="h-px w-6 bg-slate-300" />
+                <h4 className="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
+                  Conditions
+                </h4>
+                <span aria-hidden className="h-px flex-1 bg-slate-100" />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-[1fr_120px] sm:items-end">
+                <div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {WEATHER_OPTS.map(({ value, label, Icon }) => {
+                      const isOn = weather === value;
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setWeather(isOn ? '' : value)}
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                            isOn
+                              ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
+                              : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                          }`}
+                        >
+                          <Icon className="h-3.5 w-3.5" />
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-slate-500">
+                    Temp (°F)
+                  </label>
                   <Input
                     type="number"
                     inputMode="numeric"
-                    min={0}
-                    value={p.hours}
-                    onChange={(e) => updatePerson(idx, { hours: Number(e.target.value) || 0 })}
-                    placeholder="hrs"
+                    value={temperatureF}
+                    onChange={(e) => setTemperatureF(e.target.value)}
+                    placeholder="68"
                   />
-                  <button
-                    type="button"
-                    onClick={() => removeRow(idx)}
-                    disabled={personnel.length === 1}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-30"
-                    aria-label="Remove row"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
                 </div>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={addRow}
-              className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-emerald-600"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Add another worker
-            </button>
+              </div>
+            </section>
+
+            {/* Description */}
+            <section>
+              <div className="mb-3 flex items-center gap-2">
+                <span aria-hidden className="h-px w-6 bg-slate-300" />
+                <h4 className="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
+                  Description of works
+                </h4>
+                <span aria-hidden className="h-px flex-1 bg-slate-100" />
+              </div>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={5}
+                required
+                placeholder="e.g. Excavation continued at L14 south slab; conduit pull crew dressed back-boxes on L13 east; electrical inspector walked the high-voltage switchgear room at 14:00."
+                className="block w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm leading-6 shadow-sm transition-colors focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              />
+              <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                <span className="self-center text-[10px] font-medium uppercase tracking-wider text-slate-400">
+                  Common works
+                </span>
+                {WORK_SNIPPETS.map((snippet) => (
+                  <button
+                    key={snippet}
+                    type="button"
+                    onClick={() => setDescription(
+                      description.trim()
+                        ? `${description.trim()}\n${snippet} — `
+                        : `${snippet} — `,
+                    )}
+                    className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-medium text-slate-600 transition-colors hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700"
+                  >
+                    + {snippet}
+                  </button>
+                ))}
+                {/* Divider between manual "append a starter" chips (above) and
+                    the AI "rewrite what I have" assist (right). The chips help
+                    someone who knows exactly what they want; the assist helps
+                    someone whose wording is rough and wants it cleaned up. */}
+                <span aria-hidden className="mx-1 h-4 w-px self-center bg-slate-200" />
+                <WritingAssistButton
+                  value={description}
+                  onAccept={(next) => setDescription(next)}
+                  context={{
+                    date,
+                    weather: weather || undefined,
+                    temperatureF: temperatureF ? Number(temperatureF) : undefined,
+                    personnel,
+                  }}
+                  disabled={description.trim().length < 3}
+                />
+              </div>
+            </section>
+
+            {/* Personnel rows */}
+            <section>
+              <div className="mb-3 flex items-center gap-2">
+                <span aria-hidden className="h-px w-6 bg-slate-300" />
+                <h4 className="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
+                  Personnel on site
+                </h4>
+                <span aria-hidden className="h-px flex-1 bg-slate-100" />
+                <span className="tabular-nums text-[11px] text-slate-500">
+                  {personnel.length} {personnel.length === 1 ? 'row' : 'rows'} · {totalHours}h total
+                </span>
+              </div>
+              <div className="space-y-2">
+                {personnel.map((p, idx) => (
+                  <div
+                    key={idx}
+                    className="grid grid-cols-1 gap-2 rounded-lg border border-slate-200 bg-white p-2 transition-colors hover:border-slate-300 sm:grid-cols-[36px_1fr_1fr_1fr_80px_36px] sm:items-center"
+                  >
+                    {/* Row ordinal — Fraunces tabular numerals give the form a
+                        ledger / roster feel without introducing a new font. */}
+                    <div className="hidden h-9 items-center justify-center rounded-md bg-slate-50 sm:flex">
+                      <span
+                        className="text-xs font-semibold tabular-nums text-slate-500"
+                        style={{ fontFamily: "'Fraunces', Georgia, serif" }}
+                      >
+                        {String(idx + 1).padStart(2, '0')}
+                      </span>
+                    </div>
+                    <Input
+                      value={p.workerName}
+                      onChange={(e) => updatePerson(idx, { workerName: e.target.value })}
+                      placeholder="e.g. Marcus Holm"
+                    />
+                    <Input
+                      value={p.role}
+                      onChange={(e) => updatePerson(idx, { role: e.target.value })}
+                      placeholder="Sparky / Apprentice / Excavator op."
+                    />
+                    <Input
+                      value={p.company}
+                      onChange={(e) => updatePerson(idx, { company: e.target.value })}
+                      placeholder="e.g. Casone Electrical"
+                    />
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      value={p.hours}
+                      onChange={(e) => updatePerson(idx, { hours: Number(e.target.value) || 0 })}
+                      placeholder="hrs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeRow(idx)}
+                      disabled={personnel.length === 1}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-30"
+                      aria-label="Remove row"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={addRow}
+                className="mt-2.5 inline-flex items-center gap-1.5 rounded-full border border-dashed border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:border-emerald-400 hover:bg-emerald-50/50 hover:text-emerald-700"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add another worker
+              </button>
+            </section>
           </div>
 
-          <div className="flex justify-end">
+          {/* ─── Footer: save action ─── */}
+          <footer className="flex flex-col-reverse gap-3 border-t border-slate-100 bg-slate-50/40 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-7">
+            <p className="text-[11px] text-slate-500">
+              Saved to project log · sign-off captured at submit
+            </p>
             <Button type="submit" disabled={!description.trim()}>
               Save diary entry
             </Button>
-          </div>
-        </form>
-      </CardContent>
+          </footer>
+        </CardContent>
+      </form>
     </Card>
   );
 }
@@ -476,103 +550,155 @@ function EntryCard({
   const weatherOpt = WEATHER_OPTS.find((w) => w.value === entry.weather);
 
   return (
-    <Card>
-      <CardContent className="p-4 sm:p-5">
-        <header className="mb-4 flex items-start justify-between gap-3">
-          <div>
-            <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
-              Site diary
-            </p>
-            <h3
-              className="mt-1 text-xl font-semibold text-slate-900"
-              style={{ fontFamily: "'Fraunces', Georgia, serif" }}
-            >
-              {format(parseISO(entry.date), 'EEEE, MMMM d')}
-            </h3>
+    <Card className="overflow-hidden">
+      <CardContent className="p-0">
+        {/* ─── Header: date hero + tear-off card ─── */}
+        {/* Same logbook header treatment as the entry form so a "logged" day
+            visually rhymes with a "logging in progress" day. */}
+        <header className="border-b border-slate-100 bg-gradient-to-br from-slate-50/40 to-white px-5 py-5 sm:px-7 sm:py-6">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
+                Daily log · Recorded
+              </p>
+              <h3
+                className="mt-1.5 text-xl font-semibold leading-tight text-slate-900 sm:text-2xl"
+                style={{ fontFamily: "'Fraunces', Georgia, serif" }}
+              >
+                {format(parseISO(entry.date), 'EEEE, MMMM d')}
+              </h3>
+              <p className="mt-1 truncate text-xs text-slate-500">
+                {format(parseISO(entry.date), 'yyyy')} · {project.name}
+              </p>
+            </div>
+            <div className="flex flex-shrink-0 items-start gap-2">
+              <div className="hidden rounded-lg border border-slate-200 bg-white px-3 py-2 text-center shadow-sm sm:block">
+                <p className="text-[9px] font-medium uppercase tracking-[0.15em] text-slate-500">
+                  {format(parseISO(entry.date), 'MMM')}
+                </p>
+                <p
+                  className="text-2xl font-semibold tabular-nums leading-none text-slate-900"
+                  style={{ fontFamily: "'Fraunces', Georgia, serif" }}
+                >
+                  {format(parseISO(entry.date), 'd')}
+                </p>
+              </div>
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm('Delete this diary entry?')) removeEntry(project.id, entry.id);
+                  }}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500"
+                  aria-label="Delete entry"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
+            </div>
           </div>
-          {canEdit && (
-            <button
-              type="button"
-              onClick={() => {
-                if (confirm('Delete this diary entry?')) removeEntry(project.id, entry.id);
-              }}
-              className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500"
-              aria-label="Delete entry"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
-          )}
         </header>
 
-        {/* Conditions strip */}
-        {(entry.weather || entry.temperatureF !== undefined) && (
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            {weatherOpt && (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
-                <weatherOpt.Icon className="h-3 w-3" />
-                {weatherOpt.label}
-              </span>
-            )}
-            {entry.temperatureF !== undefined && (
-              <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 tabular-nums">
-                {entry.temperatureF}°F
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* Description */}
-        <p className="mb-5 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
-          {entry.description}
-        </p>
-
-        {/* Personnel summary */}
-        <section>
-          <div className="mb-2 flex items-baseline justify-between">
-            <h4 className="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
-              Personnel ({entry.personnel.length})
-            </h4>
-            <span className="tabular-nums text-xs text-slate-500">{totalHours}h total</span>
-          </div>
-
-          {entry.personnel.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50/60 px-4 py-4 text-center text-sm text-slate-400">
-              No personnel logged for this day.
-            </p>
-          ) : (
-            <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
-              {entry.personnel.map((p) => (
-                <li key={p.id} className="flex items-center gap-3 px-3 py-2">
-                  <Avatar className="h-7 w-7 flex-shrink-0">
-                    <AvatarFallback className="text-[10px] font-semibold">
-                      {initials(p.workerName)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-slate-900">{p.workerName}</p>
-                    <p className="truncate text-[11px] text-slate-500">
-                      {p.role}
-                      {p.company && p.company !== '—' && <> · {p.company}</>}
-                    </p>
-                  </div>
-                  <span className="flex-shrink-0 tabular-nums text-sm text-slate-700">
-                    {p.hours}h
+        {/* ─── Body ─── */}
+        <div className="space-y-6 px-5 py-6 sm:px-7 sm:py-7">
+          {/* Conditions */}
+          {(entry.weather || entry.temperatureF !== undefined) && (
+            <section>
+              <div className="mb-3 flex items-center gap-2">
+                <span aria-hidden className="h-px w-6 bg-slate-300" />
+                <h4 className="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
+                  Conditions
+                </h4>
+                <span aria-hidden className="h-px flex-1 bg-slate-100" />
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {weatherOpt && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700">
+                    <weatherOpt.Icon className="h-3.5 w-3.5" />
+                    {weatherOpt.label}
                   </span>
-                  {canEdit && (
-                    <button
-                      type="button"
-                      onClick={() => removePersonnel(project.id, entry.id, p.id)}
-                      className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500"
-                      aria-label="Remove worker"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
+                )}
+                {entry.temperatureF !== undefined && (
+                  <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 tabular-nums">
+                    {entry.temperatureF}°F
+                  </span>
+                )}
+              </div>
+            </section>
           )}
-        </section>
+
+          {/* Description */}
+          <section>
+            <div className="mb-3 flex items-center gap-2">
+              <span aria-hidden className="h-px w-6 bg-slate-300" />
+              <h4 className="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
+                Description of works
+              </h4>
+              <span aria-hidden className="h-px flex-1 bg-slate-100" />
+            </div>
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+              {entry.description}
+            </p>
+          </section>
+
+          {/* Personnel summary */}
+          <section>
+            <div className="mb-3 flex items-center gap-2">
+              <span aria-hidden className="h-px w-6 bg-slate-300" />
+              <h4 className="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
+                Personnel ({entry.personnel.length})
+              </h4>
+              <span aria-hidden className="h-px flex-1 bg-slate-100" />
+              <span className="tabular-nums text-[11px] text-slate-500">
+                {totalHours}h total
+              </span>
+            </div>
+
+            {entry.personnel.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50/60 px-4 py-4 text-center text-sm text-slate-400">
+                No personnel logged for this day.
+              </p>
+            ) : (
+              <ul className="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200 bg-white">
+                {entry.personnel.map((p, idx) => (
+                  <li key={p.id} className="flex items-center gap-3 px-3 py-2.5">
+                    <span
+                      className="hidden h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-slate-50 text-[11px] font-semibold tabular-nums text-slate-500 sm:inline-flex"
+                      style={{ fontFamily: "'Fraunces', Georgia, serif" }}
+                    >
+                      {String(idx + 1).padStart(2, '0')}
+                    </span>
+                    <Avatar className="h-7 w-7 flex-shrink-0">
+                      <AvatarFallback className="text-[10px] font-semibold">
+                        {initials(p.workerName)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-slate-900">{p.workerName}</p>
+                      <p className="truncate text-[11px] text-slate-500">
+                        {p.role}
+                        {p.company && p.company !== '—' && <> · {p.company}</>}
+                      </p>
+                    </div>
+                    <span className="flex-shrink-0 tabular-nums text-sm font-medium text-slate-700">
+                      {p.hours}h
+                    </span>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={() => removePersonnel(project.id, entry.id, p.id)}
+                        className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500"
+                        aria-label="Remove worker"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
       </CardContent>
     </Card>
   );
