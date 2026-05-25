@@ -30,7 +30,7 @@ import { ReviewQueueTab }  from './gantt/tabs/ReviewQueueTab';
 import { InventoryTab }    from './gantt/tabs/InventoryTab';
 import { PlansTab }        from './gantt/tabs/PlansTab';
 import { UploadsTab }      from './gantt/tabs/UploadsTab';
-import { SiteDiaryTab, type SubView as DiarySubView } from './gantt/tabs/SiteDiaryTab';
+import { SiteDiaryTab } from './gantt/tabs/SiteDiaryTab';
 // SupplierTab merges OrdersTab + DeliveriesTab + InvoicesTab + WarrantiesTab
 // under one editorial header so the procurement surface area collapses from
 // four nav entries to one. Each child tab is reused as-is via a `hideHeader`
@@ -94,10 +94,6 @@ export default function Gantt() {
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
   const [initialOpenTaskId, setInitialOpenTaskId] = useState<string | null>(null);
-  // One-shot: when Overview's "punch open" tile (or a legacy `?tab=punch_list`
-  // deep-link) routes here, we set this so Site Diary opens directly on its
-  // Punch sub-view. SiteDiaryTab clears it back via onInitialSubViewConsumed.
-  const [initialDiarySubView, setInitialDiarySubView] = useState<DiarySubView | null>(null);
 
   // Connectedness Pass 2: read `?project=&tab=&task=` and hydrate page state.
   // The hook handles `?project=` itself; the callback applies the rest.
@@ -107,7 +103,6 @@ export default function Gantt() {
     onApplyExtras: ({ tab, task }) => {
       if (tab === 'punch_list') {
         setActiveTab('site_diary');
-        setInitialDiarySubView('punch');
       } else if (tab && TAB_SPECS.some((s) => s.id === tab)) {
         setActiveTab(tab as ActiveTab);
       }
@@ -180,7 +175,6 @@ export default function Gantt() {
     // and any old deep-links still resolve.
     if (tabId === 'punch_list') {
       setActiveTab('site_diary');
-      setInitialDiarySubView('punch');
       return;
     }
     const map: Partial<Record<TabId, ActiveTab>> = {
@@ -227,69 +221,63 @@ export default function Gantt() {
 
   return (
     <div className="editorial-root min-h-full bg-[#FAFAF7]">
-      <EditorialPageHeader
-        eyebrow="Plan · Schedule"
-        title="The schedule,"
-        accent="moving"
-        description="Tasks, milestones, supplier orders, inventory, plans, uploads, and the punch list — all keyed to the active project."
-        actions={
-          <Link
-            to="/projects"
-            aria-label="Back to all projects"
-            className="group relative z-10 inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 active:scale-[0.98]"
-          >
-            <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
-            All projects
-          </Link>
-        }
-      />
-
       <div className="px-4 py-8 sm:px-8 sm:py-10">
 
-      {/* ─── Tab strip ─── */}
-      {/* The active dark pill is a single motion.div with layoutId — when the
-          user clicks another tab framer-motion FLIPs the pill into its new
-          position with a spring. The pill sits *behind* the icon+label content
-          via `absolute inset-0`; foreground content uses `relative z-10`. */}
-      <div className="mb-6 -mx-4 overflow-x-auto px-4 pb-1 sm:-mx-6 sm:px-6">
-        <div className="inline-flex items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
-          {TAB_SPECS.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            const count = counts[tab.id as keyof typeof counts];
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={`relative flex flex-shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
-                  isActive
-                    ? 'text-white'
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
-              >
-                {isActive && (
-                  <motion.span
-                    layoutId="gantt-primary-tab-pill"
-                    className="absolute inset-0 rounded-xl bg-slate-900 shadow-sm"
-                    transition={{ type: 'spring', damping: 30, stiffness: 360 }}
-                  />
-                )}
-                <Icon className="relative z-10 h-4 w-4" />
-                <span className="relative z-10">{tab.label}</span>
-                {typeof count === 'number' && count > 0 && (
-                  <span
-                    className={`relative z-10 tabular-nums rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
-                      isActive ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-600'
-                    }`}
-                  >
-                    {count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+      {/* ─── Tab strip + All projects pill on a single row ─── */}
+      {/* Two distinct containers: the tab strip pill on the left (can scroll
+          horizontally on narrow screens via min-w-0 + overflow-x-auto) and the
+          "All projects" return link on the right, sized to its content. The
+          active dark pill behind the focused tab is a single motion.div with
+          layoutId — framer-motion FLIPs it between positions on click. */}
+      <div className="mb-6 flex items-center gap-3 sm:gap-4">
+        <div className="min-w-0 flex-1 overflow-x-auto pb-1">
+          <div className="inline-flex items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
+            {TAB_SPECS.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              const count = counts[tab.id as keyof typeof counts];
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`relative flex flex-shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'text-white'
+                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                  }`}
+                >
+                  {isActive && (
+                    <motion.span
+                      layoutId="gantt-primary-tab-pill"
+                      className="absolute inset-0 rounded-xl bg-slate-900 shadow-sm"
+                      transition={{ type: 'spring', damping: 30, stiffness: 360 }}
+                    />
+                  )}
+                  <Icon className="relative z-10 h-4 w-4" />
+                  <span className="relative z-10">{tab.label}</span>
+                  {typeof count === 'number' && count > 0 && (
+                    <span
+                      className={`relative z-10 tabular-nums rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                        isActive ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-600'
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
+        <Link
+          to="/projects"
+          aria-label="Back to all projects"
+          className="group inline-flex flex-shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 active:scale-[0.98]"
+        >
+          <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
+          <span className="hidden sm:inline">All projects</span>
+        </Link>
       </div>
 
       {/* ─── Active tab ─── */}
@@ -340,8 +328,6 @@ export default function Gantt() {
             currentUser={currentUser}
             canEdit={canEdit}
             canDelete={canDelete}
-            initialSubView={initialDiarySubView}
-            onInitialSubViewConsumed={() => setInitialDiarySubView(null)}
           />
         )}
 
