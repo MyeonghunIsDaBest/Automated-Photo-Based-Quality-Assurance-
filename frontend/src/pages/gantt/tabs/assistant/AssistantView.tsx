@@ -10,7 +10,6 @@
 import { useEffect, useState } from 'react';
 import { Zap } from 'lucide-react';
 import type { Project, User } from '../../../../types';
-import { Card, CardContent } from '../../../../components/ui/card';
 import { useAssistantChat } from './useAssistantChat';
 import { ChatThread } from './ChatThread';
 import { ComposerBar } from './ComposerBar';
@@ -79,18 +78,14 @@ export function AssistantView({
 
   if (!isRealAiEnabled()) {
     return (
-      <Card>
-        <CardContent className="p-6 text-center">
-          <Zap className="mx-auto h-8 w-8 text-slate-300" />
-          <p className="mt-3 text-sm font-medium text-slate-700">
-            Sparky is in demo mode
-          </p>
-          <p className="mt-1 text-xs text-slate-500">
-            Set <code>VITE_ENABLE_REAL_AI=true</code> in <code>frontend/.env.local</code>
-            {' '}to enable AI assistance on Site Diary.
-          </p>
-        </CardContent>
-      </Card>
+      <div className="p-6 text-center">
+        <Zap className="mx-auto h-8 w-8 text-slate-300" />
+        <p className="mt-3 text-sm font-medium text-slate-700">Sparky is in demo mode</p>
+        <p className="mt-1 text-xs text-slate-500">
+          Set <code>VITE_ENABLE_REAL_AI=true</code> in <code>frontend/.env.local</code>
+          {' '}to enable AI assistance on Site Diary.
+        </p>
+      </div>
     );
   }
 
