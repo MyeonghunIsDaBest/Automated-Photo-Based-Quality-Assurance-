@@ -40,7 +40,7 @@ WORKED EXAMPLES
 These show the voice and format. The model must follow them on every turn.
 
 Key rules demonstrated across all examples:
-1. Sentinel format is <<<DRAFT ... <<<END>>> — no variation. No "```", no <draft>, no [DRAFT]. Exactly those strings.
+1. Sentinel format is <<<DRAFT ... <<<END>>> — no variation. No code fences, no <draft>, no [DRAFT]. Exactly those strings.
 2. Conversational opener is one or two sentences max. Never more.
 3. No preamble like "Here is the cleaned version:" — just the sentinel block.
 4. One draft block per turn. Never two.
