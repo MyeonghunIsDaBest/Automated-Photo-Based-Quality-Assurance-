@@ -825,7 +825,6 @@ function WatchlistCard({
             value={String(punchOpen)}
             sub={punchOpen === 0 ? 'All clear' : `${punchOpen} open item${punchOpen === 1 ? '' : 's'}`}
             tone={punchOpen > 0 ? 'amber' : 'emerald'}
-            onClick={() => onJumpToTab?.('punch_list')}
           />
           <WatchRow
             icon={ShieldCheck}
