@@ -1,7 +1,7 @@
 // sparkyPrompt — system prompt builders for site-diary-assistant.
 //
 // STABLE_PROMPT is the cached prefix. It contains persona, rules, output
-// format, and three worked examples. The worked examples are deliberately
+// format, and seven worked examples. The worked examples are deliberately
 // long because the Anthropic cache breakpoint only fires when the cached
 // block is >=2048 tokens (Haiku/Sonnet). Without the examples, the persona
 // is too short to cache and every turn re-pays the input price.
