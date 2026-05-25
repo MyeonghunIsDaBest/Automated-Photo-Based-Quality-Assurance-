@@ -7,6 +7,7 @@
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight, Calendar as CalIcon, Plus } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
+import { CalendarPopover } from './CalendarPopover';
 
 interface DayHeaderProps {
   projectName: string;
@@ -15,6 +16,7 @@ interface DayHeaderProps {
 
 export function DayHeader({ projectName, todayISO }: DayHeaderProps) {
   const [picked] = useState(todayISO);
+  const [calOpen, setCalOpen] = useState(false);
   const d = parseISO(picked);
 
   return (
@@ -60,15 +62,19 @@ export function DayHeader({ projectName, todayISO }: DayHeaderProps) {
           </button>
         </div>
 
-        {/* Calendar trigger (popover wired in Task 9) */}
-        <button
-          type="button"
-          className="inline-flex items-center gap-2 px-3.5 py-2 rounded-full bg-white border border-[#E6E1D4] text-[13px] font-semibold hover:bg-[#FAF8F2]"
-        >
-          <CalIcon className="h-[15px] w-[15px]" />
-          Calendar
-          <span className="w-1.5 h-1.5 bg-[#2F8F5C] rounded-full" />
-        </button>
+        {/* Calendar trigger */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setCalOpen((v) => !v)}
+            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-full bg-white border border-[#E6E1D4] text-[13px] font-semibold hover:bg-[#FAF8F2]"
+          >
+            <CalIcon className="h-[15px] w-[15px]" />
+            Calendar
+            <span className="w-1.5 h-1.5 bg-[#2F8F5C] rounded-full" />
+          </button>
+          <CalendarPopover open={calOpen} onClose={() => setCalOpen(false)} todayISO={todayISO} />
+        </div>
 
         {/* New entry CTA */}
         <button
