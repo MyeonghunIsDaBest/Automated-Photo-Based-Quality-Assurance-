@@ -186,8 +186,18 @@ function guessMediaType(storagePath: string): GuessMediaResult {
 
 interface InvokePayload {
   photoId?: string;
-  // Postgres database-webhook envelope.
-  record?: { id?: string; project_id?: string; task_id?: string | null };
+  // Postgres database-webhook envelope. `phase_hint` is the column added by
+  // migration 17_photos_phase_hint.sql; it rides along when the operator
+  // tagged the upload batch with a construction phase in the AI Analysis
+  // tab's chip selector. Add `phase_hint` to the webhook's column allowlist
+  // in the Supabase dashboard or it stays undefined here even when the
+  // column is populated.
+  record?: {
+    id?: string;
+    project_id?: string;
+    task_id?: string | null;
+    phase_hint?: string | null;
+  };
   // Phase D-4 — re-analyse a photo even though there's no queued row. The
   // Edge Function INSERTs a fresh ai_analyses row in `analysing` status
   // and proceeds. The frontend's "Re-analyse" button passes this.
@@ -196,8 +206,9 @@ interface InvokePayload {
   // and keeps writing whatever modelUsed it was given. Phase D's real vision
   // call reads it to switch model versions for replay / A-B testing.
   model?: string;
-  // Optional phase hint to bias the analyser toward a known phase. Today's
-  // stub ignores it; Phase D plumbs it into the prompt.
+  // Optional phase hint to bias the analyser toward a known phase. Falls
+  // back to `record.phase_hint` from the webhook envelope when the
+  // top-level field is absent (webhook-driven flow).
   phaseHint?: string;
 }
 
@@ -254,6 +265,13 @@ serve(async (req: Request) => {
   //        → real vision. callClaudeVision stamps modelUsed itself
   //        (real model on success, 'failed' marker on any failure path).
   const resolvedModel = body.model ?? cfg.defaultModel;
+  // Top-level body.phaseHint (manual re-analyse / direct invocation) wins
+  // over record.phase_hint (webhook-driven flow); both fall back to null
+  // for Auto-detect.
+  const resolvedPhaseHint =
+    (body.phaseHint as ConstructionPhase | null | undefined)
+    ?? (body.record?.phase_hint as ConstructionPhase | null | undefined)
+    ?? null;
   let result: AnalysisResult;
   if (resolvedModel.startsWith('mvp-stub')) {
     result = mockAnalyze();
@@ -261,7 +279,7 @@ serve(async (req: Request) => {
   } else {
     result = await callClaudeVision(sb, {
       storagePath: photoRow.storage_path,
-      phaseHint:   (body.phaseHint as ConstructionPhase | null | undefined) ?? null,
+      phaseHint:   resolvedPhaseHint,
       model:       resolvedModel,
     });
   }
@@ -424,6 +442,10 @@ serve(async (req: Request) => {
       action_taken:   action,
       safety_flag_count:  result.safetyFlags.length,
       quality_flag_count: result.qualityFlags.length,
+      // The phase the operator pre-tagged (if any) vs. what the model
+      // detected — useful for accuracy retros and prompt tuning.
+      phase_hint_provided: resolvedPhaseHint,
+      phase_detected:      result.phaseDetected,
     },
   });
 

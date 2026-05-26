@@ -29,7 +29,7 @@ interface State {
 
 interface Actions {
   // Diary
-  addDiaryEntry:    (projectId: string, draft: Omit<DiaryEntry, 'id' | 'projectId' | 'createdAt' | 'createdBy'> & { createdBy: string }) => void;
+  addDiaryEntry:    (projectId: string, draft: Omit<DiaryEntry, 'id' | 'projectId' | 'createdAt' | 'createdBy'> & { createdBy: string }) => string;
   updateDiaryEntry: (projectId: string, id: string, patch: Partial<DiaryEntry>) => void;
   removeDiaryEntry: (projectId: string, id: string) => void;
   addDiaryPersonnel:    (projectId: string, entryId: string, person: Omit<DiaryPersonnel, 'id'>) => void;
@@ -278,8 +278,9 @@ export const useGanttSideStore = create<State & Actions>()(
 
       // ── Diary ──────────────────────────────────────────────────────────
       addDiaryEntry: (projectId, draft) => {
+        const id = uid('diary');
         const entry: DiaryEntry = {
-          id: uid('diary'),
+          id,
           projectId,
           createdAt: now(),
           ...draft,
@@ -290,6 +291,7 @@ export const useGanttSideStore = create<State & Actions>()(
             [projectId]: [entry, ...(s.diaryEntries[projectId] ?? [])],
           },
         }));
+        return id;
       },
       updateDiaryEntry: (projectId, id, patch) => {
         set((s) => ({
@@ -614,9 +616,9 @@ export const useGanttSideStore = create<State & Actions>()(
     }),
     {
       name: 'siteproof-gantt-side',
-      version: 2,                  // bumped from v1 — triggers migrate
-      // Run the legacy → v2 migration on every rehydration.
-      // Any field shape can show up in `persisted` (v0, v1, partial v2),
+      version: 3,                  // v3 adds Site Diary startTime/endTime/status/tags
+      // Run the legacy → v3 migration on every rehydration.
+      // Any field shape can show up in `persisted` (v0, v1, v2, partial v3),
       // and `migrate` handles all of them idempotently.
       migrate: (persisted, _version) => migrate(persisted) as never,
     },

@@ -19,14 +19,23 @@ export function useDashboardStats() {
   const documents = useFeatureStore((s) => s.documents);
 
   return useMemo(() => {
-    const totalTasks = tasks.length;
+    // Scope task aggregates to the active project AND drop the 8 phase
+    // anchors — they're scaffolding rows auto-seeded by migration 12, not
+    // real work units. Without this:
+    //   - sibling projects bled in (eg "57 / 203 complete" on a fresh project)
+    //   - the new project itself still showed "0 / 8" because of the anchors
+    // Photos are already filtered by project.id below.
+    const projectTasks    = tasks.filter(
+      (t) => t.projectId === project.id && !t.isPhaseAnchor,
+    );
+    const totalTasks      = projectTasks.length;
     const overallProgress = totalTasks
-      ? Math.round(tasks.reduce((sum, t) => sum + t.percentComplete, 0) / totalTasks)
+      ? Math.round(projectTasks.reduce((sum, t) => sum + t.percentComplete, 0) / totalTasks)
       : 0;
 
-    const tasksComplete   = tasks.filter((t) => t.status === 'complete').length;
-    const tasksInProgress = tasks.filter((t) => t.status === 'in_progress').length;
-    const delayedTasks    = tasks.filter((t) => t.status === 'delayed').length;
+    const tasksComplete   = projectTasks.filter((t) => t.status === 'complete').length;
+    const tasksInProgress = projectTasks.filter((t) => t.status === 'in_progress').length;
+    const delayedTasks    = projectTasks.filter((t) => t.status === 'delayed').length;
 
     // Photos for the active project, derived from the documents collection.
     const projectPhotos = documents.filter(

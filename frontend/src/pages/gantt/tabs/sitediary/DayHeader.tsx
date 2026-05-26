@@ -1,8 +1,7 @@
 // frontend/src/pages/gantt/tabs/sitediary/DayHeader.tsx
 //
 // Day-header card with date tear-off, title, date nav, Calendar button,
-// New entry button. The Calendar button is a placeholder here — the
-// CalendarPopover is wired in Task 9.
+// and the live "N entries · Xh total" subtitle.
 
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight, Calendar as CalIcon, Plus } from 'lucide-react';
@@ -12,12 +11,18 @@ import { CalendarPopover } from './CalendarPopover';
 interface DayHeaderProps {
   projectName: string;
   todayISO: string;
+  entryCount: number;
+  hoursLogged: number;
+  onNewEntry: () => void;
 }
 
-export function DayHeader({ projectName, todayISO }: DayHeaderProps) {
+export function DayHeader({
+  projectName, todayISO, entryCount, hoursLogged, onNewEntry,
+}: DayHeaderProps) {
   const [picked] = useState(todayISO);
   const [calOpen, setCalOpen] = useState(false);
   const d = parseISO(picked);
+  const hoursDisplay = Math.round(hoursLogged * 10) / 10;
 
   return (
     <div className="flex items-start justify-between gap-4 bg-white border border-[#E6E1D4] rounded-[14px] px-6 py-5 mb-4 shadow-[0_1px_2px_rgba(20,20,20,0.04)]">
@@ -43,7 +48,9 @@ export function DayHeader({ projectName, todayISO }: DayHeaderProps) {
           <div className="text-[#6B6B6B] text-[13px] mt-1">
             {format(d, 'yyyy')} · {projectName}
             <span className="mx-2 text-[#A0A0A0]">·</span>
-            5 entries · 38.5h total
+            <span className={entryCount === 0 ? 'text-[#A0A0A0]' : ''}>
+              {entryCount} {entryCount === 1 ? 'entry' : 'entries'} · {hoursDisplay}h total
+            </span>
             <span className="mx-2 text-[#A0A0A0]">·</span>
             <span className="text-[#246F47] font-medium">● Live</span>
           </div>
@@ -51,13 +58,13 @@ export function DayHeader({ projectName, todayISO }: DayHeaderProps) {
       </div>
 
       <div className="flex items-center gap-2">
-        {/* Date nav */}
+        {/* Date nav — decorative this pass */}
         <div className="inline-flex items-center bg-white border border-[#E6E1D4] rounded-full p-1 gap-0.5">
-          <button type="button" className="w-7 h-7 grid place-items-center rounded-full hover:bg-black/5">
+          <button type="button" className="w-7 h-7 grid place-items-center rounded-full hover:bg-black/5" aria-label="Previous day">
             <ChevronLeft className="h-3.5 w-3.5" />
           </button>
           <span className="px-2.5 text-[12.5px] font-medium tabular-nums">{format(d, 'MM / dd / yyyy')}</span>
-          <button type="button" className="w-7 h-7 grid place-items-center rounded-full hover:bg-black/5">
+          <button type="button" className="w-7 h-7 grid place-items-center rounded-full hover:bg-black/5" aria-label="Next day">
             <ChevronRight className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -79,6 +86,7 @@ export function DayHeader({ projectName, todayISO }: DayHeaderProps) {
         {/* New entry CTA */}
         <button
           type="button"
+          onClick={onNewEntry}
           className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#2F8F5C] text-white text-[13px] font-semibold hover:bg-[#246F47]"
         >
           <Plus className="h-3.5 w-3.5" />

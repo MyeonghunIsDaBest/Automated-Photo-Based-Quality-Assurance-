@@ -307,31 +307,36 @@ export default function Dashboard() {
   const crewExtra = Math.max(0, crewTotal - crewAvatars.length);
 
   // Zone activity — counts active tasks per zone for the last-24h heatmap.
-  // Falls back to an empty list if no zones exist.
+  // Scoped to the active project so a brand-new project doesn't show zones
+  // belonging to sibling projects in the same store.
   const zoneActivity = useMemo(() => {
-    return zones.slice(0, 10).map((z) => {
+    return zones.filter((z) => z.projectId === project.id).slice(0, 10).map((z) => {
       // Derive a "load" number deterministically per zone so demo data
       // still has visual variation. Real impl: photos uploaded per zone.
       const seed = z.id.charCodeAt(z.id.length - 1) + z.id.charCodeAt(0);
       const count = (seed * 13) % 100;
       return { id: z.id, name: z.name, count };
     });
-  }, [zones]);
+  }, [zones, project.id]);
   const zoneMax = Math.max(1, ...zoneActivity.map((z) => z.count));
 
   // Build the Planned vs Actual chart data. Reuses progressHistory for the
   // actual line; the "planned" series is a straight-line target from 0 →
   // the latest actual value over the same number of points. Replace with a
   // real planned-progress feed once we capture baselines.
+  //
+  // progressHistory is workspace-wide (not per-project), so for a brand-new
+  // project with 0 tasks we return [] — otherwise the chart would render the
+  // demo seed curve (35 → 67%) on a project that has no progress yet.
   const plannedVsActual = useMemo(() => {
-    if (progressTrend.length === 0) return [];
+    if (stats.totalTasks === 0 || progressTrend.length === 0) return [];
     const last = progressTrend[progressTrend.length - 1]?.progress ?? 0;
     return progressTrend.map((row, i) => ({
       date: row.date,
       actual: row.progress,
       planned: ((i + 1) / progressTrend.length) * last * 1.05, // slight over-plan
     }));
-  }, [progressTrend]);
+  }, [progressTrend, stats.totalTasks]);
 
   // Stable sparkline series — one per KPI tile. Seeded on the live value
   // so each tile gets its own shape without flickering between renders.
@@ -747,6 +752,14 @@ export default function Dashboard() {
                   </span>
                 </div>
                 <div className="h-64">
+                  {plannedVsActual.length === 0 ? (
+                    <div className="flex h-full flex-col items-center justify-center px-4 text-center">
+                      <p className="text-sm font-medium text-slate-600">No progress yet.</p>
+                      <p className="mt-1 text-xs text-slate-400">
+                        The trend will start drawing as soon as tasks land on this project.
+                      </p>
+                    </div>
+                  ) : (
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={plannedVsActual} margin={{ top: 8, right: 20, left: 0, bottom: 4 }}>
                       <defs>
@@ -798,6 +811,7 @@ export default function Dashboard() {
                       />
                     </AreaChart>
                   </ResponsiveContainer>
+                  )}
                 </div>
               </div>
             </section>

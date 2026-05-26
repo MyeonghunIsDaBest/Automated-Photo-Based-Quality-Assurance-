@@ -127,6 +127,46 @@ export async function countPendingAnalyses(projectId: string): Promise<number> {
   return count ?? 0;
 }
 
+// Lightweight projection of recent analyses for the AI Analysis tab's
+// activity strip. Returns the four `action_taken` buckets so the user can
+// see "12 auto-applied, 0 pending, 3 skipped, 0 failed" — closes the
+// reporting gap where the review queue (pending-only) looks empty even
+// when the AI is processing photos correctly.
+//
+// `since` is an ISO timestamp; defaults to 24h ago. Caller can pass a
+// tighter window for the strip ("last 6h") or a wider one for diagnostics.
+// Keeps the payload small — no rationale, no flags, no materials — because
+// the strip only renders counts. Failed-row drilldown re-queries via
+// `listFailedAnalyses` (TODO follow-up) or falls back to the audit log.
+export interface RecentAnalysisRow {
+  id: string;
+  photo_id: string;
+  action_taken: AnalysisAction;
+  analysis_status: AnalysisStatus;
+  confidence: number;
+  analyzed_at: string;
+  rationale: string | null;
+}
+
+export async function getRecentAnalyses(
+  projectId: string,
+  options?: { since?: string; limit?: number },
+): Promise<RecentAnalysisRow[]> {
+  if (!supabaseConfigured()) return [];
+  if (!isUuid(projectId)) return [];
+  const since = options?.since ?? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const limit = options?.limit ?? 50;
+  const { data, error } = await supabase
+    .from('ai_analyses')
+    .select('id, photo_id, action_taken, analysis_status, confidence, analyzed_at, rationale, photos!inner(project_id)')
+    .eq('photos.project_id', projectId)
+    .gte('analyzed_at', since)
+    .order('analyzed_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []) as unknown as RecentAnalysisRow[];
+}
+
 // Pulls the pending review queue for the manager+ tier. Joins the photo so the
 // drawer can show thumbnail + filename + uploader without a second round-trip.
 export async function listPendingAnalyses(projectId: string): Promise<Array<AIAnalysisRow & { photos: { id: string; project_id: string; storage_path: string; filename: string; uploaded_by: string | null; taken_at: string | null; gps_lat: number | null; gps_lng: number | null } }>> {

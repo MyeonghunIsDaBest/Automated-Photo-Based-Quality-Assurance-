@@ -39,6 +39,8 @@ export interface DiaryPersonnel {
   company: string;        // 'Casone Electrical' | subcontractor name
 }
 
+export type DiaryStatus = 'signed' | 'pending' | 'flagged';
+
 export interface DiaryEntry {
   id: string;
   projectId: string;
@@ -50,6 +52,12 @@ export interface DiaryEntry {
   photoIds: string[];     // refs into the documents store
   createdBy: string;
   createdAt: string;
+  // Site Diary v3 fields — all optional so the legacy migration (store.ts:migrate)
+  // and any pre-v3 persisted rows continue to load. Defaults applied at render.
+  startTime?: string;     // 'HH:mm' local — display only, never parsed to Date
+  endTime?: string;       // 'HH:mm'
+  status?: DiaryStatus;   // default 'pending' if absent
+  tags?: string[];        // chip labels, usually drawn from Common Works names
 }
 
 // ─── Punch List ──────────────────────────────────────────────────────────

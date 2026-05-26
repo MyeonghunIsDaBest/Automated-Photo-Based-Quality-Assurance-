@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertCircle, CheckCircle2, CheckSquare,
+  AlertCircle, CheckCircle2, CheckSquare, FileText,
   Image as ImageIcon, Lock, Plus, Trash2, Upload as UploadIcon, X,
 } from 'lucide-react';
+import { TaskDrawingsPane } from './TaskDrawingsPane';
 import { differenceInCalendarDays, format, parseISO } from 'date-fns';
 import type { Task, Zone, ConstructionPhase, User } from '../../../types';
 import { Button } from '../../../components/ui/button';
@@ -32,12 +33,13 @@ interface TaskDrawerProps {
   canDelete?: boolean;
 }
 
-type SubTab = 'details' | 'checklist' | 'photos';
+type SubTab = 'details' | 'checklist' | 'photos' | 'drawings';
 
 const TABS: { id: SubTab; label: string; icon: typeof CheckSquare }[] = [
   { id: 'details',   label: 'Details',   icon: CheckSquare },
   { id: 'checklist', label: 'Checklist', icon: CheckCircle2 },
   { id: 'photos',    label: 'Photos',    icon: ImageIcon },
+  { id: 'drawings',  label: 'Drawings',  icon: FileText },
 ];
 
 const PHASES: ConstructionPhase[] = [
@@ -191,14 +193,13 @@ export default function TaskDrawer({
     <MotionDrawer
       open={isOpen}
       onClose={onClose}
-      sizeClass="sm:w-[480px] lg:w-[560px]"
+      // Clicking a sub-task surfaces the editor as a centered popup — feels
+      // more "open this thing for a moment" than a persistent side panel,
+      // and matches the PhaseEditModal pattern used elsewhere in the Gantt.
+      variant="modal"
+      sizeClass="sm:w-[520px] lg:w-[600px]"
       ariaLabel="Task"
     >
-        {/* Mobile drag handle */}
-        <div className="flex justify-center pt-2 sm:hidden">
-          <span className="h-1 w-10 rounded-full bg-slate-300" aria-hidden="true" />
-        </div>
-
         {/* Header */}
         <header className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
           <div className="min-w-0 flex-1">
@@ -290,6 +291,14 @@ export default function TaskDrawer({
           )}
           {!isCreate && activeTab === 'photos' && task && (
             <PhotosPane task={task} projectId={projectId} currentUser={currentUser} />
+          )}
+          {!isCreate && activeTab === 'drawings' && task && (
+            <TaskDrawingsPane
+              task={task}
+              projectId={projectId}
+              currentUser={currentUser}
+              readOnly={readOnly}
+            />
           )}
         </div>
 

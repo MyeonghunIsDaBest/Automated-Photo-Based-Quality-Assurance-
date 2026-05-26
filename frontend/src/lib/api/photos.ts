@@ -4,6 +4,7 @@
 // The bucket is private — `getPhotoUrl()` returns a short-lived signed URL.
 
 import { supabase, supabaseConfigured } from '../supabase';
+import type { ConstructionPhase } from '../ai/contract';
 
 // Demo / generated projects live entirely in the client store with non-UUID
 // IDs ("project_demo_inflight", "proj_<timestamp>", "hampstead-heights-demo",
@@ -33,6 +34,7 @@ export interface PhotoRow {
   notes: string | null;
   ai_analyzed: boolean;
   perceptual_hash?: string | null;
+  phase_hint?: ConstructionPhase | null;
 }
 
 interface UploadInput {
@@ -47,6 +49,12 @@ interface UploadInput {
   perceptualHash?: string | null;
   width?: number;
   height?: number;
+  // Operator-selected construction phase for the upload batch. Persisted on
+  // the photos row so the photos-INSERT Postgres webhook can forward it to
+  // analyze-photo as `record.phase_hint`, where it lands in the Claude
+  // Vision prompt via buildUserPrompt(phaseHint). Nullable — Auto-detect
+  // leaves it unset.
+  phaseHint?: ConstructionPhase;
 }
 
 const NOT_CONFIGURED = new Error(
@@ -64,7 +72,7 @@ function extOf(name: string): string {
 // `photos` table. Returns the new row.
 export async function uploadPhoto({
   file, projectId, taskId, zoneId, notes,
-  gpsLat, gpsLng, takenAt, perceptualHash, width, height,
+  gpsLat, gpsLng, takenAt, perceptualHash, width, height, phaseHint,
 }: UploadInput): Promise<PhotoRow> {
   if (!supabaseConfigured()) throw NOT_CONFIGURED;
 
@@ -110,6 +118,7 @@ export async function uploadPhoto({
       gps_lng: gpsLng ?? null,
       perceptual_hash: perceptualHash ?? null,
       notes: notes ?? null,
+      phase_hint: phaseHint ?? null,
     })
     .select('*')
     .single();

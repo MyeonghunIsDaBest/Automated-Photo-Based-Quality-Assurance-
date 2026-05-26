@@ -1,17 +1,17 @@
 // frontend/src/pages/gantt/tabs/sitediary/CommonWorksSection.tsx
 //
-// The bottom section of the timeline card. Header (title + search) +
-// category pills + frequent label + items grid + Sparky CTA card.
+// Bottom section of the timeline card. Header (title + search) + category
+// pills + frequent label + items grid + Sparky CTA card. Usage counts are
+// derived from the last 7 days of real diary entries in the parent.
 
 import { useMemo, useState } from 'react';
 import { Search, Zap } from 'lucide-react';
-import type { CommonWorkCategory, MockCommonWorkItem } from './mockTimeline';
+import { COMMON_WORKS, type CommonWorkCategory, type CommonWorkTemplate } from './mockTimeline';
 import { CommonWorkItem } from './CommonWorkItem';
-import { SparkyCTACard } from './SparkyCTACard';
 
 interface CommonWorksSectionProps {
-  items: MockCommonWorkItem[];
-  onOpenSparky: (seedText?: string) => void;
+  usageByName: Record<string, number>;
+  onPick: (name: string) => void;
 }
 
 type CatKey = 'all' | CommonWorkCategory;
@@ -25,9 +25,15 @@ const CAT_LABELS: Record<CatKey, string> = {
   safe: 'Safety / Admin',
 };
 
-export function CommonWorksSection({ items, onOpenSparky }: CommonWorksSectionProps) {
+const FREQUENT_THRESHOLD = 3;
+
+export function CommonWorksSection({
+  usageByName, onPick,
+}: CommonWorksSectionProps) {
   const [cat, setCat] = useState<CatKey>('all');
   const [query, setQuery] = useState('');
+
+  const items: CommonWorkTemplate[] = COMMON_WORKS;
 
   const countsByCat = useMemo(() => {
     const total = items.length;
@@ -111,18 +117,24 @@ export function CommonWorksSection({ items, onOpenSparky }: CommonWorksSectionPr
 
       {/* Grid */}
       <div className="grid gap-1.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
-        {visible.map((item) => (
-          <CommonWorkItem key={item.id} item={item} />
-        ))}
+        {visible.map((item) => {
+          const count = usageByName[item.name] ?? 0;
+          return (
+            <CommonWorkItem
+              key={item.id}
+              item={item}
+              usageCount={count}
+              isFrequent={count >= FREQUENT_THRESHOLD}
+              onPick={onPick}
+            />
+          );
+        })}
         {visible.length === 0 ? (
           <div className="col-span-full py-6 text-center text-xs text-[#6B6B6B]">
             No templates match your filter.
           </div>
         ) : null}
       </div>
-
-      {/* Sparky CTA */}
-      <SparkyCTACard onClick={() => onOpenSparky('')} />
     </div>
   );
 }

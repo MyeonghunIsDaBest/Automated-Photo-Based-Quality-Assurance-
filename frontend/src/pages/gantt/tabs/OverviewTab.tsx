@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Activity, AlertTriangle, Calendar as CalendarIcon, ChevronLeft, ChevronRight,
-  ClipboardList, FileText, GanttChartSquare, Image as ImageIcon,
-  Layers, ListChecks, MessageSquare, Receipt, ShieldCheck,
-  ShoppingCart, Sparkles, TrendingUp, Truck, Wallet,
+  AlertTriangle, ArrowUp, Calendar as CalendarIcon, CheckSquare,
+  ChevronLeft, ChevronRight, ClipboardList, Clock, DollarSign, Eye, FileText,
+  GanttChartSquare, Image as ImageIcon, Layers, ListChecks,
+  Plus, Receipt, ShieldCheck, ShoppingCart, SquarePen, TrendingUp,
+  Truck, Upload as UploadIcon,
 } from 'lucide-react';
 import {
   Area, AreaChart, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis,
@@ -17,10 +18,11 @@ import { Card, CardContent } from '../../../components/ui/card';
 import { Badge } from '../../../components/ui/badge';
 import { GanttChart } from '../../../components/ui/GanttChart';
 import { useFeatureStore } from '../../../store/features';
-import { useGanttSideStore, orderTotal } from '../store';
+import { useGanttSideStore, orderTotal, useDiaryEntries } from '../store';
+import { isVisibleEntry } from './sitediary/diaryRowMapper';
 import { useProjectActivity } from '../lib/useProjectActivity';
-import ActivityFeed from '../../../components/activity/ActivityFeed';
 import ActivityDetailModal from '../../../components/activity/ActivityDetailModal';
+import { LiveActivityCard } from './LiveActivityCard';
 import type { ActivityEvent } from '../../../lib/activity/types';
 import { useNavigate } from 'react-router-dom';
 import { TabHeader } from '../components/TabHeader';
@@ -54,7 +56,7 @@ type HeroMode = 'trend' | 'timeline' | 'calendar';
 // stay fresh — the underlying store is already reactive, the tick only
 // nudges the timeAgo() formatter.
 export function OverviewTab({
-  project, tasks, zones, canEdit, onJumpToTab,
+  project, tasks, zones, currentUser, canEdit, onJumpToTab,
 }: OverviewTabProps) {
   const navigate = useNavigate();
   const [heroMode, setHeroMode] = useState<HeroMode>('trend');
@@ -76,7 +78,6 @@ export function OverviewTab({
   // ── Store reads ───────────────────────────────────────────────────────
   const progressHistory = useFeatureStore((s) => s.progressHistory);
   const documents       = useFeatureStore((s) => s.documents);
-  const allComments     = useFeatureStore((s) => s.comments);
 
   const allOrders     = useGanttSideStore((s) => s.orders);
   const allDeliveries = useGanttSideStore((s) => s.deliveries);
@@ -95,13 +96,8 @@ export function OverviewTab({
     [documents, project.id],
   );
 
-  // Notes/comments scoped to the project's tasks. Comments only carry a
-  // taskId, so we walk the task list to figure out which ones belong here.
-  const taskIds = useMemo(() => new Set(tasks.map((t) => t.id)), [tasks]);
-  const projectComments = useMemo(
-    () => allComments.filter((c) => c.taskId && taskIds.has(c.taskId)),
-    [allComments, taskIds],
-  );
+  // Recent notes now surface Site Diary entries (see RecentNotesCard) — task
+  // comments are no longer aggregated here.
 
   // 12 events instead of 8 — the feed has more vertical real estate now and
   // two-tabs-of-history reads better than a single screen.
@@ -219,20 +215,26 @@ export function OverviewTab({
       )}
 
       {/* ── Top KPI strip ────────────────────────────────────────── */}
-      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
         <KpiCell
           icon={TrendingUp}
           label="Overall progress"
-          value={`${totals.overall}%`}
+          value={String(totals.overall)}
+          unit="%"
           accent="emerald"
+          delta={
+            totals.deltaWeek !== 0
+              ? { value: totals.deltaWeek, suffix: '% wk' }
+              : undefined
+          }
           caption={
             totals.deltaWeek === 0
-              ? 'No change this week'
-              : `${totals.deltaWeek > 0 ? '+' : ''}${totals.deltaWeek}% this week`
+              ? 'Trend flat · last 7 datapoints'
+              : `Trending ${totals.deltaWeek > 0 ? 'up' : 'down'} · last 7 datapoints`
           }
         />
         <KpiCell
-          icon={Activity}
+          icon={CheckSquare}
           label="Schedule"
           value={
             totals.scheduleHealth === 'on_track' ? 'On track' :
@@ -248,76 +250,75 @@ export function OverviewTab({
           icon={ListChecks}
           label="Tasks"
           value={String(totals.total)}
-          accent="slate"
+          accent="amber"
           caption={`${totals.inProgress} in progress · ${totals.notStarted} not started`}
         />
         <KpiCell
           icon={AlertTriangle}
           label="Open issues"
           value={String(totals.openIssues)}
-          accent={totals.openIssues > 0 ? 'red' : 'emerald'}
-          caption={`${totals.delayed} delayed · ${totals.punchOpen} punch`}
+          accent={totals.openIssues > 0 ? 'red' : 'slate'}
+          caption={`${totals.delayed} delayed · ${totals.punchOpen} in punch list`}
         />
       </div>
 
       {/* ── Hero: Schedule & progress (Trend ⇆ Timeline ⇆ Calendar) ─ */}
-      <Card className="mb-6 overflow-hidden">
-        <CardContent className="p-0">
-          <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-end sm:justify-between sm:px-5 sm:py-4">
-            <div className="min-w-0">
-              <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
-                Schedule &amp; progress
-              </p>
-              <h3
-                className="mt-1 text-lg font-medium leading-tight text-slate-900 sm:text-xl"
-                style={{ fontFamily: "'Fraunces', Georgia, serif", letterSpacing: '-0.02em', textWrap: 'balance' }}
-              >
-                {heroMode === 'trend'    ? 'Progress trend.'   :
-                 heroMode === 'timeline' ? 'Timeline view.'    : 'Calendar view.'}
-              </h3>
-            </div>
-            <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 sm:mx-0 sm:overflow-visible sm:px-0">
-              <ModeButton
-                active={heroMode === 'trend'}
-                onClick={() => setHeroMode('trend')}
-                icon={TrendingUp}
-                label="Trend"
-              />
-              <ModeButton
-                active={heroMode === 'timeline'}
-                onClick={() => setHeroMode('timeline')}
-                icon={GanttChartSquare}
-                label="Timeline"
-              />
-              <ModeButton
-                active={heroMode === 'calendar'}
-                onClick={() => setHeroMode('calendar')}
-                icon={CalendarIcon}
-                label="Calendar"
-              />
-            </div>
+      <div className="mb-4 overflow-hidden rounded-[12px] border border-[#E6E1D4] bg-white shadow-[0_1px_2px_rgba(20,20,20,0.04)]">
+        <div className="flex flex-col gap-2 border-b border-[#EFEBE0] px-5 py-3.5 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-[10.5px] font-semibold uppercase tracking-[0.18em] text-[#6B6B6B]">
+              Schedule &amp; progress
+            </p>
+            <h3
+              className="mt-0.5 text-[22px] font-medium leading-tight text-[#1A1A1A]"
+              style={{ fontFamily: "'Fraunces', Georgia, serif", letterSpacing: '-0.02em', textWrap: 'balance' }}
+            >
+              {heroMode === 'trend'    ? 'Progress trend.'   :
+               heroMode === 'timeline' ? 'Timeline view.'    : 'Calendar view.'}
+            </h3>
           </div>
+          {/* Segmented mode toggle — pill group */}
+          <div className="inline-flex items-center self-start rounded-full border border-[#E6E1D4] bg-[#FAF8F2] p-1 gap-0.5">
+            <ModeButton
+              active={heroMode === 'trend'}
+              onClick={() => setHeroMode('trend')}
+              icon={TrendingUp}
+              label="Trend"
+            />
+            <ModeButton
+              active={heroMode === 'timeline'}
+              onClick={() => setHeroMode('timeline')}
+              icon={GanttChartSquare}
+              label="Timeline"
+            />
+            <ModeButton
+              active={heroMode === 'calendar'}
+              onClick={() => setHeroMode('calendar')}
+              icon={CalendarIcon}
+              label="Calendar"
+            />
+          </div>
+        </div>
 
-          {heroMode === 'trend' && (
-            <TrendBody trend={totals.trend} overall={totals.overall} delta={totals.deltaWeek} />
-          )}
-          {heroMode === 'timeline' && (
-            <div className="p-2 sm:p-3">
-              <GanttChart
-                tasks={tasks}
-                startDate={project.startDate}
-                endDate={project.endDate}
-              />
-            </div>
-          )}
-          {heroMode === 'calendar' && (
-            <CalendarMode tasks={tasks} zones={zones} />
-          )}
-        </CardContent>
-      </Card>
+        {heroMode === 'trend' && (
+          <TrendBody trend={totals.trend} overall={totals.overall} delta={totals.deltaWeek} />
+        )}
+        {heroMode === 'timeline' && (
+          <div className="p-2 sm:p-3">
+            <GanttChart
+              tasks={tasks}
+              startDate={project.startDate}
+              endDate={project.endDate}
+            />
+          </div>
+        )}
+        {heroMode === 'calendar' && (
+          <CalendarMode tasks={tasks} zones={zones} />
+        )}
+      </div>
 
       {/* ── Mid grid: Finance · Task breakdown · Watchlist ──────── */}
-      <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <div className="mb-4 grid grid-cols-1 gap-3 lg:grid-cols-3">
         <FinanceCard
           ordersOpen={totals.ordersOpen}
           ordersPending={totals.ordersPending}
@@ -351,34 +352,24 @@ export function OverviewTab({
       </div>
 
       {/* ── Bottom grid: Activity · (Files + Notes) ─────────────── */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardContent className="p-0">
-            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 sm:px-5">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="relative flex h-2 w-2 flex-shrink-0">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-                </span>
-                <h3 className="text-sm font-medium text-slate-900">Live activity</h3>
-              </div>
-              <span className="whitespace-nowrap text-[11px] tabular-nums text-slate-400">
-                {activity.length} latest
-              </span>
-            </div>
-            <ActivityFeed
-              events={activity}
-              onSelect={(e) => setActiveActivityEvent(e)}
-              emptyLabel="Nothing has happened on this project yet."
-            />
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <LiveActivityCard
+            events={activity}
+            onSelect={(e) => setActiveActivityEvent(e)}
+            emptyLabel="Nothing has happened on this project yet."
+          />
+        </div>
 
-        <div className="flex flex-col gap-4">
-          <RecentFilesCard files={projectFiles} onJumpToTab={onJumpToTab} />
+        <div className="flex flex-col gap-3">
+          <RecentFilesCard
+            files={projectFiles}
+            project={project}
+            currentUser={currentUser}
+            onJumpToTab={onJumpToTab}
+          />
           <RecentNotesCard
-            comments={projectComments}
-            tasks={tasks}
+            projectId={project.id}
             onJumpToTab={onJumpToTab}
           />
         </div>
@@ -484,29 +475,46 @@ function TrendBody({
 }: { trend: { date: string; progress: number }[]; overall: number; delta: number }) {
   if (trend.length <= 1) {
     return (
-      <div className="px-4 py-12 text-center text-sm text-slate-400 sm:px-5">
+      <div className="px-4 py-12 text-center text-sm text-[#A0A0A0] sm:px-5">
         No progress history yet — log a task update to start the curve.
       </div>
     );
   }
+  const firstDate = trend[0]?.date;
+  const lastDate  = trend[trend.length - 1]?.date;
+  const dateRange = firstDate && lastDate
+    ? `${format(parseISO(firstDate), 'MMM d')} → ${format(parseISO(lastDate), 'MMM d')}`
+    : '';
+
   return (
-    <div className="px-4 pb-4 pt-3 sm:px-5 sm:pb-5 sm:pt-4">
-      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <p className="text-sm text-slate-500">Last {trend.length} datapoints</p>
-        <div className="flex items-baseline gap-2">
+    <div className="px-5 pb-5 pt-4">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-[13px] text-[#6B6B6B]">
+          <span className="h-2 w-2 rounded-full bg-[#246F47]" aria-hidden="true" />
+          Last {trend.length} datapoints
+          {dateRange ? <span className="text-[#A0A0A0]">· {dateRange}</span> : null}
+        </div>
+        <div className="flex items-center gap-2">
           <span
-            className="whitespace-nowrap text-2xl font-semibold tabular-nums text-emerald-600 sm:text-3xl"
+            className="text-[34px] font-medium leading-none tabular-nums text-[#1A1A1A]"
             style={{ fontFamily: "'Fraunces', Georgia, serif" }}
           >
             {overall}%
           </span>
-          <span
-            className={`text-xs font-medium tabular-nums ${
-              delta > 0 ? 'text-emerald-600' : delta < 0 ? 'text-red-600' : 'text-slate-400'
-            }`}
-          >
-            {delta === 0 ? 'flat' : `${delta > 0 ? '+' : ''}${delta}% wk`}
-          </span>
+          {delta !== 0 ? (
+            <span
+              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11.5px] font-semibold ${
+                delta > 0
+                  ? 'bg-[#E0EBE3] text-[#246F47]'
+                  : 'bg-[#FBE5E5] text-[#C44545]'
+              }`}
+            >
+              <ArrowUp className={`h-3 w-3 ${delta < 0 ? 'rotate-180' : ''}`} />
+              {delta > 0 ? '+' : ''}{delta}% wk
+            </span>
+          ) : (
+            <span className="text-[11.5px] text-[#A0A0A0]">flat</span>
+          )}
         </div>
       </div>
       <div className="h-40 sm:h-48">
@@ -675,64 +683,82 @@ function FinanceCard({
   onJumpToTab?: (t: TabId) => void;
 }) {
   return (
-    <Card>
-      <CardContent className="p-4 sm:p-5">
-        <div className="mb-4 flex items-center gap-2">
-          <Wallet className="h-4 w-4 text-slate-400" />
-          <h3 className="text-sm font-medium text-slate-900">Finance</h3>
+    <div className="rounded-[12px] border border-[#E6E1D4] bg-white shadow-[0_1px_2px_rgba(20,20,20,0.04)] overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-[#EFEBE0]">
+        <div className="flex items-center gap-2">
+          <span className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-[7px] bg-[#E0EBE3]">
+            <DollarSign className="h-3.5 w-3.5 text-[#246F47]" />
+          </span>
+          <h3 className="text-[14px] font-semibold text-[#1A1A1A]">Finance</h3>
         </div>
+        <button
+          type="button"
+          onClick={() => onJumpToTab?.('supplier')}
+          className="inline-flex items-center gap-1 text-[12px] font-semibold text-[#246F47] transition-colors hover:text-[#1E5B3A]"
+        >
+          View all →
+        </button>
+      </div>
 
-        <div className="space-y-2.5">
-          <FinanceRow
-            icon={ShoppingCart}
-            label="Open orders"
-            primary={`${ordersOpen} open`}
-            secondary={`${ordersPending} pending · ${fmtUSD(ordersCommitted)} committed`}
-            onClick={() => onJumpToTab?.('orders')}
-          />
-          <FinanceRow
-            icon={Truck}
-            label="Deliveries"
-            primary={`${deliveriesPending} awaiting`}
-            secondary={`${deliveriesThisWeek} received this week`}
-            onClick={() => onJumpToTab?.('deliveries')}
-          />
-          <FinanceRow
-            icon={Receipt}
-            label="Invoices"
-            primary={`${fmtUSD(invoicesOutstanding)} outstanding`}
-            secondary={`${invoicesOverdue} overdue · ${invoicesPending} pending · ${fmtUSD(invoicesPaid)} paid`}
-            tone={invoicesOverdue > 0 ? 'red' : 'slate'}
-            onClick={() => onJumpToTab?.('invoices')}
-          />
-        </div>
-      </CardContent>
-    </Card>
+      {/* Sub-rows */}
+      <div className="space-y-1.5 p-2.5">
+        <FinanceRow
+          icon={ShoppingCart}
+          label="Open orders"
+          primary={`${ordersOpen} open`}
+          secondary={`${ordersPending} pending · ${fmtUSD(ordersCommitted)} committed`}
+          onClick={() => onJumpToTab?.('orders')}
+        />
+        <FinanceRow
+          icon={Truck}
+          label="Deliveries"
+          primary={`${deliveriesPending} awaiting`}
+          secondary={`${deliveriesThisWeek} received this week`}
+          onClick={() => onJumpToTab?.('deliveries')}
+        />
+        <FinanceRow
+          icon={Receipt}
+          label="Invoices"
+          primary={`${fmtUSD(invoicesOutstanding)} outstanding`}
+          secondary={`${invoicesOverdue} overdue · ${invoicesPending} pending · ${fmtUSD(invoicesPaid)} paid`}
+          tone={invoicesOverdue > 0 ? 'red' : 'default'}
+          onClick={() => onJumpToTab?.('invoices')}
+        />
+      </div>
+    </div>
   );
 }
 
 function FinanceRow({
-  icon: Icon, label, primary, secondary, onClick, tone = 'slate',
+  icon: Icon, label, primary, secondary, onClick, tone = 'default',
 }: {
   icon: typeof ShoppingCart; label: string; primary: string; secondary: string;
-  onClick?: () => void; tone?: 'slate' | 'red';
+  onClick?: () => void; tone?: 'default' | 'red';
 }) {
-  const toneText = tone === 'red' ? 'text-red-700' : 'text-slate-900';
+  const primaryTone = tone === 'red' ? 'text-[#C44545]' : 'text-[#1A1A1A]';
   return (
     <button
       type="button"
       onClick={onClick}
-      className="group flex w-full items-center gap-3 rounded-lg border border-slate-100 bg-slate-50/60 p-3 text-left transition-all hover:border-slate-200 hover:bg-white hover:shadow-sm"
+      className="group flex w-full items-center gap-3 rounded-[9px] border border-[#E6E1D4] bg-[#FAF8F2] px-3 py-2.5 text-left transition-all hover:bg-[#F4F1E8]"
     >
-      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-white text-slate-500 group-hover:text-emerald-600">
-        <Icon className="h-4 w-4" />
-      </div>
+      <span className="grid h-9 w-9 flex-shrink-0 place-items-center rounded-[7px] border border-[#E6E1D4] bg-white text-[#3A3A3A] group-hover:text-[#1A1A1A]">
+        <Icon className="h-3.5 w-3.5" />
+      </span>
       <div className="min-w-0 flex-1">
-        <p className="text-[10px] font-medium uppercase tracking-wider text-slate-500">{label}</p>
-        <p className={`truncate text-sm font-medium ${toneText}`}>{primary}</p>
-        <p className="truncate text-[11px] text-slate-500">{secondary}</p>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6B6B6B]">
+          {label}
+        </p>
+        <p
+          className={`mt-0.5 text-[18px] font-medium leading-none tabular-nums ${primaryTone}`}
+          style={{ fontFamily: "'Fraunces', Georgia, serif" }}
+        >
+          {primary}
+        </p>
+        <p className="mt-0.5 truncate text-[11px] text-[#A0A0A0]">{secondary}</p>
       </div>
-      <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-300 transition-colors group-hover:text-emerald-500" />
+      <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-[#A0A0A0] transition-colors group-hover:text-[#246F47]" />
     </button>
   );
 }
@@ -744,34 +770,40 @@ function TaskBreakdownCard({
   complete: number; delayed: number; blocked: number;
   onJumpToTab?: (t: TabId) => void;
 }) {
+  // Status palette mirrors the editorial Site Diary tones — warm beige base
+  // with calmer accents so the card reads as part of the same surface family.
   const segments: { label: string; value: number; color: string }[] = [
-    { label: 'Complete',    value: complete,    color: '#10B981' },
-    { label: 'In progress', value: inProgress,  color: '#3B82F6' },
-    { label: 'Not started', value: notStarted,  color: '#94a3b8' },
-    { label: 'Delayed',     value: delayed,     color: '#EF4444' },
-    { label: 'Blocked',     value: blocked,     color: '#1f2937' },
+    { label: 'Complete',    value: complete,    color: '#246F47' },
+    { label: 'In progress', value: inProgress,  color: '#C8841E' },
+    { label: 'Not started', value: notStarted,  color: '#C9BBA0' },
+    { label: 'Delayed',     value: delayed,     color: '#C44545' },
+    { label: 'Blocked',     value: blocked,     color: '#5A6470' },
   ];
   const denom = Math.max(1, total);
+  const pct = total === 0 ? 0 : Math.round((complete / total) * 100);
 
   return (
-    <Card>
-      <CardContent className="p-4 sm:p-5">
-        <div className="mb-4 flex items-center justify-between gap-2">
+    <div className="rounded-[12px] border border-[#E6E1D4] bg-white shadow-[0_1px_2px_rgba(20,20,20,0.04)] overflow-hidden">
+      <div className="px-4 pt-3.5 pb-3">
+        {/* Header */}
+        <div className="mb-3 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <ListChecks className="h-4 w-4 text-slate-400" />
-            <h3 className="text-sm font-medium text-slate-900">Task breakdown</h3>
+            <span className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-[7px] bg-[#FAEBC8]">
+              <CheckSquare className="h-3.5 w-3.5 text-[#C8841E]" />
+            </span>
+            <h3 className="text-[14px] font-semibold text-[#1A1A1A]">Task breakdown</h3>
           </div>
           <button
             type="button"
             onClick={() => onJumpToTab?.('tasks')}
-            className="text-[11px] font-medium text-emerald-600 transition-colors hover:text-emerald-700"
+            className="inline-flex items-center gap-1 text-[12px] font-semibold text-[#246F47] transition-colors hover:text-[#1E5B3A]"
           >
             View all →
           </button>
         </div>
 
-        {/* Stacked status bar */}
-        <div className="mb-4 flex h-2 w-full overflow-hidden rounded-full bg-slate-100">
+        {/* Stacked status bar — beige base shows through when nothing's done */}
+        <div className="mb-4 flex h-1.5 w-full overflow-hidden rounded-full bg-[#D6CDB7]">
           {segments.map((s) =>
             s.value > 0 ? (
               <div
@@ -783,23 +815,36 @@ function TaskBreakdownCard({
           )}
         </div>
 
-        <ul className="grid grid-cols-2 gap-x-4 gap-y-2">
+        <ul className="grid grid-cols-2 gap-x-6 gap-y-2 text-[12.5px]">
           {segments.map((s) => (
-            <li key={s.label} className="flex items-center justify-between gap-2 text-xs">
+            <li key={s.label} className="flex items-center justify-between gap-2">
               <span className="flex min-w-0 items-center gap-2">
                 <span className="h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: s.color }} />
-                <span className="truncate text-slate-600">{s.label}</span>
+                <span className="truncate text-[#3A3A3A]">{s.label}</span>
               </span>
-              <span className="tabular-nums font-medium text-slate-900">{s.value}</span>
+              <span className="tabular-nums font-semibold text-[#1A1A1A]">{s.value}</span>
             </li>
           ))}
         </ul>
+      </div>
 
-        <div className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-500">
-          <span className="tabular-nums font-medium text-slate-900">{total}</span> total task{total === 1 ? '' : 's'}
-        </div>
-      </CardContent>
-    </Card>
+      {/* Footer — totals on the left, count fraction on the right */}
+      <div className="flex items-center justify-between gap-3 border-t border-dashed border-[#EFEBE0] px-4 py-2.5">
+        <span className="text-[12px] text-[#6B6B6B]">
+          <span className="font-semibold text-[#1A1A1A]">{total}</span> total task{total === 1 ? '' : 's'}
+          {' · '}
+          <span className="font-semibold text-[#1A1A1A]">{pct}%</span> complete
+        </span>
+        <span
+          className="text-[18px] font-medium leading-none tabular-nums text-[#1A1A1A]"
+          style={{ fontFamily: "'Fraunces', Georgia, serif" }}
+        >
+          {complete}
+          <span className="mx-1 text-[#A0A0A0]">/</span>
+          {total}
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -811,72 +856,113 @@ function WatchlistCard({
   onJumpToTab?: (t: TabId) => void;
 }) {
   return (
-    <Card>
-      <CardContent className="p-4 sm:p-5">
-        <div className="mb-4 flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-slate-400" />
-          <h3 className="text-sm font-medium text-slate-900">Watchlist</h3>
+    <div className="rounded-[12px] border border-[#E6E1D4] bg-white shadow-[0_1px_2px_rgba(20,20,20,0.04)] overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-[#EFEBE0]">
+        <div className="flex items-center gap-2">
+          <span className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-[7px] bg-[#E5E0F2]">
+            <Eye className="h-3.5 w-3.5 text-[#7B5C9C]" />
+          </span>
+          <h3 className="text-[14px] font-semibold text-[#1A1A1A]">Watchlist</h3>
         </div>
+        <button
+          type="button"
+          onClick={() => onJumpToTab?.('punch_list')}
+          className="inline-flex items-center gap-1 text-[12px] font-semibold text-[#246F47] transition-colors hover:text-[#1E5B3A]"
+        >
+          View all →
+        </button>
+      </div>
 
-        <div className="space-y-2.5">
-          <WatchRow
-            icon={ClipboardList}
-            label="Punch list"
-            value={String(punchOpen)}
-            sub={punchOpen === 0 ? 'All clear' : `${punchOpen} open item${punchOpen === 1 ? '' : 's'}`}
-            tone={punchOpen > 0 ? 'amber' : 'emerald'}
-          />
-          <WatchRow
-            icon={ShieldCheck}
-            label="Warranties"
-            value={String(warrantiesExpiringSoon)}
-            sub={warrantiesExpiringSoon === 0 ? 'None expiring soon' : `Expiring in 60 days`}
-            tone={warrantiesExpiringSoon > 0 ? 'amber' : 'slate'}
-            onClick={() => onJumpToTab?.('warranties')}
-          />
-          <WatchRow
-            icon={CalendarIcon}
-            label="Deadline"
-            value={`${daysRemaining}d`}
-            sub={`Ends ${format(parseISO(endDate), 'MMM d, yyyy')}`}
-            tone={daysRemaining < 14 ? 'red' : daysRemaining < 30 ? 'amber' : 'slate'}
-          />
-        </div>
-      </CardContent>
-    </Card>
+      {/* Sub-rows */}
+      <div className="space-y-1.5 p-2.5">
+        <WatchRow
+          icon={ClipboardList}
+          iconTone="green"
+          label="Punch list"
+          value={String(punchOpen)}
+          unit={punchOpen === 1 ? 'open' : punchOpen > 0 ? 'open' : undefined}
+          sub={punchOpen === 0 ? '• All clear' : `${punchOpen} open item${punchOpen === 1 ? '' : 's'}`}
+          subTone={punchOpen > 0 ? 'amber' : 'emerald'}
+          onClick={() => onJumpToTab?.('punch_list')}
+        />
+        <WatchRow
+          icon={ShieldCheck}
+          iconTone="amber"
+          label="Warranties"
+          value={String(warrantiesExpiringSoon)}
+          unit="active"
+          sub={warrantiesExpiringSoon === 0 ? 'None expiring soon' : 'Expiring in 60 days'}
+          subTone={warrantiesExpiringSoon > 0 ? 'amber' : 'muted'}
+          onClick={() => onJumpToTab?.('supplier')}
+        />
+        <WatchRow
+          icon={Clock}
+          iconTone="blue"
+          label="Deadline"
+          value={`${daysRemaining}`}
+          unit="d"
+          sub={`Ends ${format(parseISO(endDate), 'MMM d, yyyy')}`}
+          subTone={daysRemaining < 14 ? 'red' : daysRemaining < 30 ? 'amber' : 'muted'}
+        />
+      </div>
+    </div>
   );
 }
 
 function WatchRow({
-  icon: Icon, label, value, sub, tone, onClick,
+  icon: Icon, iconTone, label, value, unit, sub, subTone, onClick,
 }: {
-  icon: typeof ClipboardList; label: string; value: string; sub: string;
-  tone: 'slate' | 'amber' | 'red' | 'emerald';
+  icon: typeof ClipboardList;
+  iconTone: 'green' | 'amber' | 'blue';
+  label: string;
+  value: string;
+  unit?: string;
+  sub: string;
+  subTone: 'muted' | 'emerald' | 'amber' | 'red';
   onClick?: () => void;
 }) {
-  const toneClasses = {
-    slate:   'text-slate-900',
-    amber:   'text-amber-700',
-    red:     'text-red-700',
-    emerald: 'text-emerald-700',
-  }[tone];
+  const tile = {
+    green: { bg: 'bg-[#E0EBE3]', fg: 'text-[#246F47]' },
+    amber: { bg: 'bg-[#FAEBC8]', fg: 'text-[#C8841E]' },
+    blue:  { bg: 'bg-[#E5EBF7]', fg: 'text-[#4A5DAD]' },
+  }[iconTone];
+  const subColor = {
+    muted:   'text-[#A0A0A0]',
+    emerald: 'text-[#246F47] font-semibold',
+    amber:   'text-[#C8841E]',
+    red:     'text-[#C44545]',
+  }[subTone];
   const Comp = onClick ? 'button' : 'div';
+
   return (
     <Comp
       onClick={onClick}
-      className={`group flex w-full items-center gap-3 rounded-lg border border-slate-100 bg-slate-50/60 p-3 text-left transition-all ${
-        onClick ? 'hover:border-slate-200 hover:bg-white hover:shadow-sm' : ''
+      className={`group flex w-full items-center gap-3 rounded-[9px] border border-[#E6E1D4] bg-[#FAF8F2] px-3 py-2.5 text-left transition-all ${
+        onClick ? 'hover:bg-[#F4F1E8]' : ''
       }`}
     >
-      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-white text-slate-500">
-        <Icon className="h-4 w-4" />
-      </div>
+      <span className={`grid h-9 w-9 flex-shrink-0 place-items-center rounded-[7px] ${tile.bg}`}>
+        <Icon className={`h-3.5 w-3.5 ${tile.fg}`} />
+      </span>
       <div className="min-w-0 flex-1">
-        <p className="text-[10px] font-medium uppercase tracking-wider text-slate-500">{label}</p>
-        <p className={`text-sm font-semibold tabular-nums ${toneClasses}`}>{value}</p>
-        <p className="truncate text-[11px] text-slate-500">{sub}</p>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6B6B6B]">
+          {label}
+        </p>
+        <p
+          className="mt-0.5 text-[18px] font-medium leading-none tabular-nums text-[#1A1A1A]"
+          style={{ fontFamily: "'Fraunces', Georgia, serif" }}
+        >
+          {value}
+          {unit ? (
+            <span className="ml-1 text-[11px] font-normal text-[#A0A0A0]">{unit}</span>
+          ) : null}
+        </p>
+        <p className={`mt-0.5 truncate text-[11px] ${subColor}`}>{sub}</p>
       </div>
-      {onClick && <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-300 transition-colors group-hover:text-emerald-500" />}
+      {onClick ? (
+        <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-[#A0A0A0] transition-colors group-hover:text-[#246F47]" />
+      ) : null}
     </Comp>
   );
 }
@@ -884,166 +970,277 @@ function WatchRow({
 // ─── Bottom-grid cards ──────────────────────────────────────────────────
 
 function RecentFilesCard({
-  files, onJumpToTab,
+  files, project, currentUser, onJumpToTab,
 }: {
   files: { id: string; name: string; type: 'document' | 'photo' | 'video'; uploadedAt: string; size: number }[];
+  project: Project;
+  currentUser: User | null;
   onJumpToTab?: (t: TabId) => void;
 }) {
+  const uploadDocument = useFeatureStore((s) => s.uploadDocument);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [busy, setBusy] = useState(false);
+
   const recent = useMemo(
     () => [...files].sort((a, b) => Date.parse(b.uploadedAt) - Date.parse(a.uploadedAt)).slice(0, 4),
     [files],
   );
+
+  const handleFiles = (picked: FileList | null) => {
+    if (!picked || picked.length === 0) return;
+    setBusy(true);
+    try {
+      for (const f of Array.from(picked)) {
+        uploadDocument({
+          projectId: project.id,
+          name: f.name,
+          type: f.type.startsWith('image/') ? 'photo' : 'document',
+          category: 'other',
+          size: f.size,
+          uploadedBy: currentUser?.fullName ?? 'me',
+          url: URL.createObjectURL(f),
+        });
+      }
+    } finally {
+      setBusy(false);
+      if (inputRef.current) inputRef.current.value = '';
+    }
+  };
+
   return (
-    <Card>
-      <CardContent className="p-0">
-        <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <FileText className="h-4 w-4 flex-shrink-0 text-slate-400" />
-            <h3 className="text-sm font-medium text-slate-900">Recent files</h3>
-          </div>
+    <div className="rounded-[12px] border border-[#E6E1D4] bg-white shadow-[0_1px_2px_rgba(20,20,20,0.04)] overflow-hidden">
+      <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-[#EFEBE0]">
+        <div className="flex items-center gap-2">
+          <span className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-[7px] bg-[#E5E0F2]">
+            <FileText className="h-3.5 w-3.5 text-[#7B5C9C]" />
+          </span>
+          <h3 className="text-[14px] font-semibold text-[#1A1A1A]">Recent files</h3>
+        </div>
+        <button
+          type="button"
+          onClick={() => onJumpToTab?.('files')}
+          className="inline-flex items-center gap-1 text-[12px] font-semibold text-[#246F47] transition-colors hover:text-[#1E5B3A]"
+        >
+          View all →
+        </button>
+      </div>
+      {recent.length === 0 ? (
+        <div className="flex flex-col items-center justify-center px-4 py-6 text-center">
+          <span className="grid h-10 w-10 place-items-center rounded-full border border-[#E6E1D4] bg-[#FAF8F2]">
+            <UploadIcon className="h-3.5 w-3.5 text-[#A0A0A0]" />
+          </span>
+          <p className="mt-2 text-[12.5px] text-[#6B6B6B]">No files uploaded yet.</p>
           <button
             type="button"
-            onClick={() => onJumpToTab?.('files')}
-            className="text-[11px] font-medium text-emerald-600 transition-colors hover:text-emerald-700"
+            onClick={() => inputRef.current?.click()}
+            disabled={busy}
+            className="mt-2.5 inline-flex items-center gap-1.5 rounded-full border border-dashed border-[#C9BBA0] px-3.5 py-1.5 text-[12px] font-semibold text-[#3A3A3A] hover:bg-[#FAF8F2] disabled:opacity-60"
           >
-            View all →
+            <Plus className="h-3 w-3" />
+            {busy ? 'Uploading…' : 'Upload a file'}
           </button>
+          <input
+            ref={inputRef}
+            type="file"
+            multiple
+            accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
+            onChange={(e) => handleFiles(e.target.files)}
+            className="hidden"
+          />
         </div>
-        {recent.length === 0 ? (
-          <p className="px-4 py-8 text-center text-xs text-slate-400">
-            No files uploaded yet.
-          </p>
-        ) : (
-          <ul className="divide-y divide-slate-100">
-            {recent.map((f) => {
-              const Icon = f.type === 'photo' ? ImageIcon : FileText;
-              return (
-                <li key={f.id}>
-                  <button
-                    type="button"
-                    onClick={() => onJumpToTab?.('files')}
-                    className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-slate-50"
-                  >
-                    <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-slate-50 text-slate-500">
-                      <Icon className="h-3.5 w-3.5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-medium text-slate-900">{f.name}</p>
-                      <p className="text-[11px] text-slate-400">
-                        {fmtBytes(f.size)} · {timeAgo(f.uploadedAt)}
-                      </p>
-                    </div>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </CardContent>
-    </Card>
+      ) : (
+        <ul className="divide-y divide-[#EFEBE0]">
+          {recent.map((f) => {
+            const Icon = f.type === 'photo' ? ImageIcon : FileText;
+            return (
+              <li key={f.id}>
+                <button
+                  type="button"
+                  onClick={() => onJumpToTab?.('files')}
+                  className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-[#FAF8F2]"
+                >
+                  <span className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-[7px] border border-[#E6E1D4] bg-white text-[#3A3A3A]">
+                    <Icon className="h-3.5 w-3.5" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[12.5px] font-semibold text-[#1A1A1A]">{f.name}</p>
+                    <p className="text-[11px] text-[#A0A0A0]">
+                      {fmtBytes(f.size)} · {timeAgo(f.uploadedAt)}
+                    </p>
+                  </div>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }
 
 function RecentNotesCard({
-  comments, tasks, onJumpToTab,
+  projectId, onJumpToTab,
 }: {
-  comments: { id: string; taskId?: string; userName: string; content: string; createdAt: string }[];
-  tasks: Task[];
+  projectId: string;
   onJumpToTab?: (t: TabId) => void;
 }) {
-  const taskById = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks]);
+  // "Notes" surface real Site Diary entries — that's where the project's
+  // commentary actually lives. Skip conditions-stub entries so they don't
+  // show up as blank rows on a fresh project.
+  const diary = useDiaryEntries(projectId);
   const recent = useMemo(
-    () => [...comments].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)).slice(0, 4),
-    [comments],
+    () =>
+      [...diary]
+        .filter(isVisibleEntry)
+        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+        .slice(0, 4),
+    [diary],
   );
 
+  const goToDiary = () => onJumpToTab?.('site_diary');
+
   return (
-    <Card>
-      <CardContent className="p-0">
-        <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <MessageSquare className="h-4 w-4 flex-shrink-0 text-slate-400" />
-            <h3 className="text-sm font-medium text-slate-900">Recent notes</h3>
-          </div>
+    <div className="rounded-[12px] border border-[#E6E1D4] bg-white shadow-[0_1px_2px_rgba(20,20,20,0.04)] overflow-hidden">
+      <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-[#EFEBE0]">
+        <div className="flex items-center gap-2">
+          <span className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-[7px] bg-[#E0EBE3]">
+            <SquarePen className="h-3.5 w-3.5 text-[#246F47]" />
+          </span>
+          <h3 className="text-[14px] font-semibold text-[#1A1A1A]">Recent notes</h3>
+        </div>
+        <button
+          type="button"
+          onClick={goToDiary}
+          className="inline-flex items-center gap-1 text-[12px] font-semibold text-[#246F47] transition-colors hover:text-[#1E5B3A]"
+        >
+          View all →
+        </button>
+      </div>
+
+      {recent.length === 0 ? (
+        <div className="flex flex-col items-center justify-center px-4 py-6 text-center">
+          <span className="grid h-10 w-10 place-items-center rounded-full border border-[#E6E1D4] bg-[#FAF8F2]">
+            <FileText className="h-3.5 w-3.5 text-[#A0A0A0]" />
+          </span>
+          <p className="mt-2 text-[12.5px] text-[#6B6B6B]">No site diary entries yet.</p>
           <button
             type="button"
-            onClick={() => onJumpToTab?.('tasks')}
-            className="text-[11px] font-medium text-emerald-600 transition-colors hover:text-emerald-700"
+            onClick={goToDiary}
+            className="mt-2.5 inline-flex items-center gap-1.5 rounded-full border border-dashed border-[#C9BBA0] px-3.5 py-1.5 text-[12px] font-semibold text-[#3A3A3A] hover:bg-[#FAF8F2]"
           >
-            View all →
+            <Plus className="h-3 w-3" />
+            Write a note
           </button>
         </div>
-        {recent.length === 0 ? (
-          <p className="px-4 py-8 text-center text-xs text-slate-400">
-            No notes on this project yet.
-          </p>
-        ) : (
-          <ul className="divide-y divide-slate-100">
-            {recent.map((c) => {
-              const taskName = c.taskId ? taskById.get(c.taskId)?.name : undefined;
-              return (
-                <li key={c.id}>
-                  <button
-                    type="button"
-                    onClick={() => onJumpToTab?.('tasks')}
-                    className="flex w-full flex-col gap-1 px-4 py-2.5 text-left transition-colors hover:bg-slate-50"
-                  >
-                    <div className="flex items-center justify-between gap-2 text-[11px]">
-                      <span className="truncate font-medium text-slate-700">{c.userName}</span>
-                      <span className="flex-shrink-0 text-slate-400">{timeAgo(c.createdAt)}</span>
-                    </div>
-                    <p className="line-clamp-2 text-xs text-slate-600">{c.content}</p>
-                    {taskName && (
-                      <span className="truncate text-[10px] uppercase tracking-wider text-slate-400">
-                        on {taskName}
-                      </span>
-                    )}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </CardContent>
-    </Card>
+      ) : (
+        <ul className="divide-y divide-[#EFEBE0]">
+          {recent.map((e) => {
+            const actor = e.personnel[0]?.workerName ?? '—';
+            const role = e.personnel[0]?.role;
+            return (
+              <li key={e.id}>
+                <button
+                  type="button"
+                  onClick={goToDiary}
+                  className="flex w-full flex-col gap-1 px-4 py-2.5 text-left transition-colors hover:bg-[#FAF8F2]"
+                >
+                  <div className="flex items-center justify-between gap-2 text-[11px]">
+                    <span className="truncate font-semibold text-[#1A1A1A]">
+                      {actor}
+                      {role ? <span className="font-normal text-[#A0A0A0]"> · {role}</span> : null}
+                    </span>
+                    <span className="flex-shrink-0 text-[#A0A0A0]">{timeAgo(e.createdAt)}</span>
+                  </div>
+                  {e.description ? (
+                    <p className="line-clamp-2 text-[12px] text-[#3A3A3A]">{e.description}</p>
+                  ) : (
+                    <p className="text-[12px] italic text-[#A0A0A0]">No description</p>
+                  )}
+                  <span className="truncate text-[10px] uppercase tracking-[0.12em] text-[#A0A0A0]">
+                    site diary · {format(parseISO(e.date), 'MMM d')}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {recent.length > 0 ? (
+        <div className="border-t border-[#EFEBE0] px-4 py-2 bg-[#FAF8F2]">
+          <button
+            type="button"
+            onClick={goToDiary}
+            className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-[#246F47] hover:text-[#1E5B3A]"
+          >
+            <Plus className="h-3 w-3" />
+            Write a note
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
 // ─── Subcomponents ──────────────────────────────────────────────────────
 
 function KpiCell({
-  icon: Icon, label, value, caption, accent,
+  icon: Icon, label, value, unit, caption, accent, delta,
 }: {
   icon: typeof TrendingUp;
   label: string;
   value: string;
+  /** Optional unit rendered next to the value at a smaller size (e.g. "%"). */
+  unit?: string;
   caption: string;
   accent: 'emerald' | 'amber' | 'red' | 'slate';
+  /** Optional delta chip — `{ value: 32, suffix: '% wk' }` renders "↑ +32% wk". */
+  delta?: { value: number; suffix: string };
 }) {
-  const accentBar = {
-    emerald: 'bg-emerald-500',
-    amber:   'bg-amber-500',
-    red:     'bg-red-500',
-    slate:   'bg-slate-400',
-  }[accent];
+  const accentBar: Partial<Record<typeof accent, string>> = {
+    emerald: 'bg-[#246F47]',
+    amber:   'bg-[#C8841E]',
+    red:     'bg-[#C44545]',
+    // 'slate' renders no bar so cards with neutral / "all clear" status read calmer.
+  };
+  const barClass = accentBar[accent];
 
   return (
-    <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
-      <div className={`absolute left-0 top-0 h-1 w-10 ${accentBar}`} aria-hidden="true" />
+    <div className="relative overflow-hidden rounded-[12px] border border-[#E6E1D4] bg-white p-3.5 shadow-[0_1px_2px_rgba(20,20,20,0.04)]">
+      {barClass ? (
+        <span className={`absolute left-0 top-0 bottom-0 w-[3px] ${barClass}`} aria-hidden="true" />
+      ) : null}
       <div className="mb-1.5 flex items-center gap-1.5">
-        <Icon className="h-3.5 w-3.5 text-slate-500" />
-        <p className="truncate text-[10px] font-medium uppercase tracking-wider text-slate-500">
+        <Icon className="h-3.5 w-3.5 text-[#6B6B6B]" />
+        <p className="truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6B6B6B]">
           {label}
         </p>
       </div>
-      <p
-        className="truncate text-2xl font-semibold tabular-nums leading-none text-slate-900 sm:text-3xl"
-        style={{ fontFamily: "'Fraunces', Georgia, serif" }}
-        title={value}
-      >
-        {value}
-      </p>
-      <p className="mt-1.5 line-clamp-2 text-[11px] leading-snug text-slate-500">
+      <div className="flex items-baseline gap-2 flex-wrap">
+        <p
+          className="text-[26px] font-medium leading-none tabular-nums text-[#1A1A1A]"
+          style={{ fontFamily: "'Fraunces', Georgia, serif" }}
+          title={value}
+        >
+          {value}
+          {unit ? (
+            <span className="ml-1 text-[14px] font-normal text-[#6B6B6B]">{unit}</span>
+          ) : null}
+        </p>
+        {delta && delta.value !== 0 ? (
+          <span
+            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${
+              delta.value > 0
+                ? 'bg-[#E0EBE3] text-[#246F47]'
+                : 'bg-[#FBE5E5] text-[#C44545]'
+            }`}
+          >
+            <ArrowUp className={`h-2.5 w-2.5 ${delta.value < 0 ? 'rotate-180' : ''}`} />
+            {delta.value > 0 ? '+' : ''}{delta.value}{delta.suffix}
+          </span>
+        ) : null}
+      </div>
+      <p className="mt-1.5 line-clamp-2 text-[11.5px] leading-snug text-[#A0A0A0]">
         {caption}
       </p>
     </div>
@@ -1057,13 +1254,13 @@ function ModeButton({
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex h-9 flex-shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border px-3 text-sm font-medium transition-colors ${
+      className={`inline-flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-[12.5px] font-semibold transition-colors ${
         active
-          ? 'border-slate-900 bg-slate-900 text-white'
-          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100'
+          ? 'bg-[#1A1A1A] text-white shadow-[0_1px_2px_rgba(20,20,20,0.18)]'
+          : 'bg-transparent text-[#6B6B6B] hover:text-[#1A1A1A]'
       }`}
     >
-      <Icon className="h-4 w-4" />
+      <Icon className="h-3.5 w-3.5" />
       {label}
     </button>
   );

@@ -53,14 +53,21 @@ export default function PhotoReviewDrawer({ item, onClose, onResolved }: Props) 
 
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
   const [overridePct, setOverridePct] = useState(item.completion_pct);
+  const [rejectNotes, setRejectNotes] = useState('');
   const [busy, setBusy] = useState<'confirm' | 'reject' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    void getPhotoUrl(item.photos.storage_path, 600).then((url) => {
-      if (!cancelled) setThumbUrl(url);
-    });
+    void getPhotoUrl(item.photos.storage_path, 600)
+      .then((url) => { if (!cancelled) setThumbUrl(url); })
+      .catch((err) => {
+        // Storage signing failures (expired token, RLS denial, network)
+        // shouldn't crash the drawer — the existing ImageOff fallback
+        // renders when thumbUrl stays null. Log so the dev console
+        // surfaces the cause for diagnosis.
+        if (!cancelled) console.warn('[PhotoReviewDrawer] thumbnail load failed', err);
+      });
     return () => { cancelled = true; };
   }, [item.photos.storage_path]);
 
@@ -84,7 +91,10 @@ export default function PhotoReviewDrawer({ item, onClose, onResolved }: Props) 
     setBusy('reject');
     setError(null);
     try {
-      await rejectAnalysis(item.photo_id);
+      // Trim + drop empty so the backend audit row stays clean (notes is
+      // optional, an empty string is not the same as "no notes provided").
+      const notes = rejectNotes.trim() || undefined;
+      await rejectAnalysis(item.photo_id, notes);
       onResolved?.();
       onClose();
     } catch (e) {
@@ -170,6 +180,24 @@ export default function PhotoReviewDrawer({ item, onClose, onResolved }: Props) 
           {item.rationale ?? 'No rationale provided.'}
         </p>
       </Cell>
+
+      {/* Reject notes — optional but encouraged. Backend audit_log captures
+          this in the entity row when handleReject sends it, so a reviewer's
+          "why" survives even after the analysis row is gone. */}
+      <div className="mt-5">
+        <label htmlFor="reject-notes" className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+          Rejection notes (optional)
+        </label>
+        <textarea
+          id="reject-notes"
+          rows={3}
+          maxLength={500}
+          value={rejectNotes}
+          onChange={(e) => setRejectNotes(e.target.value)}
+          placeholder="Why are you rejecting this analysis? e.g. wrong phase, photo unclear, model misread the materials."
+          className="w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+        />
+      </div>
 
       {/* Override slider */}
       <div className="mt-5">

@@ -1,25 +1,68 @@
 // frontend/src/pages/gantt/tabs/sitediary/DayRollupCard.tsx
 //
-// Day-rollup card — 5 summary rows for the left column.
+// Day-rollup card — 5 summary rows for the left column. Zero values render
+// in muted grey so an empty day still surfaces the rollup labels.
+
+export interface DayRollup {
+  headcount: number;
+  hoursLogged: number;
+  entries: number;
+  signedOffs: number;
+  totalForSignOff: number;
+  openPunchItems: number;
+}
 
 interface DayRollupCardProps {
-  rollup: {
-    headcount: number;
-    hoursLogged: number;
-    entries: number;
-    signedOffs: number;
-    totalForSignOff: number;
-    openPunchItems: number;
-  };
+  rollup: DayRollup;
 }
 
 export function DayRollupCard({ rollup }: DayRollupCardProps) {
+  const mute = (n: number) => (n === 0 ? 'text-[#A0A0A0]' : '');
+  const hoursDisplay = Math.round(rollup.hoursLogged * 10) / 10;
   const rows: Array<{ k: string; v: React.ReactNode }> = [
-    { k: 'Headcount',     v: <>{rollup.headcount}<span className="text-[#6B6B6B] font-normal ml-0.5 text-[10.5px]">workers</span></> },
-    { k: 'Hours logged',  v: <>{rollup.hoursLogged}<span className="text-[#6B6B6B] font-normal ml-0.5 text-[10.5px]">h</span></> },
-    { k: 'Entries',       v: <>{rollup.entries}<span className="text-[#6B6B6B] font-normal ml-0.5 text-[10.5px]">submitted</span></> },
-    { k: 'Sign-offs',     v: <span className="text-[#246F47]">{rollup.signedOffs} of {rollup.totalForSignOff}</span> },
-    { k: 'Punch list',    v: <span className="text-[#C8841E]">{rollup.openPunchItems} open</span> },
+    {
+      k: 'Headcount',
+      v: (
+        <span className={mute(rollup.headcount)}>
+          {rollup.headcount}
+          <span className="text-[#6B6B6B] font-normal ml-0.5 text-[10.5px]">workers</span>
+        </span>
+      ),
+    },
+    {
+      k: 'Hours logged',
+      v: (
+        <span className={mute(rollup.hoursLogged)}>
+          {hoursDisplay}
+          <span className="text-[#6B6B6B] font-normal ml-0.5 text-[10.5px]">h</span>
+        </span>
+      ),
+    },
+    {
+      k: 'Entries',
+      v: (
+        <span className={mute(rollup.entries)}>
+          {rollup.entries}
+          <span className="text-[#6B6B6B] font-normal ml-0.5 text-[10.5px]">submitted</span>
+        </span>
+      ),
+    },
+    {
+      k: 'Sign-offs',
+      v: (
+        <span className={rollup.totalForSignOff === 0 ? 'text-[#A0A0A0]' : 'text-[#246F47]'}>
+          {rollup.signedOffs} of {rollup.totalForSignOff}
+        </span>
+      ),
+    },
+    {
+      k: 'Punch list',
+      v: (
+        <span className={rollup.openPunchItems === 0 ? 'text-[#A0A0A0]' : 'text-[#C8841E]'}>
+          {rollup.openPunchItems} open
+        </span>
+      ),
+    },
   ];
 
   return (

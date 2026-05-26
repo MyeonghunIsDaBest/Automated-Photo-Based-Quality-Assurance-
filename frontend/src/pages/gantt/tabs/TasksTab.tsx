@@ -14,6 +14,7 @@ import { Card, CardContent } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
 import { Badge } from '../../../components/ui/badge';
 import TaskDrawer from './TaskDrawer';
+import { TaskDrawingsPane } from './TaskDrawingsPane';
 import { TabHeader } from '../components/TabHeader';
 import { EmptyState } from '../components/EmptyState';
 import { useTaskAiSignal } from '../../../lib/hooks/useTaskAiSignal';
@@ -434,8 +435,8 @@ export function TasksTab({
     <>
       <TabHeader
         eyebrow={`Workspace · Tasks · ${project.name}`}
-        title="Construction schedule"
-        description="Eight phases, pre-seeded. Each phase has its canonical milestones — click the pencil to manage progress, or expand to see the timeline."
+        title="Schedule and drawings."
+        description="Eight phases with their canonical milestones, paired with the drawings and permits that back them. Click a phase to manage progress, expand to see the timeline, or drop a PDF into the plan set above."
         action={
           canEdit ? (
             <div className="flex flex-wrap items-center gap-2">
@@ -460,6 +461,16 @@ export function TasksTab({
           )
         }
       />
+
+      {/* Drawings & Permits — project-wide plan set, sits above the schedule */}
+      <div className="mb-4">
+        <TaskDrawingsPane
+          projectId={project.id}
+          currentUser={currentUser}
+          readOnly={!canEdit}
+          showManageAll
+        />
+      </div>
 
       {/* Filter chips */}
       <Card className="mb-3">

@@ -138,6 +138,57 @@ TO DO's:
 ⦁ Decide Mock-AI button fate: rename to "Re-analyse pending" OR remove OR feature-flag VITE_ENABLE_MOCK_AI
 ⦁ Add "Failed analyses" affordance to ReviewQueueTab.tsx showing rationale + retry button (forceNew=true)
 
+TIME LOG (sheet format — time slot · task):
+6:00-7:00    Convert Sparky into Pop instead of Site diary tab
+7:00-8:00    Delete Punch List on Site Diary (remnant of legacy build)
+8:00-8:30    Merge the entire Site diary tabs into singular page
+8:30-9:00    Fix Assistant error: Failed to send a request to the Edge Function
+9:00-10:00   Fix Upload photo/images for PhotoQA
+10:00-10:30  Meeting (canceled)
+10:30-       Rework entire SiteDiary with potential bug fix
+⦁ Analyze AI-Analysis tab for potential broken function
+⦁ Analyze AI-Analysis backend wiring for potential broken function
+⦁ Analyze aiSignal for testing
+⦁ Add photo_phase for backend
+⦁ Wire phaseHint through photos.ts + Edge Function
+⦁ Add getRecentAnalyses + RecentActivityStrip
+⦁ Implement Real upload progress + partial-success batch
+⦁ Tighten KpiCell + Hero header sizing
+⦁ Tighten Finance + Watchlist sub-row sizing
+⦁ Tighten Live activity row sizing + empty-state padding for Recent files/notes
+⦁ Wire 'Upload a file' button to real uploadDocument call
+⦁ Wire 'Write a note' button to inline composer + addComment
+⦁ Extend DiaryEntry type with startTime/endTime/status/tags (optional, legacy-safe)
+⦁ Make addDiaryEntry return id + bump store persist version 2→3
+⦁ Create diaryRowMapper helper (TimelineRow + isVisibleEntry + colorIndexForWorker)
+⦁ Create uploadDiaryPhoto helper for client-buffered photo attach
+⦁ Strip mockTimeline.ts to COMMON_WORKS + WORKER_COLORS only
+⦁ Refactor Site Diary sub-components (Conditions, DayRollup, DayHeader, ProgressBar, FabCamera, QuickAdd, CommonWorks)
+⦁ Refactor TimelineCard + TimelineEntry to real DiaryEntry shape
+⦁ Build DiaryEntryDrawer.tsx (new, ~480 lines — autosave on blur + photos + personnel + tags + delete)
+⦁ Rewrite SiteDiaryTab for real store data + drawer mount + true empty state
+⦁ Move Common Works into drawer as tag picker + auto-stamp start time + buffered photo upload in create mode
+⦁ Build SparkyAssistModal — inline Compose → Proposed-rewrite modal replacing the standalone Sparky drawer
+⦁ Wire 'Ask Sparky' button + autoOpenSparky one-shot from Site Diary empty state
+⦁ Add Drawings & Permits sub-tab inside TaskDrawer (per-task uploads via photos table)
+⦁ Refactor TaskDrawingsPane to dual-mode + mount project-wide above Tasks schedule
+⦁ Rewrite Task breakdown card editorial style (orange CheckSquare tile + Fraunces complete/total)
+⦁ Redesign Finance card editorial style (green DollarSign + 3 sub-rows with Fraunces numbers)
+⦁ Redesign Watchlist card editorial style (lavender Eye + tinted icon tiles per row)
+⦁ Refactor KpiCell with vertical accent bar + Fraunces big number + delta chip
+⦁ Rebuild Hero card with segmented pill mode toggle + larger Fraunces title
+⦁ Enhance TrendBody with green-dot date range + big Fraunces % + delta chip
+⦁ Extract LiveActivityCard component with filter chips (All / Updates / Diary / Files)
+⦁ Add TODAY / YESTERDAY / N DAYS AGO day-bucket grouping to Live activity
+⦁ Add cluster collapsing on Live activity ("Show N updates ▾" for repeat-actor runs)
+⦁ Redesign Recent files empty state with circular icon + dashed Upload-a-file button
+⦁ Redesign Recent notes empty state with circular icon + dashed Write-a-note button
+⦁ Refactor Recent notes to read Site Diary entries instead of task comments (correction)
+⦁ Redesign Uploads tab editorial style (dashed dropzone + green Browse + file-type chips)
+⦁ Add per-upload delete with in-tile confirm overlay (wired through deletePhoto)
+⦁ Fix Uploads image sizing consistency (aspect-[4/3] + absolute media + uniform grid)
+⦁ Append dated section to claude_build_prog.md covering today's overhaul
+
 May 27, 2026
 TO DO's:
 ⦁ Add re-analyse cap to analyze-photo/index.ts (max 3 per photo per 24h via count query)
@@ -168,3 +219,9 @@ TO DO's:
 ⦁ Append "Phase D calibration results" section to claude_build_prog.md
 ⦁ Update PRODUCTION_ROADMAP.md — mark Phase D D1-D5 complete; D6 (calibration) complete
 ⦁ End-of-Phase-D verification: walk the 10-point checklist from plan Section "Verification"
+
+Backlog — Tester UX suggestions (round 1, captured 2026-05-23)
+TO DO's:
+⦁ Order flow: split picking into two screens — step 1 = item picker, step 2 = order confirmation. Reduces accidental confirm clicks. Current single-window flow ships line items + confirm in one panel; tester wants the visual handoff.
+⦁ Inventory: sort by trade (electrical, plumbing, finishings, etc.) instead of flat alphabetical. Add a "Group by trade" toggle on `frontend/src/pages/gantt/tabs/InventoryTab.tsx` (or wherever inventory renders) with sticky section headers per trade.
+⦁ Both items are UX polish, not bugs — schedule after Phase D cutover so they don't compete with API-key + calibration work.
