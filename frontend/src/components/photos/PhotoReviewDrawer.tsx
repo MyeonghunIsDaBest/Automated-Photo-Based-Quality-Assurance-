@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AlertTriangle, ImageOff, MapPin, RefreshCw } from 'lucide-react';
 import { EditorialButton, EditorialModal } from '../editorial';
+import ConfidenceRing from '../ui/ConfidenceRing';
 import {
   confirmAnalysis,
   rejectAnalysis,
@@ -177,13 +178,8 @@ export default function PhotoReviewDrawer({ item, onClose, onResolved }: Props) 
             {item.phase_detected ?? '—'}
           </span>
         </Cell>
-        <Cell label={`Confidence — ${confidencePct}%`}>
-          <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-            <div
-              className="h-full rounded-full bg-emerald-500 transition-all"
-              style={{ width: `${confidencePct}%` }}
-            />
-          </div>
+        <Cell label="Confidence">
+          <ConfidenceRing pct={confidencePct} animateFromZero />
         </Cell>
       </div>
 
@@ -218,15 +214,25 @@ export default function PhotoReviewDrawer({ item, onClose, onResolved }: Props) 
           <span className="text-slate-600">Override completion %</span>
           <span className="font-medium text-slate-900 tabular-nums">{overridePct}%</span>
         </div>
-        <input
-          type="range"
-          min={0}
-          max={100}
-          step={5}
-          value={overridePct}
-          onChange={(e) => setOverridePct(Number(e.target.value))}
-          className="w-full accent-emerald-600"
-        />
+        <div className="relative pt-6">
+          {/* Floating value bubble that tracks the thumb. left:% + center
+              transform approximates the thumb position closely enough. */}
+          <span
+            className="pointer-events-none absolute top-0 -translate-x-1/2 rounded-md bg-stone-900 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-white shadow-sm transition-[left] duration-100"
+            style={{ left: `${overridePct}%` }}
+          >
+            {overridePct}%
+          </span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={5}
+            value={overridePct}
+            onChange={(e) => setOverridePct(Number(e.target.value))}
+            className="w-full accent-emerald-600"
+          />
+        </div>
         <p className="mt-1 text-[11px] text-slate-500">
           Confirming with the slider moved bumps the linked task's progress to that value.
           Leaving it on the AI suggestion just confirms the AI's number.

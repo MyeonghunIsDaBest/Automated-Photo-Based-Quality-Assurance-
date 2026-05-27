@@ -24,6 +24,7 @@ import NotAuthorized from '../../../components/NotAuthorized';
 import PhotoReviewDrawer, { type ReviewQueueItem } from '../../../components/photos/PhotoReviewDrawer';
 import { PhaseCompletionCard } from './PhaseCompletionCard';
 import { SplitPaneGantt } from '../../../components/ui/SplitPaneGantt';
+import ConfidenceRing from '../../../components/ui/ConfidenceRing';
 import { TabHeader } from '../components/TabHeader';
 import { InlineDropzone } from '../components/InlineDropzone';
 import { DonutProgress } from '../../../components/ai/LoadingStates';
@@ -690,34 +691,5 @@ function Row({
   );
 }
 
-// ─── Confidence ring ──────────────────────────────────────────────────────
-// Sage-green / teal / amber ramp matches the 0.50–0.85 review band semantics.
-
-function ConfidenceRing({ pct }: { pct: number }) {
-  const safe = Math.max(0, Math.min(100, pct));
-  const radius = 15;
-  const circumference = 2 * Math.PI * radius;
-  const dash = (safe / 100) * circumference;
-  const stroke = safe >= 80 ? '#2F8F5C' : safe >= 60 ? '#0D8D85' : '#C8841E';
-  return (
-    <span aria-hidden className="relative inline-flex h-11 w-11 items-center justify-center">
-      <svg viewBox="0 0 36 36" className="h-11 w-11 -rotate-90">
-        <circle cx="18" cy="18" r={radius} fill="none" stroke="rgb(231 229 228)" strokeWidth="2.5" />
-        <circle
-          cx="18"
-          cy="18"
-          r={radius}
-          fill="none"
-          stroke={stroke}
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeDasharray={`${dash} ${circumference}`}
-          style={{ transition: 'stroke-dasharray 400ms ease-out' }}
-        />
-      </svg>
-      <span className="absolute text-[12px] font-bold tabular-nums text-stone-800">
-        {safe}
-      </span>
-    </span>
-  );
-}
+// ConfidenceRing now lives in components/ui/ConfidenceRing.tsx (shared with the
+// PhotoReviewDrawer, which uses its animateFromZero mount sweep).
