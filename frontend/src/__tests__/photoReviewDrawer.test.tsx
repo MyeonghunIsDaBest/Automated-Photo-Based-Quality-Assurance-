@@ -7,9 +7,13 @@ import PhotoReviewDrawer, { type ReviewQueueItem } from '../components/photos/Ph
 // (rejectAnalysis must receive the trimmed notes string).
 
 const rejectSpy = vi.fn(async (_photoId: string, _notes?: string) => undefined);
-const confirmSpy = vi.fn(async (_photoId: string, _opts?: { overridePct?: number; notes?: string }) => ({
-  ok: true as const,
-}));
+const confirmSpy = vi.fn(
+  async (
+    _photoId: string,
+    _opts?: { overridePct?: number; notes?: string },
+  ): Promise<{ ok: true; taskBumped?: boolean; newPct?: number }> => ({ ok: true as const }),
+);
+const setNotificationSpy = vi.fn();
 vi.mock('../lib/api/aiAnalyses', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/api/aiAnalyses')>();
   return {
@@ -37,6 +41,7 @@ vi.mock('../store', () => ({
       role: 'project_manager',
       securityGroup: 'manager',
     },
+    setNotification: setNotificationSpy,
   }),
 }));
 
@@ -75,6 +80,7 @@ describe('PhotoReviewDrawer', () => {
   beforeEach(() => {
     rejectSpy.mockClear();
     confirmSpy.mockClear();
+    setNotificationSpy.mockClear();
   });
 
   it('threads trimmed reject notes through to rejectAnalysis (T1.7)', async () => {
@@ -109,5 +115,26 @@ describe('PhotoReviewDrawer', () => {
       expect(rejectSpy).toHaveBeenCalledTimes(1);
     });
     expect(rejectSpy).toHaveBeenCalledWith('photo-1', undefined);
+  });
+
+  it('toasts the task bump after a successful confirm (W4)', async () => {
+    confirmSpy.mockResolvedValueOnce({ ok: true, taskBumped: true, newPct: 80 });
+    render(<PhotoReviewDrawer item={makeItem()} onClose={vi.fn()} onResolved={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /confirm at/i }));
+
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalledTimes(1));
+    expect(setNotificationSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'success', message: expect.stringContaining('80%') }),
+    );
+  });
+
+  it('shows an error banner when confirm fails', async () => {
+    confirmSpy.mockRejectedValueOnce(new Error('network boom'));
+    render(<PhotoReviewDrawer item={makeItem()} onClose={vi.fn()} onResolved={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /confirm at/i }));
+
+    expect(await screen.findByText(/network boom/i)).toBeTruthy();
   });
 });
