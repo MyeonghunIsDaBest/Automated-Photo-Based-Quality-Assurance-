@@ -48,12 +48,14 @@ interface Props {
 }
 
 export default function PhotoReviewDrawer({ item, onClose, onResolved }: Props) {
-  const { currentProfile } = useAppStore();
+  const { currentProfile, setNotification } = useAppStore();
   const showGps = canViewSafetyIncident(currentProfile); // manager+ tier — same gate as Safety
 
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
   const [overridePct, setOverridePct] = useState(item.completion_pct);
   const [rejectNotes, setRejectNotes] = useState('');
+  const [confirmNotes, setConfirmNotes] = useState('');
+  const [showConfirmNotes, setShowConfirmNotes] = useState(false);
   const [busy, setBusy] = useState<'confirm' | 'reject' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -75,9 +77,20 @@ export default function PhotoReviewDrawer({ item, onClose, onResolved }: Props) 
     setBusy('confirm');
     setError(null);
     try {
-      await confirmAnalysis(item.photo_id, {
+      const res = await confirmAnalysis(item.photo_id, {
         overridePct: overridePct !== item.completion_pct ? overridePct : undefined,
+        notes: confirmNotes.trim() || undefined,
       });
+      // confirm-analysis reports whether the linked task's progress actually
+      // moved (taskBumped) and the value it landed on (newPct). Surface that
+      // as a toast so the reviewer sees the schedule respond, not just the
+      // row vanish.
+      const label = item.suggested_task ?? item.photos.filename;
+      setNotification(
+        res.taskBumped && typeof res.newPct === 'number'
+          ? { message: `Task “${label}” bumped to ${res.newPct}%`, type: 'success' }
+          : { message: `Analysis confirmed at ${res.newPct ?? overridePct}%`, type: 'success' },
+      );
       onResolved?.();
       onClose();
     } catch (e) {
@@ -218,6 +231,35 @@ export default function PhotoReviewDrawer({ item, onClose, onResolved }: Props) 
           Confirming with the slider moved bumps the linked task's progress to that value.
           Leaving it on the AI suggestion just confirms the AI's number.
         </p>
+      </div>
+
+      {/* Confirm notes — optional context written to the audit row on confirm.
+          Behind a toggle so the default confirm path stays one click. */}
+      <div className="mt-3">
+        {showConfirmNotes ? (
+          <>
+            <label htmlFor="confirm-notes" className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Confirm notes (optional)
+            </label>
+            <textarea
+              id="confirm-notes"
+              rows={2}
+              maxLength={500}
+              value={confirmNotes}
+              onChange={(e) => setConfirmNotes(e.target.value)}
+              placeholder="Anything worth recording with this confirm? e.g. verified on site, slider raised to match progress."
+              className="w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            />
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowConfirmNotes(true)}
+            className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800"
+          >
+            + Add a note to this confirm
+          </button>
+        )}
       </div>
 
       {/* Safety + quality flags */}
