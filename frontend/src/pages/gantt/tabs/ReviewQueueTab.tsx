@@ -13,7 +13,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   AlertTriangle, ChevronRight, Clock, ImageOff, Inbox, Settings2,
-  ShieldAlert, Sparkles, UploadCloud,
+  ShieldAlert, Sparkles,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { canConfirmAIAnalysis, canUploadPhotos } from '../../../lib/permissions';
@@ -22,6 +22,7 @@ import { listPendingAnalyses, getRecentAnalyses, type RecentAnalysisRow } from '
 import { getPhotoUrl, uploadPhoto } from '../../../lib/api/photos';
 import NotAuthorized from '../../../components/NotAuthorized';
 import PhotoReviewDrawer, { type ReviewQueueItem } from '../../../components/photos/PhotoReviewDrawer';
+import { PhaseCompletionCard } from './PhaseCompletionCard';
 import { SplitPaneGantt } from '../../../components/ui/SplitPaneGantt';
 import { TabHeader } from '../components/TabHeader';
 import { InlineDropzone } from '../components/InlineDropzone';
@@ -167,6 +168,19 @@ export function ReviewQueueTab({ project, tasks, zones, currentUser }: ReviewQue
     return { total, avgConf, flagged };
   }, [items]);
 
+  // Active phase for the completion card: the phase most represented in the
+  // queue, overridden by an explicit chip selection, else the first phase.
+  const activePhase = useMemo<ConstructionPhase>(() => {
+    const counts: Partial<Record<ConstructionPhase, number>> = {};
+    for (const it of items) {
+      if (it.phase_detected) counts[it.phase_detected] = (counts[it.phase_detected] ?? 0) + 1;
+    }
+    const top = (Object.entries(counts).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))[0]?.[0]) as
+      | ConstructionPhase
+      | undefined;
+    return selectedPhase ?? top ?? PHASE_ORDER[0];
+  }, [items, selectedPhase]);
+
   return (
     <>
       <TabHeader
@@ -207,6 +221,9 @@ export function ReviewQueueTab({ project, tasks, zones, currentUser }: ReviewQue
             accent="#5B6B7B"
           />
         </div>
+
+        {/* ── Phase completion — AI verdict for the active phase ────── */}
+        <PhaseCompletionCard projectId={project.id} phase={activePhase} />
 
         {/* ── Live processing indicator (visible while uploads fly) ── */}
         {uploadBusy > 0 && (
