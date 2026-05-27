@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  AlertTriangle, ChevronRight, Clock, ImageOff, Inbox, Settings2,
+  AlertTriangle, Check, ChevronRight, Clock, ImageOff, Inbox, Settings2,
   ShieldAlert, Sparkles,
 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -25,6 +25,7 @@ import PhotoReviewDrawer, { type ReviewQueueItem } from '../../../components/pho
 import { PhaseCompletionCard } from './PhaseCompletionCard';
 import { SplitPaneGantt } from '../../../components/ui/SplitPaneGantt';
 import ConfidenceRing from '../../../components/ui/ConfidenceRing';
+import CountUp from '../../../components/ui/CountUp';
 import { TabHeader } from '../components/TabHeader';
 import { InlineDropzone } from '../components/InlineDropzone';
 import { DonutProgress } from '../../../components/ai/LoadingStates';
@@ -76,6 +77,7 @@ export function ReviewQueueTab({ project, tasks, zones, currentUser }: ReviewQue
   const [active, setActive] = useState<ReviewQueueItem | null>(null);
   const [selectedPhase, setSelectedPhase] = useState<ConstructionPhase | null>(null);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -196,21 +198,21 @@ export function ReviewQueueTab({ project, tasks, zones, currentUser }: ReviewQue
           <StatTile
             label="Pending review"
             icon={<Clock className="h-3 w-3" />}
-            value={loading ? '…' : String(stats.total)}
+            value={loading ? '…' : <CountUp value={stats.total} />}
             caption="Items in queue · 0.50–0.85 band"
             accent="#2F8F5C"
           />
           <StatTile
             label="Avg confidence"
             icon={<Sparkles className="h-3 w-3" />}
-            value={loading ? '…' : `${stats.avgConf}%`}
+            value={loading ? '…' : <CountUp value={stats.avgConf} format={(n) => `${Math.round(n)}%`} />}
             caption="Across queue · borderline cases"
             accent="#0D8D85"
           />
           <StatTile
             label="Safety flags"
             icon={<ShieldAlert className="h-3 w-3" />}
-            value={loading ? '…' : String(stats.flagged)}
+            value={loading ? '…' : <CountUp value={stats.flagged} />}
             caption={stats.flagged > 0 ? 'Need immediate triage' : 'No active flags'}
             accent={stats.flagged > 0 ? '#C44545' : '#5B6B7B'}
           />
@@ -332,7 +334,7 @@ export function ReviewQueueTab({ project, tasks, zones, currentUser }: ReviewQue
                     animate={{ opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] } }}
                     exit={{ opacity: 0, height: 0, marginTop: 0, transition: { duration: 0.2 } }}
                   >
-                    <Row item={item} onClick={() => setActive(item)} />
+                    <Row item={item} confirmed={confirmingId === item.id} onClick={() => setActive(item)} />
                   </motion.div>
                 ))}
               </AnimatePresence>
@@ -389,7 +391,14 @@ export function ReviewQueueTab({ project, tasks, zones, currentUser }: ReviewQue
           item={active}
           onClose={() => setActive(null)}
           onResolved={() => {
-            setItems((prev) => prev.filter((it) => it.id !== active.id));
+            const id = active.id;
+            // Flash a green "Confirmed" chip on the row, then drop it; the
+            // AnimatePresence exit animation runs when it leaves `items`.
+            setConfirmingId(id);
+            window.setTimeout(() => {
+              setItems((prev) => prev.filter((it) => it.id !== id));
+              setConfirmingId((cur) => (cur === id ? null : cur));
+            }, 700);
           }}
         />
       )}
@@ -404,7 +413,7 @@ function StatTile({
 }: {
   label: string;
   icon?: React.ReactNode;
-  value: string;
+  value: React.ReactNode;
   caption: string;
   accent: string;
 }) {
@@ -540,7 +549,7 @@ function ActivityTile({
         {label}
       </div>
       <p className="display mt-1.5 text-[22px] font-medium leading-none text-stone-900 tabular-nums">
-        {value}
+        <CountUp value={value} />
       </p>
       <p className="mt-1 text-[11px] text-stone-400">{caption}</p>
     </div>
@@ -571,13 +580,15 @@ function EmptyState() {
 // ─── Queue row ────────────────────────────────────────────────────────────
 
 function Row({
-  item, onClick,
+  item, onClick, confirmed,
 }: {
   item: ReviewQueueItem;
   onClick: () => void;
+  confirmed?: boolean;
 }) {
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
   const [thumbErr, setThumbErr] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -597,8 +608,17 @@ function Row({
       <button
         type="button"
         onClick={onClick}
-        className="group flex w-full items-stretch overflow-hidden rounded-2xl border border-stone-200 bg-white text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-md"
+        className="group relative flex w-full items-stretch overflow-hidden rounded-2xl border border-stone-200 bg-white text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-md"
       >
+        {confirmed && (
+          <motion.span
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-semibold text-white shadow"
+          >
+            <Check className="h-3 w-3" aria-hidden /> Confirmed
+          </motion.span>
+        )}
         {/* Phase-coloured accent rail */}
         <span
           aria-hidden
@@ -613,8 +633,9 @@ function Row({
               <img
                 src={thumbUrl}
                 alt={item.photos.filename}
-                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                onLoad={() => setLoaded(true)}
                 onError={() => setThumbErr(true)}
+                className={`h-full w-full object-cover transition-[transform,opacity] duration-500 group-hover:scale-105 ${loaded ? 'opacity-100' : 'opacity-0'}`}
               />
               <span
                 aria-hidden
