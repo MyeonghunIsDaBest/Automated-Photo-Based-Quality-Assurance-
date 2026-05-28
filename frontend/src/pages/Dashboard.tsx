@@ -22,11 +22,9 @@ import {
   CloudSnow,
   Image as ImageIcon,
   Mic,
-  Package,
   ShieldCheck,
   Sparkles,
   Sun,
-  Truck,
   Users,
   Wind,
   Eye,
@@ -78,38 +76,7 @@ const PHASE_ACCENT: Record<string, string> = {
   finishing:  'bg-emerald-500',
 };
 
-// ─── Demo-data — clearly stubbed sections waiting for real wiring ──────────
-// Weather is live via `useWeather()` (Open-Meteo). Everything below is DEMO
-// until the relevant store / API is wired.
-const DEMO_DELIVERIES = [
-  { id: 'd1', name: '40 yd³ concrete',    vendor: 'NorthCrete',   when: 'Today · 13:30', status: 'ON ROUTE',  tone: 'emerald' },
-  { id: 'd2', name: 'Rebar #5 (3 tons)',  vendor: 'SteelHaus',    when: 'Wed · 06:00',  status: 'CONFIRMED', tone: 'slate'   },
-  { id: 'd3', name: 'Light fixtures (L12)', vendor: 'LuxCo',      when: 'Thu · 10:00',  status: 'PENDING',   tone: 'amber'   },
-];
-
-const DEMO_BUDGET = {
-  spent: 10_100_000,
-  total: 18_400_000,
-  pctSpent: 55,
-  pctCommitted: 77,
-  weeks: [42, 48, 55, 51, 72, 58, 64, 78],
-  weekColor: (pct: number) => (pct < 55 ? '#10B981' : pct < 70 ? '#F59E0B' : '#DC2626'),
-  contingencyNote: 'Aug 14. Two pour delays could compress that by 12 days.',
-};
-
-const SUGGESTED_QUESTIONS = [
-  "Today's safety flags",
-  'Critical path slip?',
-  'Crew on L14',
-];
-
 // ─── Helpers ──────────────────────────────────────────────────────────────
-
-function shortMoney(n: number): string {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}k`;
-  return `$${n}`;
-}
 
 // Deterministic pseudo-random walk so each KPI gets a unique sparkline
 // shape that lands at the live value, without flickering between renders.
@@ -294,11 +261,6 @@ export default function Dashboard() {
     ? [currentProfile.firstName, currentProfile.lastName].filter(Boolean).join(' ').trim()
     : '';
 
-  // Safety streak — DEMO. Real implementation: select the most recent
-  // incident from `useSafetyIncidentsCache` and count days since.
-  const safetyStreakDays = 47;
-  const safetyBestStreak = 62;
-
   // Crew on site — derive from team count. Without a real time-clock the
   // "checked in" number is a 73% approximation.
   const crewTotal = users.length;
@@ -366,9 +328,6 @@ export default function Dashboard() {
             <span className="tracking-[0.18em] text-emerald-300">LIVE</span>
             <span className="text-slate-300">·</span>
             <span className="text-slate-200">L15 begins 13:30</span>
-          </span>
-          <span className="hidden flex-shrink-0 text-slate-300 md:inline">
-            <span className="text-emerald-300">Safety</span> · {safetyStreakDays} days incident-free
           </span>
           <span className="hidden flex-shrink-0 text-slate-300 lg:inline">
             <span className="text-amber-300">Weather alert</span> · Thursday rain, pour postponed
@@ -504,7 +463,7 @@ export default function Dashboard() {
       {/* ─── Body ─── */}
       <div className="px-4 py-6 sm:px-8 sm:py-8">
         {/* Trio: Weather · Safety streak · Crew · Ask anything */}
-        <div className="grid gap-4 lg:grid-cols-4">
+        <div className="grid gap-4 lg:grid-cols-3">
           {/* Weather — live from Open-Meteo; geolocation w/ Melbourne fallback */}
           <section className="rounded-xl border border-slate-200 bg-white p-5">
             <div className="mb-3 flex items-center justify-between text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500">
@@ -569,33 +528,6 @@ export default function Dashboard() {
             )}
           </section>
 
-          {/* Safety streak */}
-          <section className="rounded-xl border border-slate-200 bg-white p-5">
-            <div className="mb-3 flex items-center justify-between text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500">
-              Safety streak
-              <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
-            </div>
-            <p className="num text-3xl font-medium text-slate-900">
-              {safetyStreakDays}<span className="ml-1 align-baseline text-sm font-normal text-slate-400">days</span>
-            </p>
-            <p className="mt-1 text-xs text-slate-500">Without a recordable incident</p>
-            {/* Bar viz — 30 segments, last `streak` filled */}
-            <div className="mt-4 flex gap-[3px]">
-              {Array.from({ length: 30 }).map((_, i) => {
-                const filled = i < Math.min(30, safetyStreakDays);
-                return (
-                  <span
-                    key={i}
-                    className={`h-7 flex-1 rounded-sm ${filled ? 'bg-emerald-400' : 'bg-slate-100'}`}
-                  />
-                );
-              })}
-            </div>
-            <p className="mt-3 text-[10px] uppercase tracking-[0.15em] text-slate-400">
-              Previous best: <span className="text-slate-600">{safetyBestStreak} days</span>
-            </p>
-          </section>
-
           {/* Crew on site */}
           <section className="rounded-xl border border-slate-200 bg-white p-5">
             <div className="mb-3 flex items-center justify-between text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500">
@@ -658,16 +590,6 @@ export default function Dashboard() {
               >
                 <Mic className="h-3.5 w-3.5" />
               </button>
-            </div>
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {SUGGESTED_QUESTIONS.map((q) => (
-                <span
-                  key={q}
-                  className="cursor-pointer rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-[10px] text-slate-300 hover:bg-white/10"
-                >
-                  {q}
-                </span>
-              ))}
             </div>
           </section>
         </div>
@@ -816,61 +738,6 @@ export default function Dashboard() {
               </div>
             </section>
 
-            {/* Budget burndown — DEMO bars; wire to finance store later */}
-            <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-              <SectionHeader
-                eyebrow="Finance"
-                title="Budget burndown"
-                description="Weekly spend against committed contracts"
-                actionLabel="Open ledger"
-                onAction={() => navigate('/reports')}
-              />
-              <div className="grid gap-6 px-6 py-5 md:grid-cols-[1fr_2fr]">
-                <div>
-                  <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500">
-                    Spent / Total
-                  </p>
-                  <p className="num mt-1 text-3xl font-medium text-slate-900">
-                    {shortMoney(DEMO_BUDGET.spent)}
-                    <span className="text-slate-400"> / </span>
-                    <span className="text-slate-500">{shortMoney(DEMO_BUDGET.total)}</span>
-                  </p>
-                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100">
-                    <div
-                      className="h-full bg-emerald-500"
-                      style={{ width: `${DEMO_BUDGET.pctSpent}%` }}
-                    />
-                  </div>
-                  <p className="mt-2 text-[11px] text-slate-500">
-                    <span className="font-medium text-slate-700">{DEMO_BUDGET.pctSpent}% spent</span>
-                    <span className="mx-2 text-slate-300">▮</span>
-                    {DEMO_BUDGET.pctCommitted}% committed
-                  </p>
-                  <p className="mt-4 text-[11px] leading-relaxed text-slate-500">
-                    At current burn rate, contingency holds until <span className="font-medium text-slate-700">{DEMO_BUDGET.contingencyNote}</span>
-                  </p>
-                </div>
-
-                <div>
-                  <div className="flex h-32 items-end gap-3">
-                    {DEMO_BUDGET.weeks.map((pct, i) => (
-                      <div key={i} className="group relative flex flex-1 flex-col items-center">
-                        <div
-                          className="w-full rounded-t-sm transition-opacity group-hover:opacity-80"
-                          style={{ height: `${pct}%`, backgroundColor: DEMO_BUDGET.weekColor(pct) }}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-2 flex gap-3 text-[10px] uppercase tracking-wider text-slate-400">
-                    {DEMO_BUDGET.weeks.map((_, i) => (
-                      <span key={i} className="flex-1 text-center">W{i + 1}</span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </section>
-
             {/* Upcoming tasks */}
             <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
               <SectionHeader
@@ -959,43 +826,6 @@ export default function Dashboard() {
 
           {/* Sidebar */}
           <aside className="space-y-6">
-            {/* Next deliveries — DEMO. Wire to gantt deliveries when ready. */}
-            <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-              <div className="flex items-center justify-between px-5 pt-5 pb-3">
-                <div>
-                  <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
-                    Inbound
-                  </p>
-                  <h3 className="display text-lg font-medium text-slate-900">Next deliveries</h3>
-                </div>
-                <Truck className="h-4 w-4 text-slate-400" aria-hidden />
-              </div>
-              <ul className="divide-y divide-slate-100">
-                {DEMO_DELIVERIES.map((d) => (
-                  <li key={d.id} className="flex items-start gap-3 px-5 py-3">
-                    <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500">
-                      <Package className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-slate-900">{d.name}</p>
-                      <p className="truncate text-xs text-slate-500">
-                        {d.vendor} · {d.when}
-                      </p>
-                    </div>
-                    <span
-                      className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[9px] font-medium uppercase tracking-wider ${
-                        d.tone === 'emerald' ? 'bg-emerald-50 text-emerald-700'
-                        : d.tone === 'amber' ? 'bg-amber-50 text-amber-700'
-                        : 'bg-slate-100 text-slate-600'
-                      }`}
-                    >
-                      {d.status}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-
             <WhatsNewCard />
 
             {/* Recent activity */}
