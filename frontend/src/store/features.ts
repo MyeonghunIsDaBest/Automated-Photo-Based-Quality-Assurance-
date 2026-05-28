@@ -134,15 +134,10 @@ interface FeatureState {
 
 export const useFeatureStore = create<FeatureState>((set, get) => ({
   // Progress Tracking
-  progressHistory: [
-    { date: '2024-02-01', progress: 35, photosUploaded: 45, tasksCompleted: 2 },
-    { date: '2024-02-05', progress: 42, photosUploaded: 67, tasksCompleted: 3 },
-    { date: '2024-02-10', progress: 48, photosUploaded: 89, tasksCompleted: 3 },
-    { date: '2024-02-15', progress: 52, photosUploaded: 112, tasksCompleted: 4 },
-    { date: '2024-02-20', progress: 57, photosUploaded: 145, tasksCompleted: 4 },
-    { date: '2024-02-25', progress: 62, photosUploaded: 178, tasksCompleted: 4 },
-    { date: '2024-02-28', progress: 67, photosUploaded: 201, tasksCompleted: 4 },
-  ],
+  // Real points append via updateTaskProgress on each change. The 2024
+  // demo seed was the visible "demo curve" on the Dashboard chart — now
+  // empty so the chart renders its empty-state until real progress accrues.
+  progressHistory: [],
 
   addProgressData: (data) => {
     set((state) => ({
@@ -168,13 +163,11 @@ export const useFeatureStore = create<FeatureState>((set, get) => ({
   },
 
   // Task Management.
-  // All three demo projects (Hampstead Heights + Bondi + Marrickville) seed
-  // the editable Gantt unconditionally so the realistic phasing is always
-  // visible — even when Supabase is configured. Realtime subscribes per-
-  // project so it never overwrites these rows (their IDs don't exist on the
-  // server). Live projects fill the slice normally via
-  // `useProjectTasksRealtime`.
-  tasks: [...demoInflightTasks, ...demoExtraSiteTasks],
+  // Demo-project tasks (Hampstead/Bondi/Marrickville) are mock-mode only —
+  // gated so a production build (supabaseConfigured()===true) carries zero
+  // demo data. Live projects fill the slice via `useProjectTasksRealtime`
+  // as usual; local dev keeps the realistic phasing for offline demos.
+  tasks: supabaseConfigured() ? [] : [...demoInflightTasks, ...demoExtraSiteTasks],
 
   // Write-through: optimistic local update, then Supabase persist. The
   // realtime channel subscribes via `useProjectTasksRealtime` and will
@@ -312,7 +305,9 @@ export const useFeatureStore = create<FeatureState>((set, get) => ({
   },
 
   // File & Document Management
-  documents: [
+  // Demo documents seeded for mock-mode only; production starts empty and
+  // fills via uploadDocument as users add real files.
+  documents: supabaseConfigured() ? [] : [
     {
       id: 'doc_1',
       projectId: 'project_1',
@@ -595,7 +590,9 @@ export const useFeatureStore = create<FeatureState>((set, get) => ({
   // the stakeholder visitor is invited to Hampstead Heights so the
   // StakeholderHome demo shows a real project chip. All seeds have
   // `accepted_at` set so the implicit-accept hook is a no-op on first render.
-  projectMemberships: seedProjectMemberships(),
+  // Seeded memberships are mock-mode scaffolding; in live mode real
+  // memberships come from Supabase via the projectMembers.ts helpers.
+  projectMemberships: supabaseConfigured() ? {} : seedProjectMemberships(),
   upsertProjectMembership: (member) => {
     set((state) => {
       const list = state.projectMemberships[member.userId] ?? [];
