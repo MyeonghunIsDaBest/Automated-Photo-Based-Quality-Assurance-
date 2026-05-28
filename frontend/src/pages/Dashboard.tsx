@@ -43,6 +43,7 @@ import { differenceInCalendarDays, format, parseISO } from 'date-fns';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import CountUp from '../components/ui/CountUp';
 import WhatsNewCard from '../components/dashboard/WhatsNewCard';
+import ProjectStatusCard from '../components/ai/ProjectStatusCard';
 
 // Per-role capability summary shown in the welcome strip. Keep it short —
 // the source of truth for actual permissions is `lib/permissions.ts`.
@@ -462,7 +463,12 @@ export default function Dashboard() {
 
       {/* ─── Body ─── */}
       <div className="px-4 py-6 sm:px-8 sm:py-8">
-        {/* Trio: Weather · Safety streak · Crew · Ask anything */}
+        {/* AI · Project synthesis — Claude reads confirmed photo evidence per phase */}
+        <div className="mb-6">
+          <ProjectStatusCard projectId={project.id} />
+        </div>
+
+        {/* Trio: Weather · Crew · Ask anything */}
         <div className="grid gap-4 lg:grid-cols-3">
           {/* Weather — live from Open-Meteo; geolocation w/ Melbourne fallback */}
           <section className="rounded-xl border border-slate-200 bg-white p-5">
