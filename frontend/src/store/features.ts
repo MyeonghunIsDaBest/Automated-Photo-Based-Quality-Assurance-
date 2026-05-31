@@ -475,9 +475,12 @@ export const useFeatureStore = create<FeatureState>((set, get) => ({
     return reports.filter((r) => r.reportType === type);
   },
 
-  // User Settings
+  // User Settings. The identity fields (email/name/phone/timezone) are demo
+  // placeholders for mock-mode only — in production (Supabase configured) they
+  // start blank and Settings hydrates them from the real authenticated profile,
+  // so no fake identity is ever shown to a live user.
   userSettings: {
-    email: 'admin@siteproof.com',
+    email: supabaseConfigured() ? '' : 'admin@siteproof.com',
     notifications: {
       emailNotifications: true,
       safetyAlerts: true,
@@ -487,9 +490,9 @@ export const useFeatureStore = create<FeatureState>((set, get) => ({
       weeklyReports: true,
     },
     profile: {
-      fullName: 'John Anderson',
-      phone: '+1 (555) 123-4567',
-      timezone: 'America/New_York',
+      fullName: supabaseConfigured() ? '' : 'John Anderson',
+      phone: supabaseConfigured() ? '' : '+1 (555) 123-4567',
+      timezone: supabaseConfigured() ? 'Australia/Melbourne' : 'America/New_York',
       language: 'en',
     },
   },

@@ -186,17 +186,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   // `users` hydrates from Supabase on auth (see refreshProfile) — the
   // mockUsers seed is gone; pre-auth the panel renders empty. `tasks`,
   // `photos`, and `comments` are sourced from useFeatureStore / realtime
-  // hooks and start empty here. `zones`, `auditLogs`, `reports`, and
-  // `dashboardStats` are still mock-seeded because no Supabase source
-  // exists for them yet — flagged in claude_build_prog.md as Phase E.
+  // hooks and start empty here. `zones`, `auditLogs`, and `reports` start
+  // empty in production (no demo seeds reach a live build) and only carry the
+  // mock seeds in mock-mode dev; their real Supabase source is Phase E.
+  // `dashboardStats` is all-zeros and isn't the displayed source (the
+  // Dashboard reads the computed useDashboardStats), so it stays as-is.
   project: toLegacyProject(selectActiveProject(useProjectsListStore.getState())),
   users: [],
-  zones: mockZones,
+  zones: supabaseConfigured() ? [] : mockZones,
   tasks: [],
   photos: [],
-  auditLogs: mockAuditLogs,
+  auditLogs: supabaseConfigured() ? [] : mockAuditLogs,
   comments: [],
-  reports: mockReports,
+  reports: supabaseConfigured() ? [] : mockReports,
   dashboardStats: mockDashboardStats,
 
   // Actions

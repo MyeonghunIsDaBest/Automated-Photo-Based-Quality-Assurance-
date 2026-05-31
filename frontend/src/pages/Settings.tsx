@@ -14,9 +14,10 @@ export default function Settings() {
   const { userSettings, updateUserSettings, updatePassword, updateEmail } = useFeatureStore();
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'notifications'>('profile');
   
-  // Profile state
+  // Profile state. Prefer the real authenticated identity (currentUser) over
+  // the store defaults so a live user never sees demo placeholder values.
   const [profileForm, setProfileForm] = useState({
-    fullName: userSettings.profile.fullName,
+    fullName: currentUser?.fullName || userSettings.profile.fullName,
     phone: userSettings.profile.phone || '',
     timezone: userSettings.profile.timezone,
     language: userSettings.profile.language,
@@ -27,7 +28,7 @@ export default function Settings() {
     currentPassword: '',
     newPassword: '',
     confirmPassword: '',
-    email: userSettings.email,
+    email: currentUser?.email || userSettings.email,
   });
   const [showPasswords, setShowPasswords] = useState(false);
   const [securityMessage, setSecurityMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
