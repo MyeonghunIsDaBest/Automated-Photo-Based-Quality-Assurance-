@@ -4,6 +4,7 @@
 // The bucket is private — `getPhotoUrl()` returns a short-lived signed URL.
 
 import { supabase, supabaseConfigured } from '../supabase';
+import { requestAnalysis } from './aiAnalyses';
 import type { ConstructionPhase } from '../ai/contract';
 
 // Demo / generated projects live entirely in the client store with non-UUID
@@ -124,6 +125,15 @@ export async function uploadPhoto({
     .single();
   if (error) throw error;
 
+  const photo = data as PhotoRow;
+
+  // Fire-and-forget AI analysis. analyze-photo claims the ai_analyses row
+  // idempotently, so a later trigger/retry on the same id is a no-op. Errors
+  // here never block the upload — the user can manually re-analyse if it drops.
+  void requestAnalysis(photo.id).catch((e) => {
+    console.warn('[uploadPhoto] auto-analyse trigger failed (photo still uploaded):', e);
+  });
+
   // Bump the task's photo_count so the Gantt badge stays accurate. Fire
   // and forget — a failure here shouldn't undo the upload.
   if (taskId) {
@@ -132,7 +142,7 @@ export async function uploadPhoto({
       .then(() => void 0, () => void 0);
   }
 
-  return data as PhotoRow;
+  return photo;
 }
 
 export async function listPhotos(projectId: string, taskId?: string): Promise<PhotoRow[]> {
