@@ -79,13 +79,20 @@ serve(async (req: Request) => {
   // payload with no Claude call — boss demos / refreshes don't re-burn.
   const { data: cached } = await supabase
     .from('project_status_snapshots')
-    .select('payload_jsonb, model_used')
+    .select('payload_jsonb, model_used, narrative_text')
     .eq('project_id', body.projectId)
     .eq('snapshot_date', today)
     .maybeSingle();
 
   if (cached && cached.payload_jsonb) {
-    return json({ ...cached.payload_jsonb, modelUsed: cached.model_used, cached: true }, 200);
+    return json({
+      ...cached.payload_jsonb,
+      // narrative_text is the canonical column; fall back to a narrative that
+      // may have been embedded in the payload jsonb on older rows.
+      narrative: cached.narrative_text ?? cached.payload_jsonb.narrative ?? '',
+      modelUsed: cached.model_used,
+      cached: true,
+    }, 200);
   }
 
   // 2. Gather: most-recent N confirmed analyses per phase, in parallel so one
@@ -114,6 +121,7 @@ serve(async (req: Request) => {
       phaseBreakdown: [],
       blockers: ['No confirmed photo evidence yet'],
       nextMilestone: 'Capture and confirm site photos to bootstrap the project status.',
+      narrative: '',
       modelUsed: 'none',
       cached: false,
     }, 200);
@@ -151,6 +159,7 @@ serve(async (req: Request) => {
     project_id: body.projectId,
     snapshot_date: today,
     payload_jsonb: payload,
+    narrative_text: payload.narrative,
     model_used: result.model,
   }, { onConflict: 'project_id,snapshot_date' });
 

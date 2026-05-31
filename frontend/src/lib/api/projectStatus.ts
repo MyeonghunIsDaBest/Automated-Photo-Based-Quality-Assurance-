@@ -16,6 +16,7 @@ export interface ProjectStatusResult {
   phaseBreakdown: PhaseBreakdownRow[];
   blockers: string[];
   nextMilestone: string;
+  narrative: string;
   modelUsed: string;
   cached: boolean;
 }

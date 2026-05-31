@@ -44,6 +44,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import CountUp from '../components/ui/CountUp';
 import WhatsNewCard from '../components/dashboard/WhatsNewCard';
 import ProjectStatusCard from '../components/ai/ProjectStatusCard';
+import DailyBriefCard from '../components/ai/DailyBriefCard';
 
 // Per-role capability summary shown in the welcome strip. Keep it short —
 // the source of truth for actual permissions is `lib/permissions.ts`.
@@ -463,6 +464,11 @@ export default function Dashboard() {
 
       {/* ─── Body ─── */}
       <div className="px-4 py-6 sm:px-8 sm:py-8">
+        {/* AI · Today's brief — warm one-paragraph narrative (rides the same daily cache) */}
+        <div className="mb-6">
+          <DailyBriefCard projectId={project.id} />
+        </div>
+
         {/* AI · Project synthesis — Claude reads confirmed photo evidence per phase */}
         <div className="mb-6">
           <ProjectStatusCard projectId={project.id} />

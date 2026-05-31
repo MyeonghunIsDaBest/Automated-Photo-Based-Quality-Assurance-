@@ -10,12 +10,13 @@ export const SYNTHESIS_SYSTEM = [
   'You receive recent confirmed AI photo analyses grouped by construction phase.',
   'Produce an overall project status with per-phase completion estimates and concrete blockers.',
   'Respond with STRICT JSON only, no prose, no markdown fences:',
-  '{"overallPct":number,"activePhase":string,"phaseBreakdown":[{"phase":string,"pct":number}],"blockers":string[],"nextMilestone":string}',
+  '{"overallPct":number,"activePhase":string,"phaseBreakdown":[{"phase":string,"pct":number}],"blockers":string[],"nextMilestone":string,"narrative":string}',
   '- overallPct: 0-100, a weighted view of phase completion across the project.',
   '- activePhase: the phase currently consuming the most effort.',
   '- phaseBreakdown: one entry per phase you have evidence for (skip phases with no data); pct 0-100.',
   '- blockers: 0-8 concrete site-level blockers across phases. Empty array if none.',
   '- nextMilestone: a single sentence describing the next significant milestone.',
+  '- narrative: a warm, human, 30-50 word paragraph a site manager would actually say at the morning toolbox talk. Reference the overall %, the active phase, the top blocker (if any), and the next milestone, in conversational prose - NOT a list, no bullet points, no headings.',
 ].join('\n');
 
 export interface PhaseBreakdownRow {
@@ -29,6 +30,7 @@ export interface ProjectStatusPayload {
   phaseBreakdown: PhaseBreakdownRow[];
   blockers: string[];
   nextMilestone: string;
+  narrative: string;
 }
 
 function clampPct(n: unknown): number {
@@ -58,6 +60,7 @@ export function parseProjectStatus(text: string): ProjectStatusPayload | null {
       phaseBreakdown: breakdown,
       blockers: Array.isArray(j.blockers) ? j.blockers.map(String).slice(0, 8) : [],
       nextMilestone: String(j.nextMilestone ?? '').slice(0, 240),
+      narrative: String(j.narrative ?? '').slice(0, 320),
     };
   } catch {
     return null;
