@@ -20,7 +20,7 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 // @ts-expect-error Deno-only import.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 
-import { callAnthropic } from '../_shared/anthropic.ts';
+import { callAnthropic, callAnthropicStream, APPROX_CENTS_PER_TOKEN } from '../_shared/anthropic.ts';
 import { logAction } from '../_shared/auditLog.ts';
 import { CORS_HEADERS, handleCorsPreflight } from '../_shared/cors.ts';
 import { renderDiarySnapshot, type SnapshotEntry } from '../_shared/renderDiarySnapshot.ts';
@@ -46,6 +46,7 @@ interface RequestBody {
   messages: IncomingMessage[];
   targetDate: string;            // YYYY-MM-DD
   projectId: string;             // UUID
+  stream?: boolean;              // when true, respond with an SSE token stream
 }
 
 interface ResponseBody {
@@ -54,6 +55,15 @@ interface ResponseBody {
   model: string;
   inputTokens: number;
   outputTokens: number;
+}
+
+// Subset of the Anthropic Messages streaming event shapes we consume. The
+// upstream emits `data: {json}` SSE frames; we only read text deltas + usage.
+interface AnthropicStreamEvent {
+  type: string;
+  message?: { model?: string; usage?: { input_tokens?: number; output_tokens?: number } };
+  delta?: { text?: string };
+  usage?: { input_tokens?: number; output_tokens?: number };
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -92,6 +102,11 @@ function validateBody(body: unknown): RequestBody | { error: string } {
   }
   if (typeof b.projectId !== 'string' || !UUID_RE.test(b.projectId)) {
     return { error: 'projectId_invalid' };
+  }
+  // `stream` is optional; anything other than an explicit `true` is treated
+  // as the default non-streaming JSON path.
+  if (b.stream !== undefined && typeof b.stream !== 'boolean') {
+    return { error: 'stream_invalid' };
   }
   return b as RequestBody;
 }
@@ -177,6 +192,136 @@ serve(async (req: Request) => {
     today,
     snapshotText,
   });
+
+  // ─── Streaming branch ──────────────────────────────────────────────────
+  // When the client asks for SSE, open the upstream Anthropic stream and
+  // pipe deltas to the browser. The non-stream JSON path below is untouched
+  // and remains the default.
+  if (v.stream === true) {
+    const stream = await callAnthropicStream(supabase, {
+      system: { stable: STABLE_PROMPT, variable: variableTail },
+      messages: v.messages.map((m) => ({ role: m.role, content: m.content })),
+    });
+
+    if (!stream.ok) {
+      // Same gate-failure handling + status mapping as the JSON path.
+      if (stream.reason === 'rate_limited' || stream.reason === 'disabled') {
+        await logAction({
+          supabase,
+          projectId: v.projectId,
+          userId: null,
+          action: 'ai_assistant_rejected',
+          entityType: 'project_config',
+          entityId: v.projectId,
+          notes: `${stream.reason}${stream.detail ? ': ' + stream.detail : ''}`,
+        });
+      }
+      const status =
+        stream.reason === 'rate_limited' ? 429 :
+        stream.reason === 'disabled' || stream.reason === 'missing_key' ? 503 :
+        502;
+      return bad({ error: stream.reason, detail: stream.detail, retryable: stream.retryable }, status);
+    }
+
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+    const reader = stream.upstream.body!.getReader();
+    const turnCount = v.messages.length;
+
+    const readable = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        let accumulated = '';
+        let inputTokens = 0;
+        let outputTokens = 0;
+        let model = '';
+        let buffer = '';
+
+        const sse = (obj: unknown) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
+
+        try {
+          // Read the upstream SSE, buffering partial lines across chunks.
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            // SSE frames are newline-delimited; we only care about `data:` lines.
+            const lines = buffer.split('\n');
+            // Keep the last (possibly partial) line in the buffer.
+            buffer = lines.pop() ?? '';
+            for (const line of lines) {
+              const trimmed = line.trimEnd();
+              if (!trimmed.startsWith('data:')) continue;
+              const payloadStr = trimmed.slice(5).trim();
+              if (!payloadStr || payloadStr === '[DONE]') continue;
+              let evt: AnthropicStreamEvent;
+              try {
+                evt = JSON.parse(payloadStr) as AnthropicStreamEvent;
+              } catch {
+                continue; // skip malformed frame
+              }
+              if (evt.type === 'message_start') {
+                model = evt.message?.model ?? model;
+                inputTokens = evt.message?.usage?.input_tokens ?? inputTokens;
+              } else if (evt.type === 'content_block_delta') {
+                const t = evt.delta?.text ?? '';
+                if (t) {
+                  accumulated += t;
+                  sse({ type: 'delta', text: t });
+                }
+              } else if (evt.type === 'message_delta') {
+                if (typeof evt.usage?.output_tokens === 'number') outputTokens = evt.usage.output_tokens;
+                if (typeof evt.usage?.input_tokens === 'number') inputTokens = evt.usage.input_tokens;
+              }
+              // `message_stop` carries no usage of its own; final tallies
+              // come from message_start (input) + message_delta (output).
+            }
+          }
+        } catch (e) {
+          sse({ type: 'error', detail: e instanceof Error ? e.message : String(e) });
+        }
+
+        // Finalize: meter usage (fire-and-forget, mirroring callAnthropic's
+        // cost math), extract the draft, emit done + [DONE], write audit row.
+        const totalTokens = inputTokens + outputTokens;
+        const costCents = Math.ceil(totalTokens * APPROX_CENTS_PER_TOKEN);
+        supabase
+          .rpc('record_ai_call', { p_tokens: totalTokens, p_cost_cents: costCents })
+          .then(() => void 0, () => void 0);
+
+        const draftText = extractDraftBlock(accumulated);
+        const resolvedModel = model || 'claude';
+
+        sse({ type: 'done', draftText, model: resolvedModel });
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+        controller.close();
+
+        // Same audit row the JSON path writes (fire-and-forget; the stream is
+        // already closed for the client).
+        void logAction({
+          supabase,
+          projectId: v.projectId,
+          userId: null,
+          action: 'ai_assistant_turn',
+          entityType: 'project_config',
+          entityId: v.projectId,
+          notes:
+            `turns=${turnCount}; ` +
+            `had_draft=${draftText !== null}; ` +
+            `tokens_in=${inputTokens}; tokens_out=${outputTokens}; ` +
+            `streamed=true; ` +
+            `model=${resolvedModel}`,
+        });
+      },
+    });
+
+    return new Response(readable, {
+      headers: {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+        ...CORS_HEADERS,
+      },
+    });
+  }
 
   const result = await callAnthropic(supabase, {
     system: { stable: STABLE_PROMPT, variable: variableTail },

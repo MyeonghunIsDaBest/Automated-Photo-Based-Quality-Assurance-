@@ -140,10 +140,18 @@ function buildSystemBlocks(input: AnthropicSystemInput): Array<{
 
 // ─── Public API ────────────────────────────────────────────────────────────
 
-export async function callAnthropic(
+/** Shared pre-flight gate for all Anthropic call paths. Enforces, in order:
+ *    1. ANTHROPIC_DISABLED kill-switch (incident response).
+ *    2. ANTHROPIC_API_KEY presence.
+ *    3. Daily call + token caps via the `current_ai_usage_today` RPC.
+ *  Returns an {@link AnthropicCallFailure} if the call should be blocked, or
+ *  `null` if it may proceed. A usage-read miss is logged but NOT treated as
+ *  fatal — better to occasionally exceed the cap than to block legitimate
+ *  work because the metering layer broke. Behaviour mirrors what was
+ *  previously inlined (and duplicated) in callAnthropic + callAnthropicVision. */
+export async function checkAnthropicGate(
   supabase: SupabaseClient,
-  input: AnthropicCallInput,
-): Promise<AnthropicCallResult> {
+): Promise<AnthropicCallFailure | null> {
   // 1. Kill switch.
   if (DISABLED) {
     return { ok: false, reason: 'disabled', retryable: false };
@@ -183,6 +191,17 @@ export async function callAnthropic(
       }
     }
   }
+
+  return null;
+}
+
+export async function callAnthropic(
+  supabase: SupabaseClient,
+  input: AnthropicCallInput,
+): Promise<AnthropicCallResult> {
+  // 1+2. Kill-switch + missing-key + daily-cap gate (shared).
+  const gate = await checkAnthropicGate(supabase);
+  if (gate) return gate;
 
   // 3. Build the request. Always clamp max_tokens to the env ceiling so a
   // bug in a caller can't drain the budget.
@@ -331,43 +350,10 @@ export async function callAnthropicVision(
   supabase: SupabaseClient,
   input: AnthropicVisionInput,
 ): Promise<AnthropicCallResult> {
-  // 1. Same kill-switch + missing-key gate as callAnthropic.
-  if (DISABLED) {
-    return { ok: false, reason: 'disabled', retryable: false };
-  }
-  if (!ANTHROPIC_API_KEY) {
-    return { ok: false, reason: 'missing_key', retryable: false };
-  }
-
-  // 2. Daily cap check via the shared RPC. Same logic as the text path —
-  // a usage-read miss is logged but not fatal; better to occasionally exceed
-  // the cap than to block legitimate work because the counter layer broke.
-  const { data: usageRows, error: usageErr } = await supabase
-    .rpc('current_ai_usage_today');
-  if (usageErr) {
-    // deno-lint-ignore no-console
-    console.warn('[anthropic.vision] usage read failed:', usageErr.message);
-  } else {
-    const usage = (Array.isArray(usageRows) ? usageRows[0] : usageRows) as UsageRow | undefined;
-    if (usage) {
-      if (usage.call_count >= DAILY_CALL_CAP) {
-        return {
-          ok: false,
-          reason: 'rate_limited',
-          detail: `Daily call cap reached (${usage.call_count}/${DAILY_CALL_CAP})`,
-          retryable: true,
-        };
-      }
-      if (usage.tokens_used >= DAILY_TOKEN_CAP) {
-        return {
-          ok: false,
-          reason: 'rate_limited',
-          detail: `Daily token cap reached (${usage.tokens_used}/${DAILY_TOKEN_CAP})`,
-          retryable: true,
-        };
-      }
-    }
-  }
+  // 1+2. Same kill-switch + missing-key + daily-cap gate as callAnthropic
+  // (shared helper — single source of truth).
+  const gate = await checkAnthropicGate(supabase);
+  if (gate) return gate;
 
   // 3. Build the request. Image content block first, then text. Anthropic
   // recommends this ordering for QA-style prompts so the model parses the
@@ -478,3 +464,60 @@ export async function callAnthropicVision(
     model: payload.model ?? body.model,
   };
 }
+
+// ─── Streaming call ──────────────────────────────────────────────────────────
+// Returns the raw upstream SSE Response so the caller (an Edge Function) can
+// pipe Anthropic's `text/event-stream` straight to the browser, parsing the
+// `content_block_delta` events into per-token deltas. Usage metering for the
+// streaming path is the CALLER's responsibility — the `message_delta` /
+// `message_stop` events carry the final `usage`, and the caller fires the
+// `record_ai_call` RPC (this helper never sees the full body). The gate
+// (kill-switch + missing-key + daily-cap) is enforced here, same as the
+// non-streaming paths.
+export async function callAnthropicStream(
+  supabase: SupabaseClient,
+  input: AnthropicCallInput,
+): Promise<{ ok: true; upstream: Response } | AnthropicCallFailure> {
+  const gate = await checkAnthropicGate(supabase);
+  if (gate) return gate;
+  const maxTokens = Math.min(Math.max(64, input.maxTokens ?? MAX_TOKENS_CEILING), MAX_TOKENS_CEILING);
+  const body = {
+    model: input.model ?? DEFAULT_MODEL,
+    max_tokens: maxTokens,
+    stream: true,
+    system: buildSystemBlocks(input.system),
+    messages: input.messages,
+  };
+  try {
+    const upstream = await fetch(ANTHROPIC_BASE_URL, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': ANTHROPIC_VERSION,
+      },
+      body: JSON.stringify(body),
+    });
+    if (!upstream.ok || !upstream.body) {
+      return {
+        ok: false,
+        reason: upstream.status === 429 ? 'rate_limited' : 'api_error',
+        detail: `HTTP ${upstream.status}`,
+        retryable: upstream.status >= 500 || upstream.status === 429,
+      };
+    }
+    return { ok: true, upstream };
+  } catch (e) {
+    return {
+      ok: false,
+      reason: 'api_error',
+      detail: e instanceof Error ? e.message : String(e),
+      retryable: true,
+    };
+  }
+}
+
+// Re-export the per-token cost constant so the streaming caller (which must
+// meter usage itself from the SSE `usage` field) can share this single source
+// of truth instead of re-hardcoding 0.0003.
+export { APPROX_CENTS_PER_TOKEN };

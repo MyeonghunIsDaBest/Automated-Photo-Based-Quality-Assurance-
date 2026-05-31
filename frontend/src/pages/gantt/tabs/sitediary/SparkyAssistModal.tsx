@@ -1,18 +1,29 @@
 // frontend/src/pages/gantt/tabs/sitediary/SparkyAssistModal.tsx
 //
 // Inline Sparky assistant — opens over the New Entry drawer when the user
-// taps "Ask Sparky" next to the Description field. Two phases:
-//   1. Compose: greeting card + textarea + Submit
-//   2. Reviewing: Original vs Proposed rewrite + Discard / Edit / Use this draft
+// taps "Ask Sparky" next to the Description field.
 //
-// Always real Claude — no mock fallback. If `VITE_ENABLE_REAL_AI` is off or
-// Supabase isn't configured the modal shows a clear disabled banner instead
-// of pretending to draft.
+// Multi-turn chat: the modal renders a running conversation (user right,
+// Sparky left) and streams Sparky's replies token-by-token. Every assistant
+// turn that carries a draft drops a pill into the drafts tray; clicking a
+// pill applies that draft to the entry description via `onUseDraft`.
+//
+// History persists across modal close/reopen within the same browser session
+// (lifted to a module-level Map keyed by project|date); a full page reload
+// resets it.
+//
+// Always real Claude — no mock fallback at the UI layer. If
+// `VITE_ENABLE_REAL_AI` is off or Supabase isn't configured the modal shows a
+// clear disabled banner instead of pretending to draft.
 
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowUpRight, Check, Pencil, Sparkles, X } from 'lucide-react';
-import { sendAssistantTurn } from '../../../../lib/api/siteDiaryAssistant';
+import { ArrowUpRight, RotateCcw, Sparkles, X } from 'lucide-react';
+import {
+  isRealAiEnabled,
+  streamAssistantTurn,
+  type AssistantMessage,
+} from '../../../../lib/api/siteDiaryAssistant';
 import type { User } from '../../../../types';
 
 interface SparkyAssistModalProps {
@@ -24,7 +35,15 @@ interface SparkyAssistModalProps {
   onClose: () => void;
 }
 
-type Phase = 'compose' | 'sending' | 'reviewing' | 'disabled';
+// In-session conversation state for one (project, date) pairing. Held at module
+// scope so closing + reopening the modal restores the chat; a page reload
+// clears it (module re-evaluates).
+interface SessionState {
+  messages: AssistantMessage[];
+  drafts: string[];
+}
+const SESSION_STORE = new Map<string, SessionState>();
+const sessionKey = (projectId: string, targetDate: string) => `${projectId}|${targetDate}`;
 
 function greetingName(user: User | null): string {
   const full = user?.fullName?.trim();
@@ -42,80 +61,149 @@ function stripDraftBlock(reply: string): string {
 export function SparkyAssistModal({
   open, projectId, targetDate, currentUser, onUseDraft, onClose,
 }: SparkyAssistModalProps) {
-  const [phase, setPhase] = useState<Phase>('compose');
-  const [input, setInput] = useState('');
-  const [original, setOriginal] = useState('');
-  const [proposed, setProposed] = useState('');
-  const [explanation, setExplanation] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [editing, setEditing] = useState(false);
-  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const key = sessionKey(projectId, targetDate);
 
-  // Reset state each time the modal opens fresh.
+  const [messages, setMessages] = useState<AssistantMessage[]>([]);
+  const [drafts, setDrafts] = useState<string[]>([]);
+  const [input, setInput] = useState('');
+  const [streaming, setStreaming] = useState(false);   // a turn is in flight
+  const [preRoll, setPreRoll] = useState(false);        // typing dots before first delta
+  const [error, setError] = useState<string | null>(null);
+  const disabled = !isRealAiEnabled();
+
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const prevKeyRef = useRef<string | null>(null);
+
+  // Restore (or initialize) session state whenever the session KEY changes —
+  // not on every open. Reopening the same project/date keeps the chat.
   useEffect(() => {
     if (!open) return;
-    setPhase('compose');
+    if (prevKeyRef.current === key) return; // same session — leave state intact
+    prevKeyRef.current = key;
+    const saved = SESSION_STORE.get(key);
+    setMessages(saved?.messages ?? []);
+    setDrafts(saved?.drafts ?? []);
     setInput('');
-    setOriginal('');
-    setProposed('');
-    setExplanation('');
     setError(null);
-    setEditing(false);
-    // Focus the input after the open animation settles.
+    setStreaming(false);
+    setPreRoll(false);
+  }, [open, key]);
+
+  // Persist conversation + drafts back to the module store so close/reopen
+  // restores them.
+  useEffect(() => {
+    SESSION_STORE.set(key, { messages, drafts });
+  }, [key, messages, drafts]);
+
+  // Focus the input shortly after the open animation settles.
+  useEffect(() => {
+    if (!open || disabled) return;
     const t = window.setTimeout(() => inputRef.current?.focus(), 80);
     return () => window.clearTimeout(t);
-  }, [open]);
+  }, [open, disabled]);
+
+  // Keep the chat scrolled to the latest content as tokens stream in.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages, preRoll]);
 
   // Esc closes the modal when nothing's mid-flight.
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && phase !== 'sending') onClose();
+      if (e.key === 'Escape' && !streaming) onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, phase, onClose]);
+  }, [open, streaming, onClose]);
 
-  const handleSubmit = async () => {
-    const trimmed = input.trim();
-    if (!trimmed) return;
-    setOriginal(trimmed);
+  // Run one assistant turn against the given full message history. Extracted so
+  // both submit and the Retry pill can reuse it.
+  const runTurn = (history: AssistantMessage[]) => {
     setError(null);
-    setPhase('sending');
+    setStreaming(true);
+    setPreRoll(true);
 
-    const result = await sendAssistantTurn({
-      messages: [{ role: 'user', content: trimmed }],
-      targetDate,
-      projectId,
-    });
+    let assistantStarted = false;
 
-    if (!result.ok) {
-      if (result.reason === 'disabled') {
-        setPhase('disabled');
-      } else {
-        setError(result.detail || 'Sparky could not respond. Try again in a moment.');
-        setPhase('compose');
-      }
-      return;
-    }
-
-    const draft = (result.draftText && result.draftText.trim().length > 0)
-      ? result.draftText.trim()
-      : result.reply.trim();
-    const commentary = stripDraftBlock(result.reply);
-
-    setProposed(draft);
-    setExplanation(commentary);
-    setPhase('reviewing');
+    void streamAssistantTurn(
+      { messages: history, targetDate, projectId },
+      {
+        onDelta: (t) => {
+          setPreRoll(false);
+          setMessages((prev) => {
+            if (!assistantStarted) {
+              assistantStarted = true;
+              return [...prev, { role: 'assistant', content: t }];
+            }
+            const next = prev.slice();
+            const last = next[next.length - 1];
+            if (last && last.role === 'assistant') {
+              next[next.length - 1] = { role: 'assistant', content: last.content + t };
+            }
+            return next;
+          });
+        },
+        onDone: ({ draftText }) => {
+          setPreRoll(false);
+          setStreaming(false);
+          // Finalize the visible assistant message: strip the draft block so
+          // only the commentary shows in the bubble.
+          setMessages((prev) => {
+            if (!assistantStarted) return prev;
+            const next = prev.slice();
+            const last = next[next.length - 1];
+            if (last && last.role === 'assistant') {
+              const visible = stripDraftBlock(last.content);
+              next[next.length - 1] = {
+                role: 'assistant',
+                content: visible.length > 0 ? visible : last.content.trim(),
+              };
+            }
+            return next;
+          });
+          // Stash the draft (prefer the parsed block; fall back to the raw
+          // streamed text if no block came through).
+          const draft = (draftText && draftText.trim().length > 0) ? draftText.trim() : null;
+          if (draft) setDrafts((prev) => [...prev, draft]);
+        },
+        onError: (msg) => {
+          setPreRoll(false);
+          setStreaming(false);
+          setError(msg === 'disabled'
+            ? 'Sparky is disabled in this environment.'
+            : (msg || 'Sparky could not respond. Try again in a moment.'));
+        },
+      },
+    );
   };
 
-  const handleUseDraft = () => {
-    if (!proposed.trim()) return;
-    onUseDraft(proposed.trim());
-    onClose();
+  const handleSubmit = () => {
+    const trimmed = input.trim();
+    if (!trimmed || streaming || disabled) return;
+    const history: AssistantMessage[] = [...messages, { role: 'user', content: trimmed }];
+    setMessages(history);
+    setInput('');
+    runTurn(history);
+  };
+
+  // Re-run the last turn: drop a trailing assistant message (if the previous
+  // attempt half-streamed) and replay from the last user message.
+  const handleRetry = () => {
+    if (streaming) return;
+    let history = messages.slice();
+    while (history.length > 0 && history[history.length - 1].role === 'assistant') {
+      history = history.slice(0, -1);
+    }
+    if (history.length === 0 || history[history.length - 1].role !== 'user') return;
+    setMessages(history);
+    runTurn(history);
   };
 
   const name = greetingName(currentUser);
+  const hasChat = messages.length > 0;
 
   return (
     <AnimatePresence>
@@ -128,7 +216,7 @@ export function SparkyAssistModal({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
-            onClick={phase === 'sending' ? undefined : onClose}
+            onClick={streaming ? undefined : onClose}
             className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-[1px]"
           />
 
@@ -142,7 +230,7 @@ export function SparkyAssistModal({
             role="dialog"
             aria-modal="true"
             aria-label="Sparky writing assistant"
-            className="fixed left-1/2 top-1/2 z-[61] w-[min(94vw,640px)] -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white shadow-2xl"
+            className="fixed left-1/2 top-1/2 z-[61] flex max-h-[88vh] w-[min(94vw,640px)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl bg-white shadow-2xl"
           >
             {/* Header */}
             <header className="flex items-start justify-between px-6 pt-5 pb-3">
@@ -155,13 +243,13 @@ export function SparkyAssistModal({
                   className="mt-1 text-[24px] font-medium leading-tight text-slate-900"
                   style={{ fontFamily: "'Fraunces', Georgia, serif" }}
                 >
-                  {phase === 'reviewing' ? 'Proposed rewrite' : 'Sparky'}
+                  Sparky
                 </h2>
               </div>
               <button
                 type="button"
                 onClick={onClose}
-                disabled={phase === 'sending'}
+                disabled={streaming}
                 aria-label="Close Sparky"
                 className="w-8 h-8 grid place-items-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50"
               >
@@ -170,79 +258,134 @@ export function SparkyAssistModal({
             </header>
 
             {/* Body */}
-            {phase === 'disabled' ? (
+            {disabled ? (
               <div className="px-6 pb-5">
                 <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   Sparky is disabled in this environment. Set <code>VITE_ENABLE_REAL_AI=true</code>{' '}
                   and configure Supabase to enable the writing assistant.
                 </div>
               </div>
-            ) : phase === 'reviewing' ? (
-              <div className="border-t border-slate-100">
-                <section className="px-6 pt-4 pb-2">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 mb-1">
-                    Original
-                  </div>
-                  <p className="text-[15px] text-slate-600 whitespace-pre-wrap">
-                    {original}
-                  </p>
-                </section>
-                <section className="px-6 pt-3 pb-4">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#C8841E] mb-1">
-                    Proposed
-                  </div>
-                  {editing ? (
-                    <textarea
-                      value={proposed}
-                      onChange={(e) => setProposed(e.target.value)}
-                      rows={6}
-                      className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-[15px] text-slate-900 focus:border-emerald-500 focus:outline-none"
-                    />
-                  ) : (
-                    <p className="rounded-md bg-emerald-50/60 px-2 py-1 -mx-2 text-[15px] text-slate-900 whitespace-pre-wrap">
-                      {proposed}
-                    </p>
-                  )}
-                </section>
-              </div>
             ) : (
-              <div className="border-t border-slate-100 px-6 pt-4 pb-4 space-y-3">
-                <div className="rounded-xl border border-slate-200 bg-[#FAF8F2] px-4 py-3">
-                  <p
-                    className="text-[18px] font-medium text-slate-900"
-                    style={{ fontFamily: "'Fraunces', Georgia, serif" }}
-                  >
-                    G'day, {name}.
-                  </p>
-                  <p className="mt-1 text-sm text-slate-600">
-                    Ready when you are. Bullets, voice memo, or just paste what you've got.
-                  </p>
+              <div className="flex min-h-0 flex-1 flex-col border-t border-slate-100">
+                {/* Chat scroll area */}
+                <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-6 pt-4 pb-2 space-y-3">
+                  {!hasChat && !preRoll ? (
+                    <div className="rounded-xl border border-slate-200 bg-[#FAF8F2] px-4 py-3">
+                      <p
+                        className="text-[18px] font-medium text-slate-900"
+                        style={{ fontFamily: "'Fraunces', Georgia, serif" }}
+                      >
+                        G'day, {name}.
+                      </p>
+                      <p className="mt-1 text-sm text-slate-600">
+                        Ready when you are. Bullets, voice memo, or just paste what you've got.
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {messages.map((m, i) => {
+                    const isUser = m.role === 'user';
+                    // The blinking cursor goes on the trailing assistant
+                    // message while a turn is mid-stream.
+                    const isLast = i === messages.length - 1;
+                    const showCursor = streaming && !isUser && isLast;
+                    return (
+                      <div
+                        key={i}
+                        className={isUser ? 'flex justify-end' : 'flex justify-start'}
+                      >
+                        <div
+                          className={
+                            isUser
+                              ? 'max-w-[80%] rounded-2xl rounded-br-sm bg-emerald-600 px-3.5 py-2 text-[14px] text-white whitespace-pre-wrap'
+                              : 'max-w-[85%] rounded-2xl rounded-bl-sm border border-slate-200 bg-[#FAF8F2] px-3.5 py-2 text-[14px] text-slate-900 whitespace-pre-wrap'
+                          }
+                        >
+                          {m.content}
+                          {showCursor ? <span className="ml-0.5 animate-pulse">▋</span> : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Typing dots before the first delta lands */}
+                  {preRoll ? (
+                    <div className="flex justify-start">
+                      <div className="rounded-2xl rounded-bl-sm border border-slate-200 bg-[#FAF8F2] px-3.5 py-2.5">
+                        <span className="flex items-center gap-1">
+                          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:-0.2s]" />
+                          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:-0.1s]" />
+                          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400" />
+                        </span>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {error ? (
+                    <div className="flex items-center gap-2">
+                      <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                        {error}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleRetry}
+                        className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                        Retry
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
-                <textarea
-                  ref={inputRef}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                      e.preventDefault();
-                      void handleSubmit();
-                    }
-                  }}
-                  rows={6}
-                  placeholder={'e.g. trenched east drainage L14\nflagged soft pocket near C-3\nremoved 6m3 spoil to north laydown'}
-                  disabled={phase === 'sending'}
-                  className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none disabled:opacity-60"
-                />
-                {error ? (
-                  <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-                    {error}
-                  </p>
+
+                {/* Drafts tray — appears once Sparky has produced ≥1 draft */}
+                {drafts.length > 0 ? (
+                  <div className="border-t border-slate-100 px-6 py-2.5">
+                    <div className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-[#C8841E]">
+                      Drafts
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {drafts.map((d, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => { onUseDraft(d); onClose(); }}
+                          title={d}
+                          className="inline-flex max-w-[260px] items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[12px] font-medium text-emerald-800 hover:bg-emerald-100"
+                        >
+                          <span className="truncate">{d}</span>
+                          <ArrowUpRight className="h-3 w-3 shrink-0" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 ) : null}
+
+                {/* Composer */}
+                <div className="border-t border-slate-100 px-6 pt-3 pb-3">
+                  <textarea
+                    ref={inputRef}
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                        e.preventDefault();
+                        handleSubmit();
+                      }
+                    }}
+                    rows={hasChat ? 2 : 5}
+                    placeholder={hasChat
+                      ? 'Reply to Sparky, or ask for a tweak…'
+                      : 'e.g. trenched east drainage L14\nflagged soft pocket near C-3\nremoved 6m3 spoil to north laydown'}
+                    disabled={streaming}
+                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none disabled:opacity-60"
+                  />
+                </div>
               </div>
             )}
 
             {/* Footer */}
-            {phase === 'disabled' ? (
+            {disabled ? (
               <footer className="flex justify-end gap-2 border-t border-slate-100 px-6 py-3">
                 <button
                   type="button"
@@ -251,39 +394,6 @@ export function SparkyAssistModal({
                 >
                   Close
                 </button>
-              </footer>
-            ) : phase === 'reviewing' ? (
-              <footer className="flex items-center gap-3 border-t border-slate-100 px-6 py-3">
-                <p className="flex-1 min-w-0 truncate text-[11.5px] text-slate-500">
-                  {explanation || 'Sparky rewrote your notes into diary prose.'}
-                </p>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                  >
-                    <X className="h-3 w-3" />
-                    Discard
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditing((v) => !v)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                  >
-                    <Pencil className="h-3 w-3" />
-                    {editing ? 'Done' : 'Edit'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleUseDraft}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#1A1A1A] text-white text-xs font-semibold hover:bg-black"
-                  >
-                    <Check className="h-3 w-3" />
-                    Use this draft
-                    <ArrowUpRight className="h-3 w-3" />
-                  </button>
-                </div>
               </footer>
             ) : (
               <footer className="flex items-center justify-between gap-3 border-t border-slate-100 px-6 py-3">
@@ -294,19 +404,19 @@ export function SparkyAssistModal({
                   <button
                     type="button"
                     onClick={onClose}
-                    disabled={phase === 'sending'}
+                    disabled={streaming}
                     className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
                   >
-                    Cancel
+                    Close
                   </button>
                   <button
                     type="button"
-                    onClick={() => { void handleSubmit(); }}
-                    disabled={phase === 'sending' || input.trim().length === 0}
+                    onClick={handleSubmit}
+                    disabled={streaming || input.trim().length === 0}
                     className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#1A1A1A] text-white text-xs font-semibold hover:bg-black disabled:opacity-60"
                   >
                     <Sparkles className="h-3 w-3 text-[#FFE082]" />
-                    {phase === 'sending' ? 'Sparky is drafting…' : 'Ask Sparky'}
+                    {streaming ? 'Sparky is drafting…' : (hasChat ? 'Send' : 'Ask Sparky')}
                   </button>
                 </div>
               </footer>
