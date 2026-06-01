@@ -78,30 +78,12 @@ export default function DailyBriefCard({ projectId }: Props) {
     );
   }
 
-  // Error → small red chip + Retry.
-  if (error) {
-    return (
-      <section className="rounded-xl border border-emerald-100 bg-gradient-to-br from-[#FAF8F2] to-emerald-50/40 px-5 py-5">
-        <p className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.18em] text-emerald-700/80">
-          <Sparkles className="h-3 w-3" aria-hidden />
-          AI · Today's brief
-        </p>
-        <div className="mt-3 flex items-center gap-3">
-          <span className="inline-flex items-center rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-medium text-red-700">
-            Couldn't load brief
-          </span>
-          <button
-            type="button"
-            onClick={refresh}
-            className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-800 hover:text-emerald-900"
-          >
-            <RefreshCw className="h-3 w-3" aria-hidden />
-            Retry
-          </button>
-        </div>
-      </section>
-    );
-  }
+  // Error → render nothing. The brief is a nice-to-have; if the synthesis
+  // function is unreachable (not deployed, network, CORS) the Dashboard should
+  // just omit the card rather than show a persistent error on every load.
+  // ProjectStatusCard (below it) still surfaces a real error on its explicit
+  // Generate action, so failures aren't hidden everywhere.
+  if (error) return null;
 
   // Empty narrative → render nothing so the card never shows an empty box.
   if (!status || !status.narrative) return null;
