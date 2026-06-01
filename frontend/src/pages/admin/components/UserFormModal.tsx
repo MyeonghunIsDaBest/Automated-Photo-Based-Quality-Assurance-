@@ -218,7 +218,7 @@ export default function UserFormModal({ mode, profile, onClose, onSaved }: Props
         </section>
 
         {error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
             {error}
           </div>
         )}

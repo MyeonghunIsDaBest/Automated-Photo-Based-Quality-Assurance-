@@ -111,7 +111,7 @@ export default function BootstrapAdmin() {
             </p>
 
             {error && (
-              <p className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-700">
+              <p className="mt-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-700">
                 {error}
               </p>
             )}

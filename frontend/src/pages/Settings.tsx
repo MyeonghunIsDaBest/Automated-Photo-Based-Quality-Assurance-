@@ -10,7 +10,7 @@ import { Separator } from '../components/ui/separator';
 import { EditorialPageHeader } from '../components/editorial';
 
 export default function Settings() {
-  const { currentUser } = useAppStore();
+  const { currentUser, setNotification } = useAppStore();
   const { userSettings, updateUserSettings, updatePassword, updateEmail } = useFeatureStore();
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'notifications'>('profile');
   
@@ -45,7 +45,7 @@ export default function Settings() {
         language: profileForm.language,
       },
     });
-    alert('Profile updated successfully!');
+    setNotification({ message: 'Profile updated successfully!', type: 'success' });
   };
 
   const handleEmailUpdate = async () => {
@@ -245,6 +245,7 @@ export default function Settings() {
                         type="email"
                         value={securityForm.email}
                         onChange={(e) => setSecurityForm({ ...securityForm, email: e.target.value })}
+                        autoComplete="email"
                         className="flex-1"
                       />
                       <Button onClick={handleEmailUpdate}>
@@ -276,6 +277,7 @@ export default function Settings() {
                           type={showPasswords ? 'text' : 'password'}
                           value={securityForm.currentPassword}
                           onChange={(e) => setSecurityForm({ ...securityForm, currentPassword: e.target.value })}
+                          autoComplete="current-password"
                         />
                         <button
                           type="button"
@@ -296,6 +298,7 @@ export default function Settings() {
                         type={showPasswords ? 'text' : 'password'}
                         value={securityForm.newPassword}
                         onChange={(e) => setSecurityForm({ ...securityForm, newPassword: e.target.value })}
+                        autoComplete="new-password"
                         placeholder="Minimum 8 characters"
                       />
                     </div>
@@ -308,6 +311,7 @@ export default function Settings() {
                         type={showPasswords ? 'text' : 'password'}
                         value={securityForm.confirmPassword}
                         onChange={(e) => setSecurityForm({ ...securityForm, confirmPassword: e.target.value })}
+                        autoComplete="new-password"
                         placeholder="Re-enter new password"
                       />
                     </div>
