@@ -45,7 +45,49 @@ const ANTHROPIC_VERSION  = '2023-06-01';
 // usage table uses this to estimate spend; off by 3× when Sonnet override
 // is set on a per-project basis, but the audit log records `model_used`
 // so finance can re-multiply for accuracy at month-end.
-const APPROX_CENTS_PER_TOKEN = 0.0003; // ≈$3 per million tokens blended (Haiku)
+const APPROX_CENTS_PER_TOKEN = 0.0003; // ≈$3 per million tokens blended (Haiku) — legacy fallback, see pricingCents
+
+// ─── Resilience knobs (P0.2) ───────────────────────────────────────────────
+// Per-request wall-clock timeout (AbortController) so a hung Anthropic call
+// can't pin an Edge invocation indefinitely. Retries cover transient 429/5xx
+// + network blips with exponential backoff; the upload path treats a final
+// failure as a soft error (analyze-photo writes a failureResult, never throws).
+// @ts-expect-error Deno globals.
+const REQUEST_TIMEOUT_MS = Number(Deno.env.get('ANTHROPIC_TIMEOUT_MS') ?? 60_000);
+// @ts-expect-error Deno globals.
+const MAX_RETRIES = Number(Deno.env.get('ANTHROPIC_MAX_RETRIES') ?? 2);
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+// Exponential backoff with jitter, capped at 8s.
+const backoffMs = (attempt: number) => Math.min(8_000, 500 * 2 ** attempt) + Math.floor(Math.random() * 250);
+
+// ─── Model-aware cost accounting (P0.3) ────────────────────────────────────
+// USD per 1M tokens (input, output) from Anthropic's published pricing. The
+// previous single blended constant under-counted ~3× whenever a project
+// overrode the model to Sonnet. We now price from the ACTUAL model the API
+// reports back, split by input vs output. Matched by family substring so
+// versioned ids (e.g. `claude-sonnet-4-6@2026-05-08`) resolve correctly.
+const MODEL_PRICING: Record<string, { in: number; out: number }> = {
+  haiku:  { in: 1,  out: 5 },
+  sonnet: { in: 3,  out: 15 },
+  opus:   { in: 15, out: 75 },
+};
+const DEFAULT_PRICING = MODEL_PRICING.haiku;
+
+function pricingFor(model: string): { in: number; out: number } {
+  const m = (model || '').toLowerCase();
+  if (m.includes('opus')) return MODEL_PRICING.opus;
+  if (m.includes('sonnet')) return MODEL_PRICING.sonnet;
+  if (m.includes('haiku')) return MODEL_PRICING.haiku;
+  return DEFAULT_PRICING;
+}
+
+/** Cost in whole cents for one call, priced per the actual model + token split. */
+export function pricingCents(model: string, inputTokens: number, outputTokens: number): number {
+  const p = pricingFor(model);
+  const dollars = (inputTokens * p.in + outputTokens * p.out) / 1_000_000;
+  return Math.ceil(dollars * 100);
+}
 
 export interface AnthropicMessage {
   role: 'user' | 'assistant';
@@ -138,6 +180,66 @@ function buildSystemBlocks(input: AnthropicSystemInput): Array<{
   ];
 }
 
+// POST to Anthropic with an AbortController timeout + retry/backoff on
+// transient failures (429, 5xx, network/timeout), respecting a numeric
+// `retry-after` header when present. Returns the Response once a terminal
+// status is reached (2xx OR a non-retryable 4xx), or an AnthropicCallFailure
+// when retries are exhausted / the error is fatal. Used by the non-streaming
+// text + vision paths; the streaming path reuses it for its initial connect.
+async function postToAnthropic(
+  body: unknown,
+): Promise<{ ok: true; response: Response } | AnthropicCallFailure> {
+  let attempt = 0;
+  // total tries = MAX_RETRIES + 1
+  for (;;) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    let response: Response;
+    try {
+      response = await fetch(ANTHROPIC_BASE_URL, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': ANTHROPIC_VERSION,
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } catch (e) {
+      clearTimeout(timer);
+      const aborted = e instanceof Error && e.name === 'AbortError';
+      if (attempt < MAX_RETRIES) {
+        await sleep(backoffMs(attempt));
+        attempt += 1;
+        continue;
+      }
+      return {
+        ok: false,
+        reason: 'api_error',
+        detail: aborted ? `request timed out after ${REQUEST_TIMEOUT_MS}ms` : (e instanceof Error ? e.message : String(e)),
+        retryable: true,
+      };
+    }
+    clearTimeout(timer);
+
+    // Retry transient upstream failures.
+    if ((response.status === 429 || response.status >= 500) && attempt < MAX_RETRIES) {
+      const retryAfter = Number(response.headers.get('retry-after'));
+      const waitMs = Number.isFinite(retryAfter) && retryAfter > 0
+        ? Math.min(retryAfter * 1_000, 10_000)
+        : backoffMs(attempt);
+      // Drain the body so the connection can be reused.
+      await response.body?.cancel().catch(() => void 0);
+      await sleep(waitMs);
+      attempt += 1;
+      continue;
+    }
+
+    return { ok: true, response };
+  }
+}
+
 // ─── Public API ────────────────────────────────────────────────────────────
 
 /** Shared pre-flight gate for all Anthropic call paths. Enforces, in order:
@@ -215,25 +317,10 @@ export async function callAnthropic(
     messages: input.messages,
   };
 
-  let response: Response;
-  try {
-    response = await fetch(ANTHROPIC_BASE_URL, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': ANTHROPIC_VERSION,
-      },
-      body: JSON.stringify(body),
-    });
-  } catch (e) {
-    return {
-      ok: false,
-      reason: 'api_error',
-      detail: e instanceof Error ? e.message : String(e),
-      retryable: true,
-    };
-  }
+  // Fetch with timeout + retry/backoff (P0.2).
+  const fetched = await postToAnthropic(body);
+  if (!fetched.ok) return fetched;
+  const response = fetched.response;
 
   if (!response.ok) {
     let detail = `HTTP ${response.status}`;
@@ -281,13 +368,17 @@ export async function callAnthropic(
   // billed `input_tokens` already includes the write premium per
   // Anthropic's billing model — keep the simple sum to avoid double-count.
   const totalTokens = inputTokens + outputTokens;
-  const costCents = Math.ceil(totalTokens * APPROX_CENTS_PER_TOKEN);
+  // Price from the ACTUAL model the API reported (P0.3), split in/out.
+  const costCents = pricingCents(payload.model ?? body.model, inputTokens, outputTokens);
 
-  // 5. Record usage. Fire-and-forget — if the RPC fails the call still
-  // succeeded for the user; we'll just under-count for the day.
-  await supabase
-    .rpc('record_ai_call', { p_tokens: totalTokens, p_cost_cents: costCents })
-    .then(() => void 0, () => void 0);
+  // 5. Record usage. Awaited + checked (P0.3) so metering drift is visible in
+  // logs — but still non-fatal: a counter miss never fails the user's call.
+  const { error: recErr } = await supabase
+    .rpc('record_ai_call', { p_tokens: totalTokens, p_cost_cents: costCents });
+  if (recErr) {
+    // deno-lint-ignore no-console
+    console.warn('[anthropic] record_ai_call failed (usage under-counted):', recErr.message);
+  }
 
   return {
     ok: true,
@@ -385,25 +476,10 @@ export async function callAnthropicVision(
     }],
   };
 
-  let response: Response;
-  try {
-    response = await fetch(ANTHROPIC_BASE_URL, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': ANTHROPIC_VERSION,
-      },
-      body: JSON.stringify(body),
-    });
-  } catch (e) {
-    return {
-      ok: false,
-      reason: 'api_error',
-      detail: e instanceof Error ? e.message : String(e),
-      retryable: true,
-    };
-  }
+  // Fetch with timeout + retry/backoff (P0.2).
+  const fetched = await postToAnthropic(body);
+  if (!fetched.ok) return fetched;
+  const response = fetched.response;
 
   if (!response.ok) {
     let detail = `HTTP ${response.status}`;
@@ -443,16 +519,18 @@ export async function callAnthropicVision(
   const cacheReadInputTokens = payload.usage?.cache_read_input_tokens ?? 0;
   const cacheCreationInputTokens = payload.usage?.cache_creation_input_tokens ?? 0;
   const totalTokens = inputTokens + outputTokens;
-  const costCents = Math.ceil(totalTokens * APPROX_CENTS_PER_TOKEN);
+  // Model-aware pricing (P0.3) — vision images dominate input tokens, so the
+  // in/out split matters for accurate accounting.
+  const costCents = pricingCents(payload.model ?? body.model, inputTokens, outputTokens);
 
-  // 5. Fire-and-forget usage record. Vision calls cost more than text calls
-  // (images burn ~1500-3000 tokens of input each, dropped to ~800-1600
-  // after the 1568px downsample in analyze-photo) so accurate accounting
-  // is important — but a miss here doesn't justify failing the
-  // user-visible analysis. Same pattern as callAnthropic.
-  await supabase
-    .rpc('record_ai_call', { p_tokens: totalTokens, p_cost_cents: costCents })
-    .then(() => void 0, () => void 0);
+  // 5. Usage record — awaited + checked (P0.3) but non-fatal: a counter miss
+  // doesn't justify failing the user-visible analysis.
+  const { error: recErr } = await supabase
+    .rpc('record_ai_call', { p_tokens: totalTokens, p_cost_cents: costCents });
+  if (recErr) {
+    // deno-lint-ignore no-console
+    console.warn('[anthropic.vision] record_ai_call failed (usage under-counted):', recErr.message);
+  }
 
   return {
     ok: true,
@@ -488,16 +566,53 @@ export async function callAnthropicStream(
     system: buildSystemBlocks(input.system),
     messages: input.messages,
   };
-  try {
-    const upstream = await fetch(ANTHROPIC_BASE_URL, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': ANTHROPIC_VERSION,
-      },
-      body: JSON.stringify(body),
-    });
+  // Retry/backoff the initial connect (P0.2). The AbortController guards only
+  // the connect/headers phase — we clear the timer the moment fetch resolves
+  // (headers in) so a long-lived stream body is never timed out mid-flight.
+  let attempt = 0;
+  for (;;) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    let upstream: Response;
+    try {
+      upstream = await fetch(ANTHROPIC_BASE_URL, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': ANTHROPIC_VERSION,
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } catch (e) {
+      clearTimeout(timer);
+      if (attempt < MAX_RETRIES) {
+        await sleep(backoffMs(attempt));
+        attempt += 1;
+        continue;
+      }
+      const aborted = e instanceof Error && e.name === 'AbortError';
+      return {
+        ok: false,
+        reason: 'api_error',
+        detail: aborted ? `connect timed out after ${REQUEST_TIMEOUT_MS}ms` : (e instanceof Error ? e.message : String(e)),
+        retryable: true,
+      };
+    }
+    clearTimeout(timer);
+
+    if ((upstream.status === 429 || upstream.status >= 500) && attempt < MAX_RETRIES) {
+      await upstream.body?.cancel().catch(() => void 0);
+      const retryAfter = Number(upstream.headers.get('retry-after'));
+      const waitMs = Number.isFinite(retryAfter) && retryAfter > 0
+        ? Math.min(retryAfter * 1_000, 10_000)
+        : backoffMs(attempt);
+      await sleep(waitMs);
+      attempt += 1;
+      continue;
+    }
+
     if (!upstream.ok || !upstream.body) {
       return {
         ok: false,
@@ -507,13 +622,6 @@ export async function callAnthropicStream(
       };
     }
     return { ok: true, upstream };
-  } catch (e) {
-    return {
-      ok: false,
-      reason: 'api_error',
-      detail: e instanceof Error ? e.message : String(e),
-      retryable: true,
-    };
   }
 }
 
