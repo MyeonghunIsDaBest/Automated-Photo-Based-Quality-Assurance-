@@ -103,6 +103,25 @@ export async function signOut(): Promise<void> {
   if (error) throw error;
 }
 
+// Update the signed-in user's email. Supabase emails a confirmation link to
+// the NEW address; the change applies once confirmed (so the local session
+// keeps the old email until then). Throws on error.
+export async function updateAuthEmail(email: string): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { error } = await supabase.auth.updateUser({ email });
+  if (error) throw error;
+}
+
+// Update the signed-in user's password. Supabase authorises this via the
+// active session (it does not re-verify the current password server-side),
+// so callers should still gate the form on a current-password entry for UX.
+// Throws on error.
+export async function updateAuthPassword(newPassword: string): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) throw error;
+}
+
 export async function getSession(): Promise<Session | null> {
   if (!supabaseConfigured()) return null;
   const { data, error } = await supabase.auth.getSession();

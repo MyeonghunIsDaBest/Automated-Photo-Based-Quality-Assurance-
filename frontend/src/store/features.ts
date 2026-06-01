@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import { Task, Comment, Report, ProjectConfig, ProjectMember } from '../types';
 import { updateTaskProgress as apiUpdateTaskProgress } from '../lib/api/tasks';
 import { supabaseConfigured } from '../lib/supabase';
-import { useNotificationStore, createTaskUpdate, createAIAnalysisAlert, createWeeklyReport } from './notifications';
+import { useNotificationStore, createTaskUpdate, createWeeklyReport } from './notifications';
+import { updateAuthEmail, updateAuthPassword } from '../lib/api/auth';
 import { demoInflightTasks, DEMO_INFLIGHT_PROJECT_ID } from '../data/demoInflightProject';
 import { demoExtraSiteTasks } from '../data/demoExtraSites';
 import { DEMO_BONDI_META, DEMO_MARRICKVILLE_META } from '../data/demoExtraSites';
@@ -109,7 +110,6 @@ interface FeatureState {
   updateEmail: (email: string) => Promise<{ success: boolean; error?: string }>;
   
   // Automated Features
-  runAutoProgressUpdate: () => void;
   scheduleWeeklyReports: () => void;
 
   // Per-project configuration (migration 09). Keyed by projectId so a project
@@ -515,61 +515,37 @@ export const useFeatureStore = create<FeatureState>((set, get) => ({
   },
 
   updatePassword: async (currentPassword, newPassword) => {
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    
-    // In real app, verify currentPassword with backend
+    // Client-side guards (Supabase authorises via the active session and does
+    // not re-verify the current password, so we keep a basic length gate for
+    // UX; the real mutation is updateAuthPassword).
     if (currentPassword.length < 6) {
       return { success: false, error: 'Current password is incorrect' };
     }
-    
     if (newPassword.length < 8) {
       return { success: false, error: 'New password must be at least 8 characters' };
     }
-
-    return { success: true };
+    try {
+      await updateAuthPassword(newPassword);
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : 'Could not update password.' };
+    }
   },
 
   updateEmail: async (email) => {
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       return { success: false, error: 'Invalid email format' };
     }
-
-    set((state) => ({
-      userSettings: { ...state.userSettings, email },
-    }));
-
-    return { success: true };
-  },
-
-  // Automated Features
-  runAutoProgressUpdate: () => {
-    const { tasks, updateTaskProgress } = get();
-    
-    // Simulate AI detecting progress from new photos
-    const incompleteTasks = tasks.filter(t => t.percentComplete < 100);
-    
-    incompleteTasks.forEach((task) => {
-      // Simulate AI analysis detecting progress
-      const detectedProgress = Math.min(100, task.percentComplete + Math.floor(Math.random() * 5));
-      
-      if (detectedProgress > task.percentComplete) {
-        useNotificationStore.getState().addNotification(
-          createAIAnalysisAlert(
-            task.id,
-            task.name,
-            task.phase,
-            0.85 + Math.random() * 0.14
-          )
-        );
-        
-        updateTaskProgress(task.id, detectedProgress, 'ai_auto');
-      }
-    });
+    try {
+      await updateAuthEmail(email);
+      // Mirror locally so the form reflects the pending address; Supabase emails
+      // a confirmation link and the auth email flips once the user confirms.
+      set((state) => ({ userSettings: { ...state.userSettings, email } }));
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : 'Could not update email.' };
+    }
   },
 
   scheduleWeeklyReports: () => {
