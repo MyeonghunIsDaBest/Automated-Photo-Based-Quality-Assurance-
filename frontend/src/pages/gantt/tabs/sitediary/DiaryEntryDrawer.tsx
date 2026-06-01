@@ -11,6 +11,7 @@ import { Button } from '../../../../components/ui/button';
 import { useGanttSideStore } from '../../store';
 import { uploadAndAttach } from './uploadDiaryPhoto';
 import { uploadPhoto } from '../../../../lib/api/photos';
+import { detectConditions } from '../../../../lib/api/diaryConditions';
 import { TimelinePhotoThumb } from './TimelinePhotoThumb';
 import { WORKER_COLORS, COMMON_WORKS } from './mockTimeline';
 import { colorIndexForWorker } from './diaryRowMapper';
@@ -102,6 +103,47 @@ export function DiaryEntryDrawer({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const seededPendingRef = useRef(false);
 
+  // AI auto-detect (conditions) — on the first photo attached in create mode,
+  // detect-diary-conditions reads weather/temp/crew and pre-fills them with a
+  // dismissable "AI suggested" tag. Fires once per drawer open. No-op unless
+  // the project opted in (Edge Function gates on ai_auto_detect_enabled).
+  const [aiSuggested, setAiSuggested] = useState<Set<'weather' | 'temp' | 'crew'>>(() => new Set());
+  const [aiCrewCount, setAiCrewCount] = useState<number | null>(null);
+  const autoDetectFiredRef = useRef(false);
+
+  const runAutoDetect = async (file: File) => {
+    if (autoDetectFiredRef.current) return;
+    autoDetectFiredRef.current = true;
+    try {
+      const res = await detectConditions({ projectId, file });
+      if (res.skipped) return;
+      const flagged = new Set<'weather' | 'temp' | 'crew'>();
+      setWeather(res.weather);
+      flagged.add('weather');
+      if (res.temperatureF != null) {
+        setTempF(String(res.temperatureF));
+        flagged.add('temp');
+      }
+      if (res.crewCount > 0) {
+        setAiCrewCount(res.crewCount);
+        flagged.add('crew');
+      }
+      setAiSuggested(flagged);
+    } catch {
+      // Best-effort — a detection failure never blocks the entry.
+    }
+  };
+
+  const dismissSuggestion = (key: 'weather' | 'temp' | 'crew') => {
+    // Keep the value, drop the tag.
+    setAiSuggested((prev) => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+  };
+
   // ── Hydrate drafts whenever the drawer opens or the underlying entry id
   //    changes. seededPendingRef gate makes sure pendingPhoto is only
   //    consumed once per open.
@@ -152,6 +194,9 @@ export function DiaryEntryDrawer({
     const url = URL.createObjectURL(pendingPhoto);
     setDraftPhotoFiles((prev) => [...prev, pendingPhoto]);
     setDraftPhotoUrls((prev) => [...prev, url]);
+    // FAB / QuickAdd hand-off is the day's first photo — auto-detect too.
+    void runAutoDetect(pendingPhoto);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isCreate, pendingPhoto]);
 
   // Reset the photo buffer when the drawer is fully closed, and revoke any
@@ -164,6 +209,9 @@ export function DiaryEntryDrawer({
     setCreating(false);
     setSparkyOpen(false);
     autoOpenedRef.current = false;
+    autoDetectFiredRef.current = false;
+    setAiSuggested(new Set());
+    setAiCrewCount(null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -318,11 +366,17 @@ export function DiaryEntryDrawer({
 
     if (isCreate) {
       // Buffer client-side; previews via Object URLs. Upload happens on Create.
+      const wasFirst = draftPhotoFiles.length === 0;
       const urls = accepted.map((f) => URL.createObjectURL(f));
       setDraftPhotoFiles((prev) => [...prev, ...accepted]);
       setDraftPhotoUrls((prev) => [...prev, ...urls]);
       setUploadError(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
+      // On the first attached photo, ask the AI to read site conditions.
+      if (wasFirst) {
+        const firstImage = accepted.find((f) => f.type.startsWith('image/'));
+        if (firstImage) void runAutoDetect(firstImage);
+      }
       return;
     }
 
@@ -674,6 +728,32 @@ export function DiaryEntryDrawer({
                 <span className="text-xs text-slate-500">°F</span>
               </div>
             </div>
+
+            {/* AI-suggested tags — pre-filled from the first photo. Dismissing
+                keeps the value, just removes the tag. */}
+            {aiSuggested.size > 0 ? (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                {(['weather', 'temp', 'crew'] as const)
+                  .filter((k) => aiSuggested.has(k))
+                  .map((k) => (
+                    <span
+                      key={k}
+                      className="inline-flex items-center gap-1 rounded-full border border-[#E8C25A] bg-[#FFF8E1] px-2 py-0.5 text-[10.5px] font-medium text-[#9A6B1E]"
+                    >
+                      <Sparkles className="h-2.5 w-2.5 text-[#C8841E]" />
+                      AI suggested {k === 'temp' ? 'temp' : k === 'crew' ? `${aiCrewCount} crew` : 'weather'}
+                      <button
+                        type="button"
+                        onClick={() => dismissSuggestion(k)}
+                        aria-label={`Dismiss AI ${k} suggestion`}
+                        className="ml-0.5 text-[#C8841E] hover:text-[#9A6B1E]"
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    </span>
+                  ))}
+              </div>
+            ) : null}
           </section>
 
           {/* Tags + Common Works picker */}
