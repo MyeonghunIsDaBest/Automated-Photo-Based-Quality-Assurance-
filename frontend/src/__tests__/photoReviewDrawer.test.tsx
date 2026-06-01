@@ -93,7 +93,7 @@ describe('PhotoReviewDrawer', () => {
       target: { value: '  wrong phase detected — looks like roofing  ' },
     });
 
-    const rejectBtn = screen.getByRole('button', { name: /^reject$/i });
+    const rejectBtn = screen.getByRole('button', { name: /reject analysis/i });
     fireEvent.click(rejectBtn);
 
     await waitFor(() => {
@@ -108,7 +108,7 @@ describe('PhotoReviewDrawer', () => {
 
   it('passes undefined notes when the textarea is left empty', async () => {
     render(<PhotoReviewDrawer item={makeItem()} onClose={vi.fn()} onResolved={vi.fn()} />);
-    const rejectBtn = screen.getByRole('button', { name: /^reject$/i });
+    const rejectBtn = screen.getByRole('button', { name: /reject analysis/i });
     fireEvent.click(rejectBtn);
 
     await waitFor(() => {
@@ -121,7 +121,7 @@ describe('PhotoReviewDrawer', () => {
     confirmSpy.mockResolvedValueOnce({ ok: true, taskBumped: true, newPct: 80 });
     render(<PhotoReviewDrawer item={makeItem()} onClose={vi.fn()} onResolved={vi.fn()} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /confirm at/i }));
+    fireEvent.click(screen.getByRole('button', { name: /confirm analysis at/i }));
 
     await waitFor(() => expect(confirmSpy).toHaveBeenCalledTimes(1));
     expect(setNotificationSpy).toHaveBeenCalledWith(
@@ -133,7 +133,7 @@ describe('PhotoReviewDrawer', () => {
     confirmSpy.mockRejectedValueOnce(new Error('network boom'));
     render(<PhotoReviewDrawer item={makeItem()} onClose={vi.fn()} onResolved={vi.fn()} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /confirm at/i }));
+    fireEvent.click(screen.getByRole('button', { name: /confirm analysis at/i }));
 
     expect(await screen.findByText(/network boom/i)).toBeTruthy();
   });
