@@ -9,6 +9,7 @@ import type {
   Warranty,
   ChecklistItem,
 } from './types';
+import { insertDiaryEntry } from '../../lib/api/diaryEntries';
 
 // ─── Slice maps ──────────────────────────────────────────────────────────
 // Every slice is keyed by projectId so a multi-project workspace doesn't
@@ -30,6 +31,10 @@ interface State {
 interface Actions {
   // Diary
   addDiaryEntry:    (projectId: string, draft: Omit<DiaryEntry, 'id' | 'projectId' | 'createdAt' | 'createdBy'> & { createdBy: string }) => string;
+  /** Insert a full entry arriving from Supabase realtime — only if its id
+   *  isn't already present, so a local add that we dual-wrote doesn't double
+   *  when the realtime echo lands. */
+  upsertDiaryEntryFromRemote: (projectId: string, entry: DiaryEntry) => void;
   updateDiaryEntry: (projectId: string, id: string, patch: Partial<DiaryEntry>) => void;
   removeDiaryEntry: (projectId: string, id: string) => void;
   addDiaryPersonnel:    (projectId: string, entryId: string, person: Omit<DiaryPersonnel, 'id'>) => void;
@@ -291,7 +296,23 @@ export const useGanttSideStore = create<State & Actions>()(
             [projectId]: [entry, ...(s.diaryEntries[projectId] ?? [])],
           },
         }));
+        // Dual-write to Supabase (best-effort, fire-and-forget; no-op in mock
+        // mode). Local store stays the editing source of truth. Covers every
+        // add path — conditions stub, quick-add, and the drawer's create.
+        void insertDiaryEntry(entry);
         return id;
+      },
+      upsertDiaryEntryFromRemote: (projectId, entry) => {
+        set((s) => {
+          const list = s.diaryEntries[projectId] ?? [];
+          if (list.some((e) => e.id === entry.id)) return s; // already have it
+          return {
+            diaryEntries: {
+              ...s.diaryEntries,
+              [projectId]: [entry, ...list],
+            },
+          };
+        });
       },
       updateDiaryEntry: (projectId, id, patch) => {
         set((s) => ({

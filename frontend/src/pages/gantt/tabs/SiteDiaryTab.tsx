@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Project, User } from '../../../types';
 import type { DiaryEntry, WeatherKind } from '../types';
 import { useGanttSideStore, useDiaryEntries, usePunchItems } from '../store';
+import { subscribeToProjectDiary } from '../../../lib/api/diaryEntries';
 import { isVisibleEntry } from './sitediary/diaryRowMapper';
 import { ConditionsCard } from './sitediary/ConditionsCard';
 import { DayRollupCard, type DayRollup } from './sitediary/DayRollupCard';
@@ -44,6 +45,38 @@ export function SiteDiaryTab({ project, currentUser }: SiteDiaryTabProps) {
   const punchItems = usePunchItems(project.id);
   const addDiaryEntry = useGanttSideStore((s) => s.addDiaryEntry);
   const updateDiaryEntry = useGanttSideStore((s) => s.updateDiaryEntry);
+  const upsertDiaryEntryFromRemote = useGanttSideStore((s) => s.upsertDiaryEntryFromRemote);
+
+  // Ids that just arrived (via realtime) — drives the timeline slide-in + glow.
+  // Each id self-expires after 1.5s so the highlight fades. Initial-render
+  // entries are never here (the subscription only fires on post-mount INSERTs).
+  const [newIds, setNewIds] = useState<Set<string>>(() => new Set());
+  const markNew = useCallback((id: string) => {
+    setNewIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+    window.setTimeout(() => {
+      setNewIds((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }, 1500);
+  }, []);
+
+  // ── Realtime: a diary entry created on another device/tab arrives here.
+  //    Our own dual-written entries echo back too, but upsertDiaryEntryFromRemote
+  //    dedupes by id so they don't double; markNew still flags them for the glow.
+  useEffect(() => {
+    const unsub = subscribeToProjectDiary(project.id, (entry) => {
+      upsertDiaryEntryFromRemote(project.id, entry);
+      markNew(entry.id);
+    });
+    return unsub;
+  }, [project.id, upsertDiaryEntryFromRemote, markNew]);
 
   // Filter to today's entries that are visible (i.e. not conditions stubs).
   const todays = useMemo(
@@ -275,6 +308,7 @@ export function SiteDiaryTab({ project, currentUser }: SiteDiaryTabProps) {
           <ProgressBar hoursLogged={rollup.hoursLogged} headcount={rollup.headcount} />
           <TimelineCard
             entries={todays}
+            newIds={newIds}
             quickAddInitials={quickAddInitials}
             onEntryClick={(e) => setDrawerTarget(e)}
             onQuickAdd={handleQuickAdd}

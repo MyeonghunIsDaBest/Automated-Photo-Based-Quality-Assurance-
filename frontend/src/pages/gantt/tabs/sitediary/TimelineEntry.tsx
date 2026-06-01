@@ -3,6 +3,7 @@
 // One row in the day timeline. Mapped from a DiaryEntry via diaryRowMapper.
 // Whole row is clickable — opens the diary drawer in edit mode.
 
+import { motion } from 'framer-motion';
 import { Check, Clock, AlertTriangle, Camera, Users } from 'lucide-react';
 import { WORKER_COLORS } from './mockTimeline';
 import { TimelinePhotoThumb } from './TimelinePhotoThumb';
@@ -10,6 +11,9 @@ import type { TimelineRow } from './diaryRowMapper';
 
 interface TimelineEntryProps {
   row: TimelineRow;
+  /** True when this entry just arrived via realtime — slides in from the
+   *  right with an emerald glow that fades as the flag expires. */
+  isNew?: boolean;
   onClick: () => void;
 }
 
@@ -25,7 +29,7 @@ const DOT_RING = {
   flagged: 'bg-[#C44545] shadow-[0_0_0_3px_white,0_0_0_4px_#FBE5E5]',
 };
 
-export function TimelineEntry({ row, onClick }: TimelineEntryProps) {
+export function TimelineEntry({ row, isNew, onClick }: TimelineEntryProps) {
   const badge = STATUS_BADGES[row.status];
   const BadgeIcon = badge.Icon;
   const dot = DOT_RING[row.status];
@@ -33,9 +37,15 @@ export function TimelineEntry({ row, onClick }: TimelineEntryProps) {
   const overflow = row.photoIds.length - photoIds.length;
 
   return (
-    <article
+    <motion.article
       role="button"
       tabIndex={0}
+      // Only post-mount realtime arrivals animate; entries present at initial
+      // render mount statically (initial={false}). MotionConfig at the app root
+      // turns this into a no-op under prefers-reduced-motion.
+      initial={isNew ? { opacity: 0, x: 24 } : false}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ type: 'spring', damping: 28, stiffness: 320 }}
       onClick={onClick}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -43,7 +53,7 @@ export function TimelineEntry({ row, onClick }: TimelineEntryProps) {
           onClick();
         }
       }}
-      className="grid grid-cols-[88px_1fr] px-6 py-5 border-b border-[#EFEBE0] last:border-b-0 relative cursor-pointer hover:bg-[#FAF8F2] focus:bg-[#FAF8F2] focus:outline-none"
+      className={`grid grid-cols-[88px_1fr] px-6 py-5 border-b border-[#EFEBE0] last:border-b-0 relative cursor-pointer hover:bg-[#FAF8F2] focus:bg-[#FAF8F2] focus:outline-none transition-shadow duration-[1500ms] ${isNew ? 'shadow-[inset_3px_0_0_#2F8F5C,0_0_0_1px_#2F8F5C55]' : ''}`}
     >
       {/* Time column */}
       <div className="relative text-[#6B6B6B] text-xs font-medium pt-0.5">
@@ -122,6 +132,6 @@ export function TimelineEntry({ row, onClick }: TimelineEntryProps) {
           </div>
         ) : null}
       </div>
-    </article>
+    </motion.article>
   );
 }

@@ -13,6 +13,8 @@ import { mapEntryToRow } from './diaryRowMapper';
 
 interface TimelineCardProps {
   entries: DiaryEntry[];
+  /** Entry ids that just arrived via realtime — slide in + glow. */
+  newIds?: Set<string>;
   quickAddInitials: string;
   onEntryClick: (entry: DiaryEntry) => void;
   onQuickAdd: (text: string) => void;
@@ -33,6 +35,7 @@ const FILTERS: Array<{ k: FilterKey; label: string }> = [
 
 export function TimelineCard({
   entries,
+  newIds,
   quickAddInitials,
   onEntryClick,
   onQuickAdd,
@@ -129,7 +132,7 @@ export function TimelineCard({
           </div>
         ) : (
           filteredEntries.map((e) => (
-            <TimelineEntry key={e.id} row={mapEntryToRow(e)} onClick={() => onEntryClick(e)} />
+            <TimelineEntry key={e.id} row={mapEntryToRow(e)} isNew={newIds?.has(e.id)} onClick={() => onEntryClick(e)} />
           ))
         )}
       </div>
