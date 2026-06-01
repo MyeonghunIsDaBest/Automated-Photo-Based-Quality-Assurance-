@@ -3,15 +3,23 @@ import { Circle, Plus, X } from 'lucide-react';
 import type { Task, User, Zone } from '../../../types';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
-import { useGanttSideStore } from '../store';
+
+export interface NewPunchInput {
+  text: string;
+  assigneeId?: string;
+  zoneId?: string;
+  taskId?: string;
+  dueDate?: string;
+}
 
 interface NewPunchItemSheetProps {
   isOpen: boolean;
   onClose: () => void;
-  projectId: string;
   tasks: Task[];
   zones: Zone[];
   currentUser: User | null;
+  // Persists the new item (PunchView owns the list + adds createdBy).
+  onCreate: (data: NewPunchInput) => void;
 }
 
 const inDays = (n: number) =>
@@ -39,10 +47,8 @@ const QUICK_SNIPPETS: { label: string; text: string }[] = [
 ];
 
 export default function NewPunchItemSheet({
-  isOpen, onClose, projectId, tasks, zones, currentUser,
+  isOpen, onClose, tasks, zones, currentUser, onCreate,
 }: NewPunchItemSheetProps) {
-  const addItem = useGanttSideStore((s) => s.addPunchItem);
-
   const [text, setText] = useState('');
   const [taskId, setTaskId] = useState('');
   const [zoneId, setZoneId] = useState('');
@@ -62,13 +68,12 @@ export default function NewPunchItemSheet({
 
   const handleSubmit = () => {
     if (!canSubmit) return;
-    addItem(projectId, {
+    onCreate({
       text: text.trim(),
       assigneeId: assigneeId.trim() || undefined,
       zoneId: zoneId || undefined,
       taskId: taskId || undefined,
       dueDate: dueDate || undefined,
-      createdBy: currentUser?.id ?? 'system',
     });
     onClose();
   };

@@ -7,7 +7,6 @@ import type { Task, Zone } from '../../../types';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { Badge } from '../../../components/ui/badge';
-import { useGanttSideStore } from '../store';
 import MotionDrawer from '../../../components/ui/MotionDrawer';
 import type { PunchItem } from '../types';
 
@@ -15,21 +14,21 @@ interface PunchItemDrawerProps {
   item: PunchItem | null;
   isOpen: boolean;
   onClose: () => void;
-  projectId: string;
   tasks: Task[];
   zones: Zone[];
   readOnly?: boolean;
   canDelete?: boolean;
+  // PunchView owns the list + persistence; the drawer reports edits up.
+  onToggle: (it: PunchItem) => void;
+  onUpdate: (id: string, patch: Partial<PunchItem>) => void;
+  onDelete: (id: string) => void;
 }
 
 export default function PunchItemDrawer({
-  item, isOpen, onClose, projectId, tasks, zones,
+  item, isOpen, onClose, tasks, zones,
   readOnly = false, canDelete = true,
+  onToggle, onUpdate, onDelete,
 }: PunchItemDrawerProps) {
-  const updateItem = useGanttSideStore((s) => s.updatePunchItem);
-  const toggleItem = useGanttSideStore((s) => s.togglePunchItem);
-  const removeItem = useGanttSideStore((s) => s.removePunchItem);
-
   const [draft, setDraft] = useState<Partial<PunchItem>>({});
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -54,7 +53,7 @@ export default function PunchItemDrawer({
   const commitField = <K extends keyof PunchItem>(key: K, value: PunchItem[K]) => {
     setDraft((d) => ({ ...d, [key]: value }));
     if (item[key] === value) return;
-    updateItem(projectId, item.id, { [key]: value } as Partial<PunchItem>);
+    onUpdate(item.id, { [key]: value } as Partial<PunchItem>);
   };
 
   return (
@@ -114,7 +113,7 @@ export default function PunchItemDrawer({
           {!readOnly && (
             <button
               type="button"
-              onClick={() => toggleItem(projectId, item.id)}
+              onClick={() => onToggle(item)}
               className={`mb-5 flex w-full items-center justify-center gap-2 rounded-xl border-2 px-4 py-3 text-sm font-medium transition-colors ${
                 isDone
                   ? 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
@@ -234,7 +233,7 @@ export default function PunchItemDrawer({
                 <Button variant="outline" size="sm" onClick={() => setConfirmDelete(false)}>Cancel</Button>
                 <button
                   type="button"
-                  onClick={() => { removeItem(projectId, item.id); onClose(); }}
+                  onClick={() => { onDelete(item.id); onClose(); }}
                   className="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
                 >
                   <Trash2 className="h-3.5 w-3.5" />

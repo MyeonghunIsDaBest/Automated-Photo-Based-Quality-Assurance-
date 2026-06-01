@@ -153,19 +153,28 @@ export async function listSuppliers(): Promise<Supplier[]> {
   const supplierIds = (suppliers ?? []).map((s) => (s as SupplierRow).id);
   if (supplierIds.length === 0) return [];
 
-  const [{ data: branches, error: bErr }, { data: contacts, error: cErr }] = await Promise.all([
+  // Branches + contacts are best-effort enrichment — degrade gracefully if
+  // those reads fail (e.g. a 404 from a stale PostgREST schema cache) rather
+  // than blanking the whole supplier directory.
+  const [branchesRes, contactsRes] = await Promise.all([
     supabase.from('supplier_branches').select('*').in('supplier_id', supplierIds),
     supabase.from('supplier_contacts').select('*').in('supplier_id', supplierIds),
   ]);
-  if (bErr) throw bErr;
-  if (cErr) throw cErr;
+  if (branchesRes.error) {
+    console.warn('[suppliers] branches load failed — showing directory without branches:', branchesRes.error.message);
+  }
+  if (contactsRes.error) {
+    console.warn('[suppliers] contacts load failed — showing directory without contacts:', contactsRes.error.message);
+  }
+  const branches = branchesRes.data ?? [];
+  const contacts = contactsRes.data ?? [];
 
   return (suppliers ?? []).map((s) => {
     const supplier = rowToSupplier(s as SupplierRow);
-    supplier.branches = (branches ?? [])
+    supplier.branches = branches
       .filter((b) => (b as BranchRow).supplier_id === supplier.id)
       .map((b) => rowToBranch(b as BranchRow));
-    supplier.contacts = (contacts ?? [])
+    supplier.contacts = contacts
       .filter((c) => (c as ContactRow).supplier_id === supplier.id)
       .map((c) => rowToContact(c as ContactRow));
     return supplier;

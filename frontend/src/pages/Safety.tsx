@@ -16,7 +16,16 @@ import { useAppStore } from '../store';
 import { useUrlHydration } from '../lib/hooks/useUrlHydration';
 import { useProjectAccessGuard } from '../lib/hooks/useProjectAccessGuard';
 import { canEditProjects, canResolveSafetyIncident, canViewSafetyIncident } from '../lib/permissions';
-import { useSafetyStore } from './safety/store';
+import {
+  listSafetyDocuments,
+  deleteSafetyDocument,
+  subscribeToProjectSafetyDocuments,
+} from '../lib/api/safetyDocuments';
+import {
+  listIncidentReports,
+  setIncidentReportStatus,
+  subscribeToProjectIncidentReports,
+} from '../lib/api/incidentReports';
 import {
   CATEGORY_BLURB,
   CATEGORY_LABEL,
@@ -103,10 +112,65 @@ export default function Safety() {
 
   // Bounce field-role users away from projects they weren't invited to.
   useProjectAccessGuard(project?.id);
-  const documents = useSafetyStore((s) => s.documents);
-  const incidents = useSafetyStore((s) => s.incidents);
-  const removeDocument = useSafetyStore((s) => s.removeDocument);
-  const setIncidentStatus = useSafetyStore((s) => s.setIncidentStatus);
+
+  // Safety documents + WHS incident reports persist to Supabase (roadmap P1.7 —
+  // legal/insurance critical). Full-swap: the page owns the data (no Zustand
+  // mirror) — hydrate on mount + subscribe to realtime, mirroring the
+  // AI-hazards pattern below. Mock mode / demo (non-UUID) projects return empty
+  // (the lib guards on supabaseConfigured + isUuid).
+  const [documents, setDocuments] = useState<SafetyDocument[]>([]);
+  const [incidents, setIncidents] = useState<IncidentReport[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void listSafetyDocuments(project.id)
+      .then((d) => { if (!cancelled) setDocuments(d); })
+      .catch((e) => console.warn('[safety] documents load failed:', e));
+    void listIncidentReports(project.id)
+      .then((i) => { if (!cancelled) setIncidents(i); })
+      .catch((e) => console.warn('[safety] incidents load failed:', e));
+
+    const unsubDocs = subscribeToProjectSafetyDocuments(project.id, {
+      onInsert: (doc) =>
+        setDocuments((prev) => (prev.some((d) => d.id === doc.id) ? prev : [doc, ...prev])),
+      onDelete: (id) => setDocuments((prev) => prev.filter((d) => d.id !== id)),
+    });
+    const unsubInc = subscribeToProjectIncidentReports(project.id, {
+      onUpsert: (inc) =>
+        setIncidents((prev) =>
+          prev.some((i) => i.id === inc.id)
+            ? prev.map((i) => (i.id === inc.id ? inc : i))
+            : [inc, ...prev],
+        ),
+      onDelete: (id) => setIncidents((prev) => prev.filter((i) => i.id !== id)),
+    });
+    return () => { cancelled = true; unsubDocs(); unsubInc(); };
+  }, [project.id]);
+
+  // Delete a document — server is authoritative; the realtime DELETE also
+  // reconciles other devices. On failure the row stays (no destructive
+  // optimistic removal of a legal record).
+  const handleRemoveDocument = async (id: string) => {
+    try {
+      await deleteSafetyDocument(id);
+      setDocuments((prev) => prev.filter((d) => d.id !== id));
+    } catch (e) {
+      console.warn('[safety] document delete failed:', e);
+    }
+  };
+
+  // Incident status transition — optimistic (the <select> reflects instantly);
+  // realtime UPDATE reconciles the canonical row. On failure we log; the next
+  // hydrate corrects any drift.
+  const handleIncidentStatus = async (id: string, status: IncidentStatus) => {
+    setIncidents((prev) => prev.map((i) => (i.id === id ? { ...i, status } : i)));
+    try {
+      const updated = await setIncidentReportStatus(id, status);
+      setIncidents((prev) => prev.map((i) => (i.id === id ? updated : i)));
+    } catch (e) {
+      console.warn('[safety] incident status update failed:', e);
+    }
+  };
 
   const canEdit = canEditProjects(currentUser);
   const canSeeHazards = canViewSafetyIncident(currentProfile);
@@ -389,7 +453,7 @@ export default function Safety() {
             ) : (
               <ul className="divide-y divide-slate-100">
                 {filteredDocs.map((doc) => (
-                  <DocRow key={doc.id} doc={doc} canEdit={canEdit} onRemove={removeDocument} />
+                  <DocRow key={doc.id} doc={doc} canEdit={canEdit} onRemove={handleRemoveDocument} />
                 ))}
               </ul>
             )}
@@ -458,7 +522,7 @@ export default function Safety() {
                     key={incident.id}
                     incident={incident}
                     canEdit={canEdit}
-                    onStatusChange={setIncidentStatus}
+                    onStatusChange={handleIncidentStatus}
                   />
                 ))}
               </ul>
@@ -601,13 +665,21 @@ export default function Safety() {
 
       <SafetyDocumentModal
         open={docModalOpen}
+        projectId={project.id}
         initialCategory={docModalCategory}
         onClose={() => setDocModalOpen(false)}
+        onCreated={(doc) =>
+          setDocuments((prev) => (prev.some((d) => d.id === doc.id) ? prev : [doc, ...prev]))
+        }
       />
       <IncidentFormModal
         open={incidentModalOpen}
+        projectId={project.id}
         initialType={incidentModalType}
         onClose={() => setIncidentModalOpen(false)}
+        onCreated={(inc) =>
+          setIncidents((prev) => (prev.some((i) => i.id === inc.id) ? prev : [inc, ...prev]))
+        }
       />
     </div>
   );

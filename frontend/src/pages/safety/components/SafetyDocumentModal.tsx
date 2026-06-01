@@ -3,20 +3,25 @@ import { Upload as UploadIcon, X } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { useAppStore } from '../../../store';
-import { useSafetyStore } from '../store';
-import { CATEGORY_BLURB, CATEGORY_LABEL, SafetyDocCategory } from '../types';
+import { createSafetyDocument } from '../../../lib/api/safetyDocuments';
+import { CATEGORY_BLURB, CATEGORY_LABEL, SafetyDocCategory, SafetyDocument } from '../types';
 
 interface SafetyDocumentModalProps {
   open: boolean;
+  projectId: string;
   initialCategory?: SafetyDocCategory;
   onClose: () => void;
+  // Full-swap: the modal persists to Supabase and hands the saved row back so
+  // the page can render it optimistically (realtime dedupes the echo by id).
+  onCreated?: (doc: SafetyDocument) => void;
 }
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-export function SafetyDocumentModal({ open, initialCategory, onClose }: SafetyDocumentModalProps) {
+export function SafetyDocumentModal({
+  open, projectId, initialCategory, onClose, onCreated,
+}: SafetyDocumentModalProps) {
   const currentUser = useAppStore((s) => s.currentUser);
-  const addDocument = useSafetyStore((s) => s.addDocument);
 
   const [category, setCategory] = useState<SafetyDocCategory>(initialCategory ?? 'ohse');
   const [title, setTitle] = useState('');
@@ -26,6 +31,7 @@ export function SafetyDocumentModal({ open, initialCategory, onClose }: SafetyDo
   const [file, setFile] = useState<File | null>(null);
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   if (!open) return null;
 
@@ -40,7 +46,7 @@ export function SafetyDocumentModal({ open, initialCategory, onClose }: SafetyDo
     setError(null);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -50,21 +56,28 @@ export function SafetyDocumentModal({ open, initialCategory, onClose }: SafetyDo
       return setError('Expiry must be after the effective date.');
     }
 
-    addDocument({
-      category,
-      title: title.trim(),
-      reference: reference.trim() || undefined,
-      effectiveDate,
-      expiryDate: expiryDate || undefined,
-      fileName: file.name,
-      fileSizeKb: Math.round(file.size / 1024),
-      uploadedBy: currentUser?.fullName ?? 'Unknown',
-      uploadedAt: new Date().toISOString(),
-      notes: notes.trim() || undefined,
-    });
-
-    reset();
-    onClose();
+    setSaving(true);
+    try {
+      const saved = await createSafetyDocument(projectId, {
+        category,
+        title: title.trim(),
+        reference: reference.trim() || undefined,
+        effectiveDate,
+        expiryDate: expiryDate || undefined,
+        fileName: file.name,
+        fileSizeKb: Math.round(file.size / 1024),
+        uploadedBy: currentUser?.fullName ?? 'Unknown',
+        uploadedAt: new Date().toISOString(),
+        notes: notes.trim() || undefined,
+      });
+      onCreated?.(saved);
+      reset();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save the document.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -214,10 +227,12 @@ export function SafetyDocumentModal({ open, initialCategory, onClose }: SafetyDo
           </div>
 
           <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50/50 px-6 py-3">
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
               Cancel
             </Button>
-            <Button type="submit">Upload document</Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Uploading…' : 'Upload document'}
+            </Button>
           </div>
         </form>
       </div>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, Calendar, CheckCircle2, CheckSquare, ChevronRight,
   Circle, Clock, ListTodo, Plus, Square, User as UserIcon,
@@ -12,8 +12,15 @@ import { Input } from '../../../components/ui/input';
 import { EmptyState } from '../components/EmptyState';
 import { useFeatureStore } from '../../../store/features';
 import { useAppStore } from '../../../store';
-import { useGanttSideStore, usePunchItems } from '../store';
 import type { PunchItem } from '../types';
+import {
+  listPunchItems,
+  createPunchItem,
+  updatePunchItem,
+  deletePunchItem,
+  subscribeToProjectPunchItems,
+  type NewPunchItem,
+} from '../../../lib/api/punchItems';
 import PunchItemDrawer from './PunchItemDrawer';
 import NewPunchItemSheet from './NewPunchItemSheet';
 
@@ -61,10 +68,62 @@ function bucketFor(item: PunchItem): Bucket {
 }
 
 export function PunchView({ project, canEdit, canDelete }: PunchViewProps) {
-  const punchItems = usePunchItems(project.id);
+  // Persisted to Supabase (P1.6). This view owns the list; the drawer + sheet
+  // mutate via the callbacks below. Optimistic local updates + realtime keep
+  // it snappy and in sync across devices (realtime echoes are deduped by id).
+  const [punchItems, setPunchItems] = useState<PunchItem[]>([]);
   const tasks = useFeatureStore((s) => s.tasks);
   const zones = useAppStore((s) => s.zones);
   const currentUser = useAppStore((s) => s.currentUser);
+  const setNotification = useAppStore((s) => s.setNotification);
+
+  useEffect(() => {
+    let cancelled = false;
+    void listPunchItems(project.id)
+      .then((rows) => { if (!cancelled) setPunchItems(rows); })
+      .catch(() => { /* empty in mock mode / on error */ });
+    const unsubscribe = subscribeToProjectPunchItems(project.id, {
+      onInsert: (p) => setPunchItems((prev) => (prev.some((x) => x.id === p.id) ? prev : [p, ...prev])),
+      onUpdate: (p) => setPunchItems((prev) => prev.map((x) => (x.id === p.id ? p : x))),
+      onDelete: (id) => setPunchItems((prev) => prev.filter((x) => x.id !== id)),
+    });
+    return () => { cancelled = true; unsubscribe(); };
+  }, [project.id]);
+
+  // ── Mutations (optimistic local + persist) ───────────────────────────────
+  const handleCreate = async (data: Omit<NewPunchItem, 'createdBy'>) => {
+    try {
+      const created = await createPunchItem(project.id, { ...data, createdBy: currentUser?.id ?? 'system' });
+      setPunchItems((prev) => (prev.some((x) => x.id === created.id) ? prev : [created, ...prev]));
+    } catch (err) {
+      setNotification({ message: err instanceof Error ? err.message : 'Could not add punch item.', type: 'error' });
+    }
+  };
+
+  const handleToggle = (it: PunchItem) => {
+    const nextStatus = it.status === 'open' ? 'done' : 'open';
+    const closedAt = nextStatus === 'done' ? new Date().toISOString() : undefined;
+    setPunchItems((prev) => prev.map((x) => (x.id === it.id ? { ...x, status: nextStatus, closedAt } : x)));
+    void updatePunchItem(it.id, { status: nextStatus, closedAt }).catch((err) => {
+      setNotification({ message: err instanceof Error ? err.message : 'Could not update item.', type: 'error' });
+    });
+  };
+
+  const handleUpdate = (id: string, patch: Partial<PunchItem>) => {
+    setPunchItems((prev) => prev.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+    void updatePunchItem(id, patch).catch((err) => {
+      setNotification({ message: err instanceof Error ? err.message : 'Could not update item.', type: 'error' });
+    });
+  };
+
+  const handleDelete = (id: string) => {
+    const prev = punchItems;
+    setPunchItems((list) => list.filter((x) => x.id !== id));
+    void deletePunchItem(id).catch((err) => {
+      setPunchItems(prev);
+      setNotification({ message: err instanceof Error ? err.message : 'Could not delete item.', type: 'error' });
+    });
+  };
 
   const [filter, setFilter] = useState<Filter>('open');
   const [search, setSearch] = useState('');
@@ -297,7 +356,7 @@ export function PunchView({ project, canEdit, canDelete }: PunchViewProps) {
                 tasks={projectTasks}
                 zones={projectZones}
                 onOpen={openItem}
-                onToggle={(it) => useGanttSideStore.getState().togglePunchItem(project.id, it.id)}
+                onToggle={(it) => handleToggle(it)}
                 canEdit={canEdit}
               />
             );
@@ -309,7 +368,7 @@ export function PunchView({ project, canEdit, canDelete }: PunchViewProps) {
               tasks={projectTasks}
               zones={projectZones}
               onOpen={openItem}
-              onToggle={(it) => useGanttSideStore.getState().togglePunchItem(project.id, it.id)}
+              onToggle={(it) => handleToggle(it)}
               canEdit={canEdit}
             />
           )}
@@ -323,20 +382,22 @@ export function PunchView({ project, canEdit, canDelete }: PunchViewProps) {
           setDrawerOpen(false);
           setDrawerItem(null);
         }}
-        projectId={project.id}
         tasks={projectTasks}
         zones={projectZones}
         readOnly={!canEdit}
         canDelete={canDelete}
+        onToggle={handleToggle}
+        onUpdate={handleUpdate}
+        onDelete={handleDelete}
       />
 
       <NewPunchItemSheet
         isOpen={addOpen}
         onClose={() => setAddOpen(false)}
-        projectId={project.id}
         tasks={projectTasks}
         zones={projectZones}
         currentUser={currentUser}
+        onCreate={handleCreate}
       />
     </>
   );

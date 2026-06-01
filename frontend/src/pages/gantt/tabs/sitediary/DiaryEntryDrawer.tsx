@@ -12,6 +12,7 @@ import { useGanttSideStore } from '../../store';
 import { uploadAndAttach } from './uploadDiaryPhoto';
 import { uploadPhoto } from '../../../../lib/api/photos';
 import { detectConditions } from '../../../../lib/api/diaryConditions';
+import { createPunchItem } from '../../../../lib/api/punchItems';
 import { TimelinePhotoThumb } from './TimelinePhotoThumb';
 import { PhotoUploadRing, type PhotoUploadStatus } from './PhotoUploadRing';
 import { WORKER_COLORS, COMMON_WORKS } from './mockTimeline';
@@ -495,6 +496,15 @@ export function DiaryEntryDrawer({
         tags,
         createdBy: currentUser?.id ?? 'unknown',
       });
+      // A flagged entry auto-creates a punch item so the issue is tracked on
+      // the punch list, not just buried in the diary. Fire-and-forget (no-op
+      // in mock mode); never blocks the save.
+      if (status === 'flagged' && description.trim()) {
+        void createPunchItem(projectId, {
+          text: `Flagged in site diary: ${description.trim().slice(0, 120)}`,
+          createdBy: currentUser?.id ?? 'system',
+        }).catch(() => { /* non-fatal — entry still saved */ });
+      }
       onClose();
     } catch (e) {
       setUploadError(e instanceof Error ? e.message : 'Could not save entry.');

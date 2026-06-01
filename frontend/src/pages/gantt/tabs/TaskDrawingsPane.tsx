@@ -1,4 +1,4 @@
-// frontend/src/pages/gantt/tabs/TaskDrawingsPane.tsx
+2// frontend/src/pages/gantt/tabs/TaskDrawingsPane.tsx
 //
 // Drawings & Permits panel. Two modes:
 //   • Task-scoped: pass `task` — list/upload drawings attached to that task.

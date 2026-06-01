@@ -107,19 +107,30 @@ export async function listStakeholders(): Promise<Stakeholder[]> {
   const ids = (parents ?? []).map((r) => (r as StakeholderRow).id);
   if (ids.length === 0) return [];
 
-  const [{ data: contactRows, error: cErr }, { data: linkRows, error: lErr }] = await Promise.all([
+  // The Phase D-2 child tables (migration 04) are best-effort ENRICHMENT —
+  // additional contacts + linked-project ids. If those reads fail (a 404 when
+  // migration 04 hasn't been applied to this DB yet, or a stale PostgREST
+  // schema cache), degrade gracefully: return the stakeholder directory
+  // without the enrichment instead of throwing and blanking the whole page.
+  const [contactsRes, linksRes] = await Promise.all([
     supabase.from('stakeholder_contacts').select('*').in('stakeholder_id', ids),
     supabase.from('stakeholder_projects').select('stakeholder_id, project_id').in('stakeholder_id', ids),
   ]);
-  if (cErr) throw cErr;
-  if (lErr) throw lErr;
+  if (contactsRes.error) {
+    console.warn('[stakeholders] contacts load failed — showing directory without contacts:', contactsRes.error.message);
+  }
+  if (linksRes.error) {
+    console.warn('[stakeholders] project links load failed — showing directory without links:', linksRes.error.message);
+  }
+  const contactRows = contactsRes.data ?? [];
+  const linkRows = linksRes.data ?? [];
 
   return (parents ?? []).map((r) => {
     const parent = rowToStakeholder(r as StakeholderRow);
-    parent.contacts = (contactRows ?? [])
+    parent.contacts = contactRows
       .filter((c) => (c as StakeholderContactRow).stakeholder_id === parent.id)
       .map((c) => rowToStakeholderContact(c as StakeholderContactRow));
-    parent.projectIds = (linkRows ?? [])
+    parent.projectIds = linkRows
       .filter((l) => (l as StakeholderProjectRow).stakeholder_id === parent.id)
       .map((l) => (l as StakeholderProjectRow).project_id);
     return parent;

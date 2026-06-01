@@ -45,7 +45,8 @@ import {
 import { AuditLog, Report } from '../types';
 import { EditorialButton, StatCell } from '../components/editorial';
 import { useEffect } from 'react';
-import { listProjectReports } from '../lib/api/reports';
+import { listProjectReports, generateReportNow } from '../lib/api/reports';
+import { listSafetyIncidents, type SafetyIncident } from '../lib/api/safetyIncidents';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tokens & helpers
@@ -53,18 +54,6 @@ import { listProjectReports } from '../lib/api/reports';
 type ReportTab = 'progress' | 'financial' | 'audit' | 'safety';
 type ReportType = Report['reportType']; // 'daily' | 'weekly' | 'monthly'
 type EntityFilter = 'all' | AuditLog['entityType'];
-
-interface SafetyFlag {
-  id: string;
-  task: string;
-  flag: string;
-  date: string;
-  status: 'open' | 'resolved';
-}
-
-// Empty seed — safety flags surface here when AI analysis raises one against
-// an uploaded photo on the live pilot project.
-const SAFETY_FLAGS: SafetyFlag[] = [];
 
 const REPORT_TYPE_META: Record<ReportType, { label: string; window: string; Icon: typeof CalendarDays; accent: string }> = {
   daily:   { label: 'Daily',   window: 'Last 24 hours',     Icon: CalendarDays,  accent: '#0369A1' },
@@ -85,6 +74,22 @@ const STATUS_BADGE: Record<InvoiceStatus, string> = {
   pending: 'border-amber-200 bg-amber-50 text-amber-700',
   overdue: 'border-red-200 bg-red-50 text-red-700',
   draft:   'border-slate-200 bg-slate-50 text-slate-600',
+};
+
+// Real `safety_incidents` rendering on the Safety tab (P1.8).
+const INCIDENT_STATUS_TONE: Record<SafetyIncident['status'], string> = {
+  open:         'border-red-200 bg-red-50 text-red-700',
+  acknowledged: 'border-amber-200 bg-amber-50 text-amber-700',
+  resolved:     'border-emerald-200 bg-emerald-50 text-emerald-700',
+  dismissed:    'border-slate-200 bg-slate-50 text-slate-600',
+};
+const INCIDENT_FLAG_LABEL: Record<string, string> = {
+  no_hard_hat:     'No hard hat',
+  exposed_wiring:  'Exposed wiring',
+  fall_hazard:     'Fall hazard',
+  unsecured_load:  'Unsecured load',
+  housekeeping:    'Housekeeping',
+  signage_missing: 'Signage missing',
 };
 
 const fmtCurrency = (n: number) =>
@@ -108,8 +113,6 @@ export default function Reports() {
   useProjectAccessGuard(project?.id);
   const tasks = useFeatureStore((s) => s.tasks);
   const progressTrend = useFeatureStore((s) => s.progressHistory);
-  const reports = useFeatureStore((s) => s.reports);
-  const generateReport = useFeatureStore((s) => s.generateReport);
   const budgets = useFinanceStore((s) => s.budgets);
   const invoices = useFinanceStore((s) => s.invoices);
   const setBudget = useFinanceStore((s) => s.setBudget);
@@ -149,6 +152,33 @@ export default function Reports() {
   // Generate / preview state
   const [generating, setGenerating] = useState<ReportType | null>(null);
   const [previewReport, setPreviewReport] = useState<Report | null>(null);
+
+  // Real reports for the selected progress project, from the `project_reports`
+  // table (migration 10). Replaces the old client-only Zustand fakes — the
+  // "Generate" buttons now invoke the real `generate-reports` Edge Function
+  // (P1.8). Reloads when the project changes or after a generate.
+  const [reports, setReports] = useState<Report[]>([]);
+  useEffect(() => {
+    if (!progressProjectId) { setReports([]); return; }
+    let cancelled = false;
+    listProjectReports(progressProjectId, 24)
+      .then((d) => { if (!cancelled) setReports(d); })
+      .catch((e) => { console.warn('[reports] load failed:', e); if (!cancelled) setReports([]); });
+    return () => { cancelled = true; };
+  }, [progressProjectId]);
+
+  // Real safety incidents (AI + manual) for the active project — drives the
+  // Safety tab + the header "open flags" stat. Replaces the hardcoded empty
+  // seed + the "45 days" placeholder.
+  const [safetyIncidents, setSafetyIncidents] = useState<SafetyIncident[]>([]);
+  useEffect(() => {
+    if (!project?.id) { setSafetyIncidents([]); return; }
+    let cancelled = false;
+    listSafetyIncidents(project.id)
+      .then((l) => { if (!cancelled) setSafetyIncidents(l); })
+      .catch((e) => { console.warn('[reports] safety load failed:', e); if (!cancelled) setSafetyIncidents([]); });
+    return () => { cancelled = true; };
+  }, [project?.id]);
 
   // Audit filters
   const [entityFilter, setEntityFilter] = useState<EntityFilter>('all');
@@ -199,10 +229,16 @@ export default function Reports() {
   }, [auditLogs, entityFilter, userFilter, auditSearch]);
 
   const safetyStats = useMemo(() => {
-    const open = SAFETY_FLAGS.filter((f) => f.status === 'open').length;
-    const resolved = SAFETY_FLAGS.filter((f) => f.status === 'resolved').length;
-    return { open, resolved, total: SAFETY_FLAGS.length };
-  }, []);
+    const open = safetyIncidents.filter((f) => f.status === 'open' || f.status === 'acknowledged').length;
+    const resolved = safetyIncidents.filter((f) => f.status === 'resolved').length;
+    return { open, resolved, total: safetyIncidents.length };
+  }, [safetyIncidents]);
+
+  const daysWithoutIncident = useMemo(() => {
+    if (safetyIncidents.length === 0) return null;
+    const latest = Math.max(...safetyIncidents.map((i) => new Date(i.createdAt).getTime()));
+    return Math.max(0, Math.floor((Date.now() - latest) / 86_400_000));
+  }, [safetyIncidents]);
 
   // Header stat strip values
   const totalSpend = useMemo(() => {
@@ -219,14 +255,21 @@ export default function Reports() {
   const handleGenerate = async (type: ReportType) => {
     if (!progressProjectId) return;
     setGenerating(type);
-    await new Promise((r) => setTimeout(r, 900));
-    generateReport(progressProjectId, type);
-    setGenerating(null);
+    try {
+      await generateReportNow(progressProjectId, type);
+      const fresh = await listProjectReports(progressProjectId, 24);
+      setReports(fresh);
+    } catch (e) {
+      window.alert(
+        `Could not generate the ${REPORT_TYPE_META[type].label.toLowerCase()} report: ` +
+          `${e instanceof Error ? e.message : 'unknown error'}.`,
+      );
+    } finally {
+      setGenerating(null);
+    }
   };
 
   const handlePrint = () => window.print();
-  const handleDownload = (type: ReportType) =>
-    alert(`${REPORT_TYPE_META[type].label} report PDF downloaded.`);
 
   const actionIcon = (action: string) => {
     if (action.includes('photo'))   return '📷';
@@ -436,7 +479,7 @@ export default function Reports() {
                               Preview
                             </button>
                             <button
-                              onClick={() => handleDownload(type)}
+                              onClick={() => lastForType && setPreviewReport(lastForType)}
                               disabled={!lastForType}
                               className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-40"
                             >
@@ -502,7 +545,7 @@ export default function Reports() {
                                 Preview
                               </button>
                               <button
-                                onClick={() => handleDownload(r.reportType)}
+                                onClick={() => setPreviewReport(r)}
                                 className="flex items-center gap-1.5 rounded-full bg-slate-900 px-3.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-emerald-700"
                               >
                                 <Download className="h-3 w-3" />
@@ -791,36 +834,48 @@ export default function Reports() {
             <div className="grid grid-cols-1 gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200 md:grid-cols-3">
               <StatCell label="Open flags"          value={safetyStats.open.toString()}     caption="Need attention"        accentColor="#BE123C" />
               <StatCell label="Resolved"            value={safetyStats.resolved.toString()} caption="Successfully closed"   accentColor="#B45309" />
-              <StatCell label="Days w/o incident"   value="45"                              caption="Excellent streak"      accentColor="#0F766E" />
+              <StatCell label="Days w/o incident"   value={daysWithoutIncident === null ? '—' : daysWithoutIncident.toString()} caption={daysWithoutIncident === null ? 'No incidents logged' : 'Since the last flag'} accentColor="#0F766E" />
             </div>
 
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
               <div className="border-b border-slate-100 px-6 py-4">
                 <h3 className="display text-lg font-medium text-slate-900">Safety flags</h3>
-                <p className="tabular-nums text-xs text-slate-500">{SAFETY_FLAGS.length} flags on the books</p>
+                <p className="tabular-nums text-xs text-slate-500">
+                  {safetyIncidents.length} flag{safetyIncidents.length === 1 ? '' : 's'} on the books
+                </p>
               </div>
-              <ul className="divide-y divide-slate-50">
-                {SAFETY_FLAGS.map((flag) => (
-                  <li key={flag.id} className="flex flex-wrap items-center justify-between gap-3 px-6 py-4">
-                    <div>
-                      <p className="font-medium text-slate-900">{flag.task}</p>
-                      <p className="text-sm text-slate-600">{flag.flag}</p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="tabular-nums text-xs text-slate-500">{format(new Date(flag.date), 'MMM d')}</span>
-                      <span
-                        className={`rounded-full border px-2.5 py-0.5 text-xs font-medium uppercase tracking-wider ${
-                          flag.status === 'open'
-                            ? 'border-red-200 bg-red-50 text-red-700'
-                            : 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                        }`}
-                      >
-                        {flag.status}
-                      </span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+              {safetyIncidents.length === 0 ? (
+                <div className="px-6 py-12 text-center">
+                  <Shield className="mx-auto h-10 w-10 text-slate-300" />
+                  <p className="mt-3 text-sm font-medium text-slate-900">No safety flags on this project.</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Flags surface here automatically when photo analysis raises a hazard, or when one is logged manually on the Safety page.
+                  </p>
+                </div>
+              ) : (
+                <ul className="divide-y divide-slate-50">
+                  {safetyIncidents.map((flag) => (
+                    <li key={flag.id} className="flex flex-wrap items-center justify-between gap-3 px-6 py-4">
+                      <div className="min-w-0">
+                        <p className="font-medium text-slate-900">
+                          {flag.flags.length
+                            ? flag.flags.map((f) => INCIDENT_FLAG_LABEL[f] ?? f).join(', ')
+                            : 'Safety incident'}
+                        </p>
+                        <p className="text-sm capitalize text-slate-600">{flag.severity} severity</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="tabular-nums text-xs text-slate-500">{format(new Date(flag.createdAt), 'MMM d')}</span>
+                        <span
+                          className={`rounded-full border px-2.5 py-0.5 text-xs font-medium uppercase tracking-wider ${INCIDENT_STATUS_TONE[flag.status]}`}
+                        >
+                          {flag.status}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
         )}
@@ -835,7 +890,7 @@ export default function Reports() {
           projectName={projectName(previewReport.projectId)}
           onClose={() => setPreviewReport(null)}
           onPrint={handlePrint}
-          onDownload={() => handleDownload(previewReport.reportType)}
+          onDownload={handlePrint}
         />
       )}
     </div>
@@ -992,7 +1047,7 @@ function ReportPreviewModal({ report, tasks, progressTrend, projectName, onClose
           </div>
 
           <div className="mb-8 grid gap-4 sm:grid-cols-4">
-            <ReportKpi tone="emerald" label="Overall progress" value={`${report.summary.overallProgress}%`} hint={`+${report.summary.progressChange}% this period`} />
+            <ReportKpi tone="emerald" label="Overall progress" value={`${report.summary.overallProgress}%`} hint={`${report.summary.progressChange >= 0 ? '+' : ''}${report.summary.progressChange}% this period`} />
             <ReportKpi tone="blue"    label="Photos uploaded" value={report.summary.photosUploaded.toString()} />
             <ReportKpi tone="amber"   label="Tasks updated"   value={report.summary.tasksUpdated.toString()} />
             <ReportKpi tone="violet"  label="Safety flags"    value={report.summary.safetyFlags.toString()} />

@@ -10,6 +10,9 @@ import type {
   ChecklistItem,
 } from './types';
 import { insertDiaryEntry } from '../../lib/api/diaryEntries';
+import { upsertOrder, deleteOrderRemote } from '../../lib/api/orders';
+import { upsertDelivery, deleteDeliveryRemote } from '../../lib/api/deliveries';
+import { upsertInvoice, deleteInvoiceRemote } from '../../lib/api/invoices';
 
 // ─── Slice maps ──────────────────────────────────────────────────────────
 // Every slice is keyed by projectId so a multi-project workspace doesn't
@@ -51,16 +54,24 @@ interface Actions {
   updateOrder: (projectId: string, id: string, patch: Partial<Order>) => void;
   setOrderStatus: (projectId: string, id: string, status: OrderStatus) => void;
   removeOrder: (projectId: string, id: string) => void;
+  /** Replace a project's orders from a Supabase load (hydration). */
+  setOrdersForProject: (projectId: string, orders: Order[]) => void;
+  /** Insert/replace one order arriving from realtime (deduped by id). */
+  upsertOrderFromRemote: (projectId: string, order: Order) => void;
 
   // Deliveries
   addDelivery: (projectId: string, draft: Omit<Delivery, 'id' | 'projectId' | 'createdAt'>) => void;
   removeDelivery: (projectId: string, id: string) => void;
+  setDeliveriesForProject: (projectId: string, deliveries: Delivery[]) => void;
+  upsertDeliveryFromRemote: (projectId: string, delivery: Delivery) => void;
 
   // Invoices
   addInvoice:        (projectId: string, draft: Omit<Invoice, 'id' | 'projectId' | 'createdAt'>) => void;
   setInvoiceStatus:  (projectId: string, id: string, status: InvoiceStatus, paidDate?: string) => void;
   updateInvoice:     (projectId: string, id: string, patch: Partial<Invoice>) => void;
   removeInvoice:     (projectId: string, id: string) => void;
+  setInvoicesForProject: (projectId: string, invoices: Invoice[]) => void;
+  upsertInvoiceFromRemote: (projectId: string, invoice: Invoice) => void;
 
   // Warranties
   addWarranty:    (projectId: string, draft: Omit<Warranty, 'id' | 'projectId' | 'createdAt'>) => void;
@@ -272,7 +283,7 @@ function migrate(persisted: unknown): State {
 
 export const useGanttSideStore = create<State & Actions>()(
   persist(
-    (set, _get) => ({
+    (set, get) => ({
       diaryEntries: {},
       punchItems: {},
       orders: {},
@@ -415,6 +426,7 @@ export const useGanttSideStore = create<State & Actions>()(
         set((s) => ({
           orders: { ...s.orders, [projectId]: [order, ...(s.orders[projectId] ?? [])] },
         }));
+        void upsertOrder(order); // dual-write (no-op in mock mode)
         return id;
       },
       updateOrder: (projectId, id, patch) => {
@@ -428,6 +440,8 @@ export const useGanttSideStore = create<State & Actions>()(
             }),
           },
         }));
+        const updated = (get().orders[projectId] ?? []).find((o) => o.id === id);
+        if (updated) void upsertOrder(updated);
       },
       setOrderStatus: (projectId, id, status) => {
         set((s) => ({
@@ -438,6 +452,8 @@ export const useGanttSideStore = create<State & Actions>()(
             ),
           },
         }));
+        const updated = (get().orders[projectId] ?? []).find((o) => o.id === id);
+        if (updated) void upsertOrder(updated);
       },
       removeOrder: (projectId, id) => {
         set((s) => ({
@@ -446,6 +462,20 @@ export const useGanttSideStore = create<State & Actions>()(
             [projectId]: (s.orders[projectId] ?? []).filter((o) => o.id !== id),
           },
         }));
+        void deleteOrderRemote(id);
+      },
+      // Hydration from Supabase (OrdersTab load + realtime). These never
+      // dual-write back — they ARE the remote truth landing in the cache.
+      setOrdersForProject: (projectId, orders) => {
+        set((s) => ({ orders: { ...s.orders, [projectId]: orders } }));
+      },
+      upsertOrderFromRemote: (projectId, order) => {
+        set((s) => {
+          const list = s.orders[projectId] ?? [];
+          const idx = list.findIndex((o) => o.id === order.id);
+          const next = idx < 0 ? [order, ...list] : list.map((o) => (o.id === order.id ? order : o));
+          return { orders: { ...s.orders, [projectId]: next } };
+        });
       },
 
       // ── Deliveries — also patch the parent order's qtyReceived ─────────
@@ -477,8 +507,16 @@ export const useGanttSideStore = create<State & Actions>()(
             orders: { ...s.orders, [projectId]: updatedOrders },
           };
         });
+        // Persist the delivery record + mirror the order whose receipts it
+        // patched (so the order's qtyReceived + status persist too).
+        void upsertDelivery(delivery);
+        const patched = (get().orders[projectId] ?? []).find((o) => o.id === draft.orderId);
+        if (patched) void upsertOrder(patched);
       },
       removeDelivery: (projectId, id) => {
+        // Capture the affected order id before removal so we can mirror the
+        // rolled-back order afterwards.
+        const affectedOrderId = (get().deliveries[projectId] ?? []).find((d) => d.id === id)?.orderId;
         // Roll back the qtyReceived when a delivery is removed.
         set((s) => {
           const delivery = (s.deliveries[projectId] ?? []).find((d) => d.id === id);
@@ -503,6 +541,22 @@ export const useGanttSideStore = create<State & Actions>()(
             orders: { ...s.orders, [projectId]: updatedOrders },
           };
         });
+        void deleteDeliveryRemote(id);
+        if (affectedOrderId) {
+          const patched = (get().orders[projectId] ?? []).find((o) => o.id === affectedOrderId);
+          if (patched) void upsertOrder(patched);
+        }
+      },
+      setDeliveriesForProject: (projectId, deliveries) => {
+        set((s) => ({ deliveries: { ...s.deliveries, [projectId]: deliveries } }));
+      },
+      upsertDeliveryFromRemote: (projectId, delivery) => {
+        set((s) => {
+          const list = s.deliveries[projectId] ?? [];
+          const idx = list.findIndex((d) => d.id === delivery.id);
+          const next = idx < 0 ? [delivery, ...list] : list.map((d) => (d.id === delivery.id ? delivery : d));
+          return { deliveries: { ...s.deliveries, [projectId]: next } };
+        });
       },
 
       // ── Invoices ───────────────────────────────────────────────────────
@@ -519,6 +573,7 @@ export const useGanttSideStore = create<State & Actions>()(
             [projectId]: [invoice, ...(s.invoices[projectId] ?? [])],
           },
         }));
+        void upsertInvoice(invoice);
       },
       setInvoiceStatus: (projectId, id, status, paidDate) => {
         set((s) => ({
@@ -531,6 +586,8 @@ export const useGanttSideStore = create<State & Actions>()(
             ),
           },
         }));
+        const updated = (get().invoices[projectId] ?? []).find((inv) => inv.id === id);
+        if (updated) void upsertInvoice(updated);
       },
       updateInvoice: (projectId, id, patch) => {
         set((s) => ({
@@ -541,6 +598,8 @@ export const useGanttSideStore = create<State & Actions>()(
             ),
           },
         }));
+        const updated = (get().invoices[projectId] ?? []).find((inv) => inv.id === id);
+        if (updated) void upsertInvoice(updated);
       },
       removeInvoice: (projectId, id) => {
         set((s) => ({
@@ -549,6 +608,18 @@ export const useGanttSideStore = create<State & Actions>()(
             [projectId]: (s.invoices[projectId] ?? []).filter((inv) => inv.id !== id),
           },
         }));
+        void deleteInvoiceRemote(id);
+      },
+      setInvoicesForProject: (projectId, invoices) => {
+        set((s) => ({ invoices: { ...s.invoices, [projectId]: invoices } }));
+      },
+      upsertInvoiceFromRemote: (projectId, invoice) => {
+        set((s) => {
+          const list = s.invoices[projectId] ?? [];
+          const idx = list.findIndex((inv) => inv.id === invoice.id);
+          const next = idx < 0 ? [invoice, ...list] : list.map((inv) => (inv.id === invoice.id ? invoice : inv));
+          return { invoices: { ...s.invoices, [projectId]: next } };
+        });
       },
 
       // ── Warranties ─────────────────────────────────────────────────────

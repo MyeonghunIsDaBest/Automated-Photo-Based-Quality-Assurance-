@@ -3,13 +3,17 @@ import { X } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { useAppStore } from '../../../store';
-import { useSafetyStore } from '../store';
-import { IncidentSeverity, IncidentType, SEVERITY_LABEL } from '../types';
+import { createIncidentReport } from '../../../lib/api/incidentReports';
+import { IncidentReport, IncidentSeverity, IncidentType, SEVERITY_LABEL } from '../types';
 
 interface IncidentFormModalProps {
   open: boolean;
+  projectId: string;
   initialType?: IncidentType;
   onClose: () => void;
+  // Full-swap: the modal persists to Supabase and hands the saved row back so
+  // the page can render it optimistically (realtime dedupes the echo by id).
+  onCreated?: (incident: IncidentReport) => void;
 }
 
 const nowLocal = () => {
@@ -18,9 +22,10 @@ const nowLocal = () => {
   return d.toISOString().slice(0, 16);
 };
 
-export function IncidentFormModal({ open, initialType, onClose }: IncidentFormModalProps) {
+export function IncidentFormModal({
+  open, projectId, initialType, onClose, onCreated,
+}: IncidentFormModalProps) {
   const currentUser = useAppStore((s) => s.currentUser);
-  const addIncident = useSafetyStore((s) => s.addIncident);
 
   const [type, setType] = useState<IncidentType>(initialType ?? 'injury');
   const [occurredAt, setOccurredAt] = useState(nowLocal());
@@ -35,6 +40,7 @@ export function IncidentFormModal({ open, initialType, onClose }: IncidentFormMo
   const [witnesses, setWitnesses] = useState('');
   const [photos, setPhotos] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   if (!open) return null;
 
@@ -56,7 +62,7 @@ export function IncidentFormModal({ open, initialType, onClose }: IncidentFormMo
     setError(null);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -66,26 +72,33 @@ export function IncidentFormModal({ open, initialType, onClose }: IncidentFormMo
       return setError('Person involved is required for an injury report.');
     }
 
-    addIncident({
-      type,
-      occurredAt: new Date(occurredAt).toISOString(),
-      location: location.trim(),
-      description: description.trim(),
-      severity,
-      personInvolved: personInvolved.trim() || undefined,
-      bodyPart: bodyPart.trim() || undefined,
-      treatmentGiven: treatmentGiven.trim() || undefined,
-      contributingFactors: contributingFactors.trim() || undefined,
-      recommendedAction: recommendedAction.trim() || undefined,
-      witnesses: witnesses.trim() || undefined,
-      photoNames: photos.length ? photos.map((p) => p.name) : undefined,
-      reportedBy: currentUser?.fullName ?? 'Unknown',
-      reportedAt: new Date().toISOString(),
-      status: 'open',
-    });
-
-    reset();
-    onClose();
+    setSaving(true);
+    try {
+      const saved = await createIncidentReport(projectId, {
+        type,
+        occurredAt: new Date(occurredAt).toISOString(),
+        location: location.trim(),
+        description: description.trim(),
+        severity,
+        personInvolved: personInvolved.trim() || undefined,
+        bodyPart: bodyPart.trim() || undefined,
+        treatmentGiven: treatmentGiven.trim() || undefined,
+        contributingFactors: contributingFactors.trim() || undefined,
+        recommendedAction: recommendedAction.trim() || undefined,
+        witnesses: witnesses.trim() || undefined,
+        photoNames: photos.length ? photos.map((p) => p.name) : undefined,
+        reportedBy: currentUser?.fullName ?? 'Unknown',
+        reportedAt: new Date().toISOString(),
+        status: 'open',
+      });
+      onCreated?.(saved);
+      reset();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to submit the report.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -334,10 +347,12 @@ export function IncidentFormModal({ open, initialType, onClose }: IncidentFormMo
           </div>
 
           <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50/50 px-6 py-3">
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
               Cancel
             </Button>
-            <Button type="submit">Submit report</Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Submitting…' : 'Submit report'}
+            </Button>
           </div>
         </form>
       </div>

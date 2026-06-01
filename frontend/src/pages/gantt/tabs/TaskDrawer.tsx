@@ -9,7 +9,7 @@ import type { Task, Zone, ConstructionPhase, User } from '../../../types';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { useAppStore } from '../../../store';
-import { useGanttSideStore, useChecklist } from '../store';
+import { useChecklistItems } from '../../../lib/hooks/useChecklistItems';
 import { canUploadPhotos, canForceTaskProgress } from '../../../lib/permissions';
 import { uploadPhoto, getPhotoUrl } from '../../../lib/api/photos';
 import { supabaseConfigured } from '../../../lib/supabase';
@@ -367,7 +367,7 @@ function DetailsPane({
   isCreate: boolean;
   projectConfig: ProjectConfig | null;
 }) {
-  const checklistItems = useChecklist(task?.id ?? '');
+  const { items: checklistItems } = useChecklistItems(task?.id ?? '');
   const checklistDonePct = useMemo(() => {
     if (checklistItems.length === 0) return 0;
     return Math.round(
@@ -585,10 +585,7 @@ function DetailsPane({
 }
 
 function ChecklistPane({ taskId, readOnly }: { taskId: string; readOnly: boolean }) {
-  const items = useChecklist(taskId);
-  const add    = useGanttSideStore((s) => s.addChecklistItem);
-  const toggle = useGanttSideStore((s) => s.toggleChecklistItem);
-  const remove = useGanttSideStore((s) => s.removeChecklistItem);
+  const { items, addItem, toggleItem, removeItem } = useChecklistItems(taskId);
   const [text, setText] = useState('');
 
   const done = items.filter((i) => i.done).length;
@@ -597,7 +594,7 @@ function ChecklistPane({ taskId, readOnly }: { taskId: string; readOnly: boolean
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
     if (!text.trim()) return;
-    add(taskId, text.trim());
+    addItem(text.trim());
     setText('');
   };
 
@@ -642,7 +639,7 @@ function ChecklistPane({ taskId, readOnly }: { taskId: string; readOnly: boolean
               <input
                 type="checkbox"
                 checked={item.done}
-                onChange={() => toggle(taskId, item.id)}
+                onChange={() => toggleItem(item.id)}
                 disabled={readOnly}
                 className="h-4 w-4 cursor-pointer accent-emerald-600"
                 aria-label={item.text}
@@ -653,7 +650,7 @@ function ChecklistPane({ taskId, readOnly }: { taskId: string; readOnly: boolean
               {!readOnly && (
                 <button
                   type="button"
-                  onClick={() => remove(taskId, item.id)}
+                  onClick={() => removeItem(item.id)}
                   className="invisible inline-flex h-7 w-7 items-center justify-center rounded text-slate-400 hover:bg-red-50 hover:text-red-500 group-hover:visible focus:visible"
                   aria-label={`Remove ${item.text}`}
                 >

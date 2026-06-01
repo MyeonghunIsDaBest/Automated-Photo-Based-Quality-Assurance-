@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   DollarSign, Receipt, ShieldCheck, ShoppingCart, Truck,
@@ -7,6 +7,10 @@ import {
 import type { Project } from '../../../types';
 import { TabHeader } from '../components/TabHeader';
 import { useGanttSideStore, useOrdersForProject } from '../store';
+import { supabaseConfigured } from '../../../lib/supabase';
+import { listOrders, subscribeToProjectOrders } from '../../../lib/api/orders';
+import { listDeliveries, subscribeToProjectDeliveries } from '../../../lib/api/deliveries';
+import { listInvoices, subscribeToProjectInvoices } from '../../../lib/api/invoices';
 import { OrdersTab } from './OrdersTab';
 import { DeliveriesTab } from './DeliveriesTab';
 import { InvoicesTab } from './InvoicesTab';
@@ -72,6 +76,34 @@ export function SupplierTab({
   const allDeliveries = useGanttSideStore((s) => s.deliveries);
   const allInvoices   = useGanttSideStore((s) => s.invoices);
   const allWarranties = useGanttSideStore((s) => s.warranties);
+
+  // Hydrate the procurement slices (orders/deliveries/invoices) from Supabase
+  // once at the merged-tab level + keep them live — covers every sub-tab AND
+  // the pill badge counts. Dual-write model (P1.2–1.4): the store stays the
+  // editing source of truth; these just land remote truth in the cache.
+  // Guarded so mock-mode dev keeps its local data. (Warranties self-hydrate
+  // in WarrantiesTab — they're a full-swap domain, not store-backed.)
+  useEffect(() => {
+    if (!supabaseConfigured()) return;
+    const store = () => useGanttSideStore.getState();
+    let cancelled = false;
+    void listOrders(project.id).then((r) => { if (!cancelled) store().setOrdersForProject(project.id, r); }).catch(() => void 0);
+    void listDeliveries(project.id).then((r) => { if (!cancelled) store().setDeliveriesForProject(project.id, r); }).catch(() => void 0);
+    void listInvoices(project.id).then((r) => { if (!cancelled) store().setInvoicesForProject(project.id, r); }).catch(() => void 0);
+    const unsubO = subscribeToProjectOrders(project.id, {
+      onUpsert: (o) => store().upsertOrderFromRemote(project.id, o),
+      onDelete: (id) => store().setOrdersForProject(project.id, (store().orders[project.id] ?? []).filter((o) => o.id !== id)),
+    });
+    const unsubD = subscribeToProjectDeliveries(project.id, {
+      onUpsert: (d) => store().upsertDeliveryFromRemote(project.id, d),
+      onDelete: (id) => store().setDeliveriesForProject(project.id, (store().deliveries[project.id] ?? []).filter((d) => d.id !== id)),
+    });
+    const unsubI = subscribeToProjectInvoices(project.id, {
+      onUpsert: (i) => store().upsertInvoiceFromRemote(project.id, i),
+      onDelete: (id) => store().setInvoicesForProject(project.id, (store().invoices[project.id] ?? []).filter((i) => i.id !== id)),
+    });
+    return () => { cancelled = true; unsubO(); unsubD(); unsubI(); };
+  }, [project.id]);
 
   const deliveries = useMemo(() => allDeliveries?.[project.id] ?? [], [allDeliveries, project.id]);
   const invoices   = useMemo(() => allInvoices?.[project.id]   ?? [], [allInvoices,   project.id]);

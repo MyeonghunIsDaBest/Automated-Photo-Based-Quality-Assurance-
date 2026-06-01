@@ -61,3 +61,25 @@ export async function listProjectReports(projectId: string, limit = 12): Promise
   if (error) throw error;
   return ((data ?? []) as ProjectReportRow[]).map(rowToReport);
 }
+
+const NOT_CONFIGURED = new Error('Supabase is not configured.');
+
+// On-demand report generation. Invokes the `generate-reports` Edge Function in
+// its single-project mode — it aggregates real photos/tasks/safety_incidents
+// for a rolling window, computes the period-over-period progress delta, and
+// upserts the `project_reports` row (a same-day re-generate refreshes it).
+// Returns the persisted report so the caller can show it immediately.
+export async function generateReportNow(
+  projectId: string,
+  reportType: Report['reportType'],
+): Promise<Report> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  if (!isUuid(projectId)) throw new Error('Reports require a live project.');
+  const { data, error } = await supabase.functions.invoke('generate-reports', {
+    body: { projectId, reportType },
+  });
+  if (error) throw error;
+  const row = (data as { report?: ProjectReportRow } | null)?.report;
+  if (!row) throw new Error('Report generation returned no data.');
+  return rowToReport(row);
+}
