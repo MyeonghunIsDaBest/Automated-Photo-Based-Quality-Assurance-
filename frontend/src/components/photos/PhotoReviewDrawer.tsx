@@ -140,6 +140,7 @@ export default function PhotoReviewDrawer({ item, onClose, onResolved }: Props) 
               trailingIcon="none"
               onClick={handleReject}
               disabled={busy !== null}
+              aria-label="Reject analysis"
             >
               {busy === 'reject' ? 'Rejecting…' : 'Reject'}
             </EditorialButton>
@@ -149,6 +150,7 @@ export default function PhotoReviewDrawer({ item, onClose, onResolved }: Props) 
               trailingIcon="none"
               onClick={handleConfirm}
               disabled={busy !== null}
+              aria-label={`Confirm analysis at ${overrideChanged ? overridePct : item.completion_pct}%`}
             >
               {busy === 'confirm'
                 ? 'Confirming…'
@@ -231,6 +233,8 @@ export default function PhotoReviewDrawer({ item, onClose, onResolved }: Props) 
             value={overridePct}
             onChange={(e) => setOverridePct(Number(e.target.value))}
             className="w-full accent-emerald-600"
+            aria-label="Override completion percentage"
+            aria-valuetext={`${overridePct}%`}
           />
         </div>
         <p className="mt-1 text-[11px] text-slate-500">

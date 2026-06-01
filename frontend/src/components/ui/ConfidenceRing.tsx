@@ -43,8 +43,15 @@ export default function ConfidenceRing({ pct, animateFromZero = false }: Props) 
   const dash = (shownPct / 100) * circumference;
 
   return (
-    <span aria-hidden className="relative inline-flex h-11 w-11 items-center justify-center">
-      <svg viewBox="0 0 36 36" className="h-11 w-11 -rotate-90">
+    <span
+      role="progressbar"
+      aria-valuenow={safe}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-label="Confidence"
+      className="relative inline-flex h-11 w-11 items-center justify-center"
+    >
+      <svg viewBox="0 0 36 36" className="h-11 w-11 -rotate-90" aria-hidden>
         <circle cx="18" cy="18" r={radius} fill="none" stroke="rgb(231 229 228)" strokeWidth="2.5" />
         <circle
           cx="18"
