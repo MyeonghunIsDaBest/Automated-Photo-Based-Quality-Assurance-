@@ -1,13 +1,20 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Plus, ShieldCheck, Trash2 } from 'lucide-react';
 import { differenceInDays, format, parseISO } from 'date-fns';
 import type { Project } from '../../../types';
+import type { Warranty } from '../types';
 import { Card, CardContent } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { TabHeader } from '../components/TabHeader';
 import { EmptyState } from '../components/EmptyState';
-import { useGanttSideStore } from '../store';
+import { useAppStore } from '../../../store';
+import {
+  listWarranties,
+  createWarranty,
+  deleteWarranty,
+  subscribeToProjectWarranties,
+} from '../../../lib/api/warranties';
 
 interface WarrantiesTabProps {
   project: Project;
@@ -58,16 +65,34 @@ function expiryLabel(expiryDate: string): string {
 }
 
 export function WarrantiesTab({ project, canEdit, hideHeader = false }: WarrantiesTabProps) {
-  const allWarranties  = useGanttSideStore((s) => s.warranties);
-  const addWarranty    = useGanttSideStore((s) => s.addWarranty);
-  const removeWarranty = useGanttSideStore((s) => s.removeWarranty);
-  const warranties     = useMemo(() => allWarranties?.[project.id] ?? [], [allWarranties, project.id]);
+  const setNotification = useAppStore((s) => s.setNotification);
+
+  // Persisted to Supabase (P1.5). Local state is the render source; the load
+  // effect hydrates it and the realtime subscription keeps it in sync across
+  // devices. Optimistic add/remove patch local state immediately; the realtime
+  // echo is deduped by id.
+  const [warranties, setWarranties] = useState<Warranty[]>([]);
+  const [saving, setSaving] = useState(false);
 
   const [item, setItem] = useState('');
   const [supplier, setSupplier] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
   const [fileRef, setFileRef] = useState('');
   const [showForm, setShowForm] = useState(false);
+
+  // Load + subscribe per project.
+  useEffect(() => {
+    let cancelled = false;
+    void listWarranties(project.id)
+      .then((rows) => { if (!cancelled) setWarranties(rows); })
+      .catch(() => { /* empty in mock mode / on error — surfaced on write */ });
+
+    const unsubscribe = subscribeToProjectWarranties(project.id, {
+      onInsert: (w) => setWarranties((prev) => (prev.some((x) => x.id === w.id) ? prev : [...prev, w])),
+      onDelete: (id) => setWarranties((prev) => prev.filter((x) => x.id !== id)),
+    });
+    return () => { cancelled = true; unsubscribe(); };
+  }, [project.id]);
 
   // Sort by expiry ascending — soonest first.
   const sorted = useMemo(
@@ -78,24 +103,41 @@ export function WarrantiesTab({ project, canEdit, hideHeader = false }: Warranti
     [warranties],
   );
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!item.trim() || !supplier.trim() || !expiryDate) return;
-    // The store's Warranty shape uses description/supplierName/startDate
-    // (post-schema-rewrite). Map the form's friendly field names onto the
-    // canonical row.
-    addWarranty(project.id, {
-      description: item.trim(),
-      supplierName: supplier.trim(),
-      startDate: new Date().toISOString().slice(0, 10),
-      expiryDate,
-      fileRef: fileRef.trim() || undefined,
-    });
-    setItem('');
-    setSupplier('');
-    setExpiryDate('');
-    setFileRef('');
-    setShowForm(false);
+    if (!item.trim() || !supplier.trim() || !expiryDate || saving) return;
+    setSaving(true);
+    try {
+      const created = await createWarranty(project.id, {
+        description: item.trim(),
+        supplierName: supplier.trim(),
+        startDate: new Date().toISOString().slice(0, 10),
+        expiryDate,
+        fileRef: fileRef.trim() || undefined,
+      });
+      // Optimistic append (deduped against any realtime echo by id).
+      setWarranties((prev) => (prev.some((x) => x.id === created.id) ? prev : [...prev, created]));
+      setItem('');
+      setSupplier('');
+      setExpiryDate('');
+      setFileRef('');
+      setShowForm(false);
+    } catch (err) {
+      setNotification({ message: err instanceof Error ? err.message : 'Could not save warranty.', type: 'error' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRemove = async (id: string) => {
+    const prev = warranties;
+    setWarranties((list) => list.filter((x) => x.id !== id)); // optimistic
+    try {
+      await deleteWarranty(id);
+    } catch (err) {
+      setWarranties(prev); // rollback
+      setNotification({ message: err instanceof Error ? err.message : 'Could not remove warranty.', type: 'error' });
+    }
   };
 
   return (
@@ -201,7 +243,7 @@ export function WarrantiesTab({ project, canEdit, hideHeader = false }: Warranti
                 <Button type="button" variant="outline" onClick={() => setShowForm(false)}>
                   Cancel
                 </Button>
-                <Button type="submit">Save</Button>
+                <Button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
               </div>
             </form>
           </CardContent>
@@ -240,7 +282,7 @@ export function WarrantiesTab({ project, canEdit, hideHeader = false }: Warranti
                   {canEdit && (
                     <button
                       type="button"
-                      onClick={() => removeWarranty(project.id, w.id)}
+                      onClick={() => handleRemove(w.id)}
                       className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500 active:bg-red-100"
                       title="Remove"
                     >
