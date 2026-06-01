@@ -1422,3 +1422,17 @@ Per the user's "no demo data except my test accounts" directive: gated `userSett
 - vitest: **175 passing / 22 files** (`--pool=forks --maxForks=2`; the default parallel pool OOMs and single-fork bleeds DOM across files on this machine — bounded parallelism is the reliable local mode; CI remains the real gate).
 - Not verified locally (no Supabase/browser this session): Edge Function deploys, realtime cross-device behavior, live Claude calls. Smoke checklist in `OPERATOR_RUNBOOK.md`.
 - **The 14 newly-modified-but-uncommitted sitediary files** in `git status` (parallel work, source unclear) — review before the v3 implementation pass to avoid clobbering changes.
+
+---
+
+## 2026-06-01 (later) — Stage 1 kickoff: P0 remainder (core resilience) — on `main`
+
+Picked up the path-to-95% roadmap (`all_task.md`). Closed the **P0 remainder** — the "finish core resilience" items deferred out of Week 1. All on `main`, verified `tsc` clean + vitest **165 passing / 20 files** (the count dropped from 175 because P0.4b deleted 2 dead-code test files).
+
+- **P0.2 — Anthropic retry/backoff + timeout** (`_shared/anthropic.ts`): new `postToAnthropic` wraps the text + vision fetches with an `AbortController` timeout (`ANTHROPIC_TIMEOUT_MS`, default 60s) and retry/backoff on 429/5xx + network blips (`ANTHROPIC_MAX_RETRIES`, default 2), honoring a numeric `retry-after`. Streaming retries its connect only (timer cleared once headers arrive, so the stream body isn't timed out). Failures still return the typed `AnthropicCallFailure` (never throw) → the upload auto-analyze path stays soft-fail.
+- **P0.3 — model-aware cost accounting**: `pricingCents()` prices each call from the actual model the API reports, split input/output (haiku 1/5, sonnet 3/15, opus 15/75 per 1M) — fixes the ~3× undercount on a Sonnet override. `record_ai_call` is now awaited + checked (logs on failure) instead of fire-and-forget. (`APPROX_CENTS_PER_TOKEN` kept exported for the stream caller — follow-up to switch it.)
+- **P0.4a — done earlier** (Week 1 demo purge): `store/index.ts` mock seeds gated behind `supabaseConfigured()`.
+- **P0.4b — real auth + dead-code purge**: `updatePassword`/`updateEmail` now call real `supabase.auth.updateUser` via new `updateAuthPassword`/`updateAuthEmail` helpers (was a `setTimeout` fake). Removed the `Math.random` `runAutoProgressUpdate` simulator (no callers) + its unused import. Deleted the superseded conversational-Sparky `assistant/` dir (8 files) + its 2 tests — production uses `sitediary/SparkyAssistModal`.
+
+### Next (not started) — Stage 1 remainder: **P1.2–P1.6 procurement + punch/checklist persistence**
+The big block: move orders/deliveries/invoices/warranties + punch/checklists off the client-only Zustand store onto Supabase (migration + RLS + realtime + `lib/api/*` + component swaps), `org_id`-ready. `[L]`/`[M]` each — a careful sequential refactor (SupplierTab + the gantt side store are shared hot-spots), best done per-domain. Then Stages 2–7.
