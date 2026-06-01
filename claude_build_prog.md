@@ -1378,4 +1378,47 @@ Worth flagging: parallel work seems to have introduced `SparkyAssistModal.tsx` a
 - **Conversational drawer cleanup** — delete `frontend/src/pages/gantt/tabs/assistant/` (the whole directory), `lib/api/siteDiaryAssistant.ts`, the two related test files, the `site-diary-assistant/` Edge Function dir, and the three `_shared/` helpers (`renderDiarySnapshot.ts`, `sparkyPrompt.ts`, `extractDraftBlock.ts`); `supabase functions delete site-diary-assistant` to undeploy.
 - **Status badges (Signed / Pending / Flagged) on timeline entries** — currently sourced from mock data, no schema support. Either add a status field to `DiaryEntry` or drop the badges in v3.
 - **Calendar popover heatmap data** — currently a hardcoded `DEFAULT_HEATMAP`. Real wiring is small but deferred.
+
+---
+
+## 2026-06-01 — Production Finalization Week (Week 1) — shipped to `main`
+
+Big push toward 95% production-ready. All work committed directly to `main` (user preference) across ~13 commits (`23e25b3..f9e8718`). Verified with `tsc --noEmit` (clean) + the full vitest suite (**175 passing, 22 files**, run with bounded parallelism `--pool=forks --maxForks=2` to dodge the local OOM). Backend (migrations 18–22 + new Edge Functions) is committed but **not yet deployed** — `supabase migration up` + `supabase functions deploy` are operational steps for the machine with the linked pilot (see `OPERATOR_RUNBOOK.md`).
+
+### Photo Review (Wed sprint, W1–W7) — already on main
+`complete-phase` Edge Function + `project_phase_status` table (migration 18) + `PhaseCompletionCard`; `PhotoReviewDrawer` consumes `taskBumped`/`newPct` → task-bump toast + confirm notes; `ConfidenceRing` extracted with a 0→pct mount sweep + slider value bubble; activity count-up, thumbnail crossfade, optimistic ✓ chip; committed the previously-untracked `_shared/cors.ts`.
+
+### Project synthesis + Daily Brief (Thu, T1–T3 + E1)
+`synthesize-project-status` Edge Function + `project_status_snapshots` daily cache (migration 19) + `ProjectStatusCard`. **AI-narrated Daily Brief** (E1): the synthesis payload gained a `narrative` field (migration 22 `narrative_text`) rendered by a new `DailyBriefCard` with a reduced-motion-aware typewriter reveal — **zero extra Claude calls/day** (rides the existing daily-cached call).
+
+### Photo-QA auto-analyze fix (D1) — the critical latent bug
+Photos uploaded but `analyze-photo` was never auto-invoked (the Postgres trigger referenced in `02_phase_c_seam.sql` was never defined) — they sat `queued` forever. Fix: `uploadPhoto` now fires `requestAnalysis(photo.id)` fire-and-forget after the INSERT (idempotent claim downstream). New `photos.test.ts` covers it.
+
+### Sparky streaming (D2 / T4–T7)
+`_shared/anthropic.ts` gained `checkAnthropicGate` (extracted) + `callAnthropicStream`; `site-diary-assistant` gained an SSE `stream:true` branch (JSON path kept as fallback). `siteDiaryAssistant.ts` got `streamAssistantTurn` (raw-fetch SSE consumer) + exported `isRealAiEnabled` + a client-side fake-stream fallback. `SparkyAssistModal` rebuilt as multi-turn chat with token-by-token reveal, blinking cursor, retry pill, in-session history, and a drafts tray.
+
+### Site Diary persistence + realtime + auto-detect + polish (D3–D5 / F1–F6)
+- **`diary_entries` table (migration 20)** — the table `site-diary-assistant` had always queried but which never existed (Sparky ran with zero history). Now `org_id`-ready. `addDiaryEntry` dual-writes (best-effort, no-op in mock mode); `SiteDiaryTab` subscribes to realtime via `subscribeToProjectDiary` → new `upsertDiaryEntryFromRemote` store action (dedupes by text id). **This fixes Sparky's empty-history bug.**
+- **Timeline slide-in** — `TimelineEntry` animates in from the right with a fading emerald glow only for post-mount realtime arrivals (initial render static; reduced-motion aware).
+- **Auto-detect conditions (F4)** — `detect-diary-conditions` vision Edge Function (gated behind `project_config.ai_auto_detect_enabled`, migration 21, default false/opt-in). First photo in create mode pre-fills weather/temp/crew with dismissable amber "AI suggested" pills.
+- **Per-photo upload rings (F5)** + FAB pulse when today has no entry + weather-chip colour transitions.
+
+### Demo-data purge (prod conversion)
+Per the user's "no demo data except my test accounts" directive: gated `userSettings` PII + `store/index.ts` mock seeds behind `supabaseConfigured()` (production starts blank); `Settings` now hydrates name/email from the real authenticated `currentUser`. (Earlier in the sprint: removed Dashboard hardcoded demo budget/deliveries/safety-streak/questions; gated the demo task/doc/membership seeds.) Operational follow-up still on the user: dry-run-then-delete the `Casone — North/South/Workshop` seeded rows from the prod DB.
+
+### UI consistency + a11y + hardening (D6)
+- **UI:** Settings `alert()` → `setNotification` toast; auth-input `autoComplete`; admin error banners `rounded-lg`→`rounded-2xl` (6 files).
+- **a11y:** aria-labels on PhotoReviewDrawer confirm/reject + override slider; `ConfidenceRing` as `role="progressbar"`; diary photo-input aria-label. (EditorialModal error-region wrap skipped — errors are consumer-composed in an opaque footer.)
+- **Hardening:** per-route `ErrorBoundary` in `App.tsx` (a crashed page no longer blanks the app); `cors.ts` reads `PRODUCTION_ORIGIN` (default `*`) to lock CORS in prod; new `OPERATOR_RUNBOOK.md` (7 ops scenarios).
+
+### Deferred (tracked, not done this week)
+- **husky/lint-staged pre-commit** (H3) — deferred (needs `npm install`; low value vs. risk this session).
+- **Modal focus-trap (A7)** — deferred; needs browser testing the local env can't do.
+- **Backend deploy + DB demo-row purge + live AI smoke / caps / kill-switch tests** — operational, require the linked Supabase project.
+- Everything in `all_task.md` Stages 1–7 (the rest of the road to 95%).
+
+### Verification
+- `tsc --noEmit`: clean after every chunk.
+- vitest: **175 passing / 22 files** (`--pool=forks --maxForks=2`; the default parallel pool OOMs and single-fork bleeds DOM across files on this machine — bounded parallelism is the reliable local mode; CI remains the real gate).
+- Not verified locally (no Supabase/browser this session): Edge Function deploys, realtime cross-device behavior, live Claude calls. Smoke checklist in `OPERATOR_RUNBOOK.md`.
 - **The 14 newly-modified-but-uncommitted sitediary files** in `git status` (parallel work, source unclear) — review before the v3 implementation pass to avoid clobbering changes.
