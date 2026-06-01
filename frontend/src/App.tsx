@@ -117,8 +117,8 @@ function AppRoutes() {
                 {/* Smart redirect: field roles → /home (editorial landing),
                     admins / PMs → /dashboard (data-dense panel). */}
                 <Route index element={<RoleHomeRedirect />} />
-                <Route path="home" element={<RoleHome />} />
-                <Route path="dashboard" element={<Dashboard />} />
+                <Route path="home" element={<ErrorBoundary label="Home"><RoleHome /></ErrorBoundary>} />
+                <Route path="dashboard" element={<ErrorBoundary label="Dashboard"><Dashboard /></ErrorBoundary>} />
                 {/* Upload + Gallery retired as standalone pages — UploadsTab on
                     the Gantt covers project-scoped capture + a recent-photos
                     grid. Old links + Dashboard / Safety / Tasks click-throughs
@@ -129,11 +129,11 @@ function AppRoutes() {
                 {/* /files retired — files now live as a tab inside each project's */}
                 {/* Gantt overview. Soft-redirect so existing bookmarks land there. */}
                 <Route path="files" element={<Navigate to="/gantt" replace />} />
-                <Route path="projects" element={<Projects />} />
-                <Route path="gantt" element={<Gantt />} />
-                <Route path="messages" element={<Messages />} />
-                <Route path="reports" element={<Reports />} />
-                <Route path="safety" element={<Safety />} />
+                <Route path="projects" element={<ErrorBoundary label="Projects"><Projects /></ErrorBoundary>} />
+                <Route path="gantt" element={<ErrorBoundary label="Gantt"><Gantt /></ErrorBoundary>} />
+                <Route path="messages" element={<ErrorBoundary label="Messages"><Messages /></ErrorBoundary>} />
+                <Route path="reports" element={<ErrorBoundary label="Reports"><Reports /></ErrorBoundary>} />
+                <Route path="safety" element={<ErrorBoundary label="Safety"><Safety /></ErrorBoundary>} />
                 {/* Review queue is now a Gantt tab; redirect preserves any
                     old bookmarks + the Dashboard's Pending Review tile path. */}
                 <Route path="review-queue" element={<Navigate to="/gantt?tab=review" replace />} />
@@ -142,21 +142,21 @@ function AppRoutes() {
                     as an Admin section if compliance reporting comes back into scope. */}
                 <Route path="audit" element={<Navigate to="/dashboard" replace />} />
                 <Route path="finance" element={<Navigate to="/reports" replace />} />
-                <Route path="settings" element={<Settings />} />
+                <Route path="settings" element={<ErrorBoundary label="Settings"><Settings /></ErrorBoundary>} />
               </Route>
             </Route>
 
             {/* Admin-only routes */}
             <Route element={<RequireAuth requireAdmin />}>
               <Route path="/" element={<Layout />}>
-                <Route path="admin" element={<Admin />} />
+                <Route path="admin" element={<ErrorBoundary label="Admin"><Admin /></ErrorBoundary>} />
               </Route>
             </Route>
 
             {/* First-run bootstrap. Authenticated but NOT requireAdmin — the
                 whole point of this screen is to mint the very first admin. */}
             <Route element={<RequireAuth />}>
-              <Route path="/bootstrap-admin" element={<BootstrapAdmin />} />
+              <Route path="/bootstrap-admin" element={<ErrorBoundary label="Bootstrap Admin"><BootstrapAdmin /></ErrorBoundary>} />
             </Route>
 
             {/* Catch all */}

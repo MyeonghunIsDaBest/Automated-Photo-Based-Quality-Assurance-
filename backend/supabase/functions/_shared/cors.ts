@@ -15,8 +15,16 @@
 // Server-to-server functions (Postgres webhooks, cron-style) don't strictly
 // need this, but adding it doesn't hurt.
 
+// Origin is env-driven so production can lock CORS to the real deployed
+// frontend origin. Setting the PRODUCTION_ORIGIN Edge Function secret (e.g.
+// `https://app.example.com`) replaces the permissive `*` and stops any other
+// origin from invoking these functions from a browser. The `?? '*'` default
+// preserves today's behaviour when the secret is unset (dev / pilot).
+// @ts-expect-error Deno globals.
+const ALLOW_ORIGIN = Deno.env.get('PRODUCTION_ORIGIN') ?? '*';
+
 export const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': ALLOW_ORIGIN,
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
