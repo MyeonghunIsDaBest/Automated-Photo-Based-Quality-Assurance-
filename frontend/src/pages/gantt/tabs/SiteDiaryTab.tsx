@@ -319,7 +319,7 @@ export function SiteDiaryTab({ project, currentUser }: SiteDiaryTabProps) {
         </section>
       </main>
 
-      <FabCamera onClick={openFabPicker} />
+      <FabCamera onClick={openFabPicker} pulse={rollup.entries === 0} />
 
       {/* Hidden file inputs for the FAB + QuickAdd photo paths */}
       <input

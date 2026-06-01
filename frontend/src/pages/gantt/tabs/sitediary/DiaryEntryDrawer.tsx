@@ -13,6 +13,7 @@ import { uploadAndAttach } from './uploadDiaryPhoto';
 import { uploadPhoto } from '../../../../lib/api/photos';
 import { detectConditions } from '../../../../lib/api/diaryConditions';
 import { TimelinePhotoThumb } from './TimelinePhotoThumb';
+import { PhotoUploadRing, type PhotoUploadStatus } from './PhotoUploadRing';
 import { WORKER_COLORS, COMMON_WORKS } from './mockTimeline';
 import { colorIndexForWorker } from './diaryRowMapper';
 import { SparkyAssistModal } from './SparkyAssistModal';
@@ -95,6 +96,10 @@ export function DiaryEntryDrawer({
   const [draftPhotoFiles, setDraftPhotoFiles] = useState<File[]>([]);
   const [draftPhotoUrls, setDraftPhotoUrls] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
+  // Per-photo upload status (create-mode batch). Keyed by index in
+  // draftPhotoFiles. Drives the progress rings + retry affordance.
+  const [uploadStates, setUploadStates] = useState<Record<number, { status: PhotoUploadStatus; progress: number; photoId?: string }>>({});
+  const sawUploadFailureRef = useRef(false);
 
   // Sparky writing assistant — opens as a modal layered over the drawer.
   const [sparkyOpen, setSparkyOpen] = useState(false);
@@ -212,6 +217,8 @@ export function DiaryEntryDrawer({
     autoDetectFiredRef.current = false;
     setAiSuggested(new Set());
     setAiCrewCount(null);
+    setUploadStates({});
+    sawUploadFailureRef.current = false;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -405,6 +412,39 @@ export function DiaryEntryDrawer({
       if (url) URL.revokeObjectURL(url);
       return prev.filter((_, i) => i !== idx);
     });
+    // Indices shift on removal — clear per-photo upload state so it re-derives
+    // cleanly on the next Create pass.
+    setUploadStates({});
+    sawUploadFailureRef.current = false;
+  };
+
+  // Upload one buffered photo with a perceived-progress ring (storage has no
+  // native progress event). Returns the new photoId, or null on failure.
+  const uploadOne = async (idx: number, file: File): Promise<string | null> => {
+    setUploadStates((s) => ({ ...s, [idx]: { status: 'uploading', progress: 8 } }));
+    const timer = window.setInterval(() => {
+      setUploadStates((s) => {
+        const cur = s[idx];
+        if (!cur || cur.status !== 'uploading') return s;
+        return { ...s, [idx]: { ...cur, progress: Math.min(90, cur.progress + 12) } };
+      });
+    }, 150);
+    try {
+      const photo = await uploadPhoto({ file, projectId });
+      window.clearInterval(timer);
+      setUploadStates((s) => ({ ...s, [idx]: { status: 'done', progress: 100, photoId: photo.id } }));
+      return photo.id;
+    } catch {
+      window.clearInterval(timer);
+      setUploadStates((s) => ({ ...s, [idx]: { status: 'error', progress: 0 } }));
+      return null;
+    }
+  };
+
+  // Per-photo retry from the error ring — re-uploads just that file.
+  const retryPhoto = (idx: number) => {
+    const file = draftPhotoFiles[idx];
+    if (file) void uploadOne(idx, file);
   };
 
   // ── Create / delete final actions.
@@ -414,13 +454,30 @@ export function DiaryEntryDrawer({
     setCreating(true);
     setUploadError(null);
     try {
-      // Upload buffered photos first so the new entry lands with the photoIds
-      // already attached. Sequential keeps it predictable on flaky connections.
+      // Upload buffered photos with progress rings. A photo already uploaded
+      // on a previous attempt (status 'done') is reused, not re-uploaded.
       const photoIds: string[] = [];
-      for (const file of draftPhotoFiles) {
-        const photo = await uploadPhoto({ file, projectId });
-        photoIds.push(photo.id);
+      for (let i = 0; i < draftPhotoFiles.length; i++) {
+        const existing = uploadStates[i];
+        if (existing?.status === 'done' && existing.photoId) {
+          photoIds.push(existing.photoId);
+          continue;
+        }
+        const id = await uploadOne(i, draftPhotoFiles[i]);
+        if (id) photoIds.push(id);
       }
+
+      const failedCount = draftPhotoFiles.length - photoIds.length;
+      // First time we hit a failure, pause so the user can retry the red
+      // rings. A second "Create entry" click then proceeds with the rest —
+      // a failed photo never permanently blocks the save.
+      if (failedCount > 0 && !sawUploadFailureRef.current) {
+        sawUploadFailureRef.current = true;
+        setUploadError(`${failedCount} photo${failedCount === 1 ? '' : 's'} failed to upload. Retry below, or click Create entry again to save with the rest.`);
+        setCreating(false);
+        return;
+      }
+
       const tempNum = tempF.trim() === '' ? undefined : Number(tempF);
       addDiaryEntry(projectId, {
         date: entry?.date ?? todayISO,
@@ -704,7 +761,7 @@ export function DiaryEntryDrawer({
                     key={value}
                     type="button"
                     onClick={() => commitWeather(value)}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[12px] font-medium ${
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[12px] font-medium transition-colors duration-200 ${
                       on
                         ? 'bg-[#FFF8E1] text-slate-900 border-[#E8C25A]'
                         : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
@@ -870,6 +927,11 @@ export function DiaryEntryDrawer({
                   {draftPhotoUrls.map((url, idx) => (
                     <div key={url} className="relative aspect-square overflow-hidden rounded-[7px] border border-slate-200 bg-slate-100">
                       <img src={url} alt="" className="h-full w-full object-cover" />
+                      <PhotoUploadRing
+                        status={uploadStates[idx]?.status ?? 'pending'}
+                        progress={uploadStates[idx]?.progress ?? 0}
+                        onRetry={() => retryPhoto(idx)}
+                      />
                       <button
                         type="button"
                         onClick={() => removeDraftPhoto(idx)}
