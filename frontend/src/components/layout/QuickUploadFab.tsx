@@ -23,6 +23,7 @@ import { supabaseConfigured } from '../../lib/supabase';
 import { uploadPhoto } from '../../lib/api/photos';
 import { canUploadPhotos } from '../../lib/permissions';
 import { Button } from '../ui/button';
+import { FRAUNCES } from '../../pages/gantt/components/ledger';
 import type { Photo } from '../../types';
 
 export default function QuickUploadFab() {
@@ -47,7 +48,7 @@ export default function QuickUploadFab() {
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.94 }}
         transition={{ type: 'spring', damping: 14, stiffness: 360 }}
-        className="fixed bottom-6 right-6 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-600 text-white shadow-2xl ring-4 ring-emerald-100 hover:bg-emerald-700 sm:bottom-8 sm:right-8"
+        className="fixed bottom-6 right-6 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-[#2F8F5C] text-white shadow-[0_8px_28px_rgba(20,20,20,0.18)] ring-4 ring-[#E5F2EA] hover:bg-[#246F47] sm:bottom-8 sm:right-8"
         style={{
           bottom: 'max(env(safe-area-inset-bottom), 1.5rem)',
           right: 'max(env(safe-area-inset-right), 1.5rem)',
@@ -112,14 +113,14 @@ function QuickUploadModal({
     if (!el) return;
     const onDragOver = (e: DragEvent) => {
       e.preventDefault();
-      el.classList.add('border-emerald-400', 'bg-emerald-50/50');
+      el.classList.add('border-[#2F8F5C]', 'bg-[#E5F2EA]/30');
     };
     const onDragLeave = () => {
-      el.classList.remove('border-emerald-400', 'bg-emerald-50/50');
+      el.classList.remove('border-[#2F8F5C]', 'bg-[#E5F2EA]/30');
     };
     const onDrop = (e: DragEvent) => {
       e.preventDefault();
-      el.classList.remove('border-emerald-400', 'bg-emerald-50/50');
+      el.classList.remove('border-[#2F8F5C]', 'bg-[#E5F2EA]/30');
       const list = e.dataTransfer?.files;
       if (list && list.length > 0) {
         addFiles(Array.from(list));
@@ -201,22 +202,26 @@ function QuickUploadModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-2 backdrop-blur-sm sm:items-center sm:p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-[#1A1A1A]/40 p-2 sm:items-center sm:p-4"
       onClick={busy ? undefined : onClose}
       role="dialog"
       aria-modal="true"
       aria-labelledby="quick-upload-title"
     >
       <div
-        className="flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:max-h-none"
+        className="flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-[14px] bg-white shadow-[0_8px_28px_rgba(20,20,20,0.12)] sm:max-h-none"
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+        <header className="flex items-center justify-between border-b border-[#E6E1D4] px-5 py-4">
           <div>
-            <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-slate-500">
+            <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-[#6B6B6B]">
               Quick upload
             </p>
-            <h2 id="quick-upload-title" className="text-base font-semibold text-slate-900">
+            <h2
+              id="quick-upload-title"
+              className="text-base font-semibold text-[#1A1A1A]"
+              style={{ fontFamily: FRAUNCES }}
+            >
               Drop photos, AI handles the rest.
             </h2>
           </div>
@@ -224,7 +229,7 @@ function QuickUploadModal({
             type="button"
             onClick={onClose}
             disabled={busy}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-40"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md text-[#A0A0A0] hover:bg-[#FAF8F2] hover:text-[#3A3A3A] disabled:opacity-40"
             aria-label="Close"
           >
             <X className="h-4 w-4" />
@@ -234,13 +239,13 @@ function QuickUploadModal({
         <div className="editorial-scrollbox flex-1 space-y-4 px-5 py-4">
           {/* Task picker */}
           <div>
-            <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-slate-500">
+            <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">
               Attach to task
             </label>
             <select
               value={taskId}
               onChange={(e) => setTaskId(e.target.value)}
-              className="block w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              className="block w-full rounded-md border border-[#E6E1D4] bg-white px-3 py-2 text-sm text-[#3A3A3A] shadow-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
               disabled={busy}
             >
               <option value="">— Project-wide —</option>
@@ -250,7 +255,7 @@ function QuickUploadModal({
                 </option>
               ))}
             </select>
-            <p className="mt-1 text-[10px] text-slate-400">
+            <p className="mt-1 text-[10px] text-[#A0A0A0]">
               Picking a task makes the AI bump that task's % directly. Leave blank for project-wide uploads.
             </p>
           </div>
@@ -259,13 +264,13 @@ function QuickUploadModal({
           <div
             ref={dropRef}
             onClick={() => !busy && inputRef.current?.click()}
-            className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 px-4 py-6 text-center text-sm text-slate-600 transition-colors hover:border-emerald-400 hover:bg-emerald-50/50"
+            className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-[14px] border-2 border-dashed border-[#E6E1D4] px-4 py-6 text-center text-sm text-[#3A3A3A] transition-colors hover:border-[#2F8F5C] hover:bg-[#E5F2EA]/30"
           >
-            <UploadIcon className="h-6 w-6 text-slate-400" />
+            <UploadIcon className="h-6 w-6 text-[#A0A0A0]" />
             <p>
-              <span className="font-medium text-slate-900">Tap to choose</span> or drag photos here
+              <span className="font-medium text-[#1A1A1A]">Tap to choose</span> or drag photos here
             </p>
-            <p className="text-[10px] text-slate-400">Images and videos · up to 25MB each</p>
+            <p className="text-[10px] text-[#A0A0A0]">Images and videos · up to 25MB each</p>
             <input
               ref={inputRef}
               type="file"
@@ -281,21 +286,21 @@ function QuickUploadModal({
 
           {files.length > 0 && (
             <div className="space-y-1.5">
-              <p className="text-[11px] font-medium uppercase tracking-wider text-slate-500">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">
                 Queued ({files.length})
               </p>
-              <ul className="divide-y divide-slate-100 rounded-md border border-slate-200">
+              <ul className="divide-y divide-[#EFEBE0] rounded-md border border-[#E6E1D4]">
                 {files.map((f, idx) => (
                   <li key={idx} className="flex items-center gap-2 px-3 py-2 text-sm">
-                    <span className="min-w-0 flex-1 truncate text-slate-700">{f.name}</span>
-                    <span className="flex-shrink-0 text-[10px] text-slate-400">
+                    <span className="min-w-0 flex-1 truncate text-[#3A3A3A]">{f.name}</span>
+                    <span className="flex-shrink-0 text-[10px] text-[#A0A0A0]">
                       {(f.size / 1024).toFixed(0)} KB
                     </span>
                     <button
                       type="button"
                       onClick={() => removeFile(idx)}
                       disabled={busy}
-                      className="text-slate-400 hover:text-red-600 disabled:opacity-30"
+                      className="text-[#A0A0A0] hover:text-[#C44545] disabled:opacity-30"
                       aria-label={`Remove ${f.name}`}
                     >
                       <X className="h-3.5 w-3.5" />
@@ -307,20 +312,20 @@ function QuickUploadModal({
           )}
 
           {/* Auto-analyse toggle */}
-          <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2.5">
+          <label className="flex cursor-pointer items-start gap-2 rounded-[14px] border border-[#E6E1D4] bg-[#FAF8F2] px-3 py-2.5">
             <input
               type="checkbox"
               checked={autoAnalyse}
               onChange={(e) => setAutoAnalyse(e.target.checked)}
-              className="mt-0.5 h-3.5 w-3.5 accent-emerald-600"
+              className="mt-0.5 h-3.5 w-3.5 accent-[#2F8F5C]"
               disabled={busy}
             />
             <div>
-              <p className="flex items-center gap-1.5 text-sm font-medium text-slate-900">
-                <Sparkles className="h-3.5 w-3.5 text-violet-600" />
+              <p className="flex items-center gap-1.5 text-sm font-medium text-[#1A1A1A]">
+                <Sparkles className="h-3.5 w-3.5 text-[#2F8F5C]" />
                 Analyse with AI after upload
               </p>
-              <p className="mt-0.5 text-[11px] text-slate-500">
+              <p className="mt-0.5 text-[11px] text-[#6B6B6B]">
                 Runs the mock detector against any pending photo on this project. New uploads auto-bump task progress when confidence is high.
               </p>
             </div>
@@ -328,10 +333,10 @@ function QuickUploadModal({
 
           {(error || success) && (
             <div
-              className={`rounded-md border px-3 py-2 text-xs ${
+              className={`rounded-[14px] border px-3 py-2 text-xs ${
                 error
-                  ? 'border-red-200 bg-red-50 text-red-700'
-                  : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                  ? 'border-[#C44545]/30 bg-[#FBE5E5] text-[#C44545]'
+                  : 'border-[#2F8F5C]/30 bg-[#E5F2EA] text-[#246F47]'
               }`}
             >
               <div className="flex items-center gap-1.5">
@@ -343,8 +348,8 @@ function QuickUploadModal({
 
         </div>
 
-        <footer className="flex flex-shrink-0 items-center justify-between gap-3 border-t border-slate-100 px-5 py-3">
-          <p className="text-[11px] text-slate-400">
+        <footer className="flex flex-shrink-0 items-center justify-between gap-3 border-t border-[#E6E1D4] px-5 py-3">
+          <p className="text-[11px] text-[#A0A0A0]">
             {supabaseConfigured() ? 'Uploads to Supabase Storage.' : 'Demo mode — files stay in this browser.'}
           </p>
           <div className="flex items-center gap-2">

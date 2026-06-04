@@ -43,6 +43,20 @@ export async function getPhaseStatus(
   return (data as PhaseStatusRow) ?? null;
 }
 
+/** Read every stored phase verdict for a project in a single query. Returns an
+ *  empty array when none exist yet (or Supabase isn't configured). Order is
+ *  unspecified — callers key the result by `phase`. Powers the all-phases
+ *  completion board so it never fixates on one phase. */
+export async function listPhaseStatuses(projectId: string): Promise<PhaseStatusRow[]> {
+  if (!supabaseConfigured()) return [];
+  const { data, error } = await supabase
+    .from('project_phase_status')
+    .select('*')
+    .eq('project_id', projectId);
+  if (error) throw error;
+  return (data as PhaseStatusRow[]) ?? [];
+}
+
 /** Ask Claude (server-side) to judge phase completion. Upserts the verdict
  *  row server-side and returns the fresh verdict. */
 export async function completePhase(
@@ -52,6 +66,22 @@ export async function completePhase(
   if (!supabaseConfigured()) throw new Error('Supabase is not configured.');
   const { data, error } = await supabase.functions.invoke('complete-phase', {
     body: { projectId, phase },
+  });
+  if (error) throw error;
+  return data as PhaseVerdictResult;
+}
+
+/** Custom-phase verdict (Tier-3 #13). Identifies the phase by its task-anchor
+ *  uuid instead of the 8-value enum; the server gathers evidence from confirmed
+ *  analyses on photos tagged to tasks under that anchor. Requires the matching
+ *  complete-phase deploy. */
+export async function completeCustomPhase(
+  projectId: string,
+  customPhaseId: string,
+): Promise<PhaseVerdictResult> {
+  if (!supabaseConfigured()) throw new Error('Supabase is not configured.');
+  const { data, error } = await supabase.functions.invoke('complete-phase', {
+    body: { projectId, customPhaseId },
   });
   if (error) throw error;
   return data as PhaseVerdictResult;

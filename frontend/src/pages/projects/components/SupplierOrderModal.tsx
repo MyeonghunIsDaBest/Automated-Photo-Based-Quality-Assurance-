@@ -6,6 +6,7 @@ import { useFeatureStore } from '../../../store/features';
 import { listSuppliers } from '../../../lib/api/suppliers';
 import { createTask, mapTaskRow } from '../../../lib/api/tasks';
 import { supabaseConfigured } from '../../../lib/supabase';
+import { FRAUNCES } from '../../gantt/components/ledger';
 import type { Supplier, ConstructionPhase } from '../../../types';
 import type { Project } from '../types';
 
@@ -170,27 +171,27 @@ export function SupplierOrderModal({ open, project, onClose }: SupplierOrderModa
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[#1A1A1A]/50 p-4">
       <form
         onSubmit={handleSubmit}
-        className="flex max-h-[90dvh] w-full max-w-xl flex-col overflow-hidden rounded-xl bg-white shadow-xl"
+        className="flex max-h-[90dvh] w-full max-w-xl flex-col overflow-hidden rounded-[14px] bg-white shadow-[0_8px_28px_rgba(20,20,20,0.12)]"
         style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}
       >
-        <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
+        <div className="flex items-start justify-between border-b border-[#E6E1D4] px-6 py-5">
           <div>
             <div className="flex items-center gap-2">
-              <Truck className="h-4 w-4 text-emerald-600" />
-              <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
+              <Truck className="h-4 w-4 text-[#2F8F5C]" />
+              <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-[#6B6B6B]">
                 Supplier order · {project.name}
               </p>
             </div>
             <h2
-              className="mt-1 text-xl font-medium text-slate-900"
-              style={{ fontFamily: "'Fraunces', Georgia, serif", letterSpacing: '-0.02em' }}
+              className="mt-1 text-xl font-medium text-[#1A1A1A]"
+              style={{ fontFamily: FRAUNCES, letterSpacing: '-0.02em' }}
             >
               Place a delivery order
             </h2>
-            <p className="mt-0.5 text-xs text-slate-500">
+            <p className="mt-0.5 text-xs text-[#6B6B6B]">
               Creates a Gantt task between the order and delivery dates so the team can
               track materials arriving on site.
             </p>
@@ -198,7 +199,7 @@ export function SupplierOrderModal({ open, project, onClose }: SupplierOrderModa
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+            className="rounded-lg p-2 text-[#6B6B6B] hover:bg-[#F0EDE4]"
           >
             <X className="h-5 w-5" />
           </button>
@@ -206,18 +207,18 @@ export function SupplierOrderModal({ open, project, onClose }: SupplierOrderModa
 
         <div className="editorial-scrollbox flex-1 space-y-4 px-6 py-5">
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-700">Supplier</label>
+            <label className="mb-1 block text-xs font-medium text-[#3A3A3A]">Supplier</label>
             {loadingSuppliers ? (
-              <div className="h-9 animate-pulse rounded-md bg-slate-100" />
+              <div className="h-9 animate-pulse rounded-md bg-[#F0EDE4]" />
             ) : suppliers.length === 0 ? (
-              <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+              <p className="rounded-md border border-[#F0D5A8] bg-[#F9EFD9] px-3 py-2 text-xs text-[#C8841E]">
                 No suppliers yet. Add one under <strong>Admin → Suppliers</strong> first.
               </p>
             ) : (
               <select
                 value={supplierId}
                 onChange={(e) => setSupplierId(e.target.value)}
-                className="block h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                className="block h-9 w-full rounded-md border border-[#E6E1D4] bg-white px-3 text-sm shadow-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
               >
                 {suppliers.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -230,7 +231,7 @@ export function SupplierOrderModal({ open, project, onClose }: SupplierOrderModa
 
           <div className="grid gap-4 sm:grid-cols-[2fr_1fr]">
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-700">
+              <label className="mb-1 block text-xs font-medium text-[#3A3A3A]">
                 Item / Material
               </label>
               <Input
@@ -240,7 +241,7 @@ export function SupplierOrderModal({ open, project, onClose }: SupplierOrderModa
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-700">Quantity</label>
+              <label className="mb-1 block text-xs font-medium text-[#3A3A3A]">Quantity</label>
               <Input
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
@@ -251,11 +252,11 @@ export function SupplierOrderModal({ open, project, onClose }: SupplierOrderModa
 
           <div className="grid gap-4 sm:grid-cols-3">
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-700">Phase</label>
+              <label className="mb-1 block text-xs font-medium text-[#3A3A3A]">Phase</label>
               <select
                 value={phase}
                 onChange={(e) => setPhase(e.target.value as ConstructionPhase)}
-                className="block h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm capitalize shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                className="block h-9 w-full rounded-md border border-[#E6E1D4] bg-white px-3 text-sm capitalize shadow-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
               >
                 {PHASES.map((p) => (
                   <option key={p} value={p} className="capitalize">
@@ -265,7 +266,7 @@ export function SupplierOrderModal({ open, project, onClose }: SupplierOrderModa
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-700">Order Date</label>
+              <label className="mb-1 block text-xs font-medium text-[#3A3A3A]">Order Date</label>
               <Input
                 type="date"
                 value={orderDate}
@@ -273,7 +274,7 @@ export function SupplierOrderModal({ open, project, onClose }: SupplierOrderModa
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-700">
+              <label className="mb-1 block text-xs font-medium text-[#3A3A3A]">
                 Delivery Date
               </label>
               <Input
@@ -285,13 +286,13 @@ export function SupplierOrderModal({ open, project, onClose }: SupplierOrderModa
           </div>
 
           {error && (
-            <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+            <p className="rounded-md border border-[#FBE5E5] bg-[#FBE5E5] px-3 py-2 text-xs text-[#C44545]">
               {error}
             </p>
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50/50 px-6 py-3">
+        <div className="flex items-center justify-end gap-2 border-t border-[#E6E1D4] bg-[#FAF8F2] px-6 py-3">
           <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>

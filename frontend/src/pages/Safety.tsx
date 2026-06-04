@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
   ArrowUpRight,
+  Bug,
   CheckCircle2,
   FileText,
   HardHat,
@@ -48,22 +49,24 @@ import {
   type SafetyIncident,
 } from '../lib/api/safetyIncidents';
 import { useSafetyRealtime } from '../lib/hooks/useSafetyRealtime';
+import { createDefect } from '../lib/api/defects';
 import type { SafetyFlag, SafetySeverity } from '../types';
+import { FRAUNCES } from './gantt/components/ledger';
 
 type TabKey = 'documents' | 'incidents' | 'hazards';
 
 const HAZARD_SEVERITY_TONE: Record<SafetySeverity, string> = {
-  critical: 'border-red-200 bg-red-50 text-red-700',
-  high:     'border-orange-200 bg-orange-50 text-orange-700',
-  medium:   'border-amber-200 bg-amber-50 text-amber-700',
-  low:      'border-slate-200 bg-slate-50 text-slate-700',
+  critical: 'border-[#F0BFBF] bg-[#FBE5E5] text-[#C44545]',
+  high:     'border-[#F3D0BE] bg-[#F6E7DA] text-[#B5602A]',
+  medium:   'border-[#F0D5A0] bg-[#F9EFD9] text-[#C8841E]',
+  low:      'border-[#E6E1D4] bg-[#FAF8F2] text-[#6B6B6B]',
 };
 
 const HAZARD_STATUS_TONE: Record<SafetyIncident['status'], string> = {
-  open:         'border-red-200 bg-red-50 text-red-700',
-  acknowledged: 'border-amber-200 bg-amber-50 text-amber-700',
-  resolved:     'border-emerald-200 bg-emerald-50 text-emerald-700',
-  dismissed:    'border-slate-200 bg-slate-50 text-slate-600',
+  open:         'border-[#F0BFBF] bg-[#FBE5E5] text-[#C44545]',
+  acknowledged: 'border-[#F0D5A0] bg-[#F9EFD9] text-[#C8841E]',
+  resolved:     'border-[#A8D0B8] bg-[#E5F2EA] text-[#246F47]',
+  dismissed:    'border-[#E6E1D4] bg-[#FAF8F2] text-[#6B6B6B]',
 };
 
 const HAZARD_FLAG_LABEL: Record<SafetyFlag, string> = {
@@ -76,16 +79,16 @@ const HAZARD_FLAG_LABEL: Record<SafetyFlag, string> = {
 };
 
 const SEVERITY_BADGE: Record<IncidentSeverity, string> = {
-  low: 'border-slate-200 bg-slate-50 text-slate-600',
-  medium: 'border-amber-200 bg-amber-50 text-amber-700',
-  high: 'border-orange-200 bg-orange-50 text-orange-700',
-  critical: 'border-red-200 bg-red-50 text-red-700',
+  low:      'border-[#E6E1D4] bg-[#FAF8F2] text-[#6B6B6B]',
+  medium:   'border-[#F0D5A0] bg-[#F9EFD9] text-[#C8841E]',
+  high:     'border-[#F3D0BE] bg-[#F6E7DA] text-[#B5602A]',
+  critical: 'border-[#F0BFBF] bg-[#FBE5E5] text-[#C44545]',
 };
 
 const STATUS_BADGE: Record<IncidentStatus, string> = {
-  open: 'border-red-200 bg-red-50 text-red-700',
-  investigating: 'border-amber-200 bg-amber-50 text-amber-700',
-  closed: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  open:          'border-[#F0BFBF] bg-[#FBE5E5] text-[#C44545]',
+  investigating: 'border-[#F0D5A0] bg-[#F9EFD9] text-[#C8841E]',
+  closed:        'border-[#A8D0B8] bg-[#E5F2EA] text-[#246F47]',
 };
 
 const fmtDate = (iso: string) =>
@@ -109,6 +112,7 @@ export default function Safety() {
   const currentUser = useAppStore((s) => s.currentUser);
   const currentProfile = useAppStore((s) => s.currentProfile);
   const project = useAppStore((s) => s.project);
+  const setNotification = useAppStore((s) => s.setNotification);
 
   // Bounce field-role users away from projects they weren't invited to.
   useProjectAccessGuard(project?.id);
@@ -183,6 +187,10 @@ export default function Safety() {
   const [hazardsLoading, setHazardsLoading] = useState(false);
   const [hazardsError, setHazardsError] = useState<string | null>(null);
   const [hazardActing, setHazardActing] = useState<string | null>(null);
+  // P4.3 — raise a QA defect from a hazard. Track in-flight + already-raised ids
+  // so the button gives feedback and avoids accidental same-session duplicates.
+  const [raisingDefectId, setRaisingDefectId] = useState<string | null>(null);
+  const [raisedDefectIds, setRaisedDefectIds] = useState<Set<string>>(new Set());
 
   useSafetyRealtime(canSeeHazards ? project.id : null);
 
@@ -211,6 +219,31 @@ export default function Safety() {
       setHazardsError(e instanceof Error ? e.message : 'Action failed.');
     } finally {
       setHazardActing(null);
+    }
+  };
+
+  // Raise a QA defect from an AI hazard — pre-linked to the hazard's photo, with
+  // the flags as the title and the (shared) severity carried across. The defect
+  // surfaces on the Gantt Defects board via realtime (P4.3).
+  const handleRaiseDefect = async (h: SafetyIncident) => {
+    setRaisingDefectId(h.id);
+    try {
+      const title = h.flags.length
+        ? `Safety: ${h.flags.map((f) => HAZARD_FLAG_LABEL[f] ?? f).join(', ')}`
+        : 'Safety hazard';
+      await createDefect(project.id, {
+        title,
+        description: h.notes ?? undefined,
+        severity: h.severity,
+        photoId: h.photoId ?? undefined,
+        createdBy: currentUser?.id ?? 'system',
+      });
+      setRaisedDefectIds((prev) => new Set(prev).add(h.id));
+      setNotification({ message: 'Defect raised from this hazard — see the Defects tab.', type: 'success' });
+    } catch (e) {
+      setNotification({ message: e instanceof Error ? e.message : 'Could not raise defect.', type: 'error' });
+    } finally {
+      setRaisingDefectId(null);
     }
   };
 
@@ -282,27 +315,27 @@ export default function Safety() {
   };
 
   return (
-    <div className="editorial-root min-h-full bg-[#FAFAF7]">
+    <div className="editorial-root min-h-full bg-[#FAF8F2]">
       {/* ─── Editorial Header ─── */}
-      <header className="relative overflow-hidden border-b border-slate-200/70 bg-white">
+      <header className="relative overflow-hidden border-b border-[#E6E1D4] bg-white">
         <div className="grid-bg absolute inset-0 opacity-50" />
-        <div className="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-emerald-100/40 blur-3xl" />
+        <div className="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-[#E5F2EA]/40 blur-3xl" />
 
-        <div className="relative px-4 pt-8 pb-6 sm:px-8 sm:pt-10">
+        <div className="relative mx-auto w-full max-w-[1400px] px-4 pt-8 pb-6 sm:px-8 sm:pt-10">
           <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between sm:gap-6">
             <div className="min-w-0">
-              <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
-                <span className="inline-block h-px w-6 bg-slate-400" />
+              <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-[#6B6B6B]">
+                <span className="inline-block h-px w-6 bg-[#A0A0A0]" />
                 Workspace · Safety
               </div>
               <h1
-                className="display text-2xl sm:text-4xl md:text-5xl font-medium leading-tight text-slate-900"
-                style={{ textWrap: 'balance' }}
+                className="display text-2xl sm:text-4xl md:text-5xl font-medium leading-tight text-[#1A1A1A]"
+                style={{ textWrap: 'balance', fontFamily: FRAUNCES }}
               >
-                Safety, <em className="font-normal italic text-emerald-700">on the record</em>.
+                Safety, <em className="font-normal italic text-[#2F8F5C]">on the record</em>.
               </h1>
-              <p className="mt-3 max-w-md text-sm sm:text-[15px] leading-relaxed text-slate-500">
-                OHS&E policies, SWMS for high-risk tasks, MSDS for hazardous materials, and a
+              <p className="mt-3 max-w-md text-sm sm:text-[15px] leading-relaxed text-[#6B6B6B]">
+                OHS&amp;E policies, SWMS for high-risk tasks, MSDS for hazardous materials, and a
                 paper trail of every injury and near miss. All in one place.
               </p>
             </div>
@@ -311,14 +344,14 @@ export default function Safety() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => openDocModal()}
-                  className="group flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition-all hover:border-slate-300 hover:text-slate-900 hover:shadow-sm"
+                  className="group flex items-center gap-2 rounded-full border border-[#E6E1D4] bg-white px-4 py-2.5 text-sm font-medium text-[#3A3A3A] transition-all hover:border-[#D8D2C4] hover:text-[#1A1A1A] hover:shadow-sm"
                 >
                   <Plus className="h-4 w-4" />
                   Upload document
                 </button>
                 <button
                   onClick={() => openIncidentModal()}
-                  className="group inline-flex items-center justify-center gap-2.5 whitespace-nowrap rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white transition-all hover:-translate-y-0.5 hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-700/20 active:bg-emerald-800"
+                  className="group inline-flex items-center justify-center gap-2.5 whitespace-nowrap rounded-full bg-[#2F8F5C] px-5 py-3 text-sm font-medium text-white transition-all hover:-translate-y-0.5 hover:bg-[#246F47] hover:shadow-lg hover:shadow-[#2F8F5C]/20 active:bg-[#246F47]"
                 >
                   <AlertTriangle className="h-4 w-4 transition-transform group-hover:-translate-y-px" />
                   Log incident
@@ -326,39 +359,39 @@ export default function Safety() {
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-xs font-medium uppercase tracking-[0.15em] text-slate-500">
-                <span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-400" />
+              <div className="flex items-center gap-2 rounded-full border border-[#E6E1D4] bg-white px-4 py-2.5 text-xs font-medium uppercase tracking-[0.15em] text-[#6B6B6B]">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#A0A0A0]" />
                 Read-only access
               </div>
             )}
           </div>
 
           {/* Stat strip */}
-          <div className="mt-10 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200 md:grid-cols-4">
-            <StatCell label="Active SWMS" value={stats.swms.toString()} caption="Per high-risk task" accent="#0F766E" />
-            <StatCell label="MSDS on file" value={stats.msds.toString()} caption="Hazardous materials" accent="#1E40AF" />
-            <StatCell label="Open incidents" value={stats.open.toString()} caption="Awaiting close-out" accent="#DC2626" />
+          <div className="mt-10 grid grid-cols-2 gap-px overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-[#E6E1D4] md:grid-cols-4">
+            <StatCell label="Active SWMS" value={stats.swms.toString()} caption="Per high-risk task" accent="#2F8F5C" />
+            <StatCell label="MSDS on file" value={stats.msds.toString()} caption="Hazardous materials" accent="#5B6B7B" />
+            <StatCell label="Open incidents" value={stats.open.toString()} caption="Awaiting close-out" accent="#C44545" />
             <StatCell
               label="Days since last incident"
               value={stats.lastIncident === null ? '—' : stats.lastIncident.toString()}
               caption={stats.lastIncident === null ? 'No incidents logged' : 'Across the project'}
-              accent="#0F172A"
+              accent="#1A1A1A"
             />
           </div>
         </div>
       </header>
 
       {/* ─── Body ─── */}
-      <div className="space-y-6 px-4 py-6 sm:px-8 sm:py-8">
+      <div className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-6 sm:px-8 sm:py-8">
         {/* Glossary card */}
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-          <div className="border-b border-slate-100 px-6 py-4">
-            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
+        <section className="overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_1px_2px_rgba(20,20,20,0.04)]">
+          <div className="border-b border-[#EFEBE0] px-6 py-4">
+            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-[#6B6B6B]">
               Quick reference
             </p>
-            <h2 className="display mt-1 text-xl font-medium text-slate-900">What goes where</h2>
+            <h2 className="display mt-1 text-xl font-medium text-[#1A1A1A]" style={{ fontFamily: FRAUNCES }}>What goes where</h2>
           </div>
-          <div className="grid gap-px bg-slate-100 sm:grid-cols-3">
+          <div className="grid gap-px bg-[#EFEBE0] sm:grid-cols-3">
             <GlossaryCell
               Icon={ShieldCheck}
               title="OHS&E"
@@ -378,7 +411,7 @@ export default function Safety() {
         </section>
 
         {/* Tabs */}
-        <div className="flex flex-wrap items-center gap-1 rounded-full border border-slate-200 bg-white p-1 shadow-sm">
+        <div className="flex flex-wrap items-center gap-1 rounded-full border border-[#E6E1D4] bg-white p-1 shadow-[0_1px_2px_rgba(20,20,20,0.04)]">
           <TabButton active={activeTab === 'documents'} onClick={() => setActiveTab('documents')}>
             <FileText className="h-3.5 w-3.5" />
             Documents
@@ -392,7 +425,7 @@ export default function Safety() {
               <ShieldCheck className="h-3.5 w-3.5" />
               AI hazards
               {hazards.filter((h) => h.status === 'open').length > 0 && (
-                <span className="ml-1 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
+                <span className="ml-1 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-[#C44545] px-1 text-[10px] font-semibold text-white">
                   {hazards.filter((h) => h.status === 'open').length}
                 </span>
               )}
@@ -401,8 +434,8 @@ export default function Safety() {
         </div>
 
         {activeTab === 'documents' && (
-          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-6 py-4">
+          <section className="overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_1px_2px_rgba(20,20,20,0.04)]">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#EFEBE0] px-6 py-4">
               <div className="flex flex-wrap items-center gap-1.5">
                 {(['all', 'ohse', 'swms', 'msds'] as const).map((cat) => {
                   const isActive = docFilter === cat;
@@ -416,12 +449,12 @@ export default function Safety() {
                       onClick={() => setDocFilter(cat)}
                       className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
                         isActive
-                          ? 'bg-slate-900 text-white shadow-sm'
-                          : 'text-slate-600 hover:bg-slate-100'
+                          ? 'bg-[#1A1A1A] text-white shadow-sm'
+                          : 'text-[#6B6B6B] hover:bg-[#FAF8F2]'
                       }`}
                     >
                       {cat === 'all' ? 'All' : CATEGORY_LABEL[cat]}
-                      <span className={isActive ? 'text-slate-300' : 'text-slate-400'}>{count}</span>
+                      <span className={isActive ? 'text-white/60' : 'text-[#A0A0A0]'}>{count}</span>
                     </button>
                   );
                 })}
@@ -429,11 +462,11 @@ export default function Safety() {
             </div>
 
             {filteredDocs.length === 0 ? (
-              <div className="flex flex-col items-center justify-center bg-slate-50/60 px-6 py-16 text-center">
-                <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
+              <div className="flex flex-col items-center justify-center bg-[#FAF8F2] px-6 py-16 text-center">
+                <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-[#6B6B6B]">
                   {docFilter === 'all' ? 'No safety documents yet' : `No ${CATEGORY_LABEL[docFilter as SafetyDocCategory]} documents yet`}
                 </p>
-                <p className="mt-2 max-w-md text-sm leading-relaxed text-slate-500">
+                <p className="mt-2 max-w-md text-sm leading-relaxed text-[#6B6B6B]">
                   {docFilter === 'all'
                     ? 'Upload OHS&E policies, SWMS, and MSDS so the crew has a single source of truth.'
                     : CATEGORY_BLURB[docFilter as SafetyDocCategory]}
@@ -443,7 +476,7 @@ export default function Safety() {
                     onClick={() =>
                       openDocModal(docFilter === 'all' ? undefined : (docFilter as SafetyDocCategory))
                     }
-                    className="mt-5 inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-xs font-medium text-white transition-all hover:bg-emerald-700"
+                    className="mt-5 inline-flex items-center gap-2 rounded-full bg-[#2F8F5C] px-4 py-2 text-xs font-medium text-white transition-all hover:bg-[#246F47]"
                   >
                     <Plus className="h-3.5 w-3.5" />
                     Upload {docFilter === 'all' ? 'document' : CATEGORY_LABEL[docFilter as SafetyDocCategory]}
@@ -451,7 +484,7 @@ export default function Safety() {
                 )}
               </div>
             ) : (
-              <ul className="divide-y divide-slate-100">
+              <ul className="divide-y divide-[#EFEBE0]">
                 {filteredDocs.map((doc) => (
                   <DocRow key={doc.id} doc={doc} canEdit={canEdit} onRemove={handleRemoveDocument} />
                 ))}
@@ -461,8 +494,8 @@ export default function Safety() {
         )}
 
         {activeTab === 'incidents' && (
-          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-6 py-4">
+          <section className="overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_1px_2px_rgba(20,20,20,0.04)]">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#EFEBE0] px-6 py-4">
               <div className="flex flex-wrap items-center gap-1.5">
                 {(['all', 'injury', 'near_miss'] as const).map((t) => {
                   const isActive = incidentFilter === t;
@@ -475,12 +508,12 @@ export default function Safety() {
                       onClick={() => setIncidentFilter(t)}
                       className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
                         isActive
-                          ? 'bg-slate-900 text-white shadow-sm'
-                          : 'text-slate-600 hover:bg-slate-100'
+                          ? 'bg-[#1A1A1A] text-white shadow-sm'
+                          : 'text-[#6B6B6B] hover:bg-[#FAF8F2]'
                       }`}
                     >
                       {label}
-                      <span className={isActive ? 'text-slate-300' : 'text-slate-400'}>{count}</span>
+                      <span className={isActive ? 'text-white/60' : 'text-[#A0A0A0]'}>{count}</span>
                     </button>
                   );
                 })}
@@ -488,11 +521,11 @@ export default function Safety() {
             </div>
 
             {filteredIncidents.length === 0 ? (
-              <div className="flex flex-col items-center justify-center bg-slate-50/60 px-6 py-16 text-center">
-                <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
+              <div className="flex flex-col items-center justify-center bg-[#FAF8F2] px-6 py-16 text-center">
+                <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-[#6B6B6B]">
                   No incidents logged
                 </p>
-                <p className="mt-2 max-w-md text-sm leading-relaxed text-slate-500">
+                <p className="mt-2 max-w-md text-sm leading-relaxed text-[#6B6B6B]">
                   Use the form to log an injury or a near miss. Near misses are gold — they catch
                   the things that almost went wrong before they do.
                 </p>
@@ -500,14 +533,14 @@ export default function Safety() {
                   <div className="mt-5 flex gap-2">
                     <button
                       onClick={() => openIncidentModal('injury')}
-                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-medium text-slate-700 transition-all hover:border-slate-300 hover:text-slate-900"
+                      className="inline-flex items-center gap-2 rounded-full border border-[#E6E1D4] px-4 py-2 text-xs font-medium text-[#3A3A3A] transition-all hover:border-[#D8D2C4] hover:text-[#1A1A1A]"
                     >
                       <Plus className="h-3.5 w-3.5" />
                       Injury form
                     </button>
                     <button
                       onClick={() => openIncidentModal('near_miss')}
-                      className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-xs font-medium text-white transition-all hover:bg-emerald-700"
+                      className="inline-flex items-center gap-2 rounded-full bg-[#2F8F5C] px-4 py-2 text-xs font-medium text-white transition-all hover:bg-[#246F47]"
                     >
                       <Plus className="h-3.5 w-3.5" />
                       Near miss form
@@ -516,7 +549,7 @@ export default function Safety() {
                 )}
               </div>
             ) : (
-              <ul className="divide-y divide-slate-100">
+              <ul className="divide-y divide-[#EFEBE0]">
                 {filteredIncidents.map((incident) => (
                   <IncidentRow
                     key={incident.id}
@@ -532,38 +565,38 @@ export default function Safety() {
       </div>
 
       {activeTab === 'hazards' && canSeeHazards && (
-        <section className="mx-4 mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white sm:mx-8">
-          <div className="border-b border-slate-100 px-6 py-4">
-            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
+        <section className="mx-4 mb-6 overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_1px_2px_rgba(20,20,20,0.04)] sm:mx-8">
+          <div className="border-b border-[#EFEBE0] px-6 py-4">
+            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-[#6B6B6B]">
               — AI-detected hazards
             </p>
-            <h3 className="display mt-1 text-lg font-medium text-slate-900">
+            <h3 className="display mt-1 text-lg font-medium text-[#1A1A1A]" style={{ fontFamily: FRAUNCES }}>
               Flags surfaced by photo analysis
             </h3>
-            <p className="mt-1 text-sm text-slate-500">
+            <p className="mt-1 text-sm text-[#6B6B6B]">
               Inserted automatically when the AI sees something on a site photo. Manager+ can
               acknowledge, resolve, or dismiss. Drives the realtime safety toast pipeline.
             </p>
           </div>
 
           {hazardsError && (
-            <div className="border-b border-red-100 bg-red-50 px-6 py-2 text-sm text-red-700">
+            <div className="border-b border-[#F0BFBF] bg-[#FBE5E5] px-6 py-2 text-sm text-[#C44545]">
               {hazardsError}
             </div>
           )}
 
           {hazardsLoading ? (
-            <div className="px-6 py-12 text-center text-sm text-slate-400">Loading…</div>
+            <div className="px-6 py-12 text-center text-sm text-[#A0A0A0]">Loading…</div>
           ) : hazards.length === 0 ? (
             <div className="px-6 py-16 text-center">
-              <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">No AI hazards yet</p>
-              <p className="mt-2 text-sm leading-relaxed text-slate-500">
+              <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-[#6B6B6B]">No AI hazards yet</p>
+              <p className="mt-2 text-sm leading-relaxed text-[#6B6B6B]">
                 The AI hasn't flagged anything on this project. Photos with critical or
                 high-severity flags surface here automatically once analysed.
               </p>
             </div>
           ) : (
-            <ul className="divide-y divide-slate-100">
+            <ul className="divide-y divide-[#EFEBE0]">
               {hazards.map((h) => (
                 <li
                   key={h.id}
@@ -572,7 +605,7 @@ export default function Safety() {
                     else incidentRefs.current.delete(h.id);
                   }}
                   className={`px-4 py-4 transition-colors sm:px-6 ${
-                    highlightedIncidentId === h.id ? 'bg-emerald-50/60 ring-2 ring-emerald-300 ring-inset' : ''
+                    highlightedIncidentId === h.id ? 'bg-[#E5F2EA]/60 ring-2 ring-[#A8D0B8] ring-inset' : ''
                   }`}
                 >
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -585,7 +618,7 @@ export default function Safety() {
                           {h.status}
                         </span>
                         {h.aiAnalysisId && (
-                          <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-blue-700">
+                          <span className="inline-flex rounded-full border border-[#EEF1F4] bg-[#EEF1F4] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[#5B6B7B]">
                             AI
                           </span>
                         )}
@@ -598,7 +631,7 @@ export default function Safety() {
                               e.preventDefault();
                               navigate(`/gallery?project=${h.projectId}&photo=${h.photoId}`);
                             }}
-                            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900"
+                            className="inline-flex items-center gap-1 rounded-full border border-[#E6E1D4] bg-white px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[#6B6B6B] transition-colors hover:bg-[#FAF8F2] hover:text-[#1A1A1A]"
                           >
                             <ImageIcon className="h-3 w-3" aria-hidden />
                             View photo
@@ -609,28 +642,39 @@ export default function Safety() {
                         {h.flags.map((f) => (
                           <span
                             key={f}
-                            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700"
+                            className="inline-flex items-center gap-1 rounded-full border border-[#E6E1D4] bg-white px-2 py-0.5 text-[11px] font-medium text-[#3A3A3A]"
                           >
-                            <AlertTriangle className="h-3 w-3 text-slate-500" aria-hidden />
+                            <AlertTriangle className="h-3 w-3 text-[#6B6B6B]" aria-hidden />
                             {HAZARD_FLAG_LABEL[f] ?? f}
                           </span>
                         ))}
                       </div>
                       {h.notes && (
-                        <p className="mt-2 line-clamp-2 text-sm text-slate-600">{h.notes}</p>
+                        <p className="mt-2 line-clamp-2 text-sm text-[#3A3A3A]">{h.notes}</p>
                       )}
-                      <p className="mt-1 text-[11px] text-slate-400">
+                      <p className="mt-1 text-[11px] text-[#A0A0A0]">
                         {fmtDateTime(h.createdAt)}
                       </p>
                     </div>
                     {canResolveHazards && h.status !== 'resolved' && h.status !== 'dismissed' && (
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        {canEdit && (
+                          <button
+                            type="button"
+                            disabled={raisingDefectId === h.id || raisedDefectIds.has(h.id)}
+                            onClick={() => handleRaiseDefect(h)}
+                            className="inline-flex items-center justify-center gap-1 rounded-full border border-[#E6E1D4] bg-white px-3 py-1.5 text-xs font-medium text-[#3A3A3A] hover:border-[#D8D2C4] disabled:opacity-50"
+                          >
+                            <Bug className="h-3.5 w-3.5" />
+                            {raisedDefectIds.has(h.id) ? 'Defect raised' : 'Raise defect'}
+                          </button>
+                        )}
                         {h.status === 'open' && (
                           <button
                             type="button"
                             disabled={hazardActing === h.id}
                             onClick={() => handleHazardAction(h.id, acknowledgeIncident)}
-                            className="inline-flex items-center justify-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-300 disabled:opacity-50"
+                            className="inline-flex items-center justify-center gap-1 rounded-full border border-[#E6E1D4] bg-white px-3 py-1.5 text-xs font-medium text-[#3A3A3A] hover:border-[#D8D2C4] disabled:opacity-50"
                           >
                             Acknowledge
                           </button>
@@ -639,7 +683,7 @@ export default function Safety() {
                           type="button"
                           disabled={hazardActing === h.id}
                           onClick={() => handleHazardAction(h.id, resolveIncident)}
-                          className="inline-flex items-center justify-center gap-1 rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                          className="inline-flex items-center justify-center gap-1 rounded-full bg-[#2F8F5C] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#246F47] disabled:opacity-50"
                         >
                           <CheckCircle2 className="h-3.5 w-3.5" />
                           Resolve
@@ -648,7 +692,7 @@ export default function Safety() {
                           type="button"
                           disabled={hazardActing === h.id}
                           onClick={() => handleHazardAction(h.id, dismissIncident)}
-                          className="inline-flex items-center justify-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                          className="inline-flex items-center justify-center gap-1 rounded-full border border-[#E6E1D4] bg-white px-3 py-1.5 text-xs font-medium text-[#6B6B6B] hover:bg-[#FAF8F2] disabled:opacity-50"
                         >
                           <XCircle className="h-3.5 w-3.5" />
                           Dismiss
@@ -699,9 +743,9 @@ function StatCell({
   return (
     <div className="relative overflow-hidden bg-white p-5">
       <div className="absolute left-0 top-0 h-px w-8" style={{ backgroundColor: accent }} />
-      <p className="text-[11px] font-medium uppercase tracking-[0.15em] text-slate-500">{label}</p>
-      <p className="num mt-2 text-4xl font-medium text-slate-900">{value}</p>
-      <p className="mt-1 text-xs text-slate-400">{caption}</p>
+      <p className="text-[11px] font-medium uppercase tracking-[0.15em] text-[#6B6B6B]">{label}</p>
+      <p className="num mt-2 text-4xl font-medium text-[#1A1A1A]" style={{ fontFamily: FRAUNCES }}>{value}</p>
+      <p className="mt-1 text-xs text-[#A0A0A0]">{caption}</p>
     </div>
   );
 }
@@ -717,11 +761,11 @@ function GlossaryCell({
 }) {
   return (
     <div className="bg-white p-5">
-      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-900 text-white">
+      <div className="flex h-9 w-9 items-center justify-center rounded-[9px] bg-[#1A1A1A] text-white">
         <Icon className="h-4 w-4" />
       </div>
-      <p className="display mt-3 text-base font-medium text-slate-900">{title}</p>
-      <p className="mt-1 text-xs leading-relaxed text-slate-500">{caption}</p>
+      <p className="display mt-3 text-base font-medium text-[#1A1A1A]" style={{ fontFamily: FRAUNCES }}>{title}</p>
+      <p className="mt-1 text-xs leading-relaxed text-[#6B6B6B]">{caption}</p>
     </div>
   );
 }
@@ -739,7 +783,7 @@ function TabButton({
     <button
       onClick={onClick}
       className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium transition-all ${
-        active ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+        active ? 'bg-[#1A1A1A] text-white shadow-sm' : 'text-[#6B6B6B] hover:text-[#1A1A1A]'
       }`}
     >
       {children}
@@ -759,28 +803,28 @@ function DocRow({
   const expired = doc.expiryDate ? new Date(doc.expiryDate) < new Date() : false;
 
   return (
-    <li className="flex flex-wrap items-center gap-4 px-6 py-4 hover:bg-slate-50/60">
-      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
+    <li className="flex flex-wrap items-center gap-4 px-6 py-4 hover:bg-[#FAF8F2]">
+      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-[11px] bg-[#F0EDE4] text-[#3A3A3A]">
         <FileText className="h-5 w-5" />
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-2">
-          <p className="display text-base font-medium text-slate-900">{doc.title}</p>
-          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.15em] text-slate-600">
+          <p className="display text-base font-medium text-[#1A1A1A]">{doc.title}</p>
+          <span className="rounded-full border border-[#E6E1D4] bg-[#FAF8F2] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.15em] text-[#6B6B6B]">
             {CATEGORY_LABEL[doc.category]}
           </span>
-          {doc.reference && <span className="text-xs text-slate-400">· {doc.reference}</span>}
+          {doc.reference && <span className="text-xs text-[#A0A0A0]">· {doc.reference}</span>}
         </div>
-        <p className="mt-0.5 text-xs text-slate-500">
+        <p className="mt-0.5 text-xs text-[#6B6B6B]">
           {doc.fileName}
           {doc.fileSizeKb ? ` · ${doc.fileSizeKb} KB` : ''} · uploaded by {doc.uploadedBy} on{' '}
           {fmtDate(doc.uploadedAt)}
         </p>
       </div>
       <div className="text-right">
-        <p className="text-xs text-slate-500">Effective {fmtDate(doc.effectiveDate)}</p>
+        <p className="text-xs text-[#6B6B6B]">Effective {fmtDate(doc.effectiveDate)}</p>
         {doc.expiryDate && (
-          <p className={`text-xs ${expired ? 'font-medium text-red-600' : 'text-slate-400'}`}>
+          <p className={`text-xs ${expired ? 'font-medium text-[#C44545]' : 'text-[#A0A0A0]'}`}>
             {expired ? 'Expired' : 'Expires'} {fmtDate(doc.expiryDate)}
           </p>
         )}
@@ -788,7 +832,7 @@ function DocRow({
       {canEdit && (
         <button
           onClick={() => onRemove(doc.id)}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
+          className="flex h-8 w-8 items-center justify-center rounded-md text-[#A0A0A0] transition-colors hover:bg-[#FBE5E5] hover:text-[#C44545]"
           title="Remove document"
         >
           <Trash2 className="h-4 w-4" />
@@ -808,18 +852,18 @@ function IncidentRow({
   onStatusChange: (id: string, status: IncidentStatus) => void;
 }) {
   return (
-    <li className="px-6 py-4 hover:bg-slate-50/60">
+    <li className="px-6 py-4 hover:bg-[#FAF8F2]">
       <div className="flex flex-wrap items-start gap-3">
         <div
-          className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl ${
-            incident.type === 'injury' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-700'
+          className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-[11px] ${
+            incident.type === 'injury' ? 'bg-[#FBE5E5] text-[#C44545]' : 'bg-[#F9EFD9] text-[#C8841E]'
           }`}
         >
           <AlertTriangle className="h-5 w-5" />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-2">
-            <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.15em] text-slate-600">
+            <span className="rounded-full border border-[#E6E1D4] bg-[#FAF8F2] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.15em] text-[#6B6B6B]">
               {incident.type === 'injury' ? 'Injury' : 'Near Miss'}
             </span>
             <span
@@ -832,10 +876,10 @@ function IncidentRow({
             >
               {STATUS_LABEL[incident.status]}
             </span>
-            <span className="text-xs text-slate-400">· {fmtDateTime(incident.occurredAt)}</span>
+            <span className="text-xs text-[#A0A0A0]">· {fmtDateTime(incident.occurredAt)}</span>
           </div>
-          <p className="mt-1.5 text-sm text-slate-900">{incident.description}</p>
-          <p className="mt-0.5 text-xs text-slate-500">
+          <p className="mt-1.5 text-sm text-[#1A1A1A]">{incident.description}</p>
+          <p className="mt-0.5 text-xs text-[#6B6B6B]">
             {incident.location}
             {incident.personInvolved ? ` · ${incident.personInvolved}` : ''}
             {' · '}reported by {incident.reportedBy}
@@ -843,34 +887,34 @@ function IncidentRow({
           {(incident.treatmentGiven ||
             incident.contributingFactors ||
             incident.recommendedAction) && (
-            <div className="mt-2 grid gap-1 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 sm:grid-cols-2">
+            <div className="mt-2 grid gap-1 rounded-[9px] bg-[#FAF8F2] px-3 py-2 text-xs text-[#3A3A3A] sm:grid-cols-2">
               {incident.treatmentGiven && (
                 <p>
-                  <span className="font-medium text-slate-700">Treatment:</span>{' '}
+                  <span className="font-medium text-[#1A1A1A]">Treatment:</span>{' '}
                   {incident.treatmentGiven}
                 </p>
               )}
               {incident.contributingFactors && (
                 <p>
-                  <span className="font-medium text-slate-700">Contributing factors:</span>{' '}
+                  <span className="font-medium text-[#1A1A1A]">Contributing factors:</span>{' '}
                   {incident.contributingFactors}
                 </p>
               )}
               {incident.recommendedAction && (
                 <p>
-                  <span className="font-medium text-slate-700">Recommended action:</span>{' '}
+                  <span className="font-medium text-[#1A1A1A]">Recommended action:</span>{' '}
                   {incident.recommendedAction}
                 </p>
               )}
               {incident.witnesses && (
                 <p>
-                  <span className="font-medium text-slate-700">Witnesses:</span>{' '}
+                  <span className="font-medium text-[#1A1A1A]">Witnesses:</span>{' '}
                   {incident.witnesses}
                 </p>
               )}
               {incident.photoNames && incident.photoNames.length > 0 && (
                 <p>
-                  <span className="font-medium text-slate-700">Photos:</span>{' '}
+                  <span className="font-medium text-[#1A1A1A]">Photos:</span>{' '}
                   {incident.photoNames.length} attached
                 </p>
               )}
@@ -881,7 +925,7 @@ function IncidentRow({
           <select
             value={incident.status}
             onChange={(e) => onStatusChange(incident.id, e.target.value as IncidentStatus)}
-            className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            className="h-8 rounded-md border border-[#E6E1D4] bg-white px-2 text-xs font-medium text-[#3A3A3A] shadow-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
           >
             <option value="open">Open</option>
             <option value="investigating">Investigating</option>

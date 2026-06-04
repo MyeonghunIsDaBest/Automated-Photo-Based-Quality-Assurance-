@@ -2,18 +2,14 @@ import { useState } from 'react';
 import { useAppStore } from '../store';
 import { useFeatureStore } from '../store/features';
 import { User, Bell, Shield, Mail, Phone, Globe, Lock, Key, Save, Eye, EyeOff } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
-import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Badge } from '../components/ui/badge';
-import { Separator } from '../components/ui/separator';
-import { EditorialPageHeader } from '../components/editorial';
+import { EditorialPageHeader, PageContainer, StatStrip, StatCell } from '../components/editorial';
+import { FRAUNCES } from './gantt/components/ledger';
 
 export default function Settings() {
   const { currentUser, setNotification } = useAppStore();
   const { userSettings, updateUserSettings, updatePassword, updateEmail } = useFeatureStore();
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'notifications'>('profile');
-  
+
   // Profile state. Prefer the real authenticated identity (currentUser) over
   // the store defaults so a live user never sees demo placeholder values.
   const [profileForm, setProfileForm] = useState({
@@ -35,6 +31,24 @@ export default function Settings() {
 
   // Notifications state
   const [notifications, setNotifications] = useState(userSettings.notifications);
+
+  // At-a-glance account metrics for the header stat strip — all derived from
+  // data already in scope (no new queries). Profile completion counts the
+  // filled identity fields; notifications shows enabled / total.
+  const profileFields = [
+    profileForm.fullName, profileForm.phone, profileForm.timezone,
+    profileForm.language, userSettings.email,
+  ];
+  const profilePct = Math.round(
+    (profileFields.filter((v) => (v ?? '').toString().trim().length > 0).length / profileFields.length) * 100,
+  );
+  const notifsTotal = Object.keys(notifications).length;
+  const notifsOn = Object.values(notifications).filter(Boolean).length;
+  const TZ_LABEL: Record<string, string> = {
+    'America/New_York': 'ET', 'America/Chicago': 'CT', 'America/Denver': 'MT',
+    'America/Los_Angeles': 'PT', UTC: 'UTC',
+  };
+  const tzLabel = TZ_LABEL[profileForm.timezone] ?? (profileForm.timezone.split('/').pop() ?? '—');
 
   const handleProfileSave = () => {
     updateUserSettings({
@@ -60,7 +74,7 @@ export default function Settings() {
 
   const handlePasswordUpdate = async () => {
     setSecurityMessage(null);
-    
+
     if (securityForm.newPassword !== securityForm.confirmPassword) {
       setSecurityMessage({ type: 'error', text: 'New passwords do not match' });
       return;
@@ -88,7 +102,7 @@ export default function Settings() {
   ];
 
   return (
-    <div className="editorial-root min-h-full bg-[#FAFAF7]">
+    <div className="editorial-root min-h-full bg-[#FAF8F2]">
       <EditorialPageHeader
         eyebrow="Workspace · Account"
         title="Your"
@@ -96,13 +110,21 @@ export default function Settings() {
         description="Profile, security, and the notification rules that decide which events page you."
       />
 
-      <div className="mx-auto max-w-5xl px-4 py-8 sm:px-8 sm:py-10">
+      <PageContainer className="space-y-6">
+        {/* At-a-glance account health. */}
+        <StatStrip>
+          <StatCell label="Profile" value={`${profilePct}%`} caption="Complete" accent="emerald" />
+          <StatCell label="Notifications" value={`${notifsOn}/${notifsTotal}`} caption="Enabled" accent="blue" />
+          <StatCell label="Safety alerts" value={notifications.safetyAlerts ? 'On' : 'Off'} caption="Immediate pages" accent={notifications.safetyAlerts ? 'emerald' : 'rose'} />
+          <StatCell label="Timezone" value={tzLabel} caption="Local time" accent="slate" />
+        </StatStrip>
+
         {/* Sidebar stacks above the panel on mobile; sits beside it on md+. */}
         <div className="flex flex-col gap-6 md:flex-row">
           {/* Sidebar */}
-          <div className="md:w-64 md:flex-shrink-0">
-            <Card>
-              <CardContent className="p-4">
+          <div className="md:w-64 md:shrink-0">
+            <div className="rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_1px_2px_rgba(20,20,20,0.04)]">
+              <div className="p-4">
                 <nav className="space-y-1">
                   {tabs.map((tab) => {
                     const Icon = tab.icon;
@@ -110,10 +132,10 @@ export default function Settings() {
                       <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
-                        className={`flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-medium transition-colors ${
+                        className={`flex w-full items-center gap-3 rounded-[9px] px-4 py-3 text-left text-sm font-medium transition-colors ${
                           activeTab === tab.id
-                            ? 'bg-emerald-50 text-emerald-700'
-                            : 'text-slate-600 hover:bg-slate-50'
+                            ? 'bg-[#E5F2EA] text-[#246F47]'
+                            : 'text-[#6B6B6B] hover:bg-[#FAF8F2]'
                         }`}
                       >
                         <Icon className="h-5 w-5" />
@@ -123,7 +145,7 @@ export default function Settings() {
                   })}
                 </nav>
 
-                <Separator className="my-4" />
+                <div className="my-4 h-px bg-[#E6E1D4]" />
 
                 {/* User Info */}
                 <div className="text-center">
@@ -131,70 +153,76 @@ export default function Settings() {
                     <img
                       src={currentUser.avatar}
                       alt={currentUser.fullName}
-                      className="mx-auto h-20 w-20 rounded-full"
+                      className="mx-auto h-20 w-20 rounded-full border-2 border-[#E6E1D4]"
                     />
                   )}
-                  <p className="mt-3 font-medium text-slate-900">{currentUser?.fullName}</p>
-                  <p className="text-sm text-slate-500">{currentUser?.email}</p>
-                  <Badge className="mt-2" variant="default">
+                  <p className="mt-3 font-medium text-[#1A1A1A]" style={{ fontFamily: FRAUNCES }}>{currentUser?.fullName}</p>
+                  <p className="text-sm text-[#6B6B6B]">{currentUser?.email}</p>
+                  <span className="mt-2 inline-flex items-center rounded-full bg-[#E5F2EA] px-2.5 py-0.5 text-xs font-medium text-[#246F47]">
                     {currentUser?.role}
-                  </Badge>
+                  </span>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </div>
 
           {/* Content */}
           <div className="flex-1">
             {activeTab === 'profile' && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Profile Information</CardTitle>
-                  <CardDescription>Update your personal information and preferences</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="grid gap-6 sm:grid-cols-2">
+              <div className="rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_1px_2px_rgba(20,20,20,0.04)]">
+                <div className="border-b border-[#EFEBE0] px-6 py-4">
+                  <h3 className="text-base font-semibold text-[#1A1A1A]" style={{ fontFamily: FRAUNCES }}>Profile Information</h3>
+                  <p className="mt-0.5 text-sm text-[#6B6B6B]">Update your personal information and preferences</p>
+                </div>
+                <div className="p-6 space-y-6">
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     <div>
-                      <label className="mb-2 block text-sm font-medium text-slate-700">
+                      <label className="mb-2 block text-sm font-medium text-[#3A3A3A]">
                         <User className="mr-2 inline h-4 w-4" />
                         Full Name
                       </label>
-                      <Input
+                      <input
                         value={profileForm.fullName}
                         onChange={(e) => setProfileForm({ ...profileForm, fullName: e.target.value })}
+                        className="flex h-10 w-full rounded-lg border border-[#E6E1D4] bg-white px-3 py-2 text-base text-[#1A1A1A] placeholder:text-[#A0A0A0] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] sm:text-sm"
                       />
                     </div>
 
                     <div>
-                      <label className="mb-2 block text-sm font-medium text-slate-700">
+                      <label className="mb-2 block text-sm font-medium text-[#3A3A3A]">
                         <Mail className="mr-2 inline h-4 w-4" />
                         Email
                       </label>
-                      <Input value={userSettings.email} disabled className="bg-slate-50" />
-                      <p className="mt-1 text-xs text-slate-500">Change email in Security tab</p>
+                      <input
+                        value={userSettings.email}
+                        disabled
+                        className="flex h-10 w-full rounded-lg border border-[#E6E1D4] bg-[#FAF8F2] px-3 py-2 text-base text-[#6B6B6B] cursor-not-allowed sm:text-sm"
+                      />
+                      <p className="mt-1 text-xs text-[#6B6B6B]">Change email in Security tab</p>
                     </div>
 
                     <div>
-                      <label className="mb-2 block text-sm font-medium text-slate-700">
+                      <label className="mb-2 block text-sm font-medium text-[#3A3A3A]">
                         <Phone className="mr-2 inline h-4 w-4" />
                         Phone Number
                       </label>
-                      <Input
+                      <input
                         value={profileForm.phone}
                         onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
                         placeholder="+1 (555) 123-4567"
+                        className="flex h-10 w-full rounded-lg border border-[#E6E1D4] bg-white px-3 py-2 text-base text-[#1A1A1A] placeholder:text-[#A0A0A0] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] sm:text-sm"
                       />
                     </div>
 
                     <div>
-                      <label className="mb-2 block text-sm font-medium text-slate-700">
+                      <label className="mb-2 block text-sm font-medium text-[#3A3A3A]">
                         <Globe className="mr-2 inline h-4 w-4" />
                         Timezone
                       </label>
                       <select
                         value={profileForm.timezone}
                         onChange={(e) => setProfileForm({ ...profileForm, timezone: e.target.value })}
-                        className="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                        className="flex h-10 w-full rounded-lg border border-[#E6E1D4] bg-white px-3 py-2 text-base text-[#1A1A1A] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] sm:text-sm"
                       >
                         <option value="America/New_York">Eastern Time (ET)</option>
                         <option value="America/Chicago">Central Time (CT)</option>
@@ -205,13 +233,13 @@ export default function Settings() {
                     </div>
 
                     <div>
-                      <label className="mb-2 block text-sm font-medium text-slate-700">
+                      <label className="mb-2 block text-sm font-medium text-[#3A3A3A]">
                         Language
                       </label>
                       <select
                         value={profileForm.language}
                         onChange={(e) => setProfileForm({ ...profileForm, language: e.target.value })}
-                        className="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                        className="flex h-10 w-full rounded-lg border border-[#E6E1D4] bg-white px-3 py-2 text-base text-[#1A1A1A] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] sm:text-sm"
                       >
                         <option value="en">English</option>
                         <option value="es">Spanish</option>
@@ -221,68 +249,82 @@ export default function Settings() {
                   </div>
 
                   <div className="flex justify-end gap-3">
-                    <Button variant="outline">Cancel</Button>
-                    <Button onClick={handleProfileSave}>
-                      <Save className="mr-2 h-4 w-4" />
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1.5 rounded-full border border-[#E6E1D4] bg-white px-4 py-2 text-sm font-medium text-[#3A3A3A] transition-colors hover:bg-[#FAF8F2]"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleProfileSave}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-[#2F8F5C] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#246F47]"
+                    >
+                      <Save className="h-4 w-4" />
                       Save Changes
-                    </Button>
+                    </button>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             )}
 
             {activeTab === 'security' && (
               <div className="space-y-6">
                 {/* Email Update */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Email Address</CardTitle>
-                    <CardDescription>Update your email address for account notifications</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex gap-4">
-                      <Input
+                <div className="rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_1px_2px_rgba(20,20,20,0.04)]">
+                  <div className="border-b border-[#EFEBE0] px-6 py-4">
+                    <h3 className="text-base font-semibold text-[#1A1A1A]" style={{ fontFamily: FRAUNCES }}>Email Address</h3>
+                    <p className="mt-0.5 text-sm text-[#6B6B6B]">Update your email address for account notifications</p>
+                  </div>
+                  <div className="p-6">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
+                      <input
                         type="email"
                         value={securityForm.email}
                         onChange={(e) => setSecurityForm({ ...securityForm, email: e.target.value })}
                         autoComplete="email"
-                        className="flex-1"
+                        className="flex h-10 flex-1 rounded-lg border border-[#E6E1D4] bg-white px-3 py-2 text-base text-[#1A1A1A] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] sm:text-sm"
                       />
-                      <Button onClick={handleEmailUpdate}>
+                      <button
+                        type="button"
+                        onClick={handleEmailUpdate}
+                        className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-full bg-[#2F8F5C] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#246F47] sm:min-h-0"
+                      >
                         Update Email
-                      </Button>
+                      </button>
                     </div>
                     {securityMessage && (
-                      <p className={`mt-2 text-sm ${securityMessage.type === 'success' ? 'text-emerald-600' : 'text-red-600'}`}>
+                      <p className={`mt-2 text-sm ${securityMessage.type === 'success' ? 'text-[#246F47]' : 'text-[#C44545]'}`}>
                         {securityMessage.text}
                       </p>
                     )}
-                  </CardContent>
-                </Card>
+                  </div>
+                </div>
 
                 {/* Password Update */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Change Password</CardTitle>
-                    <CardDescription>Ensure your account is secure with a strong password</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
+                <div className="rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_1px_2px_rgba(20,20,20,0.04)]">
+                  <div className="border-b border-[#EFEBE0] px-6 py-4">
+                    <h3 className="text-base font-semibold text-[#1A1A1A]" style={{ fontFamily: FRAUNCES }}>Change Password</h3>
+                    <p className="mt-0.5 text-sm text-[#6B6B6B]">Ensure your account is secure with a strong password</p>
+                  </div>
+                  <div className="p-6 space-y-4">
                     <div>
-                      <label className="mb-2 block text-sm font-medium text-slate-700">
+                      <label className="mb-2 block text-sm font-medium text-[#3A3A3A]">
                         <Lock className="mr-2 inline h-4 w-4" />
                         Current Password
                       </label>
                       <div className="relative">
-                        <Input
+                        <input
                           type={showPasswords ? 'text' : 'password'}
                           value={securityForm.currentPassword}
                           onChange={(e) => setSecurityForm({ ...securityForm, currentPassword: e.target.value })}
                           autoComplete="current-password"
+                          className="flex h-10 w-full rounded-lg border border-[#E6E1D4] bg-white px-3 py-2 text-base text-[#1A1A1A] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] sm:text-sm"
                         />
                         <button
                           type="button"
                           onClick={() => setShowPasswords(!showPasswords)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-[#A0A0A0] hover:text-[#6B6B6B]"
                         >
                           {showPasswords ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </button>
@@ -290,220 +332,226 @@ export default function Settings() {
                     </div>
 
                     <div>
-                      <label className="mb-2 block text-sm font-medium text-slate-700">
+                      <label className="mb-2 block text-sm font-medium text-[#3A3A3A]">
                         <Key className="mr-2 inline h-4 w-4" />
                         New Password
                       </label>
-                      <Input
+                      <input
                         type={showPasswords ? 'text' : 'password'}
                         value={securityForm.newPassword}
                         onChange={(e) => setSecurityForm({ ...securityForm, newPassword: e.target.value })}
                         autoComplete="new-password"
                         placeholder="Minimum 8 characters"
+                        className="flex h-10 w-full rounded-lg border border-[#E6E1D4] bg-white px-3 py-2 text-base text-[#1A1A1A] placeholder:text-[#A0A0A0] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] sm:text-sm"
                       />
                     </div>
 
                     <div>
-                      <label className="mb-2 block text-sm font-medium text-slate-700">
+                      <label className="mb-2 block text-sm font-medium text-[#3A3A3A]">
                         Confirm New Password
                       </label>
-                      <Input
+                      <input
                         type={showPasswords ? 'text' : 'password'}
                         value={securityForm.confirmPassword}
                         onChange={(e) => setSecurityForm({ ...securityForm, confirmPassword: e.target.value })}
                         autoComplete="new-password"
                         placeholder="Re-enter new password"
+                        className="flex h-10 w-full rounded-lg border border-[#E6E1D4] bg-white px-3 py-2 text-base text-[#1A1A1A] placeholder:text-[#A0A0A0] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] sm:text-sm"
                       />
                     </div>
 
                     {securityMessage && (
-                      <p className={`text-sm ${securityMessage.type === 'success' ? 'text-emerald-600' : 'text-red-600'}`}>
+                      <p className={`text-sm ${securityMessage.type === 'success' ? 'text-[#246F47]' : 'text-[#C44545]'}`}>
                         {securityMessage.text}
                       </p>
                     )}
 
                     <div className="flex justify-end">
-                      <Button onClick={handlePasswordUpdate}>
-                        <Lock className="mr-2 h-4 w-4" />
+                      <button
+                        type="button"
+                        onClick={handlePasswordUpdate}
+                        className="inline-flex items-center gap-1.5 rounded-full bg-[#2F8F5C] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#246F47]"
+                      >
+                        <Lock className="h-4 w-4" />
                         Update Password
-                      </Button>
+                      </button>
                     </div>
-                  </CardContent>
-                </Card>
+                  </div>
+                </div>
 
                 {/* Security Tips */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Security Tips</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ul className="space-y-2 text-sm text-slate-600">
+                <div className="rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_1px_2px_rgba(20,20,20,0.04)]">
+                  <div className="border-b border-[#EFEBE0] px-6 py-4">
+                    <h3 className="text-base font-semibold text-[#1A1A1A]" style={{ fontFamily: FRAUNCES }}>Security Tips</h3>
+                  </div>
+                  <div className="p-6">
+                    <ul className="space-y-2 text-sm text-[#3A3A3A]">
                       <li className="flex items-start gap-2">
-                        <span className="text-emerald-500">✓</span>
+                        <span className="text-[#2F8F5C]">✓</span>
                         Use a password with at least 8 characters
                       </li>
                       <li className="flex items-start gap-2">
-                        <span className="text-emerald-500">✓</span>
+                        <span className="text-[#2F8F5C]">✓</span>
                         Include a mix of letters, numbers, and symbols
                       </li>
                       <li className="flex items-start gap-2">
-                        <span className="text-emerald-500">✓</span>
+                        <span className="text-[#2F8F5C]">✓</span>
                         Don't reuse passwords from other accounts
                       </li>
                       <li className="flex items-start gap-2">
-                        <span className="text-emerald-500">✓</span>
+                        <span className="text-[#2F8F5C]">✓</span>
                         Change your password regularly
                       </li>
                     </ul>
-                  </CardContent>
-                </Card>
+                  </div>
+                </div>
               </div>
             )}
 
             {activeTab === 'notifications' && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Notification Preferences</CardTitle>
-                  <CardDescription>Choose which notifications you want to receive</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex items-center justify-between rounded-lg border border-slate-200 p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="rounded-lg bg-slate-100 p-2">
-                        <Mail className="h-5 w-5 text-slate-600" />
+              <div className="rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_1px_2px_rgba(20,20,20,0.04)]">
+                <div className="border-b border-[#EFEBE0] px-6 py-4">
+                  <h3 className="text-base font-semibold text-[#1A1A1A]" style={{ fontFamily: FRAUNCES }}>Notification Preferences</h3>
+                  <p className="mt-0.5 text-sm text-[#6B6B6B]">Choose which notifications you want to receive</p>
+                </div>
+                <div className="p-6 grid gap-3 sm:grid-cols-2">
+                  <div className="flex items-center justify-between gap-3 rounded-[11px] border border-[#E6E1D4] p-4">
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                      <div className="shrink-0 rounded-[9px] bg-[#FAF8F2] p-2 border border-[#E6E1D4]">
+                        <Mail className="h-5 w-5 text-[#6B6B6B]" />
                       </div>
-                      <div>
-                        <p className="font-medium text-slate-900">Email Notifications</p>
-                        <p className="text-sm text-slate-500">Receive daily progress summaries via email</p>
+                      <div className="min-w-0">
+                        <p className="font-medium text-[#1A1A1A]">Email Notifications</p>
+                        <p className="text-sm text-[#6B6B6B]">Receive daily progress summaries via email</p>
                       </div>
                     </div>
-                    <label className="relative inline-flex cursor-pointer items-center">
+                    <label className="relative inline-flex shrink-0 cursor-pointer items-center">
                       <input
                         type="checkbox"
                         checked={notifications.emailNotifications}
                         onChange={() => handleNotificationToggle('emailNotifications')}
                         className="peer sr-only"
                       />
-                      <div className="peer h-6 w-11 rounded-full bg-slate-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all peer-checked:bg-emerald-600 peer-checked:after:translate-x-full" />
+                      <div className="peer h-6 w-11 rounded-full bg-[#E6E1D4] after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all peer-checked:bg-[#2F8F5C] peer-checked:after:translate-x-full" />
                     </label>
                   </div>
 
-                  <div className="flex items-center justify-between rounded-lg border border-slate-200 p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="rounded-lg bg-red-100 p-2">
-                        <Shield className="h-5 w-5 text-red-600" />
+                  <div className="flex items-center justify-between gap-3 rounded-[11px] border border-[#E6E1D4] p-4">
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                      <div className="shrink-0 rounded-[9px] bg-[#FBE5E5] p-2 border border-[#F0BFBF]">
+                        <Shield className="h-5 w-5 text-[#C44545]" />
                       </div>
-                      <div>
-                        <p className="font-medium text-slate-900">Safety Alerts</p>
-                        <p className="text-sm text-slate-500">Immediate notification for safety concerns</p>
+                      <div className="min-w-0">
+                        <p className="font-medium text-[#1A1A1A]">Safety Alerts</p>
+                        <p className="text-sm text-[#6B6B6B]">Immediate notification for safety concerns</p>
                       </div>
                     </div>
-                    <label className="relative inline-flex cursor-pointer items-center">
+                    <label className="relative inline-flex shrink-0 cursor-pointer items-center">
                       <input
                         type="checkbox"
                         checked={notifications.safetyAlerts}
                         onChange={() => handleNotificationToggle('safetyAlerts')}
                         className="peer sr-only"
                       />
-                      <div className="peer h-6 w-11 rounded-full bg-slate-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all peer-checked:bg-emerald-600 peer-checked:after:translate-x-full" />
+                      <div className="peer h-6 w-11 rounded-full bg-[#E6E1D4] after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all peer-checked:bg-[#2F8F5C] peer-checked:after:translate-x-full" />
                     </label>
                   </div>
 
-                  <div className="flex items-center justify-between rounded-lg border border-slate-200 p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="rounded-lg bg-blue-100 p-2">
-                        <Bell className="h-5 w-5 text-blue-600" />
+                  <div className="flex items-center justify-between gap-3 rounded-[11px] border border-[#E6E1D4] p-4">
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                      <div className="shrink-0 rounded-[9px] bg-[#EEF1F4] p-2 border border-[#D8D2C4]">
+                        <Bell className="h-5 w-5 text-[#5B6B7B]" />
                       </div>
-                      <div>
-                        <p className="font-medium text-slate-900">Task Updates</p>
-                        <p className="text-sm text-slate-500">Get notified when tasks are updated</p>
+                      <div className="min-w-0">
+                        <p className="font-medium text-[#1A1A1A]">Task Updates</p>
+                        <p className="text-sm text-[#6B6B6B]">Get notified when tasks are updated</p>
                       </div>
                     </div>
-                    <label className="relative inline-flex cursor-pointer items-center">
+                    <label className="relative inline-flex shrink-0 cursor-pointer items-center">
                       <input
                         type="checkbox"
                         checked={notifications.taskUpdates}
                         onChange={() => handleNotificationToggle('taskUpdates')}
                         className="peer sr-only"
                       />
-                      <div className="peer h-6 w-11 rounded-full bg-slate-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all peer-checked:bg-emerald-600 peer-checked:after:translate-x-full" />
+                      <div className="peer h-6 w-11 rounded-full bg-[#E6E1D4] after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all peer-checked:bg-[#2F8F5C] peer-checked:after:translate-x-full" />
                     </label>
                   </div>
 
-                  <div className="flex items-center justify-between rounded-lg border border-slate-200 p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="rounded-lg bg-purple-100 p-2">
-                        <svg className="h-5 w-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <div className="flex items-center justify-between gap-3 rounded-[11px] border border-[#E6E1D4] p-4">
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                      <div className="shrink-0 rounded-[9px] bg-[#F0EDE4] p-2 border border-[#E6E1D4]">
+                        <svg className="h-5 w-5 text-[#3A3A3A]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                         </svg>
                       </div>
-                      <div>
-                        <p className="font-medium text-slate-900">Chat Messages</p>
-                        <p className="text-sm text-slate-500">Receive notifications for new messages</p>
+                      <div className="min-w-0">
+                        <p className="font-medium text-[#1A1A1A]">Chat Messages</p>
+                        <p className="text-sm text-[#6B6B6B]">Receive notifications for new messages</p>
                       </div>
                     </div>
-                    <label className="relative inline-flex cursor-pointer items-center">
+                    <label className="relative inline-flex shrink-0 cursor-pointer items-center">
                       <input
                         type="checkbox"
                         checked={notifications.chatMessages}
                         onChange={() => handleNotificationToggle('chatMessages')}
                         className="peer sr-only"
                       />
-                      <div className="peer h-6 w-11 rounded-full bg-slate-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all peer-checked:bg-emerald-600 peer-checked:after:translate-x-full" />
+                      <div className="peer h-6 w-11 rounded-full bg-[#E6E1D4] after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all peer-checked:bg-[#2F8F5C] peer-checked:after:translate-x-full" />
                     </label>
                   </div>
 
-                  <div className="flex items-center justify-between rounded-lg border border-slate-200 p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="rounded-lg bg-amber-100 p-2">
-                        <svg className="h-5 w-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <div className="flex items-center justify-between gap-3 rounded-[11px] border border-[#E6E1D4] p-4">
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                      <div className="shrink-0 rounded-[9px] bg-[#F9EFD9] p-2 border border-[#F0D5A0]">
+                        <svg className="h-5 w-5 text-[#C8841E]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                         </svg>
                       </div>
-                      <div>
-                        <p className="font-medium text-slate-900">AI Analysis Alerts</p>
-                        <p className="text-sm text-slate-500">Get notified when AI completes analysis</p>
+                      <div className="min-w-0">
+                        <p className="font-medium text-[#1A1A1A]">AI Analysis Alerts</p>
+                        <p className="text-sm text-[#6B6B6B]">Get notified when AI completes analysis</p>
                       </div>
                     </div>
-                    <label className="relative inline-flex cursor-pointer items-center">
+                    <label className="relative inline-flex shrink-0 cursor-pointer items-center">
                       <input
                         type="checkbox"
                         checked={notifications.aiAnalysis}
                         onChange={() => handleNotificationToggle('aiAnalysis')}
                         className="peer sr-only"
                       />
-                      <div className="peer h-6 w-11 rounded-full bg-slate-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all peer-checked:bg-emerald-600 peer-checked:after:translate-x-full" />
+                      <div className="peer h-6 w-11 rounded-full bg-[#E6E1D4] after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all peer-checked:bg-[#2F8F5C] peer-checked:after:translate-x-full" />
                     </label>
                   </div>
 
-                  <div className="flex items-center justify-between rounded-lg border border-slate-200 p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="rounded-lg bg-green-100 p-2">
-                        <svg className="h-5 w-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <div className="flex items-center justify-between gap-3 rounded-[11px] border border-[#E6E1D4] p-4">
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                      <div className="shrink-0 rounded-[9px] bg-[#E5F2EA] p-2 border border-[#A8D0B8]">
+                        <svg className="h-5 w-5 text-[#246F47]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
                       </div>
-                      <div>
-                        <p className="font-medium text-slate-900">Weekly Reports</p>
-                        <p className="text-sm text-slate-500">Auto-generated weekly progress reports</p>
+                      <div className="min-w-0">
+                        <p className="font-medium text-[#1A1A1A]">Weekly Reports</p>
+                        <p className="text-sm text-[#6B6B6B]">Auto-generated weekly progress reports</p>
                       </div>
                     </div>
-                    <label className="relative inline-flex cursor-pointer items-center">
+                    <label className="relative inline-flex shrink-0 cursor-pointer items-center">
                       <input
                         type="checkbox"
                         checked={notifications.weeklyReports}
                         onChange={() => handleNotificationToggle('weeklyReports')}
                         className="peer sr-only"
                       />
-                      <div className="peer h-6 w-11 rounded-full bg-slate-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all peer-checked:bg-emerald-600 peer-checked:after:translate-x-full" />
+                      <div className="peer h-6 w-11 rounded-full bg-[#E6E1D4] after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all peer-checked:bg-[#2F8F5C] peer-checked:after:translate-x-full" />
                     </label>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             )}
           </div>
         </div>
-      </div>
+      </PageContainer>
     </div>
   );
 }

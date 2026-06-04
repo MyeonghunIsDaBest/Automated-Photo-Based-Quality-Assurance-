@@ -12,6 +12,7 @@ export type TabId =
   | 'overview'
   | 'tasks'
   | 'review'        // AI analysis hub — Mock-AI runner + review queue
+  | 'crew'          // legacy deep-link target → resolves to 'site_diary' (merged in)
   | 'site_diary'
   | 'punch_list'
   | 'supplier'      // merged: orders + deliveries + invoices + warranties
@@ -20,9 +21,9 @@ export type TabId =
   | 'invoices'      // legacy deep-link target → resolves to 'supplier'
   | 'warranties'    // legacy deep-link target → resolves to 'supplier'
   | 'inventory'     // was 'selections'
-  | 'plans'
-  | 'files'
-  | 'uploads';
+  | 'plans'         // legacy deep-link target → resolves to 'files'
+  | 'files'         // merged Plans + Uploads
+  | 'uploads';      // legacy deep-link target → resolves to 'files'
 
 // ─── Site Diary ──────────────────────────────────────────────────────────
 // Replaces the old `DailyLog` shape. A single diary entry per project per
@@ -92,6 +93,12 @@ export type OrderStatus =
   | 'received'     // all line items received in full
   | 'cancelled';
 
+// Supplier-side response to a PO (role-experiences) — DECOUPLED from the
+// procurement OrderStatus above. The PM still drives confirmed/partial/received;
+// this captures whether the supplier has Accepted / put on Hold / Declined the
+// order addressed to them. Persisted via `updateOrderResponse` (migration 47).
+export type SupplierResponse = 'pending' | 'accepted' | 'held' | 'declined';
+
 export interface OrderLineItem {
   id: string;
   description: string;
@@ -117,6 +124,10 @@ export interface Order {
   notes?: string;
   lineItems: OrderLineItem[];
   // totalAmount is derived (sum of qty × unitCost); not stored.
+  // Supplier response (read path always safe; write is deploy-gated to migration 47).
+  supplierResponse?: SupplierResponse;
+  supplierRespondedAt?: string;
+  supplierResponseNote?: string;
 }
 
 export interface DeliveryLineItem {

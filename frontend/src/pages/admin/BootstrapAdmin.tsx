@@ -4,6 +4,7 @@ import { ShieldCheck, ArrowUpRight } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { supabase, supabaseConfigured } from '../../lib/supabase';
 import { canSeeAdminDashboard } from '../../lib/permissions';
+import { FRAUNCES } from '../gantt/components/ledger';
 
 // Standalone page used to mint the very first admin on a fresh Supabase
 // project. Calls the SECURITY DEFINER `claim_first_admin()` RPC defined
@@ -83,35 +84,36 @@ export default function BootstrapAdmin() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FAFAF7] p-6">
+    <div className="min-h-screen bg-[#FAF8F2] p-6">
       <div className="mx-auto flex min-h-[80vh] max-w-2xl items-center justify-center">
-        <div className="relative w-full overflow-hidden rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
-          <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-emerald-100/60 blur-3xl" />
+        <div className="relative w-full overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white p-10 text-center shadow-[0_8px_28px_rgba(20,20,20,0.08)]">
+          {/* Warm sage glow instead of cold emerald blur */}
+          <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-[#E5F2EA]/50 blur-3xl" />
           <div className="relative">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900 text-white">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-[14px] bg-[#1A1A1A] text-white shadow-[0_4px_14px_rgba(20,20,20,0.20)]">
               <ShieldCheck className="h-6 w-6" />
             </div>
-            <p className="mt-6 text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
+            <p className="mt-6 text-[11px] font-medium uppercase tracking-[0.2em] text-[#6B6B6B]">
               First-time setup
             </p>
             <h1
-              className="mt-2 text-3xl font-semibold text-slate-900"
-              style={{ fontFamily: "'Fraunces', Georgia, serif", letterSpacing: '-0.02em' }}
+              className="mt-2 text-3xl font-semibold text-[#1A1A1A]"
+              style={{ fontFamily: FRAUNCES, letterSpacing: '-0.02em' }}
             >
               Claim the first admin seat.
             </h1>
-            <p className="mt-3 text-sm leading-relaxed text-slate-500">
+            <p className="mt-3 text-sm leading-relaxed text-[#6B6B6B]">
               No admin account exists yet. Promote{' '}
-              <span className="font-medium text-slate-900">
+              <span className="font-medium text-[#1A1A1A]">
                 {currentProfile?.email ?? 'your account'}
               </span>{' '}
-              to <span className="font-medium">Company Admin</span> so you can manage users,
+              to <span className="font-medium text-[#1A1A1A]">Company Admin</span> so you can manage users,
               projects, and roles. This works once — every later promotion goes through
               the admin dashboard.
             </p>
 
             {error && (
-              <p className="mt-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-700">
+              <p className="mt-5 rounded-[14px] border border-[#C44545]/30 bg-[#FBE5E5] px-4 py-2.5 text-xs text-[#C44545]">
                 {error}
               </p>
             )}
@@ -120,22 +122,22 @@ export default function BootstrapAdmin() {
               <button
                 onClick={handleClaim}
                 disabled={submitting || hasAdmin === null}
-                className="group flex items-center gap-2 rounded-full bg-slate-900 px-5 py-2.5 text-sm font-medium text-white transition-all hover:-translate-y-0.5 hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-700/20 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-slate-900 disabled:hover:shadow-none"
+                className="group flex items-center gap-2 rounded-full bg-[#2F8F5C] px-5 py-2.5 text-sm font-medium text-white transition-all hover:-translate-y-0.5 hover:bg-[#246F47] hover:shadow-[0_6px_16px_rgba(47,143,92,0.28)] disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-[#2F8F5C] disabled:hover:shadow-none"
               >
                 {submitting ? 'Promoting…' : 'Claim Company Admin'}
                 <ArrowUpRight className="h-3.5 w-3.5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
               </button>
               <button
                 onClick={() => navigate('/dashboard')}
-                className="rounded-full border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-600 transition-all hover:border-slate-300 hover:text-slate-900"
+                className="rounded-full border border-[#E6E1D4] bg-white px-5 py-2.5 text-sm font-medium text-[#3A3A3A] transition-all hover:bg-[#FAF8F2] hover:border-[#D8D2C4]"
               >
                 Skip for now
               </button>
             </div>
 
-            <p className="mt-6 text-[11px] text-slate-400">
+            <p className="mt-6 text-[11px] text-[#A0A0A0]">
               If you'd rather use SQL, see{' '}
-              <code className="rounded bg-slate-100 px-1 py-0.5 text-slate-600">
+              <code className="rounded bg-[#F0EDE4] px-1 py-0.5 text-[#3A3A3A]">
                 supabase/migrations/0009_bootstrap_admin.sql.example
               </code>
               .

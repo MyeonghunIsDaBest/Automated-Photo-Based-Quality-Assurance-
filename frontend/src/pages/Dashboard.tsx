@@ -3,25 +3,32 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAppStore } from '../store';
 import { useFeatureStore } from '../store/features';
-import { useDashboardStats, useActiveJobs, useUpcomingTasks } from '../store/dashboard';
+import { useDashboardStats, useActiveJobs } from '../store/dashboard';
 import { useProjectActivity } from '../lib/hooks/useProjectActivity';
 import { useDashboardCounts } from '../lib/hooks/useDashboardCounts';
 import { useWeather, type WeatherTone } from '../lib/hooks/useWeather';
+import { uploadPhoto } from '../lib/api/photos';
+import { supabaseConfigured } from '../lib/supabase';
 import ActivityFeed from '../components/activity/ActivityFeed';
 import ActivityDetailModal from '../components/activity/ActivityDetailModal';
 import type { ActivityEvent } from '../lib/activity/types';
-import { SECURITY_GROUP_LABELS, canConfirmAIAnalysis, canViewSafetyIncident } from '../lib/permissions';
+import { SECURITY_GROUP_LABELS, canConfirmAIAnalysis, canViewSafetyIncident, canViewFinance, dashboardLens } from '../lib/permissions';
 import type { SecurityGroup } from '../types';
 import {
   ArrowUpRight,
+  Camera,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Cloud,
+  CloudOff,
   CloudFog,
   CloudLightning,
   CloudRain,
   CloudSnow,
   Image as ImageIcon,
-  Mic,
+  ListChecks,
+  RotateCw,
   ShieldCheck,
   Sparkles,
   Sun,
@@ -29,22 +36,18 @@ import {
   Wind,
   Eye,
 } from 'lucide-react';
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  Line,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
-import { differenceInCalendarDays, format, parseISO } from 'date-fns';
+import { PlannedVsActualTrend, plannedPctNow } from '../components/charts/PlannedVsActualTrend';
+import { useProjectCrew } from '../lib/hooks/useProjectCrew';
+import { format, parseISO } from 'date-fns';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import CountUp from '../components/ui/CountUp';
 import WhatsNewCard from '../components/dashboard/WhatsNewCard';
 import ProjectStatusCard from '../components/ai/ProjectStatusCard';
 import DailyBriefCard from '../components/ai/DailyBriefCard';
+import AskAnythingCard from '../components/dashboard/AskAnythingCard';
+import PortfolioRollupBand from '../components/dashboard/PortfolioRollupBand';
+import FinanceSummaryCard from '../components/dashboard/FinanceSummaryCard';
+import { FRAUNCES } from './gantt/components/ledger';
 
 // Per-role capability summary shown in the welcome strip. Keep it short —
 // the source of truth for actual permissions is `lib/permissions.ts`.
@@ -55,89 +58,35 @@ const ROLE_BLURB: Record<SecurityGroup, string> = {
   project_manager:  'Plan + scheduling. Edit Gantt, run reports, edit tasks.',
   site_manager:     'Run a single site. Update tasks, manage photos and comments.',
   worker:           'Field crew. Upload photos against tasks, leave notes, view your assignments.',
+  dev:              'Developer — hidden superuser with full access across every surface.',
   stakeholder:      'Read-only client view. Track progress and review reports for your linked projects.',
   supplier:         'Read-only vendor view. See your scoped orders, deliveries, invoices, and warranties.',
 };
 
 const STATUS_BADGE: Record<string, string> = {
-  in_progress: 'border-blue-200 bg-blue-50 text-blue-700',
-  complete:    'border-emerald-200 bg-emerald-50 text-emerald-700',
-  delayed:     'border-red-200 bg-red-50 text-red-700',
-  blocked:     'border-amber-200 bg-amber-50 text-amber-700',
-  not_started: 'border-slate-200 bg-slate-50 text-slate-600',
+  in_progress: 'border-[#C7D2DC] bg-[#EEF1F4] text-[#5B6B7B]',
+  complete:    'border-[#A8D0B8] bg-[#E5F2EA] text-[#246F47]',
+  delayed:     'border-[#F0BFBF] bg-[#FBE5E5] text-[#C44545]',
+  blocked:     'border-[#F0D5A0] bg-[#F9EFD9] text-[#C8841E]',
+  not_started: 'border-[#E6E1D4] bg-[#FAF8F2] text-[#6B6B6B]',
 };
 
 const PHASE_ACCENT: Record<string, string> = {
-  excavation: 'bg-amber-500',
-  foundation: 'bg-slate-500',
-  framing:    'bg-orange-500',
-  roofing:    'bg-rose-500',
-  electrical: 'bg-yellow-500',
-  plumbing:   'bg-sky-500',
-  drywall:    'bg-violet-500',
-  finishing:  'bg-emerald-500',
+  excavation: 'bg-[#C8841E]',
+  foundation: 'bg-[#5B6B7B]',
+  framing:    'bg-[#B5602A]',
+  roofing:    'bg-[#C26A6A]',
+  electrical: 'bg-[#D69A2E]',
+  plumbing:   'bg-[#5B8AA0]',
+  drywall:    'bg-[#8A7AA0]',
+  finishing:  'bg-[#2F8F5C]',
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
-// Deterministic pseudo-random walk so each KPI gets a unique sparkline
-// shape that lands at the live value, without flickering between renders.
-function seededTrend(value: number, seed: number, n = 12): number[] {
-  const out: number[] = [];
-  let s = (seed * 9301 + 49297) % 233280;
-  const rnd = () => {
-    s = (s * 9301 + 49297) % 233280;
-    return s / 233280;
-  };
-  let v = value * (0.55 + rnd() * 0.2);
-  for (let i = 0; i < n - 1; i++) {
-    v += (value - v) * 0.22 + (rnd() - 0.5) * Math.max(value, 1) * 0.1;
-    out.push(Math.max(0, v));
-  }
-  out.push(value);
-  return out;
-}
-
-// Lightweight inline-SVG sparkline. Used in every KPI cell — keeps the
-// header strip lean (no per-cell Recharts ResponsiveContainer overhead).
-function Sparkline({ data, color, width = 64, height = 20 }: {
-  data: number[];
-  color: string;
-  width?: number;
-  height?: number;
-}) {
-  if (data.length < 2) return null;
-  const min = Math.min(...data);
-  const max = Math.max(...data);
-  const range = max - min || 1;
-  const points = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * width;
-    const y = height - ((v - min) / range) * height;
-    return `${x.toFixed(2)},${y.toFixed(2)}`;
-  }).join(' ');
-  return (
-    <svg width={width} height={height} className="overflow-visible" aria-hidden>
-      <polyline
-        fill="none"
-        stroke={color}
-        strokeWidth={1.4}
-        points={points}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <circle
-        cx={width}
-        cy={height - ((data[data.length - 1] - min) / range) * height}
-        r={1.8}
-        fill={color}
-      />
-    </svg>
-  );
-}
-
 // Donut-style circular progress used on Active-Jobs rows. Pure SVG so it
 // renders inline without a chart library wrapper.
-function ProgressRing({ percent, size = 44, stroke = 4, color = '#10B981' }: {
+function ProgressRing({ percent, size = 44, stroke = 4, color = '#2F8F5C' }: {
   percent: number;
   size?: number;
   stroke?: number;
@@ -154,7 +103,7 @@ function ProgressRing({ percent, size = 44, stroke = 4, color = '#10B981' }: {
         cy={size / 2}
         r={r}
         fill="none"
-        stroke="#E2E8F0"
+        stroke="#EFEBE0"
         strokeWidth={stroke}
       />
       <circle
@@ -174,14 +123,14 @@ function ProgressRing({ percent, size = 44, stroke = 4, color = '#10B981' }: {
 // Map a weather tone to a matching lucide icon + accent color.
 function weatherIconFor(tone: WeatherTone) {
   switch (tone) {
-    case 'sun':    return { Icon: Sun,            color: 'text-amber-400' };
-    case 'partly': return { Icon: Cloud,          color: 'text-amber-400' };
-    case 'cloud':  return { Icon: Cloud,          color: 'text-slate-400' };
-    case 'rain':   return { Icon: CloudRain,      color: 'text-sky-500' };
-    case 'storm':  return { Icon: CloudLightning, color: 'text-violet-500' };
-    case 'snow':   return { Icon: CloudSnow,      color: 'text-slate-300' };
-    case 'fog':    return { Icon: CloudFog,       color: 'text-slate-300' };
-    default:       return { Icon: Cloud,          color: 'text-slate-400' };
+    case 'sun':    return { Icon: Sun,            color: 'text-[#D69A2E]' };
+    case 'partly': return { Icon: Cloud,          color: 'text-[#D69A2E]' };
+    case 'cloud':  return { Icon: Cloud,          color: 'text-[#A0A0A0]' };
+    case 'rain':   return { Icon: CloudRain,      color: 'text-[#5B8AA0]' };
+    case 'storm':  return { Icon: CloudLightning, color: 'text-[#8A7AA0]' };
+    case 'snow':   return { Icon: CloudSnow,      color: 'text-[#D8D2C4]' };
+    case 'fog':    return { Icon: CloudFog,       color: 'text-[#D8D2C4]' };
+    default:       return { Icon: Cloud,          color: 'text-[#A0A0A0]' };
   }
 }
 
@@ -204,13 +153,73 @@ function tradeChip(group: SecurityGroup): string {
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { users, zones, project, currentProfile } = useAppStore();
+  const { users, zones, project, currentProfile, currentUser, setNotification } = useAppStore();
   const stats = useDashboardStats();
-  const activeJobs = useActiveJobs(3);
-  const upcomingTasks = useUpcomingTasks(4);
+  // Role-adaptive lens (Phase 1): construction_mgr → portfolio rollup band,
+  // project_manager + admins → command (+ finance summary), site_manager →
+  // site-ops (no finance). Managers/admins all share this one Dashboard.
+  const lens = dashboardLens(currentProfile);
+  const showFinanceSummary = lens === 'command' && canViewFinance(currentUser);
+  const activeJobs = useActiveJobs(6);
   const progressTrend = useFeatureStore((s) => s.progressHistory);
-  const recentActivity = useProjectActivity(project.id, { limit: 8 });
+  const allTasks = useFeatureStore((s) => s.tasks);
+  // Fetch more activity than we show so "Show more" can reveal without a refetch.
+  const recentActivity = useProjectActivity(project.id, { limit: 20 });
   const dashboardCounts = useDashboardCounts(project.id);
+
+  // Photo-capture card (replaces the floating FAB) — opens the device camera /
+  // file picker and uploads straight to this project, same path as Uploads.
+  const captureInputRef = useRef<HTMLInputElement | null>(null);
+  const [capturing, setCapturing] = useState(false);
+  const handleCapture = async (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    if (!supabaseConfigured()) {
+      setNotification({ message: 'Uploads need Supabase configured.', type: 'error' });
+      return;
+    }
+    setCapturing(true);
+    try {
+      await uploadPhoto({ file, projectId: project.id });
+      setNotification({ message: 'Photo uploaded — AI analysis queued.', type: 'success' });
+    } catch (e) {
+      setNotification({ message: e instanceof Error ? e.message : 'Upload failed.', type: 'error' });
+    } finally {
+      setCapturing(false);
+      if (captureInputRef.current) captureInputRef.current.value = '';
+    }
+  };
+
+  // Recent-activity expand/collapse.
+  const [showAllActivity, setShowAllActivity] = useState(false);
+  const ACTIVITY_PREVIEW = 5;
+  const visibleActivity = showAllActivity ? recentActivity : recentActivity.slice(0, ACTIVITY_PREVIEW);
+
+  // Task progress breakdown — live from the SAME task store the Gantt reads
+  // (project-scoped, phase anchors excluded), so the % here matches /gantt/tasks.
+  const taskBreakdown = useMemo(() => {
+    const pts = allTasks.filter((t) => t.projectId === project.id && !t.isPhaseAnchor);
+    const by = (s: string) => pts.filter((t) => t.status === s).length;
+    const total = pts.length;
+    const pct = total ? Math.round(pts.reduce((s, t) => s + t.percentComplete, 0) / total) : 0;
+    return {
+      total, pct,
+      complete: by('complete'),
+      inProgress: by('in_progress'),
+      notStarted: by('not_started'),
+      delayed: by('delayed'),
+      blocked: by('blocked'),
+    };
+  }, [allTasks, project.id]);
+
+  const taskSegments = useMemo(() => [
+    { label: 'Complete',    value: taskBreakdown.complete,   color: '#2F8F5C' },
+    { label: 'In progress', value: taskBreakdown.inProgress, color: '#C8841E' },
+    { label: 'Not started', value: taskBreakdown.notStarted, color: '#D8D2C4' },
+    { label: 'Delayed',     value: taskBreakdown.delayed,    color: '#C44545' },
+    { label: 'Blocked',     value: taskBreakdown.blocked,    color: '#5B6B7B' },
+  ], [taskBreakdown]);
+  const taskDenom = Math.max(1, taskBreakdown.total);
 
   const canSeeHazardTile = canViewSafetyIncident(currentProfile);
   const canSeeReviewTile = canConfirmAIAnalysis(currentProfile);
@@ -263,11 +272,10 @@ export default function Dashboard() {
     ? [currentProfile.firstName, currentProfile.lastName].filter(Boolean).join(' ').trim()
     : '';
 
-  // Crew on site — derive from team count. Without a real time-clock the
-  // "checked in" number is a 73% approximation.
-  const crewTotal = users.length;
-  const crewOnSite = Math.max(1, Math.round(crewTotal * 0.73));
-  const crewAvatars = users.slice(0, 5);
+  // Crew on site — the real project roster + live clock-ins (same source as
+  // Site Diary → Crew), via shared useProjectCrew. No more org-wide guesswork.
+  const { roster: crewRoster, total: crewTotal, onSite: crewOnSite } = useProjectCrew(project.id);
+  const crewAvatars = crewRoster.slice(0, 5);
   const crewExtra = Math.max(0, crewTotal - crewAvatars.length);
 
   // Zone activity — counts active tasks per zone for the last-24h heatmap.
@@ -284,114 +292,63 @@ export default function Dashboard() {
   }, [zones, project.id]);
   const zoneMax = Math.max(1, ...zoneActivity.map((z) => z.count));
 
-  // Build the Planned vs Actual chart data. Reuses progressHistory for the
-  // actual line; the "planned" series is a straight-line target from 0 →
-  // the latest actual value over the same number of points. Replace with a
-  // real planned-progress feed once we capture baselines.
-  //
-  // progressHistory is workspace-wide (not per-project), so for a brand-new
-  // project with 0 tasks we return [] — otherwise the chart would render the
-  // demo seed curve (35 → 67%) on a project that has no progress yet.
-  const plannedVsActual = useMemo(() => {
-    if (stats.totalTasks === 0 || progressTrend.length === 0) return [];
-    const last = progressTrend[progressTrend.length - 1]?.progress ?? 0;
-    return progressTrend.map((row, i) => ({
-      date: row.date,
-      actual: row.progress,
-      planned: ((i + 1) / progressTrend.length) * last * 1.05, // slight over-plan
-    }));
-  }, [progressTrend, stats.totalTasks]);
-
-  // Stable sparkline series — one per KPI tile. Seeded on the live value
-  // so each tile gets its own shape without flickering between renders.
-  const sparks = useMemo(() => ({
-    tasks:    seededTrend(stats.tasksComplete, 7,  12),
-    progress: seededTrend(stats.overallProgress, 13, 12),
-    photos:   seededTrend(stats.photosThisWeek, 23, 12),
-    days:     seededTrend(stats.daysRemaining, 31, 12),
-    hazards:  seededTrend(Math.max(1, dashboardCounts.openHazards * 4), 37, 12),
-    review:   seededTrend(Math.max(1, dashboardCounts.pendingReview * 3), 41, 12),
-  }), [stats, dashboardCounts.openHazards, dashboardCounts.pendingReview]);
+  // Schedule variance vs the linear planned baseline — the SAME source the Gantt
+  // Overview trend uses (plannedPctNow), so the Dashboard and Overview agree.
+  // variance = actual overall − where the schedule says we should be by today.
+  const plannedNow = plannedPctNow(project.startDate, project.endDate);
+  const variance = stats.overallProgress - plannedNow;
+  const behindSchedule = stats.delayedTasks > 0 || variance < 0;
 
   return (
     <motion.div
-      className="editorial-root min-h-full bg-[#FAFAF7]"
+      className="editorial-root min-h-full bg-[#FAF8F2]"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1, transition: { duration: 0.3 } }}
     >
-      {/* ─── Alert ribbon — site-wide live conditions ─────────────── */}
-      <div className="border-b border-slate-800 bg-slate-900 text-white">
-        <div className="flex items-center gap-6 overflow-x-auto px-4 py-2 text-[11px] font-medium sm:px-8">
-          <span className="flex flex-shrink-0 items-center gap-1.5">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
-            </span>
-            <span className="tracking-[0.18em] text-emerald-300">LIVE</span>
-            <span className="text-slate-300">·</span>
-            <span className="text-slate-200">L15 begins 13:30</span>
-          </span>
-          <span className="hidden flex-shrink-0 text-slate-300 lg:inline">
-            <span className="text-amber-300">Weather alert</span> · Thursday rain, pour postponed
-          </span>
-          <span className="hidden flex-shrink-0 text-slate-300 lg:inline">
-            <span className="text-slate-100">Inspection</span> · MEP rough-in Friday 09:00
-          </span>
-          {dashboardCounts.openHazards > 0 && (
-            <span className="flex-shrink-0 text-slate-300">
-              <span className="text-red-300">{dashboardCounts.openHazards} hazard{dashboardCounts.openHazards === 1 ? '' : 's'}</span> waiting confirmation
-            </span>
-          )}
-          <span className="ml-auto hidden flex-shrink-0 items-center gap-1 text-slate-400 lg:flex">
-            <kbd className="rounded border border-slate-700 bg-slate-800 px-1.5 py-0.5 text-[10px] tracking-wider">⌘K</kbd>
-          </span>
-        </div>
-      </div>
-
       {/* ─── Editorial header ─────────────────────────────────────── */}
-      <header className="border-b border-slate-200/70 bg-white">
-        <div className="relative px-4 pt-8 pb-6 sm:px-8 sm:pt-10">
+      <header className="border-b border-[#E6E1D4] bg-white">
+        <div className="relative mx-auto w-full max-w-[1400px] px-4 pt-8 pb-6 sm:px-8 sm:pt-10">
           {/* Hero */}
-          <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
-            <span className="inline-block h-px w-6 bg-slate-400" />
+          <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em]" style={{ color: '#6B6B6B' }}>
+            <span className="inline-block h-px w-6" style={{ backgroundColor: '#A0A0A0' }} />
             Workspace · {project.name}
           </div>
           <h1
-            className="display text-2xl font-medium leading-[0.95] tracking-[-0.02em] text-slate-900 sm:text-5xl md:text-6xl"
-            style={{ textWrap: 'balance' }}
+            className="display text-2xl font-medium leading-[0.95] tracking-[-0.02em] sm:text-5xl md:text-6xl"
+            style={{ textWrap: 'balance', color: '#1A1A1A', fontFamily: FRAUNCES }}
           >
-            The <em className="font-normal italic text-emerald-700">brief</em>.
+            The <em className="font-normal italic" style={{ color: '#246F47' }}>brief</em>.
           </h1>
-          <p className="mt-3 max-w-md text-[15px] leading-relaxed text-slate-500">
+          <p className="mt-3 max-w-md text-[15px] leading-relaxed" style={{ color: '#6B6B6B' }}>
             Today's pulse — what's moving, what's overdue, what's worth your attention before
             the next coffee.
           </p>
 
           {/* Identity strip */}
           {roleLabel && (
-            <div className="mt-6 flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white">
+            <div className="mt-6 flex flex-wrap items-center gap-3 rounded-[14px] border border-[#E6E1D4] bg-white px-4 py-3 shadow-sm">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#1A1A1A] text-white">
                 <ShieldCheck className="h-4 w-4" />
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-baseline gap-2">
-                  <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-slate-400">
+                  <span className="text-[10px] font-medium uppercase tracking-[0.2em]" style={{ color: '#A0A0A0' }}>
                     Signed in as
                   </span>
-                  <span className="display text-sm font-medium text-slate-900">
+                  <span className="display text-sm font-medium" style={{ color: '#1A1A1A' }}>
                     {displayName || currentProfile?.email}
                   </span>
-                  <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-emerald-700">
+                  <span className="rounded-full bg-[#E5F2EA] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider" style={{ color: '#246F47' }}>
                     {roleLabel}
                   </span>
                 </div>
-                <p className="mt-1 text-xs leading-relaxed text-slate-500">{roleBlurb}</p>
+                <p className="mt-1 text-xs leading-relaxed" style={{ color: '#6B6B6B' }}>{roleBlurb}</p>
               </div>
 
               <button
                 type="button"
                 onClick={() => navigate('/reports')}
-                className="group flex flex-shrink-0 items-center gap-1.5 rounded-full bg-slate-900 px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-emerald-700"
+                className="group flex shrink-0 items-center gap-1.5 rounded-full bg-[#1A1A1A] px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#246F47]"
               >
                 <Sparkles className="h-3.5 w-3.5 transition-transform group-hover:-translate-y-px" />
                 Open report deck
@@ -399,14 +356,12 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* KPI strip with sparklines */}
+          {/* KPI strip */}
           <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             <MetricCell
               label="Tasks Complete"
               value={`${stats.tasksComplete}/${stats.totalTasks}`}
               caption={`${stats.tasksInProgress} in progress`}
-              spark={sparks.tasks}
-              color="#10B981"
               pulse={false}
             />
             <MetricCell
@@ -415,24 +370,18 @@ export default function Dashboard() {
               numericValue={stats.overallProgress}
               format={(n) => `${Math.round(n)}%`}
               caption={stats.delayedTasks > 0 ? `${stats.delayedTasks} delayed` : 'On track'}
-              spark={sparks.progress}
-              color={stats.delayedTasks > 0 ? '#DC2626' : '#0F172A'}
             />
             <MetricCell
               label="Photos this week"
               value={stats.photosThisWeek.toString()}
               numericValue={stats.photosThisWeek}
               caption={`+${stats.photosToday} today`}
-              spark={sparks.photos}
-              color="#2563EB"
             />
             <MetricCell
               label="Days remaining"
               value={stats.daysRemaining.toString()}
               numericValue={stats.daysRemaining}
               caption={stats.delayedTasks > 0 ? `${stats.delayedTasks} delayed` : 'Schedule holding'}
-              spark={sparks.days}
-              color="#7C3AED"
             />
             {canSeeHazardTile && (
               <MetricCell
@@ -440,8 +389,6 @@ export default function Dashboard() {
                 value={dashboardCounts.loading ? '—' : dashboardCounts.openHazards.toString()}
                 numericValue={dashboardCounts.loading ? undefined : dashboardCounts.openHazards}
                 caption={dashboardCounts.openHazards > 0 ? 'Action required' : 'No open hazards'}
-                spark={sparks.hazards}
-                color="#DC2626"
                 pulse={hazardPulse}
                 onClick={() => navigate(`/safety?project=${project.id}&tab=hazards`)}
               />
@@ -452,8 +399,6 @@ export default function Dashboard() {
                 value={dashboardCounts.loading ? '—' : dashboardCounts.pendingReview.toString()}
                 numericValue={dashboardCounts.loading ? undefined : dashboardCounts.pendingReview}
                 caption={dashboardCounts.pendingReview > 0 ? 'AI calls awaiting you' : 'All caught up'}
-                spark={sparks.review}
-                color="#F59E0B"
                 pulse={reviewPulse}
                 onClick={() => navigate(`/review-queue?project=${project.id}`)}
               />
@@ -463,7 +408,11 @@ export default function Dashboard() {
       </header>
 
       {/* ─── Body ─── */}
-      <div className="px-4 py-6 sm:px-8 sm:py-8">
+      <div className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-8 sm:py-8">
+        {/* Construction Manager portfolio lens — multi-project rollup above the
+            single-project detail. Renders nothing for other roles. */}
+        {lens === 'portfolio' && <PortfolioRollupBand />}
+
         {/* AI · Today's brief — warm one-paragraph narrative (rides the same daily cache) */}
         <div className="mb-6">
           <DailyBriefCard projectId={project.id} />
@@ -474,11 +423,13 @@ export default function Dashboard() {
           <ProjectStatusCard projectId={project.id} />
         </div>
 
-        {/* Trio: Weather · Crew · Ask anything */}
-        <div className="grid gap-4 lg:grid-cols-3">
+        {/* Conditions + actions — Weather · Crew · Photo capture · Ask anything
+            in one equal-height row (4-up on wide, 2-up on tablet, stacked on
+            phones). */}
+        <div className="grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {/* Weather — live from Open-Meteo; geolocation w/ Melbourne fallback */}
-          <section className="rounded-xl border border-slate-200 bg-white p-5">
-            <div className="mb-3 flex items-center justify-between text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500">
+          <section className="flex flex-col rounded-[14px] border border-[#E6E1D4] bg-white p-5">
+            <div className="mb-3 flex items-center justify-between text-[11px] font-medium uppercase tracking-[0.18em]" style={{ color: '#6B6B6B' }}>
               <span className="truncate">
                 {weather.locationLabel ? `${weather.locationLabel} weather` : 'On-site weather'}
               </span>
@@ -486,28 +437,42 @@ export default function Dashboard() {
                 const { Icon, color } = weatherIconFor(weather.current.tone);
                 return <Icon className={`h-3.5 w-3.5 ${color}`} />;
               })() : (
-                <Cloud className="h-3.5 w-3.5 text-slate-300" />
+                <Cloud className="h-3.5 w-3.5" style={{ color: '#D8D2C4' }} />
               )}
             </div>
 
             {weather.loading && (
-              <p className="text-sm text-slate-400">Loading…</p>
+              <div className="flex flex-1 items-center justify-center py-8">
+                <p className="text-sm" style={{ color: '#A0A0A0' }}>Loading…</p>
+              </div>
             )}
 
-            {weather.error && !weather.current && (
-              <div>
-                <p className="text-sm text-slate-700">Weather unavailable</p>
-                <p className="mt-1 text-[11px] text-slate-400">Open-Meteo returned an error. Try again later.</p>
+            {!weather.loading && weather.error && !weather.current && (
+              <div className="flex flex-1 flex-col items-center justify-center gap-2 py-8 text-center">
+                <CloudOff className="h-7 w-7" style={{ color: '#D8D2C4' }} aria-hidden />
+                <p className="text-sm font-medium" style={{ color: '#3A3A3A' }}>Weather unavailable</p>
+                <p className="max-w-[200px] text-[11px] leading-relaxed" style={{ color: '#A0A0A0' }}>
+                  The weather service is momentarily unreachable — this usually clears on its own.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => weather.refetch()}
+                  className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-[#E6E1D4] px-3 py-1 text-xs font-medium transition-colors hover:border-[#1A1A1A] hover:bg-[#1A1A1A] hover:text-white"
+                  style={{ color: '#3A3A3A' }}
+                >
+                  <RotateCw className="h-3 w-3" />
+                  Retry
+                </button>
               </div>
             )}
 
             {weather.current && (
               <>
-                <p className="num text-3xl font-medium text-slate-900">
+                <p className="num text-4xl font-medium" style={{ color: '#1A1A1A' }}>
                   {weather.current.tempC}
-                  <span className="ml-0.5 align-top text-base text-slate-400">°C</span>
+                  <span className="ml-0.5 align-top text-base" style={{ color: '#A0A0A0' }}>°C</span>
                 </p>
-                <div className="mt-2 flex items-center gap-3 text-[11px] text-slate-500">
+                <div className="mt-2 flex items-center gap-3 text-xs" style={{ color: '#6B6B6B' }}>
                   <span className="inline-flex items-center gap-1">
                     <Wind className="h-3 w-3" />{weather.current.windKmh} km/h
                   </span>
@@ -515,21 +480,27 @@ export default function Dashboard() {
                   <span>◌ {weather.current.precipPct}%</span>
                 </div>
 
+                {weather.stale && (
+                  <p className="mt-2 inline-flex w-fit items-center rounded-full bg-[#F9EFD9] px-2 py-0.5 text-[10px] font-medium" style={{ color: '#C8841E' }}>
+                    Last known — live data unavailable
+                  </p>
+                )}
+
                 {weather.forecast.length > 0 && (
-                  <div className="mt-4 grid grid-cols-3 gap-2 border-t border-slate-100 pt-3">
+                  <div className="mt-4 grid grid-cols-3 gap-2 border-t pt-3" style={{ borderColor: '#EFEBE0' }}>
                     {weather.forecast.map((f) => {
                       const { Icon, color } = weatherIconFor(f.tone);
                       return (
                         <div key={f.day} className="text-center">
-                          <p className="text-[9px] font-medium tracking-[0.15em] text-slate-400">{f.day}</p>
+                          <p className="text-[9px] font-medium tracking-[0.15em]" style={{ color: '#A0A0A0' }}>{f.day}</p>
                           <div className="my-1 flex justify-center">
                             <Icon className={`h-4 w-4 ${color}`} />
                           </div>
-                          <p className="text-[11px] tabular-nums text-slate-700">
-                            {f.high}°<span className="text-slate-300">/{f.low}°</span>
+                          <p className="text-[11px] tabular-nums" style={{ color: '#3A3A3A' }}>
+                            {f.high}°<span style={{ color: '#D8D2C4' }}>/{f.low}°</span>
                           </p>
                           {f.alert && (
-                            <p className="mt-0.5 text-[9px] font-semibold tracking-wider text-red-600">{f.alert}</p>
+                            <p className="mt-0.5 text-[9px] font-semibold tracking-wider" style={{ color: '#C44545' }}>{f.alert}</p>
                           )}
                         </div>
                       );
@@ -541,29 +512,29 @@ export default function Dashboard() {
           </section>
 
           {/* Crew on site */}
-          <section className="rounded-xl border border-slate-200 bg-white p-5">
-            <div className="mb-3 flex items-center justify-between text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500">
+          <section className="rounded-[14px] border border-[#E6E1D4] bg-white p-5">
+            <div className="mb-3 flex items-center justify-between text-[11px] font-medium uppercase tracking-[0.18em]" style={{ color: '#6B6B6B' }}>
               Crew on site
-              <Users className="h-3.5 w-3.5 text-slate-400" />
+              <Users className="h-3.5 w-3.5" style={{ color: '#A0A0A0' }} />
             </div>
-            <p className="num text-3xl font-medium text-slate-900">
-              {crewOnSite}<span className="ml-1 align-baseline text-sm font-normal text-slate-400">/{crewTotal}</span>
+            <p className="num text-4xl font-medium" style={{ color: '#1A1A1A' }}>
+              {crewOnSite}<span className="ml-1 align-baseline text-base font-normal" style={{ color: '#A0A0A0' }}>/{crewTotal}</span>
             </p>
-            <p className="mt-1 text-xs text-slate-500">
+            <p className="mt-1 text-sm" style={{ color: '#6B6B6B' }}>
               {Math.round((crewOnSite / Math.max(1, crewTotal)) * 100)}% of registered crew clocked in
             </p>
             <div className="mt-4 flex items-center">
               <div className="flex -space-x-2">
-                {crewAvatars.map((u) => (
-                  <Avatar key={u.id} className="h-9 w-9 border-2 border-white">
-                    <AvatarImage src={u.avatar} />
+                {crewAvatars.map((m) => (
+                  <Avatar key={m.userId} className="h-9 w-9 border-2 border-white">
+                    <AvatarImage src={users.find((u) => u.id === m.userId)?.avatar} />
                     <AvatarFallback className="text-[10px]">
-                      {u.fullName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+                      {m.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                 ))}
                 {crewExtra > 0 && (
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-slate-900 text-[10px] font-medium text-white">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-[#1A1A1A] text-[10px] font-medium text-white">
                     {crewExtra}
                   </div>
                 )}
@@ -571,91 +542,95 @@ export default function Dashboard() {
             </div>
           </section>
 
-          {/* Ask anything — decorative, sets up future AI Q&A surface */}
-          <section className="relative overflow-hidden rounded-xl bg-slate-900 p-5 text-white">
-            <div className="mb-3 flex items-center justify-between">
-              <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.18em] text-emerald-300">
-                <Sparkles className="h-3 w-3" />
-                Ask anything
-              </div>
-              <button
-                type="button"
-                className="flex h-6 w-6 items-center justify-center rounded-full text-slate-400 hover:bg-white/10 hover:text-white"
-                aria-label="New question"
-              >
-                +
-              </button>
+          {/* Photo capture — opens the camera/file picker and uploads to this
+              project (replaces the old floating FAB). Paired with Ask anything. */}
+          <section className="flex flex-col rounded-[14px] border border-[#E6E1D4] bg-white p-5">
+            <div className="mb-3 flex items-center justify-between text-[11px] font-medium uppercase tracking-[0.18em]" style={{ color: '#6B6B6B' }}>
+              Capture
+              <Camera className="h-3.5 w-3.5" style={{ color: '#2F8F5C' }} />
             </div>
-            <p className="display text-lg font-medium leading-tight">
-              What changed on site today?
+            <p className="display text-2xl font-medium leading-tight" style={{ color: '#1A1A1A' }}>
+              Snap a site photo.
             </p>
-            <div className="relative mt-4">
-              <input
-                type="text"
-                placeholder="&quot;Tasks blocked by rebar&quot;"
-                className="h-9 w-full rounded-full border border-white/10 bg-white/5 px-3 pr-9 text-xs text-white placeholder:text-slate-400 focus:border-emerald-400 focus:outline-none"
-              />
-              <button
-                type="button"
-                className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500 text-white hover:bg-emerald-400"
-                aria-label="Voice"
-              >
-                <Mic className="h-3.5 w-3.5" />
-              </button>
-            </div>
+            <p className="mt-1.5 text-sm" style={{ color: '#6B6B6B' }}>
+              Lands in {project.name}'s gallery and feeds the AI analyzer.
+            </p>
+            <button
+              type="button"
+              onClick={() => captureInputRef.current?.click()}
+              disabled={capturing}
+              className="mt-auto inline-flex w-fit items-center gap-1.5 rounded-full bg-[#1A1A1A] px-4 py-2 pt-2 text-xs font-medium text-white transition-colors hover:bg-[#246F47] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Camera className="h-3.5 w-3.5" />
+              {capturing ? 'Uploading…' : 'Capture or upload'}
+            </button>
+            <input
+              ref={captureInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => { void handleCapture(e.target.files); }}
+            />
           </section>
+
+          {/* Ask anything — real single-turn project Q&A (Tier-3 #14). */}
+          <AskAnythingCard projectId={project.id} />
         </div>
 
         {/* Main two-column grid */}
         <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_320px]">
           <main className="space-y-6 min-w-0">
 
+            {/* Command-lens finance summary — PM + admins who can view finance. */}
+            {showFinanceSummary && <FinanceSummaryCard projectId={project.id} />}
+
             {/* Active Jobs */}
-            <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <section className="overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white">
               <SectionHeader
                 eyebrow="On site"
-                title="Active jobs"
+                title={`Active jobs on ${project.name}`}
                 description="The work currently in motion"
                 actionLabel="View all"
                 onAction={() => navigate('/projects')}
               />
-              <div className="divide-y divide-slate-100">
+              <div className="divide-y" style={{ borderColor: '#EFEBE0' }}>
                 {activeJobs.length === 0 && (
-                  <p className="px-6 py-8 text-center text-sm text-slate-400 italic">
+                  <p className="px-6 py-8 text-center text-sm italic" style={{ color: '#A0A0A0' }}>
                     No active tasks right now.
                   </p>
                 )}
                 {activeJobs.map((job) => {
                   const zone = zones.find((z) => z.id === job.zoneId);
                   const badgeClass = STATUS_BADGE[job.status] ?? STATUS_BADGE.not_started;
-                  const ringColor = job.status === 'delayed' ? '#DC2626' : '#10B981';
+                  const ringColor = job.status === 'delayed' ? '#C44545' : '#2F8F5C';
                   return (
                     <motion.div
                       key={job.id}
                       layout
                       transition={{ type: 'spring', damping: 30, stiffness: 320 }}
-                      className="group flex flex-wrap items-center justify-between gap-4 px-6 py-4 transition-colors hover:bg-slate-50/60"
+                      className="group flex flex-wrap items-center justify-between gap-3 px-6 py-3 transition-colors hover:bg-[#FAF8F2]/60"
                     >
                       <div className="flex min-w-0 items-center gap-4">
-                        <div className="flex h-1 w-1 flex-shrink-0 items-center justify-center">
-                          <span className={`h-1 w-1 rounded-full transition-all duration-300 group-hover:h-7 group-hover:w-1.5 ${PHASE_ACCENT[job.phase] ?? 'bg-slate-300'}`} />
+                        <div className="flex h-1 w-1 shrink-0 items-center justify-center">
+                          <span className={`h-1 w-1 rounded-full transition-all duration-300 group-hover:h-7 group-hover:w-1.5 ${PHASE_ACCENT[job.phase] ?? 'bg-[#D8D2C4]'}`} />
                         </div>
                         <div className="min-w-0">
-                          <p className="truncate font-medium text-slate-900">{job.name}</p>
-                          <p className="truncate text-xs text-slate-500">
+                          <p className="truncate font-medium" style={{ color: '#1A1A1A' }}>{job.name}</p>
+                          <p className="truncate text-xs" style={{ color: '#6B6B6B' }}>
                             {zone?.name ?? 'No zone'} · {job.phase}
                           </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-4">
                         <div className="relative flex items-center justify-center">
-                          <ProgressRing percent={job.percentComplete} size={44} stroke={4} color={ringColor} />
-                          <span className="absolute text-[11px] font-medium tabular-nums text-slate-900">
+                          <ProgressRing percent={job.percentComplete} size={38} stroke={4} color={ringColor} />
+                          <span className="absolute text-[11px] font-medium tabular-nums" style={{ color: '#1A1A1A' }}>
                             {job.percentComplete}%
                           </span>
                         </div>
                         <div className="text-right">
-                          <p className="text-[11px] text-slate-400">
+                          <p className="text-[11px]" style={{ color: '#A0A0A0' }}>
                             Due {format(parseISO(job.endDate), 'MMM d')}
                           </p>
                           <span className={`mt-0.5 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${badgeClass}`}>
@@ -669,146 +644,103 @@ export default function Dashboard() {
               </div>
             </section>
 
-            {/* Planned vs Actual */}
-            <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            {/* Task progress — breakdown that mirrors the Gantt's task %. */}
+            <section className="overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white">
               <SectionHeader
-                eyebrow="Trend"
-                title="Planned vs actual"
-                description="Cumulative completion across every active task"
+                eyebrow="Schedule"
+                title="Task progress"
+                description="Live from the Gantt — this % matches Tasks on the project"
+                actionLabel="Open Gantt"
+                onAction={() => navigate(`/gantt?project=${project.id}&tab=tasks`)}
               />
-              <div className="px-2 pb-4 pt-2">
-                <div className="mb-2 flex items-center justify-end gap-4 px-4 text-[11px] text-slate-500">
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-emerald-500" /> Actual
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-px w-4 border-t border-dashed border-slate-400" /> Planned
-                  </span>
+              <div className="px-6 py-5">
+                <div className="mb-4 flex items-end justify-between gap-4">
+                  <div>
+                    <p className="num text-4xl font-medium leading-none" style={{ color: '#1A1A1A' }}>
+                      {taskBreakdown.pct}<span className="ml-0.5 align-top text-xl" style={{ color: '#A0A0A0' }}>%</span>
+                    </p>
+                    <p className="mt-1 text-xs" style={{ color: '#6B6B6B' }}>
+                      {taskBreakdown.complete}/{taskBreakdown.total} task{taskBreakdown.total === 1 ? '' : 's'} complete
+                    </p>
+                  </div>
+                  <ListChecks className="h-5 w-5" style={{ color: '#D8D2C4' }} aria-hidden />
                 </div>
-                <div className="h-64">
-                  {plannedVsActual.length === 0 ? (
-                    <div className="flex h-full flex-col items-center justify-center px-4 text-center">
-                      <p className="text-sm font-medium text-slate-600">No progress yet.</p>
-                      <p className="mt-1 text-xs text-slate-400">
-                        The trend will start drawing as soon as tasks land on this project.
-                      </p>
-                    </div>
-                  ) : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={plannedVsActual} margin={{ top: 8, right: 20, left: 0, bottom: 4 }}>
-                      <defs>
-                        <linearGradient id="dashActual" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#10B981" stopOpacity={0.35} />
-                          <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="2 4" stroke="#e2e8f0" vertical={false} />
-                      <XAxis
-                        dataKey="date"
-                        tickFormatter={(date) => format(new Date(date), 'MMM d')}
-                        stroke="#94a3b8"
-                        fontSize={10}
-                        tickLine={false}
-                        axisLine={false}
+
+                {/* Stacked status bar — proportions of each task status */}
+                <div className="mb-4 flex h-2 w-full overflow-hidden rounded-full" style={{ backgroundColor: '#EFEBE0' }}>
+                  {taskSegments.map((s) =>
+                    s.value > 0 ? (
+                      <div
+                        key={s.label}
+                        className="h-full"
+                        style={{ width: `${(s.value / taskDenom) * 100}%`, backgroundColor: s.color }}
+                        title={`${s.label}: ${s.value}`}
                       />
-                      <YAxis
-                        stroke="#94a3b8"
-                        fontSize={10}
-                        tickLine={false}
-                        axisLine={false}
-                        tickFormatter={(v) => `${v}%`}
-                      />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: 'white',
-                          border: '1px solid #e2e8f0',
-                          borderRadius: '12px',
-                          boxShadow: '0 10px 30px -10px rgb(15 23 42 / 0.15)',
-                          fontSize: '12px',
-                        }}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="actual"
-                        stroke="#10B981"
-                        strokeWidth={2}
-                        fillOpacity={1}
-                        fill="url(#dashActual)"
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="planned"
-                        stroke="#94a3b8"
-                        strokeWidth={1.5}
-                        strokeDasharray="4 4"
-                        dot={false}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                    ) : null,
                   )}
                 </div>
+
+                <ul className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs sm:grid-cols-3">
+                  {taskSegments.map((s) => (
+                    <li key={s.label} className="flex items-center justify-between gap-2">
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: s.color }} />
+                        <span className="truncate" style={{ color: '#3A3A3A' }}>{s.label}</span>
+                      </span>
+                      <span className="tabular-nums font-medium" style={{ color: '#1A1A1A' }}>{s.value}</span>
+                    </li>
+                  ))}
+                </ul>
+
+                {taskBreakdown.total === 0 && (
+                  <p className="mt-3 text-xs" style={{ color: '#A0A0A0' }}>
+                    No tasks yet — add tasks in the Gantt and this breakdown fills in.
+                  </p>
+                )}
               </div>
             </section>
 
-            {/* Upcoming tasks */}
-            <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            {/* Planned vs Actual */}
+            <section className="overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white">
               <SectionHeader
-                eyebrow="Coming up"
-                title="Upcoming tasks"
-                description={`Priority milestones for ${project.name}`}
-                actionLabel="See all"
-                onAction={() => navigate(`/gantt?project=${project.id}&tab=tasks`)}
+                eyebrow="Trend"
+                title="Planned vs actual"
+                description="Schedule baseline (target) vs recorded progress"
               />
-              <div className="divide-y divide-slate-100">
-                {upcomingTasks.length === 0 && (
-                  <p className="px-6 py-8 text-center text-sm text-slate-400 italic">
-                    No upcoming tasks for {project.name}.
-                  </p>
-                )}
-                {upcomingTasks.map((task) => {
-                  const zone = zones.find((z) => z.id === task.zoneId);
-                  const startsIn = differenceInCalendarDays(parseISO(task.startDate), new Date());
-                  const accent = PHASE_ACCENT[task.phase] ?? 'bg-slate-300';
-                  const startBadge =
-                    startsIn < 0  ? { label: `Overdue · ${Math.abs(startsIn)}d`, tone: 'border-red-200 bg-red-50 text-red-700' }
-                    : startsIn === 0 ? { label: 'Starts today',                  tone: 'border-emerald-200 bg-emerald-50 text-emerald-700' }
-                    : startsIn <= 7  ? { label: `In ${startsIn}d`,               tone: 'border-amber-200 bg-amber-50 text-amber-700' }
-                    :                  { label: `In ${startsIn}d`,               tone: 'border-slate-200 bg-slate-50 text-slate-600' };
-                  return (
-                    <button
-                      key={task.id}
-                      type="button"
-                      onClick={() => navigate(`/gantt?project=${project.id}&tab=tasks&task=${task.id}`)}
-                      aria-label={`Open task ${task.name}, ${startBadge.label.toLowerCase()}`}
-                      className="group flex w-full flex-wrap items-center justify-between gap-3 px-6 py-4 text-left transition-colors hover:bg-emerald-50/40 active:bg-emerald-50"
-                    >
-                      <div className="flex min-w-0 items-center gap-3">
-                        <span className={`block h-8 w-1 flex-shrink-0 rounded-full ${accent}`} aria-hidden />
-                        <div className="min-w-0">
-                          <p className="truncate font-medium text-slate-900">{task.name}</p>
-                          <p className="truncate text-xs text-slate-500">
-                            {zone?.name ?? 'No zone'} · <span className="capitalize">{task.phase}</span>
-                            {' · '}Starts {format(parseISO(task.startDate), 'MMM d')}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex flex-shrink-0 items-center gap-3">
-                        {/* Tiny accent line — matches reference's mini sparkline marks */}
-                        <Sparkline data={seededTrend(50, task.id.charCodeAt(0) + task.id.length, 10)} color="#10B981" width={50} height={14} />
-                        <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium tabular-nums ${startBadge.tone}`}>
-                          {startBadge.label}
-                        </span>
-                        <ArrowUpRight className="h-3.5 w-3.5 flex-shrink-0 text-slate-300 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-emerald-600" aria-hidden />
-                      </div>
-                    </button>
-                  );
-                })}
+              <div className="px-2 pb-4 pt-2">
+                <div className="mb-2 flex items-center justify-between gap-3 px-4 text-[11px]" style={{ color: '#6B6B6B' }}>
+                  <span
+                    className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
+                    style={
+                      behindSchedule
+                        ? { backgroundColor: '#FBE5E5', color: '#C44545' }
+                        : { backgroundColor: '#E5F2EA', color: '#246F47' }
+                    }
+                  >
+                    {variance < 0 ? `${Math.abs(variance)}% behind` : behindSchedule ? 'Behind schedule' : 'On track'}
+                  </span>
+                  <span className="flex items-center gap-4">
+                    <span className="flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-[#2F8F5C]" /> Actual
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="inline-block h-0 w-4 border-t-2 border-dashed border-[#C44545]" /> Planned
+                    </span>
+                  </span>
+                </div>
+                <PlannedVsActualTrend
+                  start={project.startDate}
+                  end={project.endDate}
+                  history={progressTrend}
+                  overall={stats.overallProgress}
+                  heightClass="h-64"
+                />
               </div>
             </section>
 
             {/* Zone activity — heatmap row */}
             {zoneActivity.length > 0 && (
-              <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+              <section className="overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white">
                 <SectionHeader
                   eyebrow="Spatial"
                   title="Zone activity (last 24h)"
@@ -822,11 +754,11 @@ export default function Dashboard() {
                         <div key={z.id} className="text-center">
                           <div
                             className="aspect-square rounded-md"
-                            style={{ backgroundColor: `rgba(16, 185, 129, ${intensity})` }}
+                            style={{ backgroundColor: `rgba(47, 143, 92, ${intensity})` }}
                             title={`${z.name}: ${z.count} updates`}
                           />
-                          <p className="mt-1 text-[10px] font-medium text-slate-600 truncate">{z.name}</p>
-                          <p className="text-[9px] tabular-nums text-slate-400">{z.count}</p>
+                          <p className="mt-1 text-[10px] font-medium truncate" style={{ color: '#3A3A3A' }}>{z.name}</p>
+                          <p className="text-[9px] tabular-nums" style={{ color: '#A0A0A0' }}>{z.count}</p>
                         </div>
                       );
                     })}
@@ -841,54 +773,72 @@ export default function Dashboard() {
             <WhatsNewCard />
 
             {/* Recent activity */}
-            <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <section className="overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white">
               <div className="flex items-center justify-between px-5 pt-5 pb-3">
                 <div>
-                  <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.18em]" style={{ color: '#6B6B6B' }}>
                     In this project
                   </p>
-                  <h3 className="display text-lg font-medium text-slate-900">Recent activity</h3>
+                  <h3 className="display text-lg font-medium" style={{ color: '#1A1A1A' }}>Recent activity</h3>
                 </div>
-                <Eye className="h-4 w-4 text-slate-400" aria-hidden />
+                <Eye className="h-4 w-4" style={{ color: '#A0A0A0' }} aria-hidden />
               </div>
               <ActivityFeed
-                events={recentActivity}
+                events={visibleActivity}
                 onSelect={handleActivitySelect}
                 dense
                 emptyLabel="Nothing yet — uploads, comments, and updates will appear here."
               />
+              {recentActivity.length > ACTIVITY_PREVIEW && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllActivity((v) => !v)}
+                  className="flex w-full items-center justify-center gap-1.5 border-t px-5 py-2.5 text-xs font-medium transition-colors hover:bg-[#FAF8F2]"
+                  style={{ borderColor: '#EFEBE0', color: '#3A3A3A' }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#1A1A1A'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#3A3A3A'; }}
+                >
+                  {showAllActivity ? (
+                    <>Show less <ChevronUp className="h-3.5 w-3.5" /></>
+                  ) : (
+                    <>Show {recentActivity.length - ACTIVITY_PREVIEW} more <ChevronDown className="h-3.5 w-3.5" /></>
+                  )}
+                </button>
+              )}
             </section>
 
             {/* Team */}
-            <section className="rounded-xl border border-slate-200 bg-white p-5">
+            <section className="rounded-[14px] border border-[#E6E1D4] bg-white p-5">
               <div className="mb-4 flex items-center justify-between">
                 <div>
-                  <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.18em]" style={{ color: '#6B6B6B' }}>
                     On the roster
                   </p>
-                  <h3 className="display text-lg font-medium text-slate-900">Team</h3>
+                  <h3 className="display text-lg font-medium" style={{ color: '#1A1A1A' }}>Team</h3>
                 </div>
-                <Users className="h-4 w-4 text-slate-400" />
+                <Users className="h-4 w-4" style={{ color: '#A0A0A0' }} />
               </div>
               <ul className="space-y-3">
-                {users.slice(0, 5).map((user) => {
-                  const profile = currentProfile && currentProfile.id === user.id ? currentProfile : null;
-                  const sg = profile?.securityGroup ?? 'site_manager';
+                {crewRoster.length === 0 ? (
+                  <li className="text-sm" style={{ color: '#6B6B6B' }}>No one on the roster yet — add a worker from Site Diary → Crew.</li>
+                ) : crewRoster.slice(0, 6).map((m) => {
+                  const u = users.find((x) => x.id === m.userId);
+                  const sg = u?.securityGroup ?? 'worker';
                   return (
-                    <li key={user.id} className="flex items-center justify-between">
+                    <li key={m.userId} className="flex items-center justify-between">
                       <div className="flex min-w-0 items-center gap-3">
-                        <Avatar className="h-9 w-9 flex-shrink-0">
-                          <AvatarImage src={user.avatar} />
+                        <Avatar className="h-9 w-9 shrink-0">
+                          <AvatarImage src={u?.avatar} />
                           <AvatarFallback className="text-xs">
-                            {user.fullName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+                            {m.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-slate-900">{user.fullName}</p>
-                          <p className="truncate text-[11px] capitalize text-slate-500">{user.role}</p>
+                          <p className="truncate text-sm font-medium" style={{ color: '#1A1A1A' }}>{m.name}</p>
+                          <p className="truncate text-[11px] capitalize" style={{ color: '#6B6B6B' }}>{SECURITY_GROUP_LABELS[sg] ?? m.role}</p>
                         </div>
                       </div>
-                      <span className="flex-shrink-0 text-[9px] font-medium tracking-[0.15em] text-slate-400">
+                      <span className="shrink-0 text-[9px] font-medium tracking-[0.15em]" style={{ color: '#A0A0A0' }}>
                         {tradeChip(sg)}
                       </span>
                     </li>
@@ -898,14 +848,14 @@ export default function Dashboard() {
             </section>
 
             {/* Today */}
-            <section className="rounded-xl border border-slate-900 bg-slate-900 p-5 text-white">
-              <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-emerald-300">
+            <section className="rounded-[14px] border bg-[#1A1A1A] p-5 text-white" style={{ borderColor: '#1A1A1A' }}>
+              <p className="text-[11px] font-medium uppercase tracking-[0.18em]" style={{ color: '#A8D0B8' }}>
                 Today
               </p>
               <p className="display mt-1 text-2xl font-medium">
                 {stats.photosToday} photo{stats.photosToday === 1 ? '' : 's'} captured
               </p>
-              <p className="mt-2 text-xs text-slate-300">
+              <p className="mt-2 text-xs" style={{ color: '#D8D2C4' }}>
                 {stats.tasksInProgress} task{stats.tasksInProgress === 1 ? '' : 's'} in motion ·{' '}
                 {stats.delayedTasks} delayed
               </p>
@@ -935,33 +885,29 @@ export default function Dashboard() {
 // ─── Reusable cells ──────────────────────────────────────────────────────
 
 function MetricCell({
-  label, value, numericValue, format, caption, spark, color, pulse, onClick,
+  label, value, numericValue, format, caption, pulse, onClick,
 }: {
   label: string;
   value: string;
   numericValue?: number;
   format?: (n: number) => string;
   caption: string;
-  spark: number[];
-  color: string;
   pulse?: boolean;
   onClick?: () => void;
 }) {
   const body = (
     <>
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500">
-          {label}
-        </p>
-        <Sparkline data={spark} color={color} width={56} height={18} />
-      </div>
+      <p className="text-[10px] font-medium uppercase tracking-[0.18em]" style={{ color: '#6B6B6B' }}>
+        {label}
+      </p>
       <p
-        className="num mt-3 text-2xl font-medium text-slate-900 sm:text-3xl"
+        className="num mt-3 text-2xl font-medium sm:text-3xl"
+        style={{ color: '#1A1A1A' }}
         data-just-updated={pulse ? 'true' : undefined}
       >
         {numericValue !== undefined ? <CountUp value={numericValue} format={format} /> : value}
       </p>
-      <p className="mt-1 text-[11px] text-slate-400">{caption}</p>
+      <p className="mt-1 text-[11px]" style={{ color: '#A0A0A0' }}>{caption}</p>
     </>
   );
 
@@ -970,17 +916,17 @@ function MetricCell({
       <button
         type="button"
         onClick={onClick}
-        className="group relative overflow-hidden rounded-xl border border-slate-200 bg-white p-4 text-left shadow-elev-1 transition-all hover:-translate-y-px hover:border-slate-300 hover:bg-slate-50 hover:shadow-elev-2"
+        className="group relative overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white p-4 text-left shadow-[0_1px_2px_rgba(20,20,20,0.04)] transition-all hover:-translate-y-px hover:border-[#D8D2C4] hover:bg-[#FAF8F2] hover:shadow-[0_4px_16px_rgba(20,20,20,0.08)]"
         aria-label={`${label}: ${value}, ${caption}`}
       >
         {body}
-        <ArrowUpRight className="absolute right-3 bottom-3 h-3 w-3 text-slate-300 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-slate-700" aria-hidden />
+        <ArrowUpRight className="absolute right-3 bottom-3 h-3 w-3 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" style={{ color: '#D8D2C4' }} aria-hidden />
       </button>
     );
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-elev-1">
+    <div className="rounded-[14px] border border-[#E6E1D4] bg-white p-4 shadow-[0_1px_2px_rgba(20,20,20,0.04)]">
       {body}
     </div>
   );
@@ -996,18 +942,19 @@ function SectionHeader({
   onAction?: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-5 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between sm:px-6">
+    <div className="flex flex-col gap-3 border-b px-4 py-5 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between sm:px-6" style={{ borderColor: '#EFEBE0' }}>
       <div className="min-w-0">
-        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
+        <p className="text-[11px] font-medium uppercase tracking-[0.18em]" style={{ color: '#6B6B6B' }}>
           {eyebrow}
         </p>
-        <h2 className="display mt-1 text-xl font-medium text-slate-900" style={{ textWrap: 'balance' }}>{title}</h2>
-        {description && <p className="mt-1 text-sm text-slate-500">{description}</p>}
+        <h2 className="display mt-1 text-xl font-medium" style={{ textWrap: 'balance', color: '#1A1A1A', fontFamily: FRAUNCES }}>{title}</h2>
+        {description && <p className="mt-1 text-sm" style={{ color: '#6B6B6B' }}>{description}</p>}
       </div>
       {actionLabel && onAction && (
         <button
           onClick={onAction}
-          className="group inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-slate-900 hover:bg-slate-900 hover:text-white"
+          className="group inline-flex items-center gap-1.5 rounded-full border border-[#E6E1D4] px-3 py-1.5 text-xs font-medium transition-colors hover:border-[#1A1A1A] hover:bg-[#1A1A1A] hover:text-white"
+          style={{ color: '#3A3A3A' }}
         >
           {actionLabel}
           <ArrowUpRight className="h-3 w-3 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />

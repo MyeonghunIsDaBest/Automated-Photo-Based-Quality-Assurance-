@@ -142,13 +142,13 @@ export default function RescueAdminModal({ target, ownerCount, onClose, onResolv
       footer={
         <div className="flex w-full items-center justify-between gap-3">
           {error && (
-            <p className="flex items-center gap-1.5 text-xs text-rose-600">
+            <p className="flex items-center gap-1.5 text-xs text-[#C44545]">
               <AlertTriangle className="h-3.5 w-3.5" />
               {error}
             </p>
           )}
           {success && !error && (
-            <p className="text-xs text-emerald-700">{success}</p>
+            <p className="text-xs text-[#246F47]">{success}</p>
           )}
           <EditorialButton variant="ghost" onClick={onClose} disabled={busy}>
             Close
@@ -165,11 +165,11 @@ export default function RescueAdminModal({ target, ownerCount, onClose, onResolv
       </div>
 
       {/* Target summary */}
-      <div className="mb-5 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-xs">
-        <p className="font-medium text-slate-700">{fullName}</p>
-        <p className="text-slate-500">{target.email}</p>
+      <div className="mb-5 rounded-[9px] border border-[#E6E1D4] bg-[#FAF8F2] px-4 py-3 text-xs">
+        <p className="font-medium text-[#1A1A1A]">{fullName}</p>
+        <p className="text-[#6B6B6B]">{target.email}</p>
         <div className="mt-2 flex flex-wrap gap-2">
-          <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] uppercase tracking-wider text-slate-600">
+          <span className="rounded-full border border-[#E6E1D4] bg-white px-2 py-0.5 text-[10px] uppercase tracking-wider text-[#6B6B6B]">
             {SECURITY_GROUP_LABELS[target.securityGroup]}
           </span>
           {target.isOwner && (
@@ -178,7 +178,7 @@ export default function RescueAdminModal({ target, ownerCount, onClose, onResolv
             </span>
           )}
           {!target.isActive && (
-            <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] uppercase tracking-wider text-rose-700">
+            <span className="rounded-full border border-[#F0BFBF] bg-[#FBE5E5] px-2 py-0.5 text-[10px] uppercase tracking-wider text-[#C44545]">
               Disabled
             </span>
           )}
@@ -187,7 +187,7 @@ export default function RescueAdminModal({ target, ownerCount, onClose, onResolv
 
       {tab === 'reset' && (
         <div className="space-y-3">
-          <p className="text-sm text-slate-700">
+          <p className="text-sm text-[#3A3A3A]">
             Sends Supabase&apos;s standard password-reset email to <strong>{target.email}</strong>. The user clicks the link and chooses their own new password. No temporary password leaves your hands.
           </p>
           <EditorialButton variant="pill" onClick={onSendReset} disabled={busy}>
@@ -198,7 +198,7 @@ export default function RescueAdminModal({ target, ownerCount, onClose, onResolv
 
       {tab === 'temp' && (
         <div className="space-y-3">
-          <p className="text-sm text-slate-700">
+          <p className="text-sm text-[#3A3A3A]">
             Sets a temporary password you choose. Use this when the user can&apos;t access their email. Share via a secure channel and ask them to change it on next login.
           </p>
           <Field label="Temporary password (≥ 8 chars)">
@@ -207,7 +207,7 @@ export default function RescueAdminModal({ target, ownerCount, onClose, onResolv
               value={tempPw}
               onChange={(e) => setTempPw(e.target.value)}
               placeholder="e.g. TempPass2026!"
-              className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:border-emerald-500 focus:outline-none"
+              className="h-9 w-full rounded-md border border-[#E6E1D4] bg-white px-3 text-sm focus:border-[#2F8F5C] focus:outline-none"
             />
           </Field>
           <Field label={`Type "${target.email}" to confirm`}>
@@ -215,7 +215,7 @@ export default function RescueAdminModal({ target, ownerCount, onClose, onResolv
               type="text"
               value={confirmEmail}
               onChange={(e) => setConfirmEmail(e.target.value)}
-              className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:border-emerald-500 focus:outline-none"
+              className="h-9 w-full rounded-md border border-[#E6E1D4] bg-white px-3 text-sm focus:border-[#2F8F5C] focus:outline-none"
             />
           </Field>
           <EditorialButton variant="pill" onClick={onSetTempPassword} disabled={busy}>
@@ -228,23 +228,23 @@ export default function RescueAdminModal({ target, ownerCount, onClose, onResolv
         <div className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="First name">
-              <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:border-emerald-500 focus:outline-none" />
+              <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className="h-9 w-full rounded-md border border-[#E6E1D4] bg-white px-3 text-sm focus:border-[#2F8F5C] focus:outline-none" />
             </Field>
             <Field label="Last name">
-              <input value={lastName} onChange={(e) => setLastName(e.target.value)} className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:border-emerald-500 focus:outline-none" />
+              <input value={lastName} onChange={(e) => setLastName(e.target.value)} className="h-9 w-full rounded-md border border-[#E6E1D4] bg-white px-3 text-sm focus:border-[#2F8F5C] focus:outline-none" />
             </Field>
           </div>
           <Field label="Email">
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:border-emerald-500 focus:outline-none" />
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-9 w-full rounded-md border border-[#E6E1D4] bg-white px-3 text-sm focus:border-[#2F8F5C] focus:outline-none" />
           </Field>
           <Field label="Mobile">
-            <input value={mobile} onChange={(e) => setMobile(e.target.value)} className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:border-emerald-500 focus:outline-none" />
+            <input value={mobile} onChange={(e) => setMobile(e.target.value)} className="h-9 w-full rounded-md border border-[#E6E1D4] bg-white px-3 text-sm focus:border-[#2F8F5C] focus:outline-none" />
           </Field>
           <Field label="Security group">
             <select
               value={securityGroup}
               onChange={(e) => setSecurityGroup(e.target.value as SecurityGroup)}
-              className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:border-emerald-500 focus:outline-none"
+              className="h-9 w-full rounded-md border border-[#E6E1D4] bg-white px-3 text-sm focus:border-[#2F8F5C] focus:outline-none"
             >
               {ASSIGNABLE_GROUPS.map((g) => (
                 <option key={g} value={g}>{SECURITY_GROUP_LABELS[g]}</option>
@@ -259,7 +259,7 @@ export default function RescueAdminModal({ target, ownerCount, onClose, onResolv
 
       {tab === 'owner' && (
         <div className="space-y-3">
-          <p className="text-sm text-slate-700">
+          <p className="text-sm text-[#3A3A3A]">
             {target.isOwner
               ? 'Currently an owner — can rescue other admins and grant ownership.'
               : 'Not currently an owner. Promote to grant rescue + grant-ownership powers.'}
@@ -298,8 +298,8 @@ function TabPill({
       onClick={onClick}
       className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
         active
-          ? 'border-slate-900 bg-slate-900 text-white'
-          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+          ? 'border-[#1A1A1A] bg-[#1A1A1A] text-white'
+          : 'border-[#E6E1D4] bg-white text-[#6B6B6B] hover:border-[#D8D2C4]'
       }`}
     >
       <Icon className="h-3.5 w-3.5" />
@@ -311,7 +311,7 @@ function TabPill({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="mb-1 block text-[11px] font-medium text-slate-600">{label}</label>
+      <label className="mb-1 block text-[11px] font-medium text-[#3A3A3A]">{label}</label>
       {children}
     </div>
   );

@@ -32,7 +32,7 @@ const quickActionCategories: QuickActionCategory[] = [
         description: 'Add site progress photos with AI analysis',
         icon: Upload,
         path: '/upload',
-        color: 'bg-blue-50 text-blue-600',
+        color: 'bg-[#E5F2EA] text-[#246F47]',
         shortcut: 'U',
         requires: 'upload_photos',
       },
@@ -41,14 +41,14 @@ const quickActionCategories: QuickActionCategory[] = [
         description: 'Browse all project photos and videos',
         icon: Image,
         path: '/gallery',
-        color: 'bg-purple-50 text-purple-600',
+        color: 'bg-[#F0EDE4] text-[#3A3A3A]',
       },
       {
         label: 'Upload Documents',
         description: 'Add contracts, permits, and blueprints',
         icon: FileText,
         path: '/files',
-        color: 'bg-emerald-50 text-emerald-600',
+        color: 'bg-[#E5F2EA] text-[#246F47]',
         requires: 'upload_documents',
       },
     ],
@@ -61,7 +61,7 @@ const quickActionCategories: QuickActionCategory[] = [
         description: 'Interactive project timeline and schedule',
         icon: Calendar,
         path: '/gantt',
-        color: 'bg-amber-50 text-amber-600',
+        color: 'bg-[#F9EFD9] text-[#C8841E]',
         shortcut: 'G',
       },
       {
@@ -69,7 +69,7 @@ const quickActionCategories: QuickActionCategory[] = [
         description: 'Manage and track all project tasks',
         icon: CheckSquare,
         path: '/projects',
-        color: 'bg-indigo-50 text-indigo-600',
+        color: 'bg-[#EEF1F4] text-[#5B6B7B]',
         requires: 'edit_tasks',
       },
       {
@@ -77,7 +77,7 @@ const quickActionCategories: QuickActionCategory[] = [
         description: 'All documents, photos, and videos',
         icon: FolderOpen,
         path: '/files',
-        color: 'bg-slate-50 text-slate-600',
+        color: 'bg-[#FAF8F2] text-[#6B6B6B]',
       },
     ],
   },
@@ -89,7 +89,7 @@ const quickActionCategories: QuickActionCategory[] = [
         description: 'Create weekly or milestone reports',
         icon: FileText,
         path: '/reports',
-        color: 'bg-emerald-50 text-emerald-600',
+        color: 'bg-[#E5F2EA] text-[#246F47]',
         shortcut: 'R',
         requires: 'edit_tasks',
       },
@@ -98,14 +98,14 @@ const quickActionCategories: QuickActionCategory[] = [
         description: 'View historical progress and trends',
         icon: BarChart3,
         path: '/reports?type=progress',
-        color: 'bg-blue-50 text-blue-600',
+        color: 'bg-[#EEF1F4] text-[#5B6B7B]',
       },
       {
         label: 'Financial Reports',
         description: 'Budget, bids, and expense tracking',
         icon: DollarSign,
         path: '/reports?type=financial',
-        color: 'bg-green-50 text-green-600',
+        color: 'bg-[#F9EFD9] text-[#C8841E]',
         requires: 'view_finance',
       },
       {
@@ -113,7 +113,7 @@ const quickActionCategories: QuickActionCategory[] = [
         description: 'Complete activity log and history',
         icon: Users,
         path: '/reports?type=audit',
-        color: 'bg-purple-50 text-purple-600',
+        color: 'bg-[#F0EDE4] text-[#3A3A3A]',
       },
     ],
   },
@@ -125,7 +125,7 @@ const quickActionCategories: QuickActionCategory[] = [
         description: 'Team conversations and updates',
         icon: MessageSquare,
         path: '/messages',
-        color: 'bg-pink-50 text-pink-600',
+        color: 'bg-[#FAF8F2] text-[#6B6B6B]',
         shortcut: 'M',
       },
       {
@@ -133,7 +133,7 @@ const quickActionCategories: QuickActionCategory[] = [
         description: 'View and manage safety notifications',
         icon: Shield,
         path: '/reports?type=safety',
-        color: 'bg-red-50 text-red-600',
+        color: 'bg-[#FBE5E5] text-[#C44545]',
       },
     ],
   },
@@ -225,16 +225,16 @@ export default function QuickActionsSidebar() {
       {/* Toggle Button - Fixed on left side */}
       <button
         onClick={toggleSidebar}
-        className={`fixed left-0 top-1/2 z-50 -translate-y-1/2 rounded-r-md border-y border-r border-slate-200 bg-white shadow-md transition-all hover:bg-slate-50 ${
+        className={`fixed left-0 top-1/2 z-50 -translate-y-1/2 rounded-r-md border-y border-r border-[#E6E1D4] bg-white shadow-[0_2px_8px_rgba(20,20,20,0.08)] transition-all hover:bg-[#FAF8F2] ${
           isOpen ? 'translate-x-64' : 'translate-x-0'
         }`}
         title="Quick Actions (Q)"
       >
         <div className="flex h-6 w-6 items-center justify-center p-1.5">
           {isOpen ? (
-            <X className="h-3.5 w-3.5 text-slate-600" />
+            <X className="h-3.5 w-3.5 text-[#6B6B6B]" />
           ) : (
-            <svg className="h-3.5 w-3.5 text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg className="h-3.5 w-3.5 text-[#6B6B6B]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <rect x="3" y="3" width="18" height="18" rx="2" />
               <path d="M9 3v18" />
               <path d="M9 9l-3 3 3 3" />
@@ -246,7 +246,7 @@ export default function QuickActionsSidebar() {
       {/* Overlay */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm"
+          className="fixed inset-0 z-40 bg-[#1A1A1A]/20"
           onClick={() => setIsOpen(false)}
         />
       )}
@@ -254,7 +254,7 @@ export default function QuickActionsSidebar() {
       {/* Sidebar Panel — full width on phones, fixed 320px on sm+. */}
       <div
         ref={sidebarRef}
-        className={`fixed left-0 top-0 z-50 h-full w-full transform border-r border-slate-200 bg-white shadow-2xl transition-transform duration-300 ease-in-out sm:w-80 ${
+        className={`fixed left-0 top-0 z-50 h-full w-full transform border-r border-[#E6E1D4] bg-[#FAF8F2] shadow-[0_8px_28px_rgba(20,20,20,0.12)] transition-transform duration-300 ease-in-out sm:w-80 ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
         style={{ paddingLeft: 'env(safe-area-inset-left)' }}
@@ -262,15 +262,15 @@ export default function QuickActionsSidebar() {
         onMouseLeave={() => setIsHovered(false)}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-200 p-4">
+        <div className="flex items-center justify-between border-b border-[#E6E1D4] bg-white p-4">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900">Quick Actions</h2>
-            <p className="text-xs text-slate-500">Press Q to toggle</p>
+            <h2 className="text-lg font-semibold text-[#1A1A1A]">Quick Actions</h2>
+            <p className="text-xs text-[#6B6B6B]">Press Q to toggle</p>
           </div>
           <button
             onClick={() => setIsOpen(false)}
             aria-label="Close quick actions"
-            className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 active:bg-slate-200"
+            className="flex h-10 w-10 items-center justify-center rounded-lg text-[#A0A0A0] hover:bg-[#FAF8F2] hover:text-[#3A3A3A] active:bg-[#F0EDE4]"
           >
             <X className="h-5 w-5" />
           </button>
@@ -280,7 +280,7 @@ export default function QuickActionsSidebar() {
         <div className="h-[calc(100vh-80px)] overflow-auto p-4">
           {visibleCategories.map((category, categoryIndex) => (
             <div key={category.title} className="mb-6">
-              <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
+              <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-[#6B6B6B]">
                 {category.title}
               </h3>
               <div className="space-y-2">
@@ -290,26 +290,26 @@ export default function QuickActionsSidebar() {
                     <button
                       key={action.label}
                       onClick={() => handleActionClick(action.path)}
-                      className="group flex w-full items-start gap-3 rounded-lg border border-slate-200 p-3 text-left transition-all hover:border-emerald-300 hover:bg-emerald-50 hover:shadow-sm"
+                      className="group flex w-full items-start gap-3 rounded-[14px] border border-[#E6E1D4] bg-white p-3 text-left transition-all hover:border-[#2F8F5C]/40 hover:bg-[#E5F2EA]/30 hover:shadow-[0_2px_8px_rgba(20,20,20,0.06)]"
                       style={{
                         animationDelay: `${(categoryIndex * 3 + actionIndex) * 50}ms`,
                       }}
                     >
-                      <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg ${action.color}`}>
+                      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] ${action.color}`}>
                         <Icon className="h-5 w-5" />
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
-                          <span className="font-medium text-slate-900 group-hover:text-emerald-700">
+                          <span className="font-medium text-[#1A1A1A] group-hover:text-[#246F47]">
                             {action.label}
                           </span>
                           {action.shortcut && (
-                            <Badge variant="secondary" className="text-xs">
+                            <Badge variant="secondary" className="border border-[#E6E1D4] bg-[#FAF8F2] text-[10px] text-[#6B6B6B]">
                               {action.shortcut}
                             </Badge>
                           )}
                         </div>
-                        <p className="mt-0.5 text-xs text-slate-500 group-hover:text-slate-600">
+                        <p className="mt-0.5 text-xs text-[#6B6B6B] group-hover:text-[#3A3A3A]">
                           {action.description}
                         </p>
                       </div>
@@ -319,15 +319,15 @@ export default function QuickActionsSidebar() {
               </div>
 
               {categoryIndex < visibleCategories.length - 1 && (
-                <Separator className="my-4" />
+                <Separator className="my-4 bg-[#EFEBE0]" />
               )}
             </div>
           ))}
 
           {/* Footer */}
-          <div className="mt-6 rounded-lg bg-slate-50 p-4">
-            <p className="text-xs text-slate-500">
-              <strong>Tip:</strong> Use keyboard shortcuts for faster navigation
+          <div className="mt-6 rounded-[14px] border border-[#E6E1D4] bg-white p-4">
+            <p className="text-xs text-[#6B6B6B]">
+              <strong className="text-[#3A3A3A]">Tip:</strong> Use keyboard shortcuts for faster navigation
             </p>
           </div>
         </div>

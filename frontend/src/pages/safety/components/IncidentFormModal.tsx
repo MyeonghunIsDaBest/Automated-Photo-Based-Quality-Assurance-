@@ -5,6 +5,7 @@ import { Input } from '../../../components/ui/input';
 import { useAppStore } from '../../../store';
 import { createIncidentReport } from '../../../lib/api/incidentReports';
 import { IncidentReport, IncidentSeverity, IncidentType, SEVERITY_LABEL } from '../types';
+import { FRAUNCES } from '../../gantt/components/ledger';
 
 interface IncidentFormModalProps {
   open: boolean;
@@ -21,6 +22,14 @@ const nowLocal = () => {
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
   return d.toISOString().slice(0, 16);
 };
+
+/** Map incident severity to the warm tone palette. */
+function severityActiveClasses(s: IncidentSeverity): string {
+  if (s === 'critical') return 'border-[#C44545] bg-[#FBE5E5] text-[#C44545]';
+  if (s === 'high')     return 'border-[#B5602A] bg-[#F6E7DA] text-[#B5602A]';
+  if (s === 'medium')   return 'border-[#C8841E] bg-[#F9EFD9] text-[#C8841E]';
+  /* low */             return 'border-[#5B6B7B] bg-[#EEF1F4] text-[#5B6B7B]';
+}
 
 export function IncidentFormModal({
   open, projectId, initialType, onClose, onCreated,
@@ -102,19 +111,20 @@ export function IncidentFormModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#1A1A1A]/50 p-4">
       <div
-        className="flex max-h-[90dvh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-xl"
+        className="flex max-h-[90dvh] w-full max-w-3xl flex-col overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_8px_28px_rgba(20,20,20,0.12)]"
         style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}
       >
-        <div className="flex items-start justify-between border-b border-slate-200 px-6 py-4">
+        {/* Header */}
+        <div className="flex items-start justify-between border-b border-[#E6E1D4] px-6 py-4">
           <div>
-            <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
+            <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-[#6B6B6B]">
               Incident report
             </p>
             <h2
-              className="mt-1 text-xl font-medium text-slate-900"
-              style={{ fontFamily: "'Fraunces', Georgia, serif", letterSpacing: '-0.02em' }}
+              className="mt-1 text-xl font-medium text-[#1A1A1A]"
+              style={{ fontFamily: FRAUNCES, letterSpacing: '-0.02em' }}
             >
               {isInjury ? 'Log an injury' : 'Log a near miss'}
             </h2>
@@ -122,7 +132,7 @@ export function IncidentFormModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+            className="rounded-md p-2 text-[#A0A0A0] hover:bg-[#F0EDE4] hover:text-[#3A3A3A]"
           >
             <X className="h-5 w-5" />
           </button>
@@ -130,43 +140,46 @@ export function IncidentFormModal({
 
         <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-hidden">
           <div className="editorial-scrollbox flex-1 space-y-5 px-6 py-5">
+
+            {/* Report type toggle */}
             <div>
-              <label className="mb-2 block text-xs font-medium text-slate-700">Report type</label>
+              <label className="mb-2 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">Report type</label>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => setType('injury')}
-                  className={`rounded-lg border px-3 py-2.5 text-left transition-all ${
+                  className={`rounded-[10px] border px-3 py-2.5 text-left transition-all ${
                     type === 'injury'
-                      ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
-                      : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                      ? 'border-[#1A1A1A] bg-[#1A1A1A] text-white shadow-sm'
+                      : 'border-[#E6E1D4] bg-white text-[#3A3A3A] hover:border-[#D8D2C4]'
                   }`}
                 >
                   <p className="text-sm font-medium">Injury</p>
-                  <p className={`mt-0.5 text-[11px] ${type === 'injury' ? 'text-slate-300' : 'text-slate-500'}`}>
+                  <p className={`mt-0.5 text-[11px] ${type === 'injury' ? 'text-[#A0A0A0]' : 'text-[#6B6B6B]'}`}>
                     Someone was hurt or required treatment.
                   </p>
                 </button>
                 <button
                   type="button"
                   onClick={() => setType('near_miss')}
-                  className={`rounded-lg border px-3 py-2.5 text-left transition-all ${
+                  className={`rounded-[10px] border px-3 py-2.5 text-left transition-all ${
                     type === 'near_miss'
-                      ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
-                      : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                      ? 'border-[#1A1A1A] bg-[#1A1A1A] text-white shadow-sm'
+                      : 'border-[#E6E1D4] bg-white text-[#3A3A3A] hover:border-[#D8D2C4]'
                   }`}
                 >
                   <p className="text-sm font-medium">Near Miss</p>
-                  <p className={`mt-0.5 text-[11px] ${type === 'near_miss' ? 'text-slate-300' : 'text-slate-500'}`}>
+                  <p className={`mt-0.5 text-[11px] ${type === 'near_miss' ? 'text-[#A0A0A0]' : 'text-[#6B6B6B]'}`}>
                     Could have caused harm — no injury occurred.
                   </p>
                 </button>
               </div>
             </div>
 
+            {/* When / Location */}
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">When did it happen?</label>
+                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">When did it happen?</label>
                 <Input
                   type="datetime-local"
                   value={occurredAt}
@@ -174,7 +187,7 @@ export function IncidentFormModal({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">Location / Zone</label>
+                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">Location / Zone</label>
                 <Input
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
@@ -183,15 +196,16 @@ export function IncidentFormModal({
               </div>
             </div>
 
+            {/* Description */}
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-700">
+              <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">
                 {isInjury ? 'What happened?' : 'What almost happened?'}
               </label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
-                className="block w-full rounded-md border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                className="block w-full rounded-md border border-[#E6E1D4] px-3 py-2 text-base shadow-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] sm:text-sm"
                 placeholder={
                   isInjury
                     ? 'Describe the incident — what was being done, what went wrong.'
@@ -200,8 +214,9 @@ export function IncidentFormModal({
               />
             </div>
 
+            {/* Severity — warm semantic tones */}
             <div>
-              <label className="mb-2 block text-xs font-medium text-slate-700">
+              <label className="mb-2 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">
                 {isInjury ? 'Severity' : 'Potential severity'}
               </label>
               <div className="grid grid-cols-4 gap-2">
@@ -212,10 +227,10 @@ export function IncidentFormModal({
                       key={s}
                       type="button"
                       onClick={() => setSeverity(s)}
-                      className={`rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
+                      className={`rounded-[10px] border px-3 py-2 text-sm font-medium transition-all ${
                         isActive
-                          ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
-                          : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                          ? severityActiveClasses(s)
+                          : 'border-[#E6E1D4] bg-white text-[#3A3A3A] hover:border-[#D8D2C4]'
                       }`}
                     >
                       {SEVERITY_LABEL[s]}
@@ -225,10 +240,11 @@ export function IncidentFormModal({
               </div>
             </div>
 
+            {/* Injury-specific fields */}
             {isInjury && (
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">Person involved</label>
+                  <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">Person involved</label>
                   <Input
                     value={personInvolved}
                     onChange={(e) => setPersonInvolved(e.target.value)}
@@ -236,8 +252,8 @@ export function IncidentFormModal({
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">
-                    Body part affected <span className="font-normal text-slate-400">(optional)</span>
+                  <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">
+                    Body part affected <span className="font-normal text-[#A0A0A0]">(optional)</span>
                   </label>
                   <Input
                     value={bodyPart}
@@ -246,8 +262,8 @@ export function IncidentFormModal({
                   />
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="mb-1 block text-xs font-medium text-slate-700">
-                    Treatment given <span className="font-normal text-slate-400">(optional)</span>
+                  <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">
+                    Treatment given <span className="font-normal text-[#A0A0A0]">(optional)</span>
                   </label>
                   <Input
                     value={treatmentGiven}
@@ -258,11 +274,12 @@ export function IncidentFormModal({
               </div>
             )}
 
+            {/* Near-miss fields */}
             {!isInjury && (
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">
-                    Contributing factors <span className="font-normal text-slate-400">(optional)</span>
+                  <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">
+                    Contributing factors <span className="font-normal text-[#A0A0A0]">(optional)</span>
                   </label>
                   <Input
                     value={contributingFactors}
@@ -271,8 +288,8 @@ export function IncidentFormModal({
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">
-                    Recommended action <span className="font-normal text-slate-400">(optional)</span>
+                  <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">
+                    Recommended action <span className="font-normal text-[#A0A0A0]">(optional)</span>
                   </label>
                   <Input
                     value={recommendedAction}
@@ -283,10 +300,11 @@ export function IncidentFormModal({
               </div>
             )}
 
+            {/* Witnesses + Photos */}
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">
-                  Witnesses <span className="font-normal text-slate-400">(optional)</span>
+                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">
+                  Witnesses <span className="font-normal text-[#A0A0A0]">(optional)</span>
                 </label>
                 <Input
                   value={witnesses}
@@ -295,14 +313,14 @@ export function IncidentFormModal({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">
-                  Photos <span className="font-normal text-slate-400">(optional)</span>
+                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">
+                  Photos <span className="font-normal text-[#A0A0A0]">(optional)</span>
                 </label>
                 <div className="flex flex-wrap items-center gap-2">
                   {/* Camera-first capture path. iOS / Android open the rear
                       camera directly when the input has both `image/*` and
                       `capture="environment"`. */}
-                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-md bg-slate-900 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-emerald-700">
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-[#2F8F5C] px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-[#246F47]">
                     <span>Take photo</span>
                     <input
                       type="file"
@@ -318,7 +336,7 @@ export function IncidentFormModal({
                     />
                   </label>
                   {/* Gallery picker — same input minus the capture attr. */}
-                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50">
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-[#E6E1D4] bg-white px-3 py-2 text-xs font-medium text-[#3A3A3A] transition-colors hover:bg-[#FAF8F2]">
                     <span>Pick from gallery</span>
                     <input
                       type="file"
@@ -334,19 +352,21 @@ export function IncidentFormModal({
                   </label>
                 </div>
                 {photos.length > 0 && (
-                  <p className="mt-1 text-xs text-slate-500">{photos.length} photo(s) attached</p>
+                  <p className="mt-1 text-xs text-[#6B6B6B]">{photos.length} photo(s) attached</p>
                 )}
               </div>
             </div>
 
+            {/* Error */}
             {error && (
-              <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              <p className="rounded-md border border-[#F0BFBF] bg-[#FBE5E5] px-3 py-2 text-xs text-[#C44545]">
                 {error}
               </p>
             )}
           </div>
 
-          <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50/50 px-6 py-3">
+          {/* Footer */}
+          <div className="flex items-center justify-end gap-2 border-t border-[#E6E1D4] bg-[#FAF8F2] px-6 py-3">
             <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
               Cancel
             </Button>

@@ -13,9 +13,10 @@ interface Props {
   onSaved: () => void;
 }
 
+// Assignable roles. `administrator` is deprecated (consolidated into
+// company_admin) and `dev` is a hidden superuser — neither is offered here.
 const SECURITY_GROUPS: SecurityGroup[] = [
   'company_admin',
-  'administrator',
   'construction_mgr',
   'project_manager',
   'site_manager',
@@ -113,7 +114,7 @@ export default function UserFormModal({ mode, profile, onClose, onSaved }: Props
     >
       <form id="user-form" onSubmit={handleSave} className="space-y-6">
         <section>
-          <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+          <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6B6B6B]">
             Account
           </h3>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -186,7 +187,7 @@ export default function UserFormModal({ mode, profile, onClose, onSaved }: Props
         </section>
 
         <section>
-          <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+          <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6B6B6B]">
             Emergency contact
           </h3>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -240,7 +241,7 @@ function Field({
 }) {
   return (
     <label className={`block ${className ?? ''}`}>
-      <span className="text-xs font-medium text-slate-600">
+      <span className="text-xs font-medium text-[#3A3A3A]">
         {label}
         {required && <span className="ml-0.5 text-red-500">*</span>}
       </span>

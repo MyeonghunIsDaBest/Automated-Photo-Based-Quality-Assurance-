@@ -38,6 +38,8 @@ export async function createTaskShared(input: NewTaskInput): Promise<Task> {
       notes: input.notes,
       update_source: 'manual',
       dependencies: input.dependencies,
+      is_phase_anchor: input.isPhaseAnchor ?? false,
+      is_custom: input.isCustom ?? false,
     });
     const task = mapTaskRow(row);
     addTask(task);

@@ -17,22 +17,22 @@ interface ActionTileProps {
 // keeps the classes in the bundle. Each variant's three tiles use these
 // three tones so the trio reads as a single set.
 const ACCENT_BG: Record<AccentTone, string> = {
-  emerald: 'bg-emerald-50',
-  slate:   'bg-slate-100',
-  amber:   'bg-amber-50',
-  blue:    'bg-blue-50',
+  emerald: 'bg-[#E5F2EA]',
+  slate:   'bg-[#EEF1F4]',
+  amber:   'bg-[#F9EFD9]',
+  blue:    'bg-[#EEF1F4]',
 };
 const ACCENT_FG: Record<AccentTone, string> = {
-  emerald: 'text-emerald-700',
-  slate:   'text-slate-700',
-  amber:   'text-amber-700',
-  blue:    'text-blue-700',
+  emerald: 'text-[#246F47]',
+  slate:   'text-[#5B6B7B]',
+  amber:   'text-[#C8841E]',
+  blue:    'text-[#5B6B7B]',
 };
 const ACCENT_RING: Record<AccentTone, string> = {
-  emerald: 'group-hover:ring-emerald-200',
-  slate:   'group-hover:ring-slate-200',
-  amber:   'group-hover:ring-amber-200',
-  blue:    'group-hover:ring-blue-200',
+  emerald: 'group-hover:ring-[#A8D0B8]',
+  slate:   'group-hover:ring-[#D8D2C4]',
+  amber:   'group-hover:ring-[#F9EFD9]',
+  blue:    'group-hover:ring-[#D8D2C4]',
 };
 
 export default function ActionTile({ tile }: ActionTileProps) {
@@ -41,7 +41,7 @@ export default function ActionTile({ tile }: ActionTileProps) {
     <motion.div whileHover={hoverLift} whileTap={tapShrink}>
       <Link
         to={tile.to}
-        className={`group relative flex h-full min-h-[148px] flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-5 ring-1 ring-transparent transition-all hover:shadow-md ${ACCENT_RING[tile.accent]} sm:p-6`}
+        className={`group relative flex h-full min-h-[148px] flex-col gap-3 rounded-[14px] border border-[#E6E1D4] bg-white p-5 ring-1 ring-transparent shadow-[0_1px_2px_rgba(20,20,20,0.04)] transition-all hover:shadow-[0_4px_12px_rgba(20,20,20,0.08)] ${ACCENT_RING[tile.accent]} sm:p-6`}
       >
         <span
           className={`inline-flex h-10 w-10 items-center justify-center rounded-xl ${ACCENT_BG[tile.accent]} ${ACCENT_FG[tile.accent]}`}
@@ -51,16 +51,16 @@ export default function ActionTile({ tile }: ActionTileProps) {
         </span>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <h3 className="display text-lg font-medium leading-tight text-slate-900 sm:text-xl">
+          <h3 className="display text-lg font-medium leading-tight text-[#1A1A1A] sm:text-xl">
             {tile.title}
           </h3>
-          <p className="mt-1.5 text-sm leading-relaxed text-slate-500">
+          <p className="mt-1.5 text-sm leading-relaxed text-[#6B6B6B]">
             {tile.sub}
           </p>
         </div>
 
         <ArrowUpRight
-          className="absolute right-5 top-5 h-4 w-4 text-slate-300 transition-all group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-slate-700"
+          className="absolute right-5 top-5 h-4 w-4 text-[#D8D2C4] transition-all group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-[#3A3A3A]"
           aria-hidden
         />
       </Link>

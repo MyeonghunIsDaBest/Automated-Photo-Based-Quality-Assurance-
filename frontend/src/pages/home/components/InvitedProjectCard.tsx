@@ -25,10 +25,10 @@ interface InvitedProjectCardProps {
 }
 
 const STATUS_DOT: Record<ListProject['status'], string> = {
-  active:    'bg-emerald-500',
-  on_hold:   'bg-amber-500',
-  completed: 'bg-slate-400',
-  archived:  'bg-slate-300',
+  active:    'bg-[#2F8F5C]',
+  on_hold:   'bg-[#C8841E]',
+  completed: 'bg-[#A0A0A0]',
+  archived:  'bg-[#D8D2C4]',
 };
 
 const STATUS_LABEL: Record<ListProject['status'], string> = {
@@ -71,10 +71,10 @@ export default function InvitedProjectCard({
       onClick={open}
       whileHover={hoverLift}
       whileTap={tapShrink}
-      className="group flex h-full w-full min-w-[260px] flex-col rounded-2xl border border-slate-200 bg-white p-5 text-left transition-all hover:border-slate-300 hover:shadow-md sm:min-w-0"
+      className="group flex h-full w-full min-w-[260px] flex-col rounded-[14px] border border-[#E6E1D4] bg-white p-5 text-left shadow-[0_1px_2px_rgba(20,20,20,0.04)] transition-all hover:border-[#D8D2C4] hover:shadow-[0_4px_12px_rgba(20,20,20,0.08)] sm:min-w-0"
     >
       <div className="flex items-start justify-between gap-2">
-        <h3 className="display min-w-0 truncate text-lg font-medium text-slate-900">
+        <h3 className="display min-w-0 truncate text-lg font-medium text-[#1A1A1A]">
           {project.name}
         </h3>
         <span
@@ -84,15 +84,15 @@ export default function InvitedProjectCard({
         />
       </div>
 
-      <p className="mt-0.5 truncate text-xs text-slate-500">{project.client}</p>
+      <p className="mt-0.5 truncate text-xs text-[#6B6B6B]">{project.client}</p>
 
       <div className="mt-4 flex items-baseline justify-between gap-3 text-xs">
-        <span className="text-slate-400">
+        <span className="text-[#A0A0A0]">
           {daysRemaining === null ? '—' :
            daysRemaining === 0   ? 'Due today' :
                                    `${daysRemaining}d remaining`}
         </span>
-        <span className="tabular-nums font-medium text-slate-700">
+        <span className="tabular-nums font-medium text-[#3A3A3A]">
           {project.percentComplete}%
         </span>
       </div>
@@ -101,8 +101,8 @@ export default function InvitedProjectCard({
           date). For the demo seed `invitedBy` is null on admin self-rows so
           the footer collapses gracefully. */}
       {(invitedByName || invitedRelative) && (
-        <p className="mt-3 border-t border-slate-100 pt-3 text-[11px] text-slate-500">
-          {invitedByName ? <>Invited by <span className="font-medium text-slate-700">{invitedByName}</span></> : 'Invited'}
+        <p className="mt-3 border-t border-[#EFEBE0] pt-3 text-[11px] text-[#6B6B6B]">
+          {invitedByName ? <>Invited by <span className="font-medium text-[#3A3A3A]">{invitedByName}</span></> : 'Invited'}
           {invitedRelative ? ` · ${invitedRelative}` : ''}
         </p>
       )}

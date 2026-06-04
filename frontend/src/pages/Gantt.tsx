@@ -6,7 +6,6 @@ import { useFeatureStore } from '../store/features';
 import {
   ArrowLeft, CalendarDays,
   FileBox, Inbox, Layers, LayoutDashboard, ListChecks, Package,
-  Upload as UploadIcon,
   type LucideIcon,
 } from 'lucide-react';
 import type { Task } from '../types';
@@ -28,8 +27,7 @@ import { OverviewTab }     from './gantt/tabs/OverviewTab';
 import { TasksTab }        from './gantt/tabs/TasksTab';
 import { ReviewQueueTab }  from './gantt/tabs/ReviewQueueTab';
 import { InventoryTab }    from './gantt/tabs/InventoryTab';
-import { PlansTab }        from './gantt/tabs/PlansTab';
-import { UploadsTab }      from './gantt/tabs/UploadsTab';
+import { FilesTab }        from './gantt/tabs/FilesTab';
 import { SiteDiaryTab } from './gantt/tabs/SiteDiaryTab';
 // SupplierTab merges OrdersTab + DeliveriesTab + InvoicesTab + WarrantiesTab
 // under one editorial header so the procurement surface area collapses from
@@ -56,8 +54,7 @@ const TAB_SPECS: TabSpec[] = [
   { id: 'site_diary',  label: 'Site Diary', icon: CalendarDays },
   { id: 'supplier',    label: 'Supplier',   icon: Package },
   { id: 'inventory',   label: 'Inventory',  icon: Layers },
-  { id: 'plans',       label: 'Plans',      icon: FileBox },
-  { id: 'uploads',     label: 'Uploads',    icon: UploadIcon },
+  { id: 'files',       label: 'Files',      icon: FileBox },
 ];
 
 type ActiveTab = TabSpec['id'];
@@ -151,10 +148,9 @@ export default function Gantt() {
       tasks:       projectTasks.length,
       supplier:    ordersOpen + invoicesUnpaid + warrantiesSoon,
       inventory:   0, // selections list — count when quantity tracking lands
-      plans: (documents ?? []).filter(
+      files: (documents ?? []).filter(
         (d) => d.projectId === projectId && (d.category === 'blueprint' || d.category === 'permit'),
       ).length,
-      uploads: undefined as number | undefined,
     };
   }, [projectTasks, projectId, dailyLogs, todos, orders, invoices, warranties, documents]);
 
@@ -181,15 +177,16 @@ export default function Gantt() {
       overview:   'overview',
       tasks:      'tasks',
       site_diary: 'site_diary',
+      crew:       'site_diary',  // Crew register merged into Site Diary
       supplier:   'supplier',
       orders:     'supplier',
       deliveries: 'supplier',
       invoices:   'supplier',
       warranties: 'supplier',
       inventory:  'inventory',
-      plans:      'plans',
-      files:      'plans',     // standalone Files page consumed from /files
-      uploads:    'uploads',
+      plans:      'files',     // legacy deep-link → merged Files tab
+      files:      'files',
+      uploads:    'files',     // legacy deep-link → merged Files tab
     };
     const next = map[tabId];
     if (next) setActiveTab(next);
@@ -221,7 +218,7 @@ export default function Gantt() {
 
   return (
     <div className="editorial-root min-h-full bg-[#FAFAF7]">
-      <div className="px-4 py-8 sm:px-8 sm:py-10">
+      <div className="mx-auto w-full max-w-[1400px] px-4 py-8 sm:px-8 sm:py-10">
 
       {/* ─── Tab strip + All projects pill on a single row ─── */}
       {/* Two distinct containers: the tab strip pill on the left (can scroll
@@ -340,14 +337,13 @@ export default function Gantt() {
             project={project}
             zones={projectZones}
             canEdit={canEdit}
+            canDelete={canDelete}
             onJumpToOrders={() => setActiveTab('supplier')}
           />
         )}
 
-        {activeTab === 'plans' && <PlansTab project={project} canEdit={canEdit} />}
-
-        {activeTab === 'uploads' && (
-          <UploadsTab project={project} currentUser={currentUser} canUpload={canUpload} />
+        {activeTab === 'files' && (
+          <FilesTab project={project} canEdit={canEdit} canUpload={canUpload} currentUser={currentUser} />
         )}
       </ErrorBoundary>
       </div>

@@ -1,11 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
-import {
-  DollarSign, Receipt, ShieldCheck, ShoppingCart, Truck,
-  type LucideIcon,
-} from 'lucide-react';
+import { Receipt, ShieldCheck, ShoppingCart, Truck, type LucideIcon } from 'lucide-react';
 import type { Project } from '../../../types';
-import { TabHeader } from '../components/TabHeader';
+import { LedgerHeader, LedgerStatRow } from '../components/ledger';
 import { useGanttSideStore, useOrdersForProject } from '../store';
 import { supabaseConfigured } from '../../../lib/supabase';
 import { listOrders, subscribeToProjectOrders } from '../../../lib/api/orders';
@@ -16,30 +12,19 @@ import { DeliveriesTab } from './DeliveriesTab';
 import { InvoicesTab } from './InvoicesTab';
 import { WarrantiesTab } from './WarrantiesTab';
 
-// Deep-link targets accepted from outside (e.g. Overview cards). Internally
-// the merged Invoices section also covers warranties, so 'warranties' is
-// allowed but resolves to the 'invoices' section with the warranty view
-// pre-selected.
+// Deep-link targets accepted from outside (e.g. Overview cards). The merged
+// Invoices section also covers warranties, so 'warranties' resolves to the
+// 'invoices' section with the warranty view pre-selected.
 type InitialSection = 'orders' | 'deliveries' | 'invoices' | 'warranties';
 
 interface SupplierTabProps {
   project: Project;
   canEdit: boolean;
   canDelete: boolean;
-  // Optional pre-selected sub-section. Used by Overview's deep links so a
-  // click on "Orders" → 3 open from the briefing lands on the Orders pane,
-  // and "Invoices" → outstanding lands on the Invoices pane.
   initialSection?: InitialSection;
 }
 
-// Three top-level sub-pills now. Invoices and warranties merged because
-// every warranty originates from a paid invoice — the bill carries the
-// complete order details, and once an invoice is paid the order can
-// progress through the delivery lifecycle. Keeping them in two pills was
-// asking users to bounce back and forth for one workflow.
 type SupplierSection = 'orders' | 'deliveries' | 'invoices';
-
-// Internal toggle for the merged Invoices & Warranties section.
 type InvoiceView = 'invoices' | 'warranties';
 
 const SECTIONS: { id: SupplierSection; label: string; icon: LucideIcon }[] = [
@@ -48,16 +33,23 @@ const SECTIONS: { id: SupplierSection; label: string; icon: LucideIcon }[] = [
   { id: 'invoices',   label: 'Invoices & Warranties',  icon: Receipt },
 ];
 
-// Merged Supplier tab — every supplier-facing surface in one place. Each
-// sub-section reuses its existing tab component (with `hideHeader` set so
-// only this tab's editorial header renders) so the underlying logic / drawers
-// / wizards stay exactly as the dedicated tabs had them. The merge is purely
-// navigational; no behaviour change to the four feature areas.
+// Pill-row class helpers — shared by the section nav and the invoice/warranty
+// toggle so both read identically to the Inventory register's sub-nav.
+const navPill = (active: boolean) =>
+  `inline-flex flex-shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition-colors ${
+    active ? 'bg-[#1A1A1A] text-white' : 'text-[#6B6B6B] hover:bg-[#FAF8F2] hover:text-[#1A1A1A]'
+  }`;
+const navCount = (active: boolean) =>
+  `ml-0.5 rounded-full px-1.5 text-[10px] font-bold tabular-nums ${active ? 'bg-white/20 text-white' : 'bg-[#F0EDE4] text-[#6B6B6B]'}`;
+
+// Merged Supplier tab — the procurement register: orders, deliveries, and the
+// bills + warranties they generate, in one warm logbook surface that matches
+// the Inventory and Defect registers. Each sub-section reuses its existing tab
+// component (with `hideHeader`) so the underlying logic / drawers / wizards stay
+// exactly as they were.
 export function SupplierTab({
   project, canEdit, canDelete, initialSection = 'orders',
 }: SupplierTabProps) {
-  // Resolve legacy 'warranties' deep-links onto the merged invoices section
-  // and remember the requested view so the inner toggle opens correctly.
   const [section, setSection] = useState<SupplierSection>(
     initialSection === 'warranties' ? 'invoices' : initialSection,
   );
@@ -65,24 +57,16 @@ export function SupplierTab({
     initialSection === 'warranties' ? 'warranties' : 'invoices',
   );
 
-  // Counts for the sub-pill badges. Read each whole side-store slice and
-  // derive the project-scoped array via useMemo — selectors that return
-  // `s.deliveries?.[id] ?? []` allocate a fresh `[]` per render when the
-  // project has no deliveries yet, which Zustand sees as a new value,
-  // re-renders, runs the selector again, infinite loop ("Maximum update
-  // depth exceeded"). The whole-slice reference is stable until the
-  // store mutates. (Same fix landed earlier in Gantt.tsx.)
+  // Whole-slice reads + useMemo project scoping (a `s.x?.[id] ?? []` selector
+  // allocates a fresh array per render → infinite re-render loop).
   const orders        = useOrdersForProject(project.id);
   const allDeliveries = useGanttSideStore((s) => s.deliveries);
   const allInvoices   = useGanttSideStore((s) => s.invoices);
   const allWarranties = useGanttSideStore((s) => s.warranties);
 
-  // Hydrate the procurement slices (orders/deliveries/invoices) from Supabase
-  // once at the merged-tab level + keep them live — covers every sub-tab AND
-  // the pill badge counts. Dual-write model (P1.2–1.4): the store stays the
-  // editing source of truth; these just land remote truth in the cache.
-  // Guarded so mock-mode dev keeps its local data. (Warranties self-hydrate
-  // in WarrantiesTab — they're a full-swap domain, not store-backed.)
+  // Hydrate the procurement slices once at the merged-tab level + keep live —
+  // covers every sub-tab AND the pill badge counts. (Warranties self-hydrate
+  // in WarrantiesTab.)
   useEffect(() => {
     if (!supabaseConfigured()) return;
     const store = () => useGanttSideStore.getState();
@@ -109,10 +93,6 @@ export function SupplierTab({
   const invoices   = useMemo(() => allInvoices?.[project.id]   ?? [], [allInvoices,   project.id]);
   const warranties = useMemo(() => allWarranties?.[project.id] ?? [], [allWarranties, project.id]);
 
-  // Warranties expiring within 30 days act as the warranty "needs attention"
-  // signal, mirroring the Overview tile. Combined with unpaid invoices for
-  // the merged section's badge so users see both bill and coverage pressure
-  // in one number.
   const warrantiesSoon = useMemo(() => {
     const cutoff = Date.now() + 30 * 24 * 3600 * 1000;
     return warranties.filter((w) => {
@@ -121,158 +101,91 @@ export function SupplierTab({
     }).length;
   }, [warranties]);
 
-  const counts = useMemo<Record<SupplierSection, number>>(() => ({
-    orders:     orders.filter((o) => o.status !== 'received' && o.status !== 'cancelled').length,
-    deliveries: deliveries.length,
-    invoices:   invoices.filter((i) => i.status !== 'paid').length + warrantiesSoon,
-  }), [orders, deliveries, invoices, warrantiesSoon]);
+  const ordersOpen     = useMemo(() => orders.filter((o) => o.status !== 'received' && o.status !== 'cancelled').length, [orders]);
+  const invoicesUnpaid = useMemo(() => invoices.filter((i) => i.status !== 'paid').length, [invoices]);
 
-  // One-line briefing line that summarises the merged scope without
-  // duplicating the inner tabs' descriptions.
-  const description =
-    `Procurement end-to-end: orders, deliveries, and the bills + warranties ` +
-    `they generate — everything the supply side of this project produces.`;
+  const counts = useMemo<Record<SupplierSection, number>>(() => ({
+    orders:     ordersOpen,
+    deliveries: deliveries.length,
+    invoices:   invoicesUnpaid + warrantiesSoon,
+  }), [ordersOpen, deliveries, invoicesUnpaid, warrantiesSoon]);
 
   return (
-    <>
-      <TabHeader
-        eyebrow={`Workspace · Supplier · ${project.name}`}
+    <div className="editorial-root">
+      <LedgerHeader
+        kicker="SUP"
+        icon={ShoppingCart}
+        eyebrow={`Procurement register · ${project.name}`}
         title="The supply side."
-        description={description}
-        action={
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <DollarSign className="h-3.5 w-3.5" />
-            <span className="whitespace-nowrap">
-              {counts.orders} open · {counts.invoices} unpaid
-            </span>
-          </div>
+        meta={
+          <>
+            {ordersOpen} open order{ordersOpen === 1 ? '' : 's'} · {invoicesUnpaid} unpaid
+            <span className="mx-2 text-[#A0A0A0]">·</span>
+            <span className="text-[#A0A0A0]">orders → deliveries → bills → warranties</span>
+          </>
         }
       />
 
-      {/* Sub-pill nav. Horizontal-scrolls on phones (4 pills + counts won't */}
-      {/* fit on a 360px viewport without scroll).                            */}
-      <div className="mb-5 -mx-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:overflow-visible sm:px-0">
-        <div className="inline-flex items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
+      <LedgerStatRow
+        stats={[
+          { value: ordersOpen,        label: 'Open orders', sub: 'in progress',          tone: 'slate' },
+          { value: deliveries.length, label: 'Deliveries',  sub: 'logged',               tone: 'ink' },
+          { value: invoicesUnpaid,    label: 'Unpaid',      sub: 'invoices outstanding', tone: 'amber' },
+          { value: warrantiesSoon,    label: 'Warranties',  sub: 'expiring ≤ 30 days',   tone: 'sage' },
+        ]}
+      />
+
+      {/* Section nav — horizontal-scrolls on phones. */}
+      <div className="mb-4 -mx-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:overflow-visible sm:px-0">
+        <div className="inline-flex items-center gap-1 rounded-full border border-[#E6E1D4] bg-white p-1 shadow-[0_1px_2px_rgba(20,20,20,0.04)]">
           {SECTIONS.map((sec) => {
             const Icon = sec.icon;
             const isActive = section === sec.id;
             const count = counts[sec.id];
             return (
-              <button
-                key={sec.id}
-                type="button"
-                onClick={() => setSection(sec.id)}
-                className={`relative flex flex-shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
-                  isActive
-                    ? 'text-white'
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 active:bg-slate-100'
-                }`}
-              >
-                {isActive && (
-                  <motion.span
-                    layoutId="supplier-section-pill"
-                    className="absolute inset-0 rounded-xl bg-slate-900 shadow-sm"
-                    transition={{ type: 'spring', damping: 30, stiffness: 360 }}
-                  />
-                )}
-                <Icon className="relative z-10 h-4 w-4" />
-                <span className="relative z-10">{sec.label}</span>
-                {count > 0 && (
-                  <span
-                    className={`relative z-10 tabular-nums rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
-                      isActive ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-600'
-                    }`}
-                  >
-                    {count}
-                  </span>
-                )}
+              <button key={sec.id} type="button" onClick={() => setSection(sec.id)} className={navPill(isActive)}>
+                <Icon className="h-3.5 w-3.5" />
+                <span className="whitespace-nowrap">{sec.label}</span>
+                {count > 0 && <span className={navCount(isActive)}>{count}</span>}
               </button>
             );
           })}
         </div>
       </div>
 
-      {/* Active section — each existing tab carries its own state, modals,
-          and drawers. `hideHeader` suppresses the per-tab editorial header
-          so we don't double-stack with the SupplierTab's own header above. */}
       {section === 'orders' && (
-        <OrdersTab
-          project={project}
-          canEdit={canEdit}
-          canDelete={canDelete}
-          hideHeader
-        />
+        <OrdersTab project={project} canEdit={canEdit} canDelete={canDelete} hideHeader />
       )}
       {section === 'deliveries' && (
-        <DeliveriesTab
-          project={project}
-          canEdit={canEdit}
-          hideHeader
-        />
+        <DeliveriesTab project={project} canEdit={canEdit} hideHeader />
       )}
       {section === 'invoices' && (
         <>
-          {/* Inner segmented toggle — flip between the bills view and the
-              coverage view without leaving the merged section. Warranties
-              auto-spawn from paid invoices, so they live alongside their
-              source documents rather than in a separate top-level tab. */}
-          <div className="mb-4 inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+          {/* Inner toggle — bills vs the coverage they generate. */}
+          <div className="mb-4 inline-flex items-center gap-1 rounded-full border border-[#E6E1D4] bg-white p-1 shadow-[0_1px_2px_rgba(20,20,20,0.04)]">
             {([
-              { id: 'invoices',   label: 'Invoices',   icon: Receipt,      count: invoices.filter((i) => i.status !== 'paid').length },
-              { id: 'warranties', label: 'Warranties', icon: ShieldCheck,  count: warrantiesSoon },
+              { id: 'invoices',   label: 'Invoices',   icon: Receipt,     count: invoicesUnpaid },
+              { id: 'warranties', label: 'Warranties', icon: ShieldCheck, count: warrantiesSoon },
             ] as const).map((view) => {
               const Icon = view.icon;
               const isActive = invoiceView === view.id;
               return (
-                <button
-                  key={view.id}
-                  type="button"
-                  onClick={() => setInvoiceView(view.id)}
-                  className={`relative flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                    isActive
-                      ? 'text-white'
-                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                  }`}
-                >
-                  {isActive && (
-                    <motion.span
-                      layoutId="supplier-invoice-view-pill"
-                      className="absolute inset-0 rounded-lg bg-slate-900 shadow-sm"
-                      transition={{ type: 'spring', damping: 30, stiffness: 360 }}
-                    />
-                  )}
-                  <Icon className="relative z-10 h-3.5 w-3.5" />
-                  <span className="relative z-10">{view.label}</span>
-                  {view.count > 0 && (
-                    <span
-                      className={`relative z-10 tabular-nums rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
-                        isActive ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-600'
-                      }`}
-                    >
-                      {view.count}
-                    </span>
-                  )}
+                <button key={view.id} type="button" onClick={() => setInvoiceView(view.id)} className={navPill(isActive)}>
+                  <Icon className="h-3.5 w-3.5" />
+                  {view.label}
+                  {view.count > 0 && <span className={navCount(isActive)}>{view.count}</span>}
                 </button>
               );
             })}
           </div>
 
           {invoiceView === 'invoices' ? (
-            <InvoicesTab
-              project={project}
-              canEdit={canEdit}
-              canDelete={canDelete}
-              hideHeader
-            />
+            <InvoicesTab project={project} canEdit={canEdit} canDelete={canDelete} hideHeader />
           ) : (
-            <WarrantiesTab
-              project={project}
-              canEdit={canEdit}
-              hideHeader
-            />
+            <WarrantiesTab project={project} canEdit={canEdit} hideHeader />
           )}
         </>
       )}
-    </>
+    </div>
   );
 }

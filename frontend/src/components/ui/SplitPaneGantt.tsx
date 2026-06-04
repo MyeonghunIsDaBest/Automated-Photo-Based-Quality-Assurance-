@@ -11,10 +11,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
 import { rolledUpPct, type Task, type Zone, type TaskStatus } from '../../types';
+import { useAppStore } from '../../store';
 import { Card, CardContent } from './card';
 import {
   makeTimeWindow,
   monthHeaders,
+  weekTicks,
   taskBarPosition,
   xPositionPct,
   type TimeWindow,
@@ -42,26 +44,40 @@ interface SplitPaneGanttProps {
 }
 
 const ROW_HEIGHT_PX = 36;
-const AXIS_HEIGHT_PX = 36;
+const AXIS_HEIGHT_PX = 44;
 
 const STATUS_DOT: Record<TaskStatus, string> = {
-  not_started: 'bg-slate-300',
-  in_progress: 'bg-blue-500',
-  complete:    'bg-emerald-500',
-  delayed:     'bg-red-500',
-  blocked:     'bg-amber-500',
+  not_started: 'bg-[#C9BBA0]',
+  in_progress: 'bg-[#C8841E]',
+  complete:    'bg-[#2F8F5C]',
+  delayed:     'bg-[#C44545]',
+  blocked:     'bg-[#5A6470]',
 };
 
 const STATUS_BAR_BG: Record<TaskStatus, string> = {
-  not_started: 'bg-slate-400/70',
-  in_progress: 'bg-blue-500',
-  complete:    'bg-emerald-500',
-  delayed:     'bg-red-500',
-  blocked:     'bg-amber-500',
+  not_started: 'bg-[#C9BBA0]',
+  in_progress: 'bg-[#D69A2E]',
+  complete:    'bg-[#2F8F5C]',
+  delayed:     'bg-[#C44545]',
+  blocked:     'bg-[#5A6470]',
 };
 
 const HIGHLIGHT_RING =
   'ring-2 ring-emerald-400 ring-offset-1 ring-offset-white animate-pulse';
+
+// Custom phases (migration 44) aren't in the 8-colour construction palette —
+// show them by name + a stable colour, mirroring the Tasks tab.
+const CUSTOM_PHASE_PALETTE = ['#0D9488', '#7C3AED', '#DB2777', '#0891B2', '#9333EA', '#4F46E5'];
+function anchorDisp(t: Task): { label: string; color: string; tint: string; fill: string } {
+  if (t.isCustom) {
+    let h = 0;
+    for (let i = 0; i < t.id.length; i++) h = (h * 31 + t.id.charCodeAt(i)) >>> 0;
+    const color = CUSTOM_PHASE_PALETTE[h % CUSTOM_PHASE_PALETTE.length];
+    return { label: t.name || 'Untitled phase', color, tint: `${color}1A`, fill: `${color}99` };
+  }
+  const pc = phaseColor(t.phase);
+  return { label: pc.label, color: pc.color, tint: pc.tint, fill: pc.fill };
+}
 
 type Row =
   | { kind: 'anchor'; anchor: Task; rolled: number }
@@ -77,6 +93,18 @@ export function SplitPaneGantt({
   maxHeight = '60vh',
 }: SplitPaneGanttProps) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
+  // Opt-in "scheduling board" density (#16). Default OFF keeps the original
+  // compact Gantt untouched; ON adds assignee avatars + named/duration labels
+  // to each task row — the denser planning-board look, as a zoom you choose.
+  const [boardView, setBoardView] = useState(false);
+  const users = useAppStore((s) => s.users);
+  const initialsFor = (assigneeId?: string): string | null => {
+    if (!assigneeId) return null;
+    const u = users.find((x) => x.id === assigneeId);
+    if (!u?.fullName) return null;
+    return u.fullName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
+  };
 
   // Group by phase anchor. Anchors are isPhaseAnchor=true rows with no
   // parentTaskId; children point at anchors via parentTaskId.
@@ -109,6 +137,7 @@ export function SplitPaneGantt({
     [startDate, endDate],
   );
   const months = useMemo(() => monthHeaders(timeWindow), [timeWindow]);
+  const ticks  = useMemo(() => weekTicks(timeWindow), [timeWindow]);
   const todayPct = useMemo(() => xPositionPct(new Date(), timeWindow), [timeWindow]);
   const todayVisible = todayPct >= 0 && todayPct <= 100;
 
@@ -130,7 +159,7 @@ export function SplitPaneGantt({
     return (
       <Card>
         <CardContent className="p-8 text-center">
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-[#6B6B6B]">
             No phase anchors on this project yet. Add tasks under the Tasks tab to see them appear here.
           </p>
         </CardContent>
@@ -148,14 +177,29 @@ export function SplitPaneGantt({
         >
           <div className="flex">
             {/* Left list pane */}
-            <div className="w-[304px] flex-shrink-0 border-r border-slate-200">
+            <div className="w-[304px] flex-shrink-0 border-r border-[#E6E1D4]">
               <div
-                className="sticky top-0 z-20 border-b border-slate-200 bg-white"
+                className="sticky top-0 z-20 flex items-center justify-between gap-1 border-b border-[#E6E1D4] bg-white px-2"
                 style={{ height: AXIS_HEIGHT_PX }}
               >
-                <p className="flex h-full items-center px-2 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500">
+                <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-[#6B6B6B]">
                   Phase · task
-                </p>
+                </span>
+                <div className="inline-flex flex-shrink-0 items-center rounded-full border border-[#E6E1D4] p-0.5" role="group" aria-label="Gantt density">
+                  {([['Compact', false], ['Board', true]] as const).map(([label, on]) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => setBoardView(on)}
+                      aria-pressed={boardView === on}
+                      className={`rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide transition-colors ${
+                        boardView === on ? 'bg-[#1A1A1A] text-white' : 'text-[#6B6B6B] hover:text-[#1A1A1A]'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
               {rows.map((row, idx) =>
                 row.kind === 'anchor' ? (
@@ -171,6 +215,8 @@ export function SplitPaneGantt({
                     key={`lc-${row.task.id}-${idx}`}
                     task={row.task}
                     zones={zones}
+                    boardView={boardView}
+                    initials={initialsFor(row.task.assigneeId)}
                     onClick={onTaskClick ? () => onTaskClick(row.task) : undefined}
                   />
                 ),
@@ -181,24 +227,42 @@ export function SplitPaneGantt({
             <div className="relative min-w-0 flex-1">
               {/* Sticky month axis */}
               <div
-                className="sticky top-0 z-20 border-b border-slate-100 bg-white"
+                className="sticky top-0 z-20 border-b border-[#EFEBE0] bg-white"
                 style={{ height: AXIS_HEIGHT_PX }}
               >
                 {months.map((m) => (
                   <div
                     key={m.label}
-                    className="absolute top-0 flex h-full items-center border-l border-slate-100 px-2 text-[10px] font-medium uppercase tracking-wider text-slate-500"
+                    className="absolute top-0 flex h-[22px] items-center border-l border-[#EFEBE0] px-2 text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]"
                     style={{ left: `${m.leftPct}%`, width: `${m.widthPct}%` }}
                   >
                     {m.short}
                   </div>
                 ))}
+                {ticks.map((t) => (
+                  <div
+                    key={`tick-${t.leftPct}`}
+                    className="absolute bottom-1 flex -translate-x-1/2 flex-col items-center"
+                    style={{ left: `${t.leftPct}%` }}
+                  >
+                    <span className="text-[9px] tabular-nums leading-none text-[#A0A0A0]">{t.day}</span>
+                    <span aria-hidden className="mt-[3px] h-1.5 w-px bg-[#D6CDB7]" />
+                  </div>
+                ))}
+                {todayVisible && (
+                  <div
+                    className="pointer-events-none absolute z-20 -translate-x-1/2 rounded-full bg-[#2F8F5C] px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.12em] text-white shadow-sm"
+                    style={{ left: `${todayPct}%`, top: 4 }}
+                  >
+                    Today
+                  </div>
+                )}
               </div>
 
-              {/* Today vertical line — soft pulse, spans below the axis. */}
+              {/* Today vertical line — solid sage, spans below the axis. */}
               {todayVisible && (
                 <div
-                  className="pointer-events-none absolute z-10 w-px animate-today-pulse bg-gradient-to-b from-emerald-500/0 via-emerald-500/70 to-emerald-500/0"
+                  className="pointer-events-none absolute z-10 w-[1.5px] bg-[#2F8F5C]/70"
                   style={{
                     left: `${todayPct}%`,
                     top: AXIS_HEIGHT_PX,
@@ -224,6 +288,7 @@ export function SplitPaneGantt({
                     task={row.task}
                     window={timeWindow}
                     highlight={highlightSet.has(row.task.id)}
+                    boardView={boardView}
                   />
                 ),
               )}
@@ -234,7 +299,7 @@ export function SplitPaneGantt({
         {/* Mobile — single-column grouped list. Timeline pane only renders on
             desktop; phones get a denser phase summary so the entire schedule
             stays one-thumb-scrollable. */}
-        <ul className="divide-y divide-slate-100 md:hidden">
+        <ul className="divide-y divide-[#EFEBE0] md:hidden">
           {phases.map((p) => (
             <MobileGroup
               key={`mg-${p.anchor.id}`}
@@ -262,13 +327,13 @@ function LeftAnchorRow({
 }) {
   return (
     <div
-      className="flex items-center gap-1.5 border-b border-slate-100 bg-white px-2 hover:bg-slate-50"
+      className="flex items-center gap-1.5 border-b border-[#EFEBE0] bg-white px-2 hover:bg-[#FAF8F2]"
       style={{ height: ROW_HEIGHT_PX }}
     >
       <button
         type="button"
         onClick={onToggle}
-        className="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+        className="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-[#6B6B6B] hover:bg-[#EFEBE0] hover:text-[#3A3A3A]"
         aria-label={isCollapsed ? 'Expand phase' : 'Collapse phase'}
       >
         {isCollapsed
@@ -278,12 +343,12 @@ function LeftAnchorRow({
       <span
         aria-hidden
         className="inline-block h-2 w-2 flex-shrink-0 rounded-full"
-        style={{ backgroundColor: phaseColor(anchor.phase).color }}
+        style={{ backgroundColor: anchorDisp(anchor).color }}
       />
-      <span className="min-w-0 flex-1 truncate text-[13px] font-semibold capitalize text-slate-900">
-        {anchor.phase}
+      <span className={`min-w-0 flex-1 truncate text-[13px] font-semibold text-[#1A1A1A] ${anchor.isCustom ? '' : 'capitalize'}`}>
+        {anchorDisp(anchor).label}
       </span>
-      <span className="flex-shrink-0 tabular-nums text-[11px] font-medium text-slate-700">
+      <span className="flex-shrink-0 tabular-nums text-[11px] font-medium text-[#3A3A3A]">
         <CountUp value={rolled} />%
       </span>
     </div>
@@ -291,11 +356,13 @@ function LeftAnchorRow({
 }
 
 function LeftChildRow({
-  task, zones, onClick,
+  task, zones, onClick, boardView = false, initials = null,
 }: {
   task: Task;
   zones: Zone[];
   onClick?: () => void;
+  boardView?: boolean;
+  initials?: string | null;
 }) {
   const aiSignal = useTaskAiSignal(task.id);
   const [shimmer, setShimmer] = useState(false);
@@ -318,7 +385,17 @@ function LeftChildRow({
         className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${STATUS_DOT[task.status]}`}
         aria-hidden
       />
-      <span className="min-w-0 flex-1 truncate text-[12px] text-slate-700">
+      {boardView && (
+        <span
+          className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full text-[8px] font-bold ${
+            initials ? 'bg-[#E5F2EA] text-[#246F47]' : 'bg-[#F0EDE4] text-[#A0A0A0]'
+          }`}
+          title={initials ? 'Assignee' : 'Unassigned'}
+        >
+          {initials ?? '–'}
+        </span>
+      )}
+      <span className="min-w-0 flex-1 truncate text-[12px] text-[#3A3A3A]">
         {task.name}
       </span>
       {aiSignal.sampleSize > 0 && (
@@ -334,7 +411,7 @@ function LeftChildRow({
           {aiSignal.signalPct}
         </span>
       )}
-      <span className="flex-shrink-0 tabular-nums text-[10px] text-slate-500">
+      <span className="flex-shrink-0 tabular-nums text-[10px] text-[#6B6B6B]">
         {task.percentComplete}%
       </span>
       {zone && (
@@ -347,13 +424,13 @@ function LeftChildRow({
     </>
   );
 
-  const baseClass = `flex w-full items-center gap-1.5 border-b border-slate-100 px-2 pl-8 text-left`;
+  const baseClass = `flex w-full items-center gap-1.5 border-b border-[#EFEBE0] px-2 pl-8 text-left`;
   if (onClick) {
     return (
       <button
         type="button"
         onClick={onClick}
-        className={`${baseClass} transition-colors hover:bg-slate-50`}
+        className={`${baseClass} transition-colors hover:bg-[#FAF8F2]`}
         style={{ height: ROW_HEIGHT_PX }}
       >
         {content}
@@ -380,10 +457,10 @@ function TimelineAnchorRow({
   const pos = taskBarPosition(anchor, w);
   const leftPct = Math.max(0, Math.min(100, pos.leftPct));
   const widthPct = Math.max(0.5, Math.min(100 - leftPct, pos.widthPct));
-  const palette = phaseColor(anchor.phase);
+  const palette = anchorDisp(anchor);
   return (
     <div
-      className="relative border-b border-slate-100 bg-white"
+      className="relative border-b border-[#EFEBE0] bg-white"
       style={{ height: ROW_HEIGHT_PX }}
     >
       <div
@@ -399,7 +476,7 @@ function TimelineAnchorRow({
           borderColor: palette.color,
           backgroundColor: palette.tint,
         }}
-        title={`${anchor.phase} · ${rolled}%`}
+        title={`${palette.label} · ${rolled}%`}
       >
         <div
           className="h-full transition-[width] duration-700 ease-out"
@@ -411,25 +488,30 @@ function TimelineAnchorRow({
 }
 
 function TimelineChildRow({
-  task, window: w, highlight,
+  task, window: w, highlight, boardView = false,
 }: {
   task: Task;
   window: TimeWindow;
   highlight: boolean;
+  boardView?: boolean;
 }) {
   const pos = taskBarPosition(task, w);
   const leftPct = Math.max(0, Math.min(100, pos.leftPct));
   const widthPct = Math.max(0.5, Math.min(100 - leftPct, pos.widthPct));
+  // In board mode, place the name+duration label after the bar — unless the bar
+  // ends in the right ~third, where we right-align it before the bar so it
+  // never runs off the pane.
+  const labelAfter = leftPct + widthPct <= 62;
   return (
     <div
-      className="relative border-b border-slate-100"
+      className="relative border-b border-[#EFEBE0]"
       style={{ height: ROW_HEIGHT_PX }}
     >
       <div
-        className={`absolute top-1/2 -translate-y-1/2 overflow-hidden rounded bg-slate-200/70 ${
+        className={`absolute top-1/2 -translate-y-1/2 overflow-hidden rounded bg-[#E6E1D4]/70 ${
           highlight ? HIGHLIGHT_RING : ''
         }`}
-        style={{ left: `${leftPct}%`, width: `${widthPct}%`, height: 12 }}
+        style={{ left: `${leftPct}%`, width: `${widthPct}%`, height: boardView ? 16 : 12 }}
         title={`${task.name} · ${task.percentComplete}%`}
       >
         <div
@@ -437,6 +519,17 @@ function TimelineChildRow({
           style={{ width: `${task.percentComplete}%` }}
         />
       </div>
+      {boardView && (
+        <span
+          className="pointer-events-none absolute top-1/2 max-w-[38%] -translate-y-1/2 truncate text-[10px] font-medium text-[#3A3A3A]"
+          style={labelAfter
+            ? { left: `calc(${leftPct + widthPct}% + 6px)` }
+            : { right: `calc(${100 - leftPct}% + 6px)` }}
+          title={`${task.name} · ${task.durationDays}d`}
+        >
+          {task.name} <span className="text-[#A0A0A0]">· {task.durationDays}d</span>
+        </span>
+      )}
     </div>
   );
 }
@@ -459,26 +552,26 @@ function MobileGroup({
         className="flex w-full items-center gap-2"
       >
         {isCollapsed
-          ? <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-500" />
-          : <ChevronDown className="h-4 w-4 flex-shrink-0 text-slate-500" />}
+          ? <ChevronRight className="h-4 w-4 flex-shrink-0 text-[#6B6B6B]" />
+          : <ChevronDown className="h-4 w-4 flex-shrink-0 text-[#6B6B6B]" />}
         <span
           aria-hidden
           className="inline-block h-2 w-2 flex-shrink-0 rounded-full"
-          style={{ backgroundColor: phaseColor(phase.anchor.phase).color }}
+          style={{ backgroundColor: anchorDisp(phase.anchor).color }}
         />
-        <span className="flex-1 truncate text-left text-sm font-semibold capitalize text-slate-900">
-          {phase.anchor.phase}
+        <span className={`flex-1 truncate text-left text-sm font-semibold text-[#1A1A1A] ${phase.anchor.isCustom ? '' : 'capitalize'}`}>
+          {anchorDisp(phase.anchor).label}
         </span>
-        <span className="tabular-nums text-[11px] text-slate-600">
+        <span className="tabular-nums text-[11px] text-[#6B6B6B]">
           <CountUp value={phase.rolled} />%
         </span>
       </button>
-      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#EFEBE0]">
         <div
           className="h-1.5 rounded-full transition-[width] duration-700 ease-out"
           style={{
             width: `${phase.rolled}%`,
-            backgroundColor: phaseColor(phase.anchor.phase).color,
+            backgroundColor: anchorDisp(phase.anchor).color,
           }}
         />
       </div>
@@ -490,11 +583,11 @@ function MobileGroup({
                 type="button"
                 onClick={onTaskClick ? () => onTaskClick(c) : undefined}
                 disabled={!onTaskClick}
-                className="flex w-full items-center gap-2 rounded py-1 text-left hover:bg-slate-50 disabled:cursor-default disabled:hover:bg-transparent"
+                className="flex w-full items-center gap-2 rounded py-1 text-left hover:bg-[#FAF8F2] disabled:cursor-default disabled:hover:bg-transparent"
               >
                 <span className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${STATUS_DOT[c.status]}`} />
-                <span className="min-w-0 flex-1 truncate text-[12px] text-slate-700">{c.name}</span>
-                <span className="tabular-nums text-[10px] text-slate-500">{c.percentComplete}%</span>
+                <span className="min-w-0 flex-1 truncate text-[12px] text-[#3A3A3A]">{c.name}</span>
+                <span className="tabular-nums text-[10px] text-[#6B6B6B]">{c.percentComplete}%</span>
               </button>
             </li>
           ))}

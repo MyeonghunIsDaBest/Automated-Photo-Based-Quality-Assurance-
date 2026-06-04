@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useAppStore } from '../../store';
 import { subscribeToProjectPhotos } from '../api/realtime';
+import { listPhotos } from '../api/photos';
 import { supabaseConfigured } from '../supabase';
 import type { PhotoRow } from '../api/photos';
 import type { Photo } from '../../types';
@@ -41,6 +42,26 @@ function mapPhotoRow(row: PhotoRow): Photo {
 // existing row. Surfaces that need updates (e.g. AI analysis state) listen
 // via `useProjectAnalysesRealtime` instead.
 export function useProjectPhotosRealtime(projectId: string | null | undefined): void {
+  // One-time backfill on project entry. The realtime subscription below is
+  // INSERT-only, so a fresh page load (or switching back to a project) would
+  // otherwise show zero photos until a NEW upload arrived — which is why the
+  // Dashboard "Photos this week" count reset to 0 on every reload. We seed the
+  // cache from `listPhotos` once per project; `prependPhoto` is idempotent
+  // (dedupes by id) so this never double-counts against the live feed.
+  useEffect(() => {
+    if (!supabaseConfigured() || !projectId) return;
+    let cancelled = false;
+    listPhotos(projectId)
+      .then((rows) => {
+        if (cancelled) return;
+        const prepend = useAppStore.getState().prependPhoto;
+        // Oldest-first so the newest ends up at the head after prepends.
+        for (const row of [...rows].reverse()) prepend(mapPhotoRow(row));
+      })
+      .catch((e) => console.warn('[photos] initial load failed:', e));
+    return () => { cancelled = true; };
+  }, [projectId]);
+
   useEffect(() => {
     if (!supabaseConfigured() || !projectId) return;
 

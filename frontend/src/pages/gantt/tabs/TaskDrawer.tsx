@@ -10,6 +10,7 @@ import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { useAppStore } from '../../../store';
 import { useChecklistItems } from '../../../lib/hooks/useChecklistItems';
+import { listChecklistTemplates, type ChecklistTemplate } from '../../../lib/api/checklistTemplates';
 import { canUploadPhotos, canForceTaskProgress } from '../../../lib/permissions';
 import { uploadPhoto, getPhotoUrl } from '../../../lib/api/photos';
 import { supabaseConfigured } from '../../../lib/supabase';
@@ -287,7 +288,7 @@ export default function TaskDrawer({
             />
           )}
           {!isCreate && activeTab === 'checklist' && task && (
-            <ChecklistPane taskId={task.id} readOnly={readOnly} />
+            <ChecklistPane taskId={task.id} phase={task.phase} readOnly={readOnly} />
           )}
           {!isCreate && activeTab === 'photos' && task && (
             <PhotosPane task={task} projectId={projectId} currentUser={currentUser} />
@@ -584,9 +585,32 @@ function DetailsPane({
   );
 }
 
-function ChecklistPane({ taskId, readOnly }: { taskId: string; readOnly: boolean }) {
-  const { items, addItem, toggleItem, removeItem } = useChecklistItems(taskId);
+function ChecklistPane({
+  taskId, phase, readOnly,
+}: { taskId: string; phase?: ConstructionPhase | null; readOnly: boolean }) {
+  const { items, addItem, addMany, toggleItem, removeItem } = useChecklistItems(taskId);
   const [text, setText] = useState('');
+
+  // Checklist templates (P4.1). Load once; offer those matching this task's
+  // phase plus phase-agnostic ones. Applying one bulk-adds its items.
+  const [templates, setTemplates] = useState<ChecklistTemplate[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    void listChecklistTemplates()
+      .then((t) => { if (!cancelled) setTemplates(t); })
+      .catch(() => { /* empty in mock mode / on error */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  const relevantTemplates = useMemo(
+    () => templates.filter((t) => t.phase == null || t.phase === phase),
+    [templates, phase],
+  );
+
+  const applyTemplate = (id: string) => {
+    const tpl = relevantTemplates.find((t) => t.id === id);
+    if (tpl) addMany(tpl.items);
+  };
 
   const done = items.filter((i) => i.done).length;
   const pct = items.length === 0 ? 0 : Math.round((done / items.length) * 100);
@@ -626,6 +650,30 @@ function ChecklistPane({ taskId, readOnly }: { taskId: string; readOnly: boolean
             <Plus className="h-4 w-4" />
           </Button>
         </form>
+      )}
+
+      {!readOnly && relevantTemplates.length > 0 && (
+        <div className="flex items-center gap-2">
+          <label htmlFor="checklist-template" className="whitespace-nowrap text-xs font-medium text-slate-500">
+            Apply template
+          </label>
+          <select
+            id="checklist-template"
+            value=""
+            onChange={(e) => {
+              if (e.target.value) applyTemplate(e.target.value);
+              e.target.value = '';
+            }}
+            className="flex-1 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-700 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          >
+            <option value="">Choose a template…</option>
+            {relevantTemplates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name} ({t.items.length})
+              </option>
+            ))}
+          </select>
+        </div>
       )}
 
       {items.length === 0 ? (

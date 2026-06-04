@@ -10,4 +10,6 @@ export { default as SectionHeader } from './SectionHeader';
 export { default as StatCell } from './StatCell';
 export { default as AccentBar } from './AccentBar';
 export { default as EditorialPageHeader } from './EditorialPageHeader';
+export { default as PageContainer } from './PageContainer';
+export { default as StatStrip } from './StatStrip';
 export type { ColumnDef } from './ResponsiveDataTable';

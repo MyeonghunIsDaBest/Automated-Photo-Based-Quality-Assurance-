@@ -59,6 +59,15 @@ export const displayHeading = cn(
   'display text-2xl font-medium leading-tight text-slate-900 sm:text-3xl md:text-4xl',
 );
 
+/* ─── Page shell ─────────────────────────────────────────────────────────── */
+
+/** The centered, padded content column. Single source of truth for the page
+ *  max-width so it can't drift: used by `PageContainer` (body region) and by
+ *  the editorial headers' inner content div (so header text aligns with the
+ *  centered body on wide screens while the header *band* stays full-bleed).
+ *  Page background + the full-bleed header band live on the page wrapper. */
+export const pageShell = cn('mx-auto w-full max-w-[1400px] px-4 sm:px-8');
+
 /* ─── Cards + sections ───────────────────────────────────────────────────── */
 
 /** White card, slate-200 border, 2xl radius. Every editorial section card. */

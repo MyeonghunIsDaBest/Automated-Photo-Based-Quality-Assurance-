@@ -28,6 +28,7 @@ import ProjectsStrip from './components/ProjectsStrip';
 import ActionTile from './components/ActionTile';
 import AssignedTasksMini from './components/AssignedTasksMini';
 import WhyPanel from './components/WhyPanel';
+import FieldActionsCard from '../../components/home/FieldActionsCard';
 
 export default function RoleHome() {
   const currentUser    = useAppStore((s) => s.currentUser);
@@ -58,7 +59,7 @@ export default function RoleHome() {
 
   return (
     <motion.div
-      className="editorial-root min-h-full bg-[#FAFAF7]"
+      className="editorial-root min-h-full bg-[#FAF8F2]"
       variants={staggerContainer}
       initial="hidden"
       animate="visible"
@@ -84,10 +85,17 @@ export default function RoleHome() {
           />
         </motion.section>
 
+        {/* Worker field cockpit (Phase 2): one-tap capture + clock in/out. */}
+        {sg === 'worker' && (
+          <motion.section variants={fadeUp}>
+            <FieldActionsCard />
+          </motion.section>
+        )}
+
         <motion.section variants={fadeUp} aria-labelledby="today-on-site-heading">
           <p
             id="today-on-site-heading"
-            className="text-[11px] font-medium uppercase tracking-[0.22em] text-slate-500"
+            className="text-[11px] font-medium uppercase tracking-[0.22em] text-[#6B6B6B]"
           >
             Today on site
           </p>

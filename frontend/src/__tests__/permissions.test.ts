@@ -29,6 +29,7 @@ const ALL_GROUPS: SecurityGroup[] = [
   'worker',
   'stakeholder',
   'supplier',
+  'dev',
 ];
 
 function makeProfile(group: SecurityGroup, overrides: Partial<Profile> = {}): Profile {
@@ -56,6 +57,7 @@ describe('canSeeAdminDashboard', () => {
     ['worker', false],
     ['stakeholder', false],
     ['supplier', false],
+    ['dev', true],
   ];
 
   it.each(cases)('returns %s for %s', (group, expected) => {
@@ -118,12 +120,17 @@ describe('Phase A: new helpers per security_group', () => {
     stakeholder: {
       gallery: true, messages: true, projectFiles: true, confirmAI: false,
       exportAudit: false, viewProject: true, supplierTabView: true,
-      supplierTabEdit: false, resolveSafety: false, logSafety: false, finance: false,
+      supplierTabEdit: false, resolveSafety: false, logSafety: false, finance: true,
     },
     supplier: {
       gallery: true, messages: true, projectFiles: true, confirmAI: false,
       exportAudit: false, viewProject: true, supplierTabView: true,
       supplierTabEdit: false, resolveSafety: false, logSafety: false, finance: false,
+    },
+    dev: {
+      gallery: true, messages: true, projectFiles: true, confirmAI: true,
+      exportAudit: true, viewProject: true, supplierTabView: true,
+      supplierTabEdit: true, resolveSafety: true, logSafety: true, finance: true,
     },
   };
 
@@ -173,6 +180,13 @@ describe('canAssignSecurityGroup', () => {
   it('non-admin roles cannot assign anything', () => {
     expect(canAssignSecurityGroup(makeProfile('site_manager'), 'worker')).toBe(false);
     expect(canAssignSecurityGroup(makeProfile('worker'), 'worker')).toBe(false);
+  });
+
+  it('dev (superuser) can assign any role; nobody else can mint dev', () => {
+    expect(canAssignSecurityGroup(makeProfile('dev'), 'company_admin')).toBe(true);
+    expect(canAssignSecurityGroup(makeProfile('dev'), 'dev')).toBe(true);
+    expect(canAssignSecurityGroup(makeProfile('company_admin'), 'dev')).toBe(false);
+    expect(canAssignSecurityGroup(makeProfile('administrator'), 'dev')).toBe(false);
   });
 });
 

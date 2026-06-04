@@ -3,7 +3,6 @@ import { Outlet, Navigate, useLocation } from 'react-router-dom';
 import TopNav from './TopNav';
 import MissingEnvBanner from './MissingEnvBanner';
 import DemoModeBanner from './DemoModeBanner';
-import QuickUploadFab from './QuickUploadFab';
 import { ErrorBoundary } from '../ui/ErrorBoundary';
 import { useAppStore } from '../../store';
 import { canViewSafetyIncident } from '../../lib/permissions';
@@ -13,7 +12,10 @@ import { useProjectPhotosRealtime } from '../../lib/hooks/useProjectPhotosRealti
 import { useProjectCommentsRealtime } from '../../lib/hooks/useProjectCommentsRealtime';
 import { useProjectAnalysesRealtime } from '../../lib/hooks/useProjectAnalysesRealtime';
 import { useMessagingRealtime } from '../../lib/hooks/useMessagingRealtime';
+import { useProjectMembersRealtime } from '../../lib/hooks/useProjectMembersRealtime';
+import { useNotificationsRealtime } from '../../lib/hooks/useNotificationsRealtime';
 import { useProjectConfig } from '../../lib/hooks/useProjectConfig';
+import FirstRunOnboarding from '../onboarding/FirstRunOnboarding';
 
 export default function Layout() {
   const { isAuthenticated, project, currentProfile, currentUser } = useAppStore();
@@ -40,6 +42,11 @@ export default function Layout() {
   // Messaging realtime is per-user (not per-project) — conversations span
   // projects, so the channel is scoped to the signed-in user's id.
   useMessagingRealtime(isAuthenticated ? currentUser?.id ?? null : null);
+  // Per-user: bell when an Admin/PM assigns this user to a project (migration 45).
+  useProjectMembersRealtime(isAuthenticated ? currentUser?.id ?? null : null);
+  // Per-user: hydrate + live durable notifications inbox (migration 46). No-ops
+  // gracefully until that migration is applied.
+  useNotificationsRealtime(isAuthenticated ? currentUser?.id ?? null : null);
 
   // Per-project accent colour. The CSS variable is read by AccentBar +
   // everywhere `text-[var(--accent-color)]` is used. Falls back to the
@@ -59,7 +66,7 @@ export default function Layout() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50" style={accentStyle}>
+    <div className="min-h-screen bg-[#FAF8F2]" style={accentStyle}>
       <MissingEnvBanner />
       <DemoModeBanner />
       <TopNav />
@@ -68,7 +75,7 @@ export default function Layout() {
           <Outlet />
         </ErrorBoundary>
       </main>
-      <QuickUploadFab />
+      <FirstRunOnboarding />
     </div>
   );
 }

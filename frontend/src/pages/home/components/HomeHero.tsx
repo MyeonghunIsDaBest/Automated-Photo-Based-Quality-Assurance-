@@ -37,10 +37,10 @@ export default function HomeHero({
   eyebrow, title, accent, description, action, eyebrowLoading = false,
 }: HomeHeroProps) {
   return (
-    <header className="relative overflow-hidden border-b border-slate-200/70 bg-white">
+    <header className="relative overflow-hidden border-b border-[#E6E1D4] bg-[#FAF8F2]">
       <div className="grid-bg absolute inset-0 opacity-50" aria-hidden />
       <div
-        className="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-emerald-100/40 blur-3xl"
+        className="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-[#E5F2EA]/40 blur-3xl"
         aria-hidden
       />
 
@@ -50,19 +50,19 @@ export default function HomeHero({
             {eyebrow}
           </EyebrowLabel>
           <h1
-            className="display mt-3 text-3xl font-medium leading-tight text-slate-900 sm:text-5xl md:text-6xl"
+            className="display mt-3 text-3xl font-medium leading-tight text-[#1A1A1A] sm:text-5xl md:text-6xl"
             style={{ textWrap: 'balance' }}
           >
             {title}{' '}
             <em
               className="font-normal italic"
-              style={{ color: 'var(--accent-color, #047857)' }}
+              style={{ color: 'var(--accent-color, #2F8F5C)' }}
             >
               {accent}
             </em>
           </h1>
           <p
-            className="mt-4 max-w-xl text-base leading-relaxed text-slate-500 sm:text-lg"
+            className="mt-4 max-w-xl text-base leading-relaxed text-[#6B6B6B] sm:text-lg"
             dangerouslySetInnerHTML={{ __html: descriptionHtml(description) }}
           />
         </div>
@@ -71,7 +71,7 @@ export default function HomeHero({
           <div className="flex-shrink-0">
             <Link
               to={action.to}
-              className="group inline-flex items-center gap-1.5 rounded-full bg-slate-900 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-emerald-700 active:translate-y-0"
+              className="group inline-flex items-center gap-1.5 rounded-full bg-[#1A1A1A] px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-[#246F47] active:translate-y-0"
             >
               {action.label}
               <ArrowUpRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
@@ -93,7 +93,7 @@ function descriptionHtml(raw: string): string {
     .map((chunk) => {
       const match = chunk.match(/^<em>(.*?)<\/em>$/);
       if (match) {
-        return `<em class="font-normal not-italic" style="color: var(--accent-color, #047857); font-style: italic">${escape(match[1])}</em>`;
+        return `<em class="font-normal not-italic" style="color: var(--accent-color, #2F8F5C); font-style: italic">${escape(match[1])}</em>`;
       }
       return escape(chunk);
     })

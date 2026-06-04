@@ -86,6 +86,29 @@ export function canViewFinance(user: User | null): boolean {
   return hasPermission(user, 'finance');
 }
 
+// ─── Role-experience gates (supplier/stakeholder cockpits + mgmt lenses) ────
+
+/** Write budgets/invoices. Distinct from `canViewFinance` so a stakeholder can
+ *  READ finance (sponsor) while the write affordances stay hidden. */
+export function canEditFinance(p: AdminPrincipal): boolean {
+  return caps(p).editFinance;
+}
+
+/** Supplier — respond to their own POs (Accept / Hold / Decline). */
+export function canRespondToOrders(p: AdminPrincipal): boolean {
+  return caps(p).respondToOwnOrders;
+}
+
+/** Stakeholder (finance sponsor) — sign off / release a payment milestone. */
+export function canReleasePaymentMilestone(p: AdminPrincipal): boolean {
+  return caps(p).releasePaymentMilestone;
+}
+
+/** Construction Manager / admins — see the multi-project portfolio rollup. */
+export function canViewPortfolio(p: AdminPrincipal): boolean {
+  return caps(p).viewPortfolioRollup;
+}
+
 // ─── Phase A — new helpers ────────────────────────────────────────────────
 
 export function canViewGallery(p: AdminPrincipal): boolean {
@@ -171,6 +194,7 @@ export function canManageProjectConfig(p: AdminPrincipal): boolean {
 
 function isOwnerPrincipal(p: AdminPrincipal): boolean {
   if (!p) return false;
+  if (principalGroup(p) === 'dev') return true; // dev is an implicit owner (superuser)
   return 'isOwner' in p ? p.isOwner === true : false;
 }
 
@@ -213,6 +237,7 @@ export function canAdminProjects(p: AdminPrincipal): boolean {
   const sg = principalGroup(p);
   if (!sg) return false;
   return (
+    sg === 'dev'              ||
     sg === 'company_admin'    ||
     sg === 'administrator'    ||
     sg === 'project_manager'  ||
@@ -230,12 +255,29 @@ export function isFieldRole(p: AdminPrincipal): boolean {
   return sg === 'worker' || sg === 'stakeholder' || sg === 'supplier';
 }
 
+// Dashboard "lens" — the management tier (Construction Mgr / PM / Site Manager)
+// + admins all share one Dashboard; the lens re-emphasizes sections per role:
+//   • portfolio  → Construction Manager + admins (multi-project rollup band)
+//   • site_ops   → Site Manager (crew / tasks / photos / safety; no finance)
+//   • command    → Project Manager (full dashboard + finance summary) + default
+export type DashboardLens = 'command' | 'site_ops' | 'portfolio';
+export function dashboardLens(p: AdminPrincipal): DashboardLens {
+  const sg = principalGroup(p);
+  // dev (god mode) + construction_mgr → portfolio rollup across ALL projects.
+  if (sg === 'dev' || sg === 'construction_mgr') return 'portfolio';
+  if (sg === 'site_manager') return 'site_ops';
+  return 'command';
+}
+
 // Only Company Admin can change a user's security_group to/from
 // `company_admin` itself — Administrators can manage everyone else.
 export function canAssignSecurityGroup(actor: AdminPrincipal, target: SecurityGroup): boolean {
   const actorGroup = principalGroup(actor);
-  if (actorGroup === 'company_admin') return true;
-  if (actorGroup === 'administrator') return target !== 'company_admin';
+  if (actorGroup === 'dev') return true;                                       // god mode
+  // `dev` is never mintable from the UI (DB/seed only); `administrator` is
+  // deprecated and not offered. Company Admin can assign every other role.
+  if (actorGroup === 'company_admin') return target !== 'dev';
+  if (actorGroup === 'administrator') return target !== 'company_admin' && target !== 'dev';
   return false;
 }
 
@@ -252,11 +294,12 @@ export function describeAccess(user: User): string[] {
 
 export const SECURITY_GROUP_LABELS: Record<SecurityGroup, string> = {
   company_admin: 'Company Admin',
-  administrator: 'Administrator',
+  administrator: 'Administrator', // deprecated — alias of Company Admin
   construction_mgr: 'Construction Manager',
   project_manager: 'Project Manager',
   site_manager: 'Site Manager',
   worker: 'Worker',
   stakeholder: 'Stakeholder',
   supplier: 'Supplier',
+  dev: 'cooked', // hidden dev superuser — easter-egg title
 };

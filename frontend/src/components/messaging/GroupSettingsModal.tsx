@@ -178,7 +178,7 @@ export default function GroupSettingsModal({
 
   const footer = tab === 'add' ? (
     <div className="flex items-center justify-between gap-3">
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-[#6B6B6B]">
         {selectedIds.length === 0
           ? 'Select people to invite.'
           : `${selectedIds.length} selected`}
@@ -187,7 +187,7 @@ export default function GroupSettingsModal({
         <button
           type="button"
           onClick={() => { setTab('members'); setSelectedIds([]); setSearch(''); }}
-          className="rounded-full px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900"
+          className="rounded-full px-4 py-2 text-sm font-medium text-[#3A3A3A] hover:text-[#1A1A1A]"
         >
           Cancel
         </button>
@@ -212,14 +212,14 @@ export default function GroupSettingsModal({
       footer={footer}
     >
       {error && (
-        <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+        <p className="mb-3 rounded-[14px] border border-[#FBE5E5] bg-[#FBE5E5] px-3 py-2 text-xs text-[#C44545]">
           {error}
         </p>
       )}
 
       {/* Tab strip (hidden on the add-members panel since it has its own footer) */}
       {tab !== 'add' && (
-        <div className="mb-4 flex gap-6 border-b border-slate-200">
+        <div className="mb-4 flex gap-6 border-b border-[#E6E1D4]">
           {(['overview', 'members'] as const).map((t) => (
             <button
               key={t}
@@ -227,8 +227,8 @@ export default function GroupSettingsModal({
               onClick={() => setTab(t)}
               className={`-mb-px border-b-2 pb-2 text-sm font-medium transition-colors ${
                 tab === t
-                  ? 'border-slate-900 text-slate-900'
-                  : 'border-transparent text-slate-500 hover:text-slate-900'
+                  ? 'border-[#2F8F5C] text-[#1A1A1A]'
+                  : 'border-transparent text-[#6B6B6B] hover:text-[#1A1A1A]'
               }`}
             >
               {t === 'overview' ? 'Overview' : `Members · ${memberCount}`}
@@ -241,7 +241,7 @@ export default function GroupSettingsModal({
         <div className="space-y-5">
           {/* Group name */}
           <div>
-            <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
+            <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.18em] text-[#6B6B6B]">
               Group name
             </label>
             {editingName && isCreator ? (
@@ -264,28 +264,28 @@ export default function GroupSettingsModal({
                   type="button"
                   disabled={busy}
                   onClick={() => void handleSaveName()}
-                  className="rounded-full bg-slate-900 px-4 py-2 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                  className="rounded-full bg-[#2F8F5C] px-4 py-2 text-xs font-medium text-white hover:bg-[#246F47] disabled:opacity-50"
                 >
                   Save
                 </button>
                 <button
                   type="button"
                   onClick={() => { setName(conversation.name ?? ''); setEditingName(false); }}
-                  className="rounded-full px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-900"
+                  className="rounded-full px-3 py-2 text-xs font-medium text-[#6B6B6B] hover:text-[#1A1A1A]"
                 >
                   Cancel
                 </button>
               </div>
             ) : (
-              <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3">
-                <span className="display truncate text-base font-medium text-slate-900">
+              <div className="flex items-center justify-between gap-3 rounded-[14px] border border-[#E6E1D4] bg-white px-4 py-3">
+                <span className="truncate text-base font-medium text-[#1A1A1A]">
                   {conversation.name ?? 'Untitled group'}
                 </span>
                 {isCreator && (
                   <button
                     type="button"
                     onClick={() => setEditingName(true)}
-                    className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                    className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-[#3A3A3A] hover:bg-[#F0EDE4] hover:text-[#1A1A1A]"
                   >
                     <Pencil className="h-3.5 w-3.5" />
                     Rename
@@ -294,7 +294,7 @@ export default function GroupSettingsModal({
               </div>
             )}
             {!isCreator && (
-              <p className="mt-1.5 text-[11px] text-slate-400">
+              <p className="mt-1.5 text-[11px] text-[#A0A0A0]">
                 Only the group&apos;s creator can rename it.
               </p>
             )}
@@ -302,19 +302,19 @@ export default function GroupSettingsModal({
 
           {/* Quick stats */}
           <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
-              <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500">
+            <div className="rounded-[14px] border border-[#E6E1D4] bg-white px-4 py-3">
+              <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-[#6B6B6B]">
                 Members
               </p>
-              <p className="display mt-0.5 text-2xl font-medium tabular-nums text-slate-900">
+              <p className="mt-0.5 text-2xl font-medium tabular-nums text-[#1A1A1A]">
                 {memberCount}
               </p>
             </div>
-            <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
-              <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500">
+            <div className="rounded-[14px] border border-[#E6E1D4] bg-white px-4 py-3">
+              <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-[#6B6B6B]">
                 Created
               </p>
-              <p className="mt-0.5 text-sm text-slate-700">
+              <p className="mt-0.5 text-sm text-[#3A3A3A]">
                 {new Date(conversation.createdAt).toLocaleDateString(undefined, {
                   day: 'numeric', month: 'short', year: 'numeric',
                 })}
@@ -323,20 +323,20 @@ export default function GroupSettingsModal({
           </div>
 
           {/* Danger zone */}
-          <div className="border-t border-slate-200 pt-4">
+          <div className="border-t border-[#E6E1D4] pt-4">
             <button
               type="button"
               disabled={busy}
               onClick={() => void handleLeave()}
-              className="flex w-full items-center justify-between rounded-lg border border-red-200 bg-red-50/40 px-4 py-3 text-left transition-colors hover:bg-red-50 disabled:opacity-50"
+              className="flex w-full items-center justify-between rounded-[14px] border border-[#FBE5E5] bg-[#FBE5E5]/60 px-4 py-3 text-left transition-colors hover:bg-[#FBE5E5] disabled:opacity-50"
             >
               <span>
-                <span className="block text-sm font-medium text-red-700">Leave group</span>
-                <span className="block text-xs text-red-600/70">
+                <span className="block text-sm font-medium text-[#C44545]">Leave group</span>
+                <span className="block text-xs text-[#C44545]/70">
                   You&apos;ll stop receiving messages and need an invite to rejoin.
                 </span>
               </span>
-              <LogOut className="h-4 w-4 flex-shrink-0 text-red-600" />
+              <LogOut className="h-4 w-4 shrink-0 text-[#C44545]" />
             </button>
           </div>
         </div>
@@ -345,14 +345,14 @@ export default function GroupSettingsModal({
       {tab === 'members' && (
         <div>
           <div className="mb-3 flex items-center justify-between">
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-[#6B6B6B]">
               {memberCount} {memberCount === 1 ? 'person' : 'people'} in this group
             </p>
             {isCreator && (
               <button
                 type="button"
                 onClick={() => setTab('add')}
-                className="flex items-center gap-1.5 rounded-full bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700"
+                className="flex items-center gap-1.5 rounded-full bg-[#2F8F5C] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#246F47]"
               >
                 <UserPlus className="h-3.5 w-3.5" />
                 Add member
@@ -369,7 +369,7 @@ export default function GroupSettingsModal({
               return (
                 <div
                   key={m.userId}
-                  className="flex items-center gap-3 rounded-lg px-2 py-2"
+                  className="flex items-center gap-3 rounded-[14px] px-2 py-2"
                 >
                   <Avatar className="h-9 w-9">
                     <AvatarImage src={p?.avatarUrl ?? undefined} />
@@ -378,11 +378,11 @@ export default function GroupSettingsModal({
                     </AvatarFallback>
                   </Avatar>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-slate-900">
-                      {name}{isSelf && <span className="ml-1.5 text-xs text-slate-400">(you)</span>}
+                    <p className="truncate text-sm font-medium text-[#1A1A1A]">
+                      {name}{isSelf && <span className="ml-1.5 text-xs text-[#A0A0A0]">(you)</span>}
                     </p>
-                    <p className="truncate text-xs text-slate-500">
-                      {wasCreator && <span className="mr-1 inline-flex rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-emerald-700">Creator</span>}
+                    <p className="truncate text-xs text-[#6B6B6B]">
+                      {wasCreator && <span className="mr-1 inline-flex rounded-full bg-[#E5F2EA] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-[#246F47]">Creator</span>}
                       {p ? SECURITY_GROUP_LABELS[p.securityGroup] : '—'}
                     </p>
                   </div>
@@ -391,7 +391,7 @@ export default function GroupSettingsModal({
                       type="button"
                       disabled={busy}
                       onClick={() => void handleRemove(m.userId)}
-                      className="flex-shrink-0 rounded-full p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                      className="shrink-0 rounded-full p-1.5 text-[#A0A0A0] hover:bg-[#FBE5E5] hover:text-[#C44545] disabled:opacity-50"
                       aria-label={`Remove ${name}`}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -407,7 +407,7 @@ export default function GroupSettingsModal({
       {tab === 'add' && (
         <div>
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#A0A0A0]" />
             <input
               autoFocus
               type="text"
@@ -423,13 +423,13 @@ export default function GroupSettingsModal({
               {results.filter((p) => selectedIds.includes(p.id)).map((p) => (
                 <span
                   key={p.id}
-                  className="flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-800"
+                  className="flex items-center gap-1 rounded-full bg-[#E5F2EA] px-2.5 py-1 text-xs font-medium text-[#246F47]"
                 >
                   {p.firstName}
                   <button
                     type="button"
                     onClick={() => setSelectedIds((s) => s.filter((x) => x !== p.id))}
-                    className="ml-0.5 hover:text-emerald-900"
+                    className="ml-0.5 hover:text-[#1A1A1A]"
                   >
                     <X className="h-3 w-3" />
                   </button>
@@ -440,7 +440,7 @@ export default function GroupSettingsModal({
 
           <div className="mt-3 max-h-60 overflow-y-auto">
             {results.length === 0 ? (
-              <p className="px-2 py-6 text-center text-xs text-slate-400">
+              <p className="px-2 py-6 text-center text-xs text-[#A0A0A0]">
                 No matches outside the group.
               </p>
             ) : (
@@ -456,7 +456,7 @@ export default function GroupSettingsModal({
                         s.includes(p.id) ? s.filter((x) => x !== p.id) : [...s, p.id],
                       )
                     }
-                    className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-slate-50"
+                    className="flex w-full items-center gap-3 rounded-[14px] px-2 py-2 text-left transition-colors hover:bg-[#FAF8F2]"
                   >
                     <Avatar className="h-9 w-9">
                       <AvatarImage src={p.avatarUrl ?? undefined} />
@@ -465,11 +465,11 @@ export default function GroupSettingsModal({
                       </AvatarFallback>
                     </Avatar>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-slate-900">{name}</p>
-                      <p className="text-xs text-slate-500">{SECURITY_GROUP_LABELS[p.securityGroup]}</p>
+                      <p className="truncate text-sm font-medium text-[#1A1A1A]">{name}</p>
+                      <p className="text-xs text-[#6B6B6B]">{SECURITY_GROUP_LABELS[p.securityGroup]}</p>
                     </div>
                     <div className={`flex h-5 w-5 items-center justify-center rounded-full border-2 transition-colors ${
-                      selected ? 'border-emerald-600 bg-emerald-600' : 'border-slate-300'
+                      selected ? 'border-[#2F8F5C] bg-[#2F8F5C]' : 'border-[#D8D2C4]'
                     }`}>
                       {selected && <Check className="h-3 w-3 text-white" />}
                     </div>

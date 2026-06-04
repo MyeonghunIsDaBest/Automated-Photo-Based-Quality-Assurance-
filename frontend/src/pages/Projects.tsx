@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowUpRight, ChevronDown, Plus, Search, X } from 'lucide-react';
+import { Activity, ChevronDown, Download, Plus, Search, X } from 'lucide-react';
 import { useAppStore } from '../store';
 import { fadeUp, staggerContainer } from '../lib/motion/variants';
 import { canCreateProject, canDeleteProject } from '../lib/permissions';
@@ -9,7 +9,14 @@ import { useProjectsListStore } from './projects/store';
 import { ProjectsListTab } from './projects/components/ProjectsListTab';
 import { NewProjectModal } from './projects/components/NewProjectModal';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
-import type { Project, ProjectStatus } from './projects/types';
+import { FRAUNCES } from './gantt/components/ledger';
+import type { Project } from './projects/types';
+import {
+  projectHealthInfo,
+  HEALTH_META,
+  type ProjectHealth,
+  type ProjectHealthInfo,
+} from './projects/lib/health';
 
 // The Projects page is the directory + the toolbar that drives it. Cards
 // themselves live in ProjectsListTab, which is now a dumb renderer.
@@ -20,7 +27,7 @@ import type { Project, ProjectStatus } from './projects/types';
 //  - add a named sort dropdown alongside the column-header pattern
 //  - add pin-to-top + recently-opened, both persisted to localStorage
 
-type StatusFilter = 'all' | ProjectStatus;
+type HealthFilter = 'all' | ProjectHealth;
 type SortMode =
   | 'recent'
   | 'progress'
@@ -37,13 +44,6 @@ const SORT_OPTIONS: { id: SortMode; label: string }[] = [
   { id: 'name',              label: 'Name A → Z' },
   { id: 'tasks_outstanding', label: 'Outstanding tasks · most' },
 ];
-
-const STATUS_LABEL: Record<ProjectStatus, string> = {
-  active:    'Active',
-  on_hold:   'On Hold',
-  completed: 'Completed',
-  archived:  'Archived',
-};
 
 const PINNED_KEY = 'siteproof:projects:pinned:v1';
 const RECENT_KEY = 'siteproof:projects:recent:v1';
@@ -86,7 +86,7 @@ export default function Projects() {
   const canDelete = canDeleteProject(currentProfile);
 
   const [newProjectOpen, setNewProjectOpen] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
   const [search, setSearch] = useState('');
   const [sortMode, setSortMode] = useState<SortMode>('recent');
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(() => readSet(PINNED_KEY));
@@ -135,19 +135,57 @@ export default function Projects() {
     });
   }, [projects, tasks]);
 
+  // Per-project health (momentum) — derived from the most recent task update.
+  // active + updated this week = on track · 4–6 days quiet = caution · 7d+ with
+  // no progress = delayed · on_hold = paused · completed/archived = done.
+  const healthById = useMemo(() => {
+    const m = new Map<string, ProjectHealthInfo>();
+    for (const p of projectsWithProgress) {
+      const lastMs = tasks.reduce<number | null>((max, t) => {
+        if (t.projectId !== p.id) return max;
+        const ms = Date.parse(t.lastUpdated);
+        if (Number.isNaN(ms)) return max;
+        return max == null ? ms : Math.max(max, ms);
+      }, null);
+      m.set(p.id, projectHealthInfo(p.status, lastMs));
+    }
+    return m;
+  }, [projectsWithProgress, tasks]);
+
   // Aggregate stats — computed over ALL projects (not the filtered set), so
   // clicking a stat tile reveals what's hidden, not what's already shown.
   const stats = useMemo(() => {
-    const active    = projectsWithProgress.filter((p) => p.status === 'active').length;
-    const onHold    = projectsWithProgress.filter((p) => p.status === 'on_hold').length;
-    const completed = projectsWithProgress.filter((p) => p.status === 'completed').length;
-    return { active, onHold, completed, totalTasks: tasks.length };
-  }, [projectsWithProgress, tasks]);
+    let onTrack = 0, caution = 0, delayed = 0, paused = 0, done = 0;
+    let runwaySum = 0, runwayCount = 0;
+    for (const p of projectsWithProgress) {
+      switch (healthById.get(p.id)?.health) {
+        case 'on_track': onTrack += 1; break;
+        case 'caution':  caution += 1; break;
+        case 'delayed':  delayed += 1; break;
+        case 'paused':   paused  += 1; break;
+        case 'done':     done    += 1; break;
+      }
+      // Runway = days left, averaged across active sites only.
+      if (p.status === 'active') {
+        const days = Math.round((Date.parse(p.endDate) - Date.now()) / 86_400_000);
+        if (Number.isFinite(days)) { runwaySum += days; runwayCount += 1; }
+      }
+    }
+    const activeSites = onTrack + caution + delayed;
+    const openTasks = tasks.filter((t) => t.status !== 'complete').length;
+    const avgRunway = runwayCount ? Math.round(runwaySum / runwayCount) : 0;
+    const healthyPct = activeSites ? Math.round((onTrack / activeSites) * 100) : 100;
+    return {
+      onTrack, caution, delayed, paused, done,
+      total: projectsWithProgress.length, totalTasks: tasks.length,
+      activeSites, openTasks, avgRunway, healthyPct,
+    };
+  }, [projectsWithProgress, healthById, tasks]);
 
   // Filter → search → sort → pinned-first. Pinned float regardless of sort.
   const visibleProjects = useMemo(() => {
     let list = projectsWithProgress;
-    if (statusFilter !== 'all') list = list.filter((p) => p.status === statusFilter);
+    if (healthFilter !== 'all') list = list.filter((p) => healthById.get(p.id)?.health === healthFilter);
     const q = search.trim().toLowerCase();
     if (q) {
       list = list.filter(
@@ -175,7 +213,7 @@ export default function Projects() {
     return sorted.sort(
       (a, b) => (pinnedIds.has(a.id) ? 0 : 1) - (pinnedIds.has(b.id) ? 0 : 1),
     );
-  }, [projectsWithProgress, statusFilter, search, sortMode, pinnedIds, recentlyOpened]);
+  }, [projectsWithProgress, healthFilter, healthById, search, sortMode, pinnedIds, recentlyOpened]);
 
   const mostRecentId = recentlyOpened[0] ?? null;
 
@@ -194,123 +232,155 @@ export default function Projects() {
     navigate('/gantt');
   };
 
-  const toggleStatusFilter = (status: ProjectStatus) =>
-    setStatusFilter((prev) => (prev === status ? 'all' : status));
+  const toggleHealthFilter = (h: ProjectHealth) =>
+    setHealthFilter((prev) => (prev === h ? 'all' : h));
 
-  const clearFilters = () => { setStatusFilter('all'); setSearch(''); };
-  const filtersActive = statusFilter !== 'all' || search.trim() !== '';
+  const clearFilters = () => { setHealthFilter('all'); setSearch(''); };
+  const filtersActive = healthFilter !== 'all' || search.trim() !== '';
+
+  // Export the whole portfolio (not just the filtered view) to CSV — name,
+  // client, lifecycle, health, progress, task split, and dates. Pure client-
+  // side; no backend round-trip needed.
+  const handleExport = () => {
+    const header = ['Project', 'Client', 'Status', 'Health', 'Progress %', 'Done', 'In progress', 'To start', 'Start', 'End'];
+    const lines = projectsWithProgress.map((p) => {
+      const hKey = healthById.get(p.id)?.health;
+      return [
+        p.name, p.client, p.status, hKey ? HEALTH_META[hKey].label : '',
+        String(p.percentComplete), String(p.tasksComplete), String(p.tasksPending),
+        String(p.tasksOutstanding), p.startDate, p.endDate,
+      ];
+    });
+    const csv = [header, ...lines]
+      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `projects-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <motion.div
-      className="editorial-root min-h-full bg-[#FAFAF7]"
+      className="editorial-root min-h-full bg-[#FAF8F2]"
       variants={staggerContainer}
       initial="hidden"
       animate="visible"
     >
       {/* ─── Editorial Header ─── */}
-      <motion.header variants={fadeUp} className="relative overflow-hidden border-b border-slate-200/70 bg-white">
+      <motion.header variants={fadeUp} className="relative overflow-hidden border-b border-[#E6E1D4] bg-white">
         <div className="grid-bg absolute inset-0 opacity-50" />
-        <div className="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-emerald-100/40 blur-3xl" />
+        <div className="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-[#E5F2EA]/40 blur-3xl" />
 
-        <div className="relative px-4 pt-8 pb-6 sm:px-8 sm:pt-10">
-          <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between sm:gap-6">
+        <div className="relative mx-auto w-full max-w-[1400px] px-4 pt-8 pb-6 sm:px-8 sm:pt-10">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+            {/* Identity + portfolio stats */}
             <div className="min-w-0">
-              <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
-                <span className="inline-block h-px w-6 bg-slate-400" />
-                Workspace · Projects
+              <div className="mb-3 flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-[#6B6B6B]">
+                <span className="inline-block h-px w-6 bg-[#A0A0A0]" />
+                Portfolio
+                <span className="text-[#D8D2C4]">·</span>
+                <span className="inline-flex items-center gap-1.5 normal-case tracking-normal text-[#246F47]">
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#A8D0B8] opacity-75" />
+                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#2F8F5C]" />
+                  </span>
+                  Live · as of today
+                </span>
               </div>
+
               <h1
-                className="display text-2xl font-medium leading-tight text-slate-900 sm:text-4xl md:text-5xl"
-                style={{ textWrap: 'balance' }}
+                className="text-3xl font-medium leading-[0.95] tracking-tight text-[#1A1A1A] sm:text-5xl"
+                style={{ fontFamily: FRAUNCES, letterSpacing: '-0.02em' }}
               >
-                The <em className="font-normal italic text-emerald-700">portfolio</em>.
+                Projects
               </h1>
-              <p className="mt-3 max-w-md text-sm leading-relaxed text-slate-500 sm:text-[15px]">
-                Every site, every milestone, every dependency — tracked from groundbreaking
-                through handover, in one place.
+              <p className="mt-3 max-w-md text-sm leading-relaxed text-[#6B6B6B] sm:text-[15px]">
+                Every site you're running, with live health and progress at a glance — so
+                nothing quietly slips.
               </p>
+
+              {/* Portfolio stats */}
+              <div className="mt-6 flex flex-wrap items-center gap-x-7 gap-y-3">
+                <HeroStat value={`${stats.activeSites}`} label="Active sites" />
+                <span className="hidden h-8 w-px bg-[#E6E1D4] sm:block" aria-hidden />
+                <HeroStat value={`${stats.openTasks}`} label="Open tasks" />
+                <span className="hidden h-8 w-px bg-[#E6E1D4] sm:block" aria-hidden />
+                <HeroStat value={`${stats.avgRunway}d`} label="Avg. runway" />
+              </div>
             </div>
 
-            {canCreate ? (
-              <div className="flex flex-wrap items-center gap-2 self-start">
+            {/* Actions + live health */}
+            <div className="flex shrink-0 flex-col gap-4 lg:w-[360px] lg:items-end">
+              <div className="flex flex-wrap items-center gap-2 lg:justify-end">
                 <button
                   type="button"
-                  onClick={() => setNewProjectOpen(true)}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-slate-900 px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-emerald-700"
+                  onClick={handleExport}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#E6E1D4] bg-white px-4 py-2 text-xs font-medium text-[#3A3A3A] transition-colors hover:border-[#1A1A1A] hover:bg-[#1A1A1A] hover:text-white"
                 >
-                  <Plus className="h-3.5 w-3.5" />
-                  New project
+                  <Download className="h-3.5 w-3.5" />
+                  Export
                 </button>
+                {canCreate ? (
+                  <button
+                    type="button"
+                    onClick={() => setNewProjectOpen(true)}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-[#2F8F5C] px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#246F47]"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    New project
+                  </button>
+                ) : (
+                  <span className="inline-flex items-center gap-2 rounded-full border border-[#E6E1D4] bg-white px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.15em] text-[#6B6B6B]">
+                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#A0A0A0]" />
+                    Owner-only
+                  </span>
+                )}
               </div>
-            ) : (
-              <div className="flex items-center gap-2 self-start rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.15em] text-slate-500">
-                <span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-400" />
-                Owner-only access
-              </div>
-            )}
-          </div>
 
-          {/* Stat strip — tiles are interactive: click filters by status. */}
-          <div className="mt-10 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200 md:grid-cols-4">
-            <StatTile
-              label="Active"
-              value={stats.active}
-              caption={`${projects.length} total`}
-              accent="#0F766E"
-              active={statusFilter === 'active'}
-              onClick={() => toggleStatusFilter('active')}
-            />
-            <StatTile
-              label="On Hold"
-              value={stats.onHold}
-              caption="Paused or pending input"
-              accent="#B45309"
-              active={statusFilter === 'on_hold'}
-              onClick={() => toggleStatusFilter('on_hold')}
-            />
-            <StatTile
-              label="Completed"
-              value={stats.completed}
-              caption="Closed and archived"
-              accent="#1E40AF"
-              active={statusFilter === 'completed'}
-              onClick={() => toggleStatusFilter('completed')}
-            />
-            <StatTile
-              label="Tasks tracked"
-              value={stats.totalTasks}
-              caption="Across every project"
-              accent="#0F172A"
-            />
+              <PortfolioHealthCard
+                onTrack={stats.onTrack}
+                caution={stats.caution}
+                delayed={stats.delayed}
+                healthyPct={stats.healthyPct}
+                activeFilter={healthFilter}
+                onFilter={toggleHealthFilter}
+              />
+            </div>
           </div>
         </div>
       </motion.header>
 
       {/* ─── Directory toolbar + grid ─── */}
-      <motion.div variants={fadeUp} className="space-y-5 px-4 py-6 sm:px-8 sm:py-8">
+      <motion.div variants={fadeUp} className="mx-auto w-full max-w-[1400px] space-y-5 px-4 py-6 sm:px-8 sm:py-8">
         {/* Toolbar */}
         <div className="flex flex-wrap items-center gap-2">
-          <div className="relative min-w-[240px] flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <div className="relative min-w-0 flex-1 sm:min-w-60">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#A0A0A0]" />
             <input
               ref={searchRef}
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search by name or client…"
-              className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-12 text-sm transition-colors focus:border-slate-400 focus:outline-none"
+              className="h-10 w-full rounded-lg border border-[#E6E1D4] bg-white pl-10 pr-12 text-base transition-colors focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] sm:text-sm"
             />
             {search ? (
               <button
                 type="button"
                 onClick={() => setSearch('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-900"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-[#A0A0A0] hover:bg-[#F0EDE4] hover:text-[#1A1A1A]"
                 aria-label="Clear search"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
             ) : (
-              <kbd className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] tabular-nums text-slate-400">
+              <kbd className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded border border-[#E6E1D4] bg-[#FAF8F2] px-1.5 py-0.5 text-[10px] tabular-nums text-[#A0A0A0]">
                 /
               </kbd>
             )}
@@ -318,8 +388,8 @@ export default function Projects() {
 
           <SortMenu sortMode={sortMode} onChange={setSortMode} />
 
-          <p className="ml-auto text-[11px] text-slate-400">
-            <span className="tabular-nums text-slate-700">{visibleProjects.length}</span>
+          <p className="ml-auto text-[11px] text-[#A0A0A0]">
+            <span className="tabular-nums text-[#3A3A3A]">{visibleProjects.length}</span>
             {' '}of{' '}
             <span className="tabular-nums">{projectsWithProgress.length}</span> shown
           </p>
@@ -328,31 +398,31 @@ export default function Projects() {
         {/* Active-filter chips with one-click clear. */}
         {filtersActive && (
           <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="text-slate-500">Filtering by:</span>
-            {statusFilter !== 'all' && (
+            <span className="text-[#6B6B6B]">Filtering by:</span>
+            {healthFilter !== 'all' && (
               <button
                 type="button"
-                onClick={() => setStatusFilter('all')}
-                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-slate-700 transition-colors hover:border-slate-400"
+                onClick={() => setHealthFilter('all')}
+                className="inline-flex items-center gap-1.5 rounded-full border border-[#E6E1D4] bg-white px-2.5 py-0.5 text-[#3A3A3A] transition-colors hover:border-[#D8D2C4]"
               >
-                Status · {STATUS_LABEL[statusFilter]}
-                <X className="h-3 w-3 text-slate-400" />
+                Health · {HEALTH_META[healthFilter].label}
+                <X className="h-3 w-3 text-[#A0A0A0]" />
               </button>
             )}
             {search && (
               <button
                 type="button"
                 onClick={() => setSearch('')}
-                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-slate-700 transition-colors hover:border-slate-400"
+                className="inline-flex items-center gap-1.5 rounded-full border border-[#E6E1D4] bg-white px-2.5 py-0.5 text-[#3A3A3A] transition-colors hover:border-[#D8D2C4]"
               >
                 Search · &ldquo;{search}&rdquo;
-                <X className="h-3 w-3 text-slate-400" />
+                <X className="h-3 w-3 text-[#A0A0A0]" />
               </button>
             )}
             <button
               type="button"
               onClick={clearFilters}
-              className="text-[11px] font-medium text-emerald-700 hover:underline"
+              className="text-[11px] font-medium text-[#246F47] hover:underline"
             >
               Clear all
             </button>
@@ -361,9 +431,9 @@ export default function Projects() {
 
         {/* List or empty-state */}
         {visibleProjects.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-white py-16 text-center">
-            <p className="display text-xl text-slate-900">No projects match.</p>
-            <p className="mt-1 text-sm text-slate-500">
+          <div className="rounded-[14px] border border-dashed border-[#E6E1D4] bg-white py-16 text-center shadow-[0_1px_2px_rgba(20,20,20,0.04)]">
+            <p className="text-xl text-[#1A1A1A]" style={{ fontFamily: FRAUNCES }}>No projects match.</p>
+            <p className="mt-1 text-sm text-[#6B6B6B]">
               {projectsWithProgress.length === 0
                 ? 'There are no projects yet — create one to get started.'
                 : 'Try clearing the filters above.'}
@@ -372,7 +442,7 @@ export default function Projects() {
               <button
                 type="button"
                 onClick={clearFilters}
-                className="mt-3 text-xs font-medium text-emerald-700 hover:underline"
+                className="mt-3 text-xs font-medium text-[#246F47] hover:underline"
               >
                 Clear filters
               </button>
@@ -382,6 +452,7 @@ export default function Projects() {
           <ErrorBoundary label="Projects · list">
             <ProjectsListTab
               projects={visibleProjects}
+              healthById={healthById}
               onOpen={handleOpenProject}
               pinnedIds={pinnedIds}
               onTogglePin={togglePin}
@@ -403,56 +474,84 @@ export default function Projects() {
 
 // ─── Pieces ────────────────────────────────────────────────────────────
 
-function StatTile({
-  label, value, caption, accent, active, onClick,
-}: {
-  label: string;
-  value: number;
-  caption: string;
-  accent: string;
-  active?: boolean;
-  onClick?: () => void;
-}) {
-  const inner = (
-    <>
-      <div
-        className="absolute left-0 top-0 h-1 w-12 rounded-br-full"
-        style={{ backgroundColor: accent }}
-      />
-      <div className="flex items-baseline justify-between gap-2">
-        <p className="text-[11px] font-medium uppercase tracking-[0.15em] text-slate-500">
-          {label}
-        </p>
-        {active && (
-          <span className="text-[9px] font-medium uppercase tracking-[0.18em] text-emerald-700">
-            Filtering
-          </span>
-        )}
-      </div>
-      <p className="num mt-2 text-4xl font-medium text-slate-900">{value}</p>
-      <p className="mt-1 text-xs text-slate-400">{caption}</p>
-    </>
-  );
-
-  if (onClick) {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        aria-pressed={!!active}
-        className={`group relative overflow-hidden bg-white p-5 text-left transition-colors hover:bg-slate-50 ${
-          active ? 'bg-slate-50' : ''
-        }`}
+function HeroStat({ value, label }: { value: string; label: string }) {
+  return (
+    <div>
+      <p
+        className="text-3xl font-medium leading-none text-[#1A1A1A]"
+        style={{ fontFamily: FRAUNCES, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.03em' }}
       >
-        {inner}
-        <ArrowUpRight className="absolute right-3 top-3 h-3.5 w-3.5 text-slate-300 opacity-0 transition-opacity group-hover:opacity-100" />
-      </button>
-    );
-  }
+        {value}
+      </p>
+      <p className="mt-1.5 text-[10px] font-medium uppercase tracking-[0.18em] text-[#A0A0A0]">
+        {label}
+      </p>
+    </div>
+  );
+}
+
+// Live portfolio-health summary — a segmented bar (on track / caution / delayed
+// across active sites) + a legend that doubles as the health filter.
+function PortfolioHealthCard({
+  onTrack, caution, delayed, healthyPct, activeFilter, onFilter,
+}: {
+  onTrack: number;
+  caution: number;
+  delayed: number;
+  healthyPct: number;
+  activeFilter: HealthFilter;
+  onFilter: (h: ProjectHealth) => void;
+}) {
+  const active = onTrack + caution + delayed;
+  const pct = (n: number) => (active ? (n / active) * 100 : 0);
+  const legend: { key: ProjectHealth; label: string; count: number; color: string }[] = [
+    { key: 'on_track', label: 'On track', count: onTrack, color: HEALTH_META.on_track.dot },
+    { key: 'caution',  label: 'Caution',  count: caution, color: HEALTH_META.caution.dot },
+    { key: 'delayed',  label: 'Delayed',  count: delayed, color: HEALTH_META.delayed.dot },
+  ];
 
   return (
-    <div className="relative overflow-hidden bg-white p-5">
-      {inner}
+    <div className="w-full rounded-[14px] border border-[#E6E1D4] bg-white p-4 shadow-[0_1px_2px_rgba(20,20,20,0.04)]">
+      <div className="flex items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.18em] text-[#6B6B6B]">
+          <Activity className="h-3.5 w-3.5 text-[#2F8F5C]" aria-hidden />
+          Portfolio health
+        </span>
+        <span className="text-sm text-[#A0A0A0]">
+          <span className="font-medium text-[#1A1A1A]" style={{ fontFamily: FRAUNCES, fontVariantNumeric: 'tabular-nums' }}>
+            {healthyPct}%
+          </span>{' '}
+          healthy
+        </span>
+      </div>
+
+      <div className="mt-3 flex h-2 w-full overflow-hidden rounded-full bg-[#F0EDE4]">
+        {onTrack > 0 && <div className="h-full" style={{ width: `${pct(onTrack)}%`, backgroundColor: HEALTH_META.on_track.accent }} />}
+        {caution > 0 && <div className="h-full" style={{ width: `${pct(caution)}%`, backgroundColor: HEALTH_META.caution.accent }} />}
+        {delayed > 0 && <div className="h-full" style={{ width: `${pct(delayed)}%`, backgroundColor: HEALTH_META.delayed.accent }} />}
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+        {legend.map((l) => {
+          const on = activeFilter === l.key;
+          return (
+            <button
+              key={l.key}
+              type="button"
+              onClick={() => onFilter(l.key)}
+              aria-pressed={on}
+              title={`Filter by ${l.label.toLowerCase()}`}
+              className={`inline-flex items-center gap-1.5 text-xs transition-colors ${
+                on ? 'font-semibold text-[#1A1A1A]' : 'text-[#6B6B6B] hover:text-[#1A1A1A]'
+              }`}
+            >
+              <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: l.color }} aria-hidden />
+              <span className="tabular-nums font-medium text-[#1A1A1A]">{l.count}</span>
+              {l.label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -470,12 +569,12 @@ function SortMenu({
         onClick={() => setOpen((v) => !v)}
         className={`inline-flex h-10 items-center gap-1.5 rounded-lg border px-3 text-sm transition-colors ${
           open
-            ? 'border-slate-900 bg-slate-900 text-white'
-            : 'border-slate-200 bg-white text-slate-700 hover:border-slate-400'
+            ? 'border-[#1A1A1A] bg-[#1A1A1A] text-white'
+            : 'border-[#E6E1D4] bg-white text-[#3A3A3A] hover:border-[#D8D2C4]'
         }`}
       >
         <span className="text-[11px] uppercase tracking-[0.15em]">Sort</span>
-        <span className="font-medium">{active?.label}</span>
+        <span className="hidden max-w-[140px] truncate font-medium sm:inline">{active?.label}</span>
         <ChevronDown
           className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`}
         />
@@ -486,8 +585,8 @@ function SortMenu({
             className="fixed inset-0 z-20"
             onClick={() => setOpen(false)}
           />
-          <div className="absolute right-0 top-full z-30 mt-1 w-64 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
-            <div className="border-b border-slate-100 px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500">
+          <div className="absolute right-0 top-full z-30 mt-1 w-64 overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_8px_28px_rgba(20,20,20,0.12)]">
+            <div className="border-b border-[#EFEBE0] px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.18em] text-[#6B6B6B]">
               Sort projects by
             </div>
             {SORT_OPTIONS.map((s) => (
@@ -495,13 +594,13 @@ function SortMenu({
                 key={s.id}
                 type="button"
                 onClick={() => { onChange(s.id); setOpen(false); }}
-                className={`flex w-full items-center justify-between px-3 py-2 text-left text-[13px] transition-colors hover:bg-slate-50 ${
-                  s.id === sortMode ? 'bg-slate-50 font-medium text-slate-900' : 'text-slate-700'
+                className={`flex w-full items-center justify-between px-3 py-2 text-left text-[13px] transition-colors hover:bg-[#FAF8F2] ${
+                  s.id === sortMode ? 'bg-[#FAF8F2] font-medium text-[#1A1A1A]' : 'text-[#3A3A3A]'
                 }`}
               >
                 {s.label}
                 {s.id === sortMode && (
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#2F8F5C]" />
                 )}
               </button>
             ))}

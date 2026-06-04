@@ -78,7 +78,21 @@ export async function generateReportNow(
   const { data, error } = await supabase.functions.invoke('generate-reports', {
     body: { projectId, reportType },
   });
-  if (error) throw error;
+  if (error) {
+    // A 404 / "Failed to send a request to the Edge Function" / CORS-preflight
+    // failure means the function isn't deployed on this project yet (SQL
+    // migrations are NOT the same as edge-function deploys). Surface an
+    // actionable message instead of the raw FunctionsFetchError, which reads
+    // as a generic, confusing network error.
+    const m = (error instanceof Error ? error.message : String(error)) || '';
+    if (/failed to send|fetch|network|404|not ?found|cors/i.test(m)) {
+      throw new Error(
+        'The report generator is not deployed on this project yet — deploy the ' +
+          'generate-reports Edge Function (run: supabase functions deploy generate-reports), then try again.',
+      );
+    }
+    throw error;
+  }
   const row = (data as { report?: ProjectReportRow } | null)?.report;
   if (!row) throw new Error('Report generation returned no data.');
   return rowToReport(row);

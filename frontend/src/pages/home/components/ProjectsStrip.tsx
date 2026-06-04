@@ -42,19 +42,19 @@ export default function ProjectsStrip({ memberships, emptyCopy }: ProjectsStripP
       <div className="flex items-center justify-between gap-3">
         <p
           id="your-projects-heading"
-          className="text-[11px] font-medium uppercase tracking-[0.22em] text-slate-500"
+          className="text-[11px] font-medium uppercase tracking-[0.22em] text-[#6B6B6B]"
         >
           Your projects
         </p>
         {cards.length > 0 && (
-          <p className="text-xs tabular-nums text-slate-400">
+          <p className="text-xs tabular-nums text-[#A0A0A0]">
             {cards.length} · {cards.length === 1 ? 'one project' : 'projects'}
           </p>
         )}
       </div>
 
       {cards.length === 0 ? (
-        <p className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-white px-5 py-7 text-sm leading-relaxed text-slate-500 sm:text-[15px]">
+        <p className="mt-4 rounded-[14px] border border-dashed border-[#E6E1D4] bg-white px-5 py-7 text-sm leading-relaxed text-[#6B6B6B] sm:text-[15px]">
           {emptyCopy}
         </p>
       ) : (

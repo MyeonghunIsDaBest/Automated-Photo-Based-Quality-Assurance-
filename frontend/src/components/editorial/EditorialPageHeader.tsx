@@ -9,6 +9,7 @@
 // for page-level controls (filter toolbar, primary CTA).
 
 import EyebrowLabel from './EyebrowLabel';
+import { pageShell, cn } from '../../lib/editorial';
 
 interface EditorialPageHeaderProps {
   eyebrow: string;
@@ -37,7 +38,7 @@ export default function EditorialPageHeader({
       <div className="grid-bg absolute inset-0 opacity-50" />
       <div className="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-emerald-100/40 blur-3xl" />
 
-      <div className="relative flex flex-col gap-4 px-4 py-8 sm:flex-row sm:items-end sm:justify-between sm:px-8 sm:py-10">
+      <div className={cn(pageShell, 'relative flex flex-col gap-4 py-8 sm:flex-row sm:items-end sm:justify-between sm:py-10')}>
         <div>
           <EyebrowLabel>{eyebrow}</EyebrowLabel>
           <h1

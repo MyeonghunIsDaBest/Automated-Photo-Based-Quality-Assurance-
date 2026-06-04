@@ -5,17 +5,24 @@
  */
 export type UserRole = 'admin' | 'supervisor' | 'stakeholder' | 'inspector' | 'subcontractor';
 
-// 8-tier security group sourced from the Postgres `security_group` enum
-// (see supabase/migrations/00_init.sql + 01_security_group_expand.sql).
+// Security group sourced from the Postgres `security_group` enum
+// (see supabase/migrations/00_init.sql + 01_security_group_expand.sql + 48).
+//
+// `administrator` is DEPRECATED — consolidated into the single `company_admin`
+// admin tier (the owner-vs-admin distinction is carried by the `isOwner` badge).
+// Migration 48 reassigns existing administrators → company_admin; the enum value
+// stays dormant (Postgres can't drop it) and it's removed from all role pickers.
+// `dev` is a hidden superuser — DB/seed-assigned only, never shown in pickers.
 export type SecurityGroup =
   | 'company_admin'
-  | 'administrator'
+  | 'administrator'  // @deprecated — alias of company_admin; not assignable
   | 'construction_mgr'
   | 'project_manager'
   | 'site_manager'
   | 'worker'
   | 'stakeholder'
-  | 'supplier';
+  | 'supplier'
+  | 'dev';            // hidden developer superuser — DB/seed only
 
 // Document expiry alert window (matches the `expiry_alert` enum in 0005).
 export type ExpiryAlert = '2_months' | '1_month' | '3_weeks' | '2_weeks' | '1_week';
@@ -196,6 +203,8 @@ export function mapSecurityGroupToLegacyRole(group: SecurityGroup): UserRole {
       // Supplier has no legacy equivalent; closest read-only viewer is
       // 'stakeholder' from the legacy taxonomy.
       return 'stakeholder';
+    case 'dev':
+      return 'admin'; // hidden superuser → legacy admin
   }
 }
 
@@ -330,6 +339,10 @@ export interface Task {
    *  on the frontend). Sub-tasks have `isPhaseAnchor=false` + a non-null
    *  `parentTaskId` pointing at the anchor. */
   isPhaseAnchor: boolean;
+  /** Migration 44 — true for user-created custom phases (top-level groups
+   *  beyond the built-in 8). Custom anchors are grouped + displayed by `name`
+   *  and carry a placeholder `phase` value. */
+  isCustom?: boolean;
 }
 
 /** Rolled-up % for a phase anchor (avg of its children), or the task's own

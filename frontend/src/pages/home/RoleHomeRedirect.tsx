@@ -24,10 +24,15 @@ export default function RoleHomeRedirect() {
 
   if (isAuthLoading || !currentProfile) return null;
 
-  return (
-    <Navigate
-      to={isFieldRole(currentProfile) ? '/home' : '/dashboard'}
-      replace
-    />
-  );
+  // Per-role landing (role-experiences): suppliers get their own cockpit;
+  // worker/stakeholder keep the editorial /home (stakeholder → /sponsor lands
+  // in Phase 4); admins/PMs/managers get the data-dense /dashboard.
+  const sg = currentProfile.securityGroup;
+  const to =
+    sg === 'supplier' ? '/supplier' :
+    sg === 'stakeholder' ? '/sponsor' :
+    isFieldRole(currentProfile) ? '/home' :
+    '/dashboard';
+
+  return <Navigate to={to} replace />;
 }

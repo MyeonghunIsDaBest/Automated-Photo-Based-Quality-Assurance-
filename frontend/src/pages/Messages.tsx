@@ -28,15 +28,16 @@ import { listProfiles } from '../lib/api/profiles';
 import type { Profile } from '../types';
 import NewConversationModal from '../components/messaging/NewConversationModal';
 import GroupSettingsModal from '../components/messaging/GroupSettingsModal';
+import { FRAUNCES } from './gantt/components/ledger';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
 // Deterministic-per-user accent color. Lets DM avatars feel personal without
 // adding a `color` column to profiles — the same user always gets the same
-// swatch across sessions. Palette tuned to sit alongside the slate UI.
+// swatch across sessions. Palette tuned to sit alongside the warm logbook UI.
 const COLOR_PALETTE = [
-  '#0F766E', '#BE123C', '#6D28D9', '#0369A1', '#B45309',
-  '#15803D', '#9F1239', '#1D4ED8', '#A21CAF', '#0E7490',
+  '#2F8F5C', '#C44545', '#6D28D9', '#0369A1', '#B45309',
+  '#246F47', '#9F1239', '#5B6B7B', '#A21CAF', '#C8841E',
 ];
 function colorFor(id: string | null | undefined): string {
   if (!id) return '#475569';
@@ -357,7 +358,7 @@ export default function Messages() {
   const otherDmProfile = otherDmMemberId ? profileById.get(otherDmMemberId) : undefined;
 
   return (
-    <div className="editorial-root flex h-full min-h-[calc(100vh-4rem)] flex-col bg-[#FAFAF6] text-slate-900">
+    <div className="editorial-root flex h-[calc(100vh-4rem)] flex-col bg-[#FAF8F2] text-[#1A1A1A]">
       {/* Page-scoped styles — keyframes that don't justify a global addition. */}
       <style>{`
         @keyframes msgRise {
@@ -372,13 +373,13 @@ export default function Messages() {
         .slide-in-right { animation: slideInRight 220ms ease-out both; }
         .scrollbar-slim::-webkit-scrollbar { width: 6px; height: 6px; }
         .scrollbar-slim::-webkit-scrollbar-thumb {
-          background: rgb(15 23 42 / 0.14); border-radius: 9999px;
+          background: rgba(26,26,26,0.12); border-radius: 9999px;
         }
         .scrollbar-slim::-webkit-scrollbar-thumb:hover {
-          background: rgb(15 23 42 / 0.24);
+          background: rgba(26,26,26,0.22);
         }
         mark.search-hit {
-          background-color: #FEF08A;
+          background-color: #F9EFD9;
           color: inherit;
           padding: 0 2px;
           border-radius: 2px;
@@ -386,17 +387,17 @@ export default function Messages() {
       `}</style>
 
       {/* ─── Slim title bar ─── */}
-      <header className="flex flex-shrink-0 items-center justify-between gap-4 border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
+      <header className="flex shrink-0 items-center justify-between gap-4 border-b border-[#E6E1D4] bg-white px-4 py-3 sm:px-6">
         <div className="flex min-w-0 items-baseline gap-3">
-          <h1 className="display text-xl font-medium tracking-tight text-slate-900">
+          <h1 className="text-xl font-medium tracking-tight text-[#1A1A1A]" style={{ fontFamily: FRAUNCES }}>
             Messages
           </h1>
-          <span className="hidden text-xs text-slate-400 sm:inline">
+          <span className="hidden text-xs text-[#A0A0A0] sm:inline">
             <span className="tabular-nums">{stats.total}</span> thread{stats.total === 1 ? '' : 's'}
             {stats.unread > 0 && (
               <>
-                <span className="mx-2 text-slate-300">·</span>
-                <span className="font-medium text-emerald-700">
+                <span className="mx-2 text-[#D8D2C4]">·</span>
+                <span className="font-medium text-[#246F47]">
                   {stats.unread} unread
                 </span>
               </>
@@ -406,7 +407,7 @@ export default function Messages() {
         <button
           type="button"
           onClick={() => setShowNew(true)}
-          className="group flex flex-shrink-0 items-center gap-1.5 rounded-full bg-slate-900 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-emerald-700"
+          className="group flex shrink-0 items-center gap-1.5 rounded-full bg-[#2F8F5C] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#246F47]"
         >
           <Plus className="h-3.5 w-3.5 transition-transform group-hover:rotate-90" />
           <span className="hidden sm:inline">New conversation</span>
@@ -414,25 +415,26 @@ export default function Messages() {
         </button>
       </header>
 
-      {/* ─── Body ─── */}
-      <div className="min-h-0 flex-1 px-3 py-3 sm:px-4 sm:py-4">
-        <div className="flex h-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_1px_0_rgba(255,255,255,0.8)_inset,0_4px_24px_-12px_rgb(15_23_42/0.08)] md:min-h-[520px] md:flex-row">
+      {/* ─── Body ─── (capped + centred so the messenger doesn't sprawl on
+          wide monitors — consistent with the rest of the app) */}
+      <div className="mx-auto w-full min-h-0 max-w-[1400px] flex-1 px-3 py-3 sm:px-4 sm:py-4">
+        <div className="flex h-full flex-col overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_1px_2px_rgba(20,20,20,0.04)] md:min-h-[520px] md:flex-row">
 
           {/* ── Sidebar ───────────────────────────────────────── */}
           <aside
-            className={`flex w-full flex-col bg-white md:w-80 md:flex-shrink-0 md:border-r md:border-slate-200 ${
+            className={`flex w-full flex-col bg-white md:w-80 md:shrink-0 md:border-r md:border-[#E6E1D4] ${
               mobileView === 'chat' ? 'hidden md:flex' : 'flex'
             }`}
           >
-            <div className="border-b border-slate-100 px-5 pt-5 pb-4">
-              <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500">
+            <div className="border-b border-[#EFEBE0] px-5 pt-5 pb-4">
+              <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-[#6B6B6B]">
                 Inbox
               </p>
-              <h2 className="display mt-1 text-2xl font-medium text-slate-900">All threads</h2>
+              <h2 className="mt-1 text-2xl font-medium text-[#1A1A1A]" style={{ fontFamily: FRAUNCES }}>All threads</h2>
             </div>
 
             {/* Filter tabs */}
-            <div className="flex gap-1 border-b border-slate-100 px-4 pt-3 pb-2 text-xs">
+            <div className="flex flex-wrap gap-1 border-b border-[#EFEBE0] px-4 pt-3 pb-2 text-xs">
               {([
                 { id: 'all',    label: 'All',    count: stats.total },
                 { id: 'unread', label: 'Unread', count: stats.unread },
@@ -445,14 +447,14 @@ export default function Messages() {
                     key={f.id}
                     type="button"
                     onClick={() => setInboxFilter(f.id)}
-                    className={`flex items-center gap-1 rounded-full px-2.5 py-1 font-medium transition-colors ${
+                    className={`flex min-h-11 items-center gap-1 rounded-full px-2.5 py-1 font-medium transition-colors sm:min-h-0 ${
                       active
-                        ? 'bg-slate-900 text-white'
-                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                        ? 'bg-[#1A1A1A] text-white'
+                        : 'text-[#3A3A3A] hover:bg-[#F0EDE4] hover:text-[#1A1A1A]'
                     }`}
                   >
                     {f.label}
-                    <span className={`text-[10px] tabular-nums ${active ? 'text-slate-300' : 'text-slate-400'}`}>
+                    <span className={`text-[10px] tabular-nums ${active ? 'text-[#A8D0B8]' : 'text-[#A0A0A0]'}`}>
                       {f.count}
                     </span>
                   </button>
@@ -463,23 +465,23 @@ export default function Messages() {
             {/* Search */}
             <div className="px-4 pt-3 pb-3">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#A0A0A0]" />
                 <input
                   id="inbox-search"
                   type="text"
                   placeholder="Search conversations…"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-14 text-sm transition-colors focus:border-slate-400 focus:bg-white focus:outline-none"
+                  className="h-9 w-full rounded-[14px] border border-[#E6E1D4] bg-[#FAF8F2] pl-9 pr-14 text-base transition-colors focus:border-[#2F8F5C] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] sm:text-sm"
                 />
-                <kbd className="absolute right-2 top-1/2 -translate-y-1/2 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] tabular-nums text-slate-400">
+                <kbd className="absolute right-2 top-1/2 -translate-y-1/2 rounded border border-[#E6E1D4] bg-white px-1.5 py-0.5 text-[10px] tabular-nums text-[#A0A0A0]">
                   ⌘K
                 </kbd>
                 {searchQuery && (
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
-                    className="absolute right-9 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-900"
+                    className="absolute right-9 top-1/2 -translate-y-1/2 rounded-full p-1 text-[#A0A0A0] hover:bg-[#F0EDE4] hover:text-[#1A1A1A]"
                     aria-label="Clear search"
                   >
                     <X className="h-3.5 w-3.5" />
@@ -491,12 +493,12 @@ export default function Messages() {
             {/* Conversation list */}
             <div className="scrollbar-slim flex-1 overflow-y-auto px-2 pb-3">
               {!loaded && (
-                <p className="px-4 py-6 text-center text-sm text-slate-400">
+                <p className="px-4 py-6 text-center text-sm text-[#A0A0A0]">
                   Loading conversations…
                 </p>
               )}
               {loaded && filteredConversations.length === 0 && (
-                <p className="px-4 py-6 text-center text-sm text-slate-400">
+                <p className="px-4 py-6 text-center text-sm text-[#A0A0A0]">
                   {conversations.length === 0
                     ? 'Nothing here yet — start a conversation.'
                     : inboxFilter !== 'all'
@@ -518,19 +520,19 @@ export default function Messages() {
                     key={conv.id}
                     type="button"
                     onClick={() => openConversation(conv.id)}
-                    className={`group relative mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors ${
-                      isActive ? 'bg-slate-900' : 'hover:bg-slate-50'
+                    className={`group relative mb-1 flex w-full items-center gap-3 rounded-[14px] px-3 py-2.5 text-left transition-colors ${
+                      isActive ? 'bg-[#E5F2EA]' : 'hover:bg-[#FAF8F2]'
                     }`}
                   >
                     {isActive && (
                       <span
-                        className="absolute left-0 top-1/2 h-8 w-0.5 -translate-y-1/2 rounded-r-full bg-emerald-400"
+                        className="absolute left-0 top-1/2 h-8 w-0.5 -translate-y-1/2 rounded-r-full bg-[#2F8F5C]"
                         aria-hidden
                       />
                     )}
-                    <div className="relative flex-shrink-0">
+                    <div className="relative shrink-0">
                       {conv.isGroup ? (
-                        <div className="grid h-10 w-10 place-items-center rounded-full bg-gradient-to-br from-emerald-100 to-emerald-200 text-emerald-700">
+                        <div className="grid h-10 w-10 place-items-center rounded-full bg-[#E5F2EA] text-[#246F47]">
                           <Hash className="h-4 w-4" />
                         </div>
                       ) : otherProfile?.avatarUrl ? (
@@ -554,22 +556,20 @@ export default function Messages() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
-                        <p className={`truncate text-sm font-medium ${isActive ? 'text-white' : 'text-slate-900'}`}>
+                        <p className={`truncate text-sm font-medium ${isActive ? 'text-[#246F47]' : 'text-[#1A1A1A]'}`}>
                           {title}
                         </p>
-                        <span className={`flex-shrink-0 text-[10px] tabular-nums ${isActive ? 'text-slate-300' : 'text-slate-400'}`}>
+                        <span className={`shrink-0 text-[10px] tabular-nums ${isActive ? 'text-[#2F8F5C]' : 'text-[#A0A0A0]'}`}>
                           {stamp}
                         </span>
                       </div>
-                      <p className={`mt-0.5 truncate text-xs ${isActive ? 'text-slate-300' : 'text-slate-500'}`}>
+                      <p className={`mt-0.5 truncate text-xs ${isActive ? 'text-[#2F8F5C]' : 'text-[#6B6B6B]'}`}>
                         {conv.lastMessageBody ?? 'No messages yet.'}
                       </p>
                     </div>
                     {isUnread && (
                       <span
-                        className={`flex h-2 w-2 flex-shrink-0 rounded-full ${
-                          isActive ? 'bg-emerald-400' : 'bg-emerald-500'
-                        }`}
+                        className="flex h-2 w-2 shrink-0 rounded-full bg-[#2F8F5C]"
                         aria-hidden
                       />
                     )}
@@ -581,19 +581,19 @@ export default function Messages() {
 
           {/* ── Chat Area ───────────────────────────────────────── */}
           <section
-            className={`relative flex min-w-0 flex-1 flex-col bg-[#FAFAF6] ${
+            className={`relative flex min-w-0 flex-1 flex-col bg-[#FAF8F2] ${
               mobileView === 'inbox' ? 'hidden md:flex' : 'flex'
             }`}
           >
             {activeConversation ? (
               <>
                 {/* Chat header */}
-                <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
+                <div className="flex items-center justify-between border-b border-[#E6E1D4] bg-white px-4 py-3 sm:px-6">
                   <div className="flex min-w-0 items-center gap-3">
                     <button
                       type="button"
                       onClick={() => setMobileView('inbox')}
-                      className="grid h-9 w-9 flex-shrink-0 place-items-center rounded-full text-slate-700 hover:bg-slate-100 md:hidden"
+                      className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#3A3A3A] hover:bg-[#F0EDE4] md:hidden"
                       aria-label="Back to inbox"
                     >
                       <ArrowLeft className="h-4 w-4" />
@@ -602,16 +602,16 @@ export default function Messages() {
                       type="button"
                       disabled={!activeConversation.isGroup}
                       onClick={() => activeConversation.isGroup && setShowGroupSettings(true)}
-                      className={`flex min-w-0 items-center gap-3 rounded-lg -m-1 p-1 transition-colors ${
-                        activeConversation.isGroup ? 'hover:bg-slate-50' : 'cursor-default'
+                      className={`flex min-w-0 items-center gap-3 rounded-[14px] -m-1 p-1 transition-colors ${
+                        activeConversation.isGroup ? 'hover:bg-[#FAF8F2]' : 'cursor-default'
                       }`}
                     >
                       {activeConversation.isGroup ? (
-                        <div className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-full bg-gradient-to-br from-emerald-100 to-emerald-200 text-emerald-700">
+                        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#E5F2EA] text-[#246F47]">
                           <Users className="h-5 w-5" />
                         </div>
                       ) : otherDmProfile?.avatarUrl ? (
-                        <Avatar className="h-10 w-10 flex-shrink-0">
+                        <Avatar className="h-10 w-10 shrink-0">
                           <AvatarImage src={otherDmProfile.avatarUrl} />
                           <AvatarFallback
                             className="text-xs font-medium text-white"
@@ -622,33 +622,33 @@ export default function Messages() {
                         </Avatar>
                       ) : (
                         <div
-                          className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-full text-xs font-medium text-white"
+                          className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-xs font-medium text-white"
                           style={{ background: colorFor(otherDmMemberId) }}
                         >
                           {initialsFromName(profileDisplayName(otherDmProfile))}
                         </div>
                       )}
                       <div className="min-w-0 text-left">
-                        <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500">
+                        <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-[#6B6B6B]">
                           {activeConversation.isGroup
                             ? `Group · ${activeConversation.members?.length ?? 0} members`
                             : 'Direct message'}
                         </p>
-                        <p className="display truncate text-lg font-medium text-slate-900">
+                        <p className="truncate text-lg font-medium text-[#1A1A1A]" style={{ fontFamily: FRAUNCES }}>
                           {conversationTitle(activeConversation, currentUser.id, profileById)}
                         </p>
                       </div>
                     </button>
                   </div>
 
-                  <div className="flex flex-shrink-0 items-center gap-1">
+                  <div className="flex shrink-0 items-center gap-1">
                     <button
                       type="button"
                       onClick={() => setShowSearchInThread((v) => !v)}
                       className={`grid h-9 w-9 place-items-center rounded-full transition-colors ${
                         showSearchInThread
-                          ? 'bg-amber-100 text-amber-800'
-                          : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+                          ? 'bg-[#F9EFD9] text-[#C8841E]'
+                          : 'text-[#6B6B6B] hover:bg-[#F0EDE4] hover:text-[#1A1A1A]'
                       }`}
                       title="Search in thread"
                     >
@@ -658,7 +658,7 @@ export default function Messages() {
                       <button
                         type="button"
                         onClick={() => setShowGroupSettings(true)}
-                        className="grid h-9 w-9 place-items-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
+                        className="grid h-9 w-9 place-items-center rounded-full text-[#6B6B6B] transition-colors hover:bg-[#F0EDE4] hover:text-[#1A1A1A]"
                         title="Group settings"
                       >
                         <Settings className="h-4 w-4" />
@@ -667,7 +667,7 @@ export default function Messages() {
                       <button
                         type="button"
                         disabled
-                        className="grid h-9 w-9 cursor-default place-items-center rounded-full text-slate-300"
+                        className="grid h-9 w-9 cursor-default place-items-center rounded-full text-[#D8D2C4]"
                         aria-label="More (no actions yet for direct messages)"
                       >
                         <MoreVertical className="h-4 w-4" />
@@ -678,23 +678,23 @@ export default function Messages() {
 
                 {/* In-thread search bar */}
                 {showSearchInThread && (
-                  <div className="slide-in-right flex items-center gap-2 border-b border-amber-200 bg-amber-50/60 px-4 py-2">
-                    <Search className="h-3.5 w-3.5 flex-shrink-0 text-amber-700" />
+                  <div className="slide-in-right flex items-center gap-2 border-b border-[#F9EFD9] bg-[#F9EFD9] px-4 py-2">
+                    <Search className="h-3.5 w-3.5 shrink-0 text-[#C8841E]" />
                     <input
                       autoFocus
                       type="text"
                       value={searchInThread}
                       onChange={(e) => setSearchInThread(e.target.value)}
                       placeholder="Find in conversation…"
-                      className="flex-1 bg-transparent text-sm text-slate-900 placeholder:text-amber-700/60 focus:outline-none"
+                      className="flex-1 bg-transparent text-sm text-[#1A1A1A] placeholder:text-[#C8841E]/60 focus:outline-none"
                     />
-                    <span className="flex-shrink-0 text-xs tabular-nums text-amber-700">
+                    <span className="shrink-0 text-xs tabular-nums text-[#C8841E]">
                       {filteredMessages.length} match{filteredMessages.length === 1 ? '' : 'es'}
                     </span>
                     <button
                       type="button"
                       onClick={() => { setShowSearchInThread(false); setSearchInThread(''); }}
-                      className="rounded-full p-1 text-amber-700 hover:bg-amber-100"
+                      className="rounded-full p-1 text-[#C8841E] hover:bg-[#F9EFD9]"
                       aria-label="Close in-thread search"
                     >
                       <X className="h-3.5 w-3.5" />
@@ -711,10 +711,10 @@ export default function Messages() {
                   <div className="mx-auto max-w-2xl">
                     {renderItems.length === 0 ? (
                       <div className="py-16 text-center">
-                        <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-slate-100">
-                          <Sparkles className="h-6 w-6 text-slate-400" />
+                        <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#F0EDE4]">
+                          <Sparkles className="h-6 w-6 text-[#A0A0A0]" />
                         </div>
-                        <p className="mt-4 text-sm text-slate-400">
+                        <p className="mt-4 text-sm text-[#A0A0A0]">
                           {searchInThread ? 'No messages match.' : 'No messages yet — say hello.'}
                         </p>
                       </div>
@@ -723,11 +723,11 @@ export default function Messages() {
                         if (item.kind === 'divider') {
                           return (
                             <div key={item.key} className="my-6 flex items-center gap-3">
-                              <span className="h-px flex-1 bg-slate-200" />
-                              <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-400">
+                              <span className="h-px flex-1 bg-[#E6E1D4]" />
+                              <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-[#A0A0A0]">
                                 {item.label}
                               </span>
-                              <span className="h-px flex-1 bg-slate-200" />
+                              <span className="h-px flex-1 bg-[#E6E1D4]" />
                             </div>
                           );
                         }
@@ -746,7 +746,7 @@ export default function Messages() {
                             {!isMe && activeConversation.isGroup && (
                               showAvatar ? (
                                 sender?.avatarUrl ? (
-                                  <Avatar className="mt-1 h-7 w-7 flex-shrink-0">
+                                  <Avatar className="mt-1 h-7 w-7 shrink-0">
                                     <AvatarImage src={sender.avatarUrl} />
                                     <AvatarFallback
                                       className="text-[10px] font-medium text-white"
@@ -757,14 +757,14 @@ export default function Messages() {
                                   </Avatar>
                                 ) : (
                                   <div
-                                    className="mt-1 grid h-7 w-7 flex-shrink-0 place-items-center rounded-full text-[10px] font-medium text-white"
+                                    className="mt-1 grid h-7 w-7 shrink-0 place-items-center rounded-full text-[10px] font-medium text-white"
                                     style={{ background: colorFor(m.senderId) }}
                                   >
                                     {initialsFromName(profileDisplayName(sender))}
                                   </div>
                                 )
                               ) : (
-                                <span className="mt-1 h-7 w-7 flex-shrink-0" aria-hidden />
+                                <span className="mt-1 h-7 w-7 shrink-0" aria-hidden />
                               )
                             )}
                             <div className={`flex max-w-[78%] flex-col ${isMe ? 'items-end' : 'items-start'}`}>
@@ -779,15 +779,15 @@ export default function Messages() {
                               <div
                                 className={`rounded-2xl px-4 py-2.5 shadow-sm ${
                                   isMe
-                                    ? `${item.compact ? 'rounded-br-2xl' : 'rounded-br-sm'} bg-slate-900 text-white`
-                                    : `${item.compact ? 'rounded-bl-2xl' : 'rounded-bl-sm'} border border-slate-200 bg-white text-slate-900`
+                                    ? `${item.compact ? 'rounded-br-2xl' : 'rounded-br-sm'} bg-[#2F8F5C] text-white`
+                                    : `${item.compact ? 'rounded-bl-2xl' : 'rounded-bl-sm'} border border-[#E6E1D4] bg-white text-[#1A1A1A]`
                                 }`}
                               >
                                 <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
                                   {highlightBody(m.body, searchInThread)}
                                 </p>
                                 {!item.compact && (
-                                  <p className={`mt-1 text-[11px] ${isMe ? 'text-slate-400' : 'text-slate-400'}`}>
+                                  <p className={`mt-1 text-[11px] ${isMe ? 'text-[#A8D0B8]' : 'text-[#A0A0A0]'}`}>
                                     {format(parseISO(m.createdAt), 'h:mm a')}
                                   </p>
                                 )}
@@ -805,7 +805,7 @@ export default function Messages() {
                   <button
                     type="button"
                     onClick={scrollToBottom}
-                    className="slide-in-right absolute bottom-28 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-slate-900 px-3 py-1.5 text-xs font-medium text-white shadow-lg transition-colors hover:bg-emerald-700"
+                    className="slide-in-right absolute bottom-28 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-[#2F8F5C] px-3 py-1.5 text-xs font-medium text-white shadow-[0_4px_12px_rgba(47,143,92,0.3)] transition-colors hover:bg-[#246F47]"
                   >
                     <ArrowDown className="h-3.5 w-3.5" />
                     Jump to latest
@@ -813,7 +813,7 @@ export default function Messages() {
                 )}
 
                 {/* Composer */}
-                <div className="relative border-t border-slate-200 bg-white px-3 py-3 sm:px-5">
+                <div className="relative border-t border-[#E6E1D4] bg-white px-3 py-3 sm:px-5">
                   {/* Quick replies — only when the composer is empty */}
                   {!draft.trim() && (
                     <div className="mx-auto mb-2 flex max-w-2xl flex-wrap gap-1.5">
@@ -823,7 +823,7 @@ export default function Messages() {
                           type="button"
                           disabled={sending}
                           onClick={() => void handleSend(q)}
-                          className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600 transition-colors hover:border-slate-900 hover:bg-slate-900 hover:text-white disabled:opacity-50"
+                          className="rounded-full border border-[#E6E1D4] bg-white px-3 py-1 text-xs text-[#3A3A3A] transition-colors hover:border-[#2F8F5C] hover:bg-[#E5F2EA] hover:text-[#246F47] disabled:opacity-50"
                         >
                           {q}
                         </button>
@@ -833,7 +833,7 @@ export default function Messages() {
 
                   {/* Emoji bar */}
                   {showEmojis && (
-                    <div className="slide-in-right mx-auto mb-2 flex max-w-2xl flex-wrap items-center gap-1 rounded-xl border border-slate-200 bg-white px-2 py-1.5 shadow-md">
+                    <div className="slide-in-right mx-auto mb-2 flex max-w-2xl flex-wrap items-center gap-1 rounded-[14px] border border-[#E6E1D4] bg-white px-2 py-1.5 shadow-[0_4px_12px_rgba(20,20,20,0.08)]">
                       {QUICK_EMOJIS.map((e) => (
                         <button
                           key={e}
@@ -848,7 +848,7 @@ export default function Messages() {
                       <button
                         type="button"
                         onClick={() => setShowEmojis(false)}
-                        className="ml-auto rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-900"
+                        className="ml-auto rounded-full p-1 text-[#A0A0A0] hover:bg-[#F0EDE4] hover:text-[#1A1A1A]"
                         aria-label="Close emoji picker"
                       >
                         <X className="h-3.5 w-3.5" />
@@ -857,7 +857,7 @@ export default function Messages() {
                   )}
 
                   <div className="mx-auto flex max-w-2xl items-end gap-2">
-                    <div className="relative flex flex-1 items-end rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 transition-colors focus-within:border-slate-400 focus-within:bg-white">
+                    <div className="relative flex flex-1 items-end rounded-2xl border border-[#E6E1D4] bg-[#FAF8F2] px-3 py-2 transition-colors focus-within:border-[#2F8F5C] focus-within:bg-white focus-within:ring-1 focus-within:ring-[#2F8F5C]">
                       <textarea
                         ref={textareaRef}
                         rows={1}
@@ -870,13 +870,13 @@ export default function Messages() {
                             void handleSend();
                           }
                         }}
-                        className="scrollbar-slim min-h-[24px] flex-1 resize-none bg-transparent text-sm leading-relaxed text-slate-900 placeholder:text-slate-400 focus:outline-none"
+                        className="scrollbar-slim min-h-6 flex-1 resize-none bg-transparent text-base leading-relaxed text-[#1A1A1A] placeholder:text-[#A0A0A0] focus:outline-none sm:text-sm"
                       />
                       <button
                         type="button"
                         onClick={() => setShowEmojis((v) => !v)}
-                        className={`ml-1 grid h-7 w-7 flex-shrink-0 place-items-center rounded-full transition-colors ${
-                          showEmojis ? 'text-emerald-700' : 'text-slate-400 hover:text-slate-600'
+                        className={`ml-1 grid h-7 w-7 shrink-0 place-items-center rounded-full transition-colors ${
+                          showEmojis ? 'text-[#246F47]' : 'text-[#A0A0A0] hover:text-[#6B6B6B]'
                         }`}
                         title="Insert emoji"
                       >
@@ -887,17 +887,17 @@ export default function Messages() {
                       type="button"
                       disabled={!draft.trim() || sending}
                       onClick={() => void handleSend()}
-                      className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-xl bg-slate-900 text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+                      className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#2F8F5C] text-white transition-colors hover:bg-[#246F47] disabled:cursor-not-allowed disabled:bg-[#E6E1D4] disabled:text-[#A0A0A0]"
                       aria-label="Send"
                     >
                       <Send className="h-4 w-4" />
                     </button>
                   </div>
-                  <p className="mx-auto mt-1.5 max-w-2xl text-[10px] text-slate-400">
+                  <p className="mx-auto mt-1.5 max-w-2xl text-[10px] text-[#A0A0A0]">
                     Press{' '}
-                    <kbd className="rounded border border-slate-200 bg-white px-1 py-0.5 tabular-nums">Enter</kbd>{' '}
+                    <kbd className="rounded border border-[#E6E1D4] bg-white px-1 py-0.5 tabular-nums">Enter</kbd>{' '}
                     to send ·{' '}
-                    <kbd className="rounded border border-slate-200 bg-white px-1 py-0.5 tabular-nums">Shift+Enter</kbd>{' '}
+                    <kbd className="rounded border border-[#E6E1D4] bg-white px-1 py-0.5 tabular-nums">Shift+Enter</kbd>{' '}
                     for new line
                   </p>
                 </div>
@@ -905,23 +905,23 @@ export default function Messages() {
             ) : (
               <div className="flex h-full items-center justify-center px-6">
                 <div className="max-w-sm text-center">
-                  <div className="mx-auto mb-5 grid h-16 w-16 place-items-center rounded-2xl border border-slate-200 bg-white shadow-sm">
-                    <MessageSquare className="h-7 w-7 text-slate-400" />
+                  <div className="mx-auto mb-5 grid h-16 w-16 place-items-center rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_1px_2px_rgba(20,20,20,0.04)]">
+                    <MessageSquare className="h-7 w-7 text-[#A0A0A0]" />
                   </div>
-                  <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500">
+                  <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-[#6B6B6B]">
                     Nothing selected
                   </p>
-                  <h3 className="display mt-1 text-2xl font-medium text-slate-900">
+                  <h3 className="mt-1 text-2xl font-medium text-[#1A1A1A]" style={{ fontFamily: FRAUNCES }}>
                     Pick a thread.
                   </h3>
-                  <p className="mt-2 text-sm leading-relaxed text-slate-500">
+                  <p className="mt-2 text-sm leading-relaxed text-[#6B6B6B]">
                     Choose a conversation from the inbox on the left, or start a new direct
                     message or group channel.
                   </p>
                   <button
                     type="button"
                     onClick={() => setShowNew(true)}
-                    className="mx-auto mt-5 flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
+                    className="mx-auto mt-5 flex items-center gap-2 rounded-full bg-[#2F8F5C] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#246F47]"
                   >
                     <Plus className="h-4 w-4" />
                     Start a conversation

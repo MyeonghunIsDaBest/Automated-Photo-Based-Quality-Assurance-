@@ -3,14 +3,15 @@ import { persist } from 'zustand/middleware';
 import type {
   DiaryEntry, DiaryPersonnel,
   PunchItem,
-  Order, OrderStatus,
+  Order, OrderStatus, SupplierResponse,
   Delivery,
   Invoice, InvoiceStatus,
   Warranty,
   ChecklistItem,
 } from './types';
 import { insertDiaryEntry } from '../../lib/api/diaryEntries';
-import { upsertOrder, deleteOrderRemote } from '../../lib/api/orders';
+import { syncDiaryPersonnelToTimesheets } from '../../lib/api/timesheets';
+import { upsertOrder, deleteOrderRemote, updateOrderResponse } from '../../lib/api/orders';
 import { upsertDelivery, deleteDeliveryRemote } from '../../lib/api/deliveries';
 import { upsertInvoice, deleteInvoiceRemote } from '../../lib/api/invoices';
 
@@ -53,6 +54,7 @@ interface Actions {
   addOrder:    (projectId: string, draft: Omit<Order, 'id' | 'projectId'>) => string;
   updateOrder: (projectId: string, id: string, patch: Partial<Order>) => void;
   setOrderStatus: (projectId: string, id: string, status: OrderStatus) => void;
+  respondToOrder: (projectId: string, id: string, response: SupplierResponse, note?: string) => void;
   removeOrder: (projectId: string, id: string) => void;
   /** Replace a project's orders from a Supabase load (hydration). */
   setOrdersForProject: (projectId: string, orders: Order[]) => void;
@@ -311,6 +313,10 @@ export const useGanttSideStore = create<State & Actions>()(
         // mode). Local store stays the editing source of truth. Covers every
         // add path — conditions stub, quick-add, and the drawer's create.
         void insertDiaryEntry(entry);
+        // Gap-fill the entry's crew into Crew timesheets (migration 42) so hours
+        // logged in the diary aren't re-keyed by hand. Never clobbers an
+        // existing sheet for that worker/day.
+        void syncDiaryPersonnelToTimesheets(entry);
         return id;
       },
       upsertDiaryEntryFromRemote: (projectId, entry) => {
@@ -326,14 +332,24 @@ export const useGanttSideStore = create<State & Actions>()(
         });
       },
       updateDiaryEntry: (projectId, id, patch) => {
+        let updated: DiaryEntry | undefined;
         set((s) => ({
           diaryEntries: {
             ...s.diaryEntries,
-            [projectId]: (s.diaryEntries[projectId] ?? []).map((e) =>
-              e.id === id ? { ...e, ...patch } : e,
-            ),
+            [projectId]: (s.diaryEntries[projectId] ?? []).map((e) => {
+              if (e.id !== id) return e;
+              updated = { ...e, ...patch };
+              return updated;
+            }),
           },
         }));
+        // Mirror the edit to Supabase (upsert on id) and gap-fill any crew added
+        // in this edit into timesheets — keeps the remote copy + Crew tab in
+        // step with diary edits, not just first creation. Best-effort.
+        if (updated) {
+          void insertDiaryEntry(updated);
+          void syncDiaryPersonnelToTimesheets(updated);
+        }
       },
       removeDiaryEntry: (projectId, id) => {
         set((s) => ({
@@ -454,6 +470,24 @@ export const useGanttSideStore = create<State & Actions>()(
         }));
         const updated = (get().orders[projectId] ?? []).find((o) => o.id === id);
         if (updated) void upsertOrder(updated);
+      },
+      // Supplier Accept/Hold/Decline (role-experiences). Optimistic local update
+      // + a targeted response-only persist (separate from upsertOrder so normal
+      // order writes keep working before migration 47). Realtime echoes back to
+      // the PM's Orders tab so they see the supplier's response live.
+      respondToOrder: (projectId, id, response, note) => {
+        const at = now();
+        set((s) => ({
+          orders: {
+            ...s.orders,
+            [projectId]: (s.orders[projectId] ?? []).map((o) =>
+              o.id === id
+                ? { ...o, supplierResponse: response, supplierRespondedAt: at, supplierResponseNote: note }
+                : o,
+            ),
+          },
+        }));
+        void updateOrderResponse(id, response, note);
       },
       removeOrder: (projectId, id) => {
         set((s) => ({

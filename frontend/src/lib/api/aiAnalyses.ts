@@ -137,7 +137,7 @@ export async function countPendingAnalyses(projectId: string): Promise<number> {
 // tighter window for the strip ("last 6h") or a wider one for diagnostics.
 // Keeps the payload small — no rationale, no flags, no materials — because
 // the strip only renders counts. Failed-row drilldown re-queries via
-// `listFailedAnalyses` (TODO follow-up) or falls back to the audit log.
+// `listFailedAnalyses` (below) for the thumbnail + retry affordance.
 export interface RecentAnalysisRow {
   id: string;
   photo_id: string;
@@ -181,4 +181,89 @@ export async function listPendingAnalyses(projectId: string): Promise<Array<AIAn
     .order('analyzed_at', { ascending: true });
   if (error) throw error;
   return (data ?? []) as never;
+}
+
+// Failed-analysis drilldown (Tier-2 #11). Lists analyses whose vision call
+// errored (`analysis_status='failed'`) for the active project, joined to the
+// photo so the UI can show the thumbnail + a one-click retry. Without this,
+// a photo whose scan failed silently vanished from the pending queue (which
+// is pending-only) and the user had no way to see or re-run it.
+export async function listFailedAnalyses(
+  projectId: string,
+): Promise<Array<AIAnalysisRow & { photos: { id: string; project_id: string; storage_path: string; filename: string; uploaded_by: string | null; taken_at: string | null; gps_lat: number | null; gps_lng: number | null } }>> {
+  if (!supabaseConfigured()) return [];
+  if (!isUuid(projectId)) return [];
+  const { data, error } = await supabase
+    .from('ai_analyses')
+    .select('*, photos!inner(id, project_id, storage_path, filename, uploaded_by, taken_at, gps_lat, gps_lng)')
+    .eq('analysis_status', 'failed')
+    .eq('photos.project_id', projectId)
+    .order('analyzed_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as never;
+}
+
+// Scan history for the AI Analysis tab's History view. PHOTO-CENTRIC on purpose:
+// every image submitted for analysis is a "scan" and must appear the instant it
+// uploads — even while the AI verdict is still pending, or if the analyser never
+// finishes. So we list `photos` (the scanned images) newest-by-upload and
+// left-join their analysis for the verdict/status. (The old version listed only
+// terminal `ai_analyses` rows, so a freshly-scanned or stuck photo never showed.)
+export interface ScanHistoryItem {
+  photoId: string;
+  filename: string;
+  storagePath: string;
+  uploadedAt: string;
+  takenAt: string | null;
+  phase: ConstructionPhase | null;
+  completionPct: number | null;
+  confidence: number | null;
+  actionTaken: AnalysisAction | null;
+  analysisStatus: AnalysisStatus | null;
+  flags: number;
+}
+
+interface ScanHistoryPhotoRow {
+  id: string;
+  filename: string;
+  storage_path: string;
+  uploaded_at: string;
+  taken_at: string | null;
+  ai_analyses: Array<{
+    phase_detected: ConstructionPhase | null;
+    completion_pct: number | null;
+    confidence: number | null;
+    action_taken: AnalysisAction | null;
+    analysis_status: AnalysisStatus | null;
+    analyzed_at: string | null;
+    safety_flags: SafetyFlag[] | null;
+    quality_flags: QualityFlag[] | null;
+  }> | null;
+}
+
+export async function listScanHistory(projectId: string, limit = 60): Promise<ScanHistoryItem[]> {
+  if (!supabaseConfigured() || !isUuid(projectId)) return [];
+  const { data, error } = await supabase
+    .from('photos')
+    .select('id, filename, storage_path, uploaded_at, taken_at, ai_analyses(phase_detected, completion_pct, confidence, action_taken, analysis_status, analyzed_at, safety_flags, quality_flags)')
+    .eq('project_id', projectId)
+    .order('uploaded_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return ((data ?? []) as unknown as ScanHistoryPhotoRow[]).map((p) => {
+    const a = Array.isArray(p.ai_analyses) ? p.ai_analyses[0] : null;
+    return {
+      photoId: p.id,
+      filename: p.filename,
+      storagePath: p.storage_path,
+      uploadedAt: p.uploaded_at,
+      takenAt: p.taken_at ?? null,
+      phase: a?.phase_detected ?? null,
+      completionPct: a?.completion_pct ?? null,
+      confidence: a?.confidence ?? null,
+      actionTaken: a?.action_taken ?? null,
+      analysisStatus: a?.analysis_status ?? null,
+      flags: (a?.safety_flags?.length ?? 0) + (a?.quality_flags?.length ?? 0),
+    };
+  });
 }

@@ -8,6 +8,8 @@ import {
   type AIAnalysisRow,
 } from '../../lib/api/aiAnalyses';
 import { getPhotoUrl } from '../../lib/api/photos';
+import { createSignoff } from '../../lib/api/signoffs';
+import SignaturePad from '../ui/SignaturePad';
 import { canViewSafetyIncident } from '../../lib/permissions';
 import { useAppStore } from '../../store';
 import type { SafetyFlag, SafetySeverity } from '../../types';
@@ -59,6 +61,10 @@ export default function PhotoReviewDrawer({ item, onClose, onResolved }: Props) 
   const [showConfirmNotes, setShowConfirmNotes] = useState(false);
   const [busy, setBusy] = useState<'confirm' | 'reject' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // ITP sign-off capture (P4.2) — optional signature recorded with the confirm.
+  const [itpOpen, setItpOpen] = useState(false);
+  const [signerName, setSignerName] = useState('');
+  const [signatureData, setSignatureData] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,6 +88,17 @@ export default function PhotoReviewDrawer({ item, onClose, onResolved }: Props) 
         overridePct: overridePct !== item.completion_pct ? overridePct : undefined,
         notes: confirmNotes.trim() || undefined,
       });
+      // ITP sign-off (P4.2) — best-effort after a successful confirm; a failed
+      // sign-off insert must not undo the confirm the manager just made.
+      if (signatureData && signerName.trim()) {
+        void createSignoff(item.photos.project_id, {
+          photoId: item.photos.id,
+          signerName: signerName.trim(),
+          signatureData,
+          pct: res.newPct ?? overridePct,
+          notes: confirmNotes.trim() || undefined,
+        }).catch(() => void 0);
+      }
       // confirm-analysis reports whether the linked task's progress actually
       // moved (taskBumped) and the value it landed on (newPct). Surface that
       // as a toast so the reviewer sees the schedule respond, not just the
@@ -268,6 +285,41 @@ export default function PhotoReviewDrawer({ item, onClose, onResolved }: Props) 
             className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800"
           >
             + Add a note to this confirm
+          </button>
+        )}
+      </div>
+
+      {/* ITP sign-off (P4.2) — optional signature captured with the confirm.
+          Produces an immutable signoffs record (browser print-to-PDF renders
+          the ITP certificate from it). Behind a toggle so the default confirm
+          stays one click. */}
+      <div className="mt-3">
+        {itpOpen ? (
+          <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              ITP sign-off
+            </p>
+            <input
+              type="text"
+              value={signerName}
+              onChange={(e) => setSignerName(e.target.value)}
+              placeholder="Full name of the person signing off"
+              autoComplete="name"
+              className="mb-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            />
+            <SignaturePad onChange={setSignatureData} />
+            <p className="mt-1 text-[11px] text-slate-500">
+              Recorded against this photo at {overrideChanged ? overridePct : item.completion_pct}% on confirm.
+              {(!signerName.trim() || !signatureData) && ' Name + signature required to record.'}
+            </p>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setItpOpen(true)}
+            className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800"
+          >
+            + Capture ITP sign-off
           </button>
         )}
       </div>

@@ -279,15 +279,44 @@ html {
 }
 .animate-banner-slide-down { animation: bannerSlideDown 500ms ease-out both; }
 
+/* Staggered list/grid reveal — KPI cards, roster rows, table rows. Pair with an
+   inline `animation-delay` for the stagger. `sp-rise` lifts + fades, `sp-fade`
+   only fades (used where a transform would jump a table layout). */
+@keyframes spFadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes spFade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.sp-rise { opacity: 0; animation: spFadeUp 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) forwards; }
+.sp-fade { opacity: 0; animation: spFade 0.45s ease forwards; }
+
+/* AI-Analysis "scan bench" — a sage scanline sweeps the drop zone while a scan
+   is in flight or a file is being dragged over, reading as live inspection. */
+@keyframes aiqScan {
+  0%   { transform: translateY(-110%); }
+  100% { transform: translateY(620%); }
+}
+.aiq-scanline {
+  background: linear-gradient(to bottom, transparent, rgba(47, 143, 92, 0.22), transparent);
+  animation: aiqScan 1.9s linear infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-bar-grow,
   .animate-ai-shimmer,
   .animate-today-pulse,
   .animate-chip-slide-in,
   .animate-banner-slide-down,
+  .aiq-scanline,
+  .sp-rise,
+  .sp-fade,
   [data-just-updated="true"],
   [data-just-arrived="true"] {
     animation: none !important;
+    opacity: 1 !important;
   }
 }
 

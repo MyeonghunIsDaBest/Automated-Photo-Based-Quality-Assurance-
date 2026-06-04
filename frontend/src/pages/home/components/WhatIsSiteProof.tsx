@@ -12,16 +12,16 @@ export default function WhatIsSiteProof({ paragraph }: WhatIsSiteProofProps) {
   return (
     <section
       aria-labelledby="what-is-siteproof-heading"
-      className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50/70 to-emerald-50/20 px-5 py-6 sm:px-7 sm:py-8"
+      className="rounded-[14px] border border-[#E6E1D4] bg-gradient-to-br from-[#E5F2EA]/60 to-[#E5F2EA]/20 px-5 py-6 sm:px-7 sm:py-8"
     >
       <p
         id="what-is-siteproof-heading"
-        className="text-[11px] font-medium uppercase tracking-[0.22em] text-emerald-700"
+        className="text-[11px] font-medium uppercase tracking-[0.22em] text-[#246F47]"
       >
         What is SiteProof
       </p>
       <p
-        className="mt-3 max-w-2xl text-base leading-relaxed text-slate-700 sm:text-[17px]"
+        className="mt-3 max-w-2xl text-base leading-relaxed text-[#3A3A3A] sm:text-[17px]"
         style={{ textWrap: 'pretty' }}
         dangerouslySetInnerHTML={{ __html: paragraphHtml(paragraph) }}
       />
@@ -37,7 +37,7 @@ function paragraphHtml(raw: string): string {
     .map((chunk) => {
       const match = chunk.match(/^<em>(.*?)<\/em>$/);
       if (match) {
-        return `<em class="font-medium" style="color: var(--accent-color, #047857); font-style: italic">${escape(match[1])}</em>`;
+        return `<em class="font-medium" style="color: var(--accent-color, #2F8F5C); font-style: italic">${escape(match[1])}</em>`;
       }
       return escape(chunk);
     })

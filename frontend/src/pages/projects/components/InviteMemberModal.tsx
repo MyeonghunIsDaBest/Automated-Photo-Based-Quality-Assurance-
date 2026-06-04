@@ -17,9 +17,11 @@ import { Button } from '../../../components/ui/button';
 import { Badge } from '../../../components/ui/badge';
 import { useAppStore } from '../../../store';
 import { inviteToProject } from '../../../lib/api/projectMembers';
+import { sendProjectWelcomeDM } from '../../../lib/api/messaging';
 import {
   modalCard, modalOverlay,
 } from '../../../lib/motion/variants';
+import { FRAUNCES } from '../../gantt/components/ledger';
 import type { ProjectMember, User, SecurityGroup } from '../../../types';
 
 interface InviteMemberModalProps {
@@ -86,6 +88,7 @@ export function InviteMemberModal({
     setSubmitting(true);
     try {
       const row = await inviteToProject(projectId, selected.id, note.trim() || undefined);
+      try { await sendProjectWelcomeDM(selected.id, projectName); } catch { /* welcome DM is best-effort */ }
       onInvited(row);
       setNotification({
         type: 'success',
@@ -111,7 +114,7 @@ export function InviteMemberModal({
             initial="hidden"
             animate="visible"
             exit="exit"
-            className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-sm"
+            className="fixed inset-0 z-[60] bg-[#1A1A1A]/40 backdrop-blur-sm"
             onClick={onClose}
           />
           <motion.div
@@ -122,14 +125,14 @@ export function InviteMemberModal({
             role="dialog"
             aria-modal="true"
             aria-label="Invite member"
-            className="fixed inset-x-2 top-1/2 z-[61] mx-auto w-auto max-w-md -translate-y-1/2 overflow-hidden rounded-2xl bg-white shadow-2xl sm:inset-x-0"
+            className="fixed inset-x-2 top-1/2 z-[61] mx-auto w-auto max-w-md -translate-y-1/2 overflow-hidden rounded-[14px] bg-white shadow-[0_8px_28px_rgba(20,20,20,0.12)] sm:inset-x-0"
           >
-            <header className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
+            <header className="flex items-start justify-between gap-3 border-b border-[#EFEBE0] px-5 py-4">
               <div className="min-w-0">
-                <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-slate-500">
+                <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-[#6B6B6B]">
                   Invite to project
                 </p>
-                <h3 className="mt-1 truncate text-base font-semibold text-slate-900">
+                <h3 className="mt-1 truncate text-base font-semibold text-[#1A1A1A]" style={{ fontFamily: FRAUNCES }}>
                   {projectName}
                 </h3>
               </div>
@@ -137,7 +140,7 @@ export function InviteMemberModal({
                 type="button"
                 onClick={onClose}
                 aria-label="Close"
-                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-[#A0A0A0] hover:bg-[#F0EDE4] hover:text-[#3A3A3A]"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -146,28 +149,28 @@ export function InviteMemberModal({
             <div className="space-y-4 px-5 py-4">
               {/* Search box */}
               <label className="block">
-                <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-slate-500">
+                <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">
                   Find user
                 </span>
                 <div className="relative">
-                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#A0A0A0]" />
                   <input
                     autoFocus
                     type="text"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="Name or email…"
-                    className="w-full rounded-md border border-slate-200 bg-white pl-8 pr-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    className="w-full rounded-md border border-[#E6E1D4] bg-white pl-8 pr-3 py-2 text-sm shadow-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
                   />
                 </div>
               </label>
 
               {/* Candidate list */}
-              <ul className="max-h-56 divide-y divide-slate-100 overflow-y-auto rounded-md border border-slate-200">
+              <ul className="max-h-56 divide-y divide-[#EFEBE0] overflow-y-auto rounded-md border border-[#E6E1D4]">
                 {candidates.length === 0 && (
-                  <li className="px-3 py-4 text-center text-xs text-slate-500">
+                  <li className="px-3 py-4 text-center text-xs text-[#6B6B6B]">
                     {query
-                      ? `No one matches “${query}”.`
+                      ? `No one matches "${query}".`
                       : 'Everyone in your org is already on this project.'}
                   </li>
                 )}
@@ -188,16 +191,16 @@ export function InviteMemberModal({
                         type="button"
                         onClick={() => setSelectedId(user.id)}
                         className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors ${
-                          isSelected ? 'bg-emerald-50' : 'hover:bg-slate-50'
+                          isSelected ? 'bg-[#E5F2EA]' : 'hover:bg-[#FAF8F2]'
                         }`}
                       >
-                        <Avatar className="h-8 w-8 flex-shrink-0">
+                        <Avatar className="h-8 w-8 shrink-0">
                           <AvatarImage src={user.avatar} />
                           <AvatarFallback className="text-[10px] font-medium">{initials}</AvatarFallback>
                         </Avatar>
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium text-slate-900">{user.fullName}</p>
-                          <p className="truncate text-[11px] text-slate-500">{user.email}</p>
+                          <p className="truncate text-sm font-medium text-[#1A1A1A]">{user.fullName}</p>
+                          <p className="truncate text-[11px] text-[#6B6B6B]">{user.email}</p>
                         </div>
                         <Badge variant="secondary" className="text-[10px] capitalize">{roleLabel}</Badge>
                       </button>
@@ -208,7 +211,7 @@ export function InviteMemberModal({
 
               {/* Note */}
               <label className="block">
-                <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-slate-500">
+                <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">
                   Note (optional)
                 </span>
                 <textarea
@@ -216,12 +219,12 @@ export function InviteMemberModal({
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                   placeholder="Why this person is being invited (visible to admins on the Team list)."
-                  className="block w-full resize-none rounded-md border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="block w-full resize-none rounded-md border border-[#E6E1D4] px-3 py-2 text-sm shadow-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
                 />
               </label>
             </div>
 
-            <footer className="flex items-center justify-end gap-2 border-t border-slate-100 bg-slate-50/50 px-5 py-3">
+            <footer className="flex items-center justify-end gap-2 border-t border-[#EFEBE0] bg-[#FAF8F2] px-5 py-3">
               <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={submitting}>
                 Cancel
               </Button>

@@ -19,11 +19,11 @@ interface AssignedTasksMiniProps {
 }
 
 const STATUS_DOT: Record<TaskStatus, string> = {
-  not_started: 'bg-slate-400',
-  in_progress: 'bg-blue-500',
-  complete:    'bg-emerald-500',
-  delayed:     'bg-red-500',
-  blocked:     'bg-amber-500',
+  not_started: 'bg-[#A0A0A0]',
+  in_progress: 'bg-[#5B6B7B]',
+  complete:    'bg-[#2F8F5C]',
+  delayed:     'bg-[#C44545]',
+  blocked:     'bg-[#C8841E]',
 };
 
 const MAX_ROWS = 5;
@@ -50,41 +50,41 @@ export default function AssignedTasksMini({ userId, projectIds }: AssignedTasksM
       <div className="flex items-center justify-between gap-3">
         <p
           id="todays-brief-heading"
-          className="text-[11px] font-medium uppercase tracking-[0.22em] text-slate-500"
+          className="text-[11px] font-medium uppercase tracking-[0.22em] text-[#6B6B6B]"
         >
           Today’s brief
         </p>
         {rows.length > 0 && (
-          <p className="text-xs tabular-nums text-slate-400">
+          <p className="text-xs tabular-nums text-[#A0A0A0]">
             {rows.length} assigned · earliest due first
           </p>
         )}
       </div>
 
       {rows.length === 0 ? (
-        <p className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-white px-5 py-6 text-sm text-slate-500">
+        <p className="mt-4 rounded-[14px] border border-dashed border-[#E6E1D4] bg-white px-5 py-6 text-sm text-[#6B6B6B]">
           Nothing’s assigned to you yet. Tasks land here once your site manager
           tags you on the Gantt.
         </p>
       ) : (
-        <ul className="mt-4 divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        <ul className="mt-4 divide-y divide-[#EFEBE0] overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_1px_2px_rgba(20,20,20,0.04)]">
           {rows.map(({ task, projectName }) => (
             <li key={task.id}>
               <Link
                 to={`/gantt?project=${task.projectId}&tab=tasks&task=${task.id}`}
-                className="flex items-center gap-3 px-5 py-3.5 transition-colors hover:bg-slate-50"
+                className="flex items-center gap-3 px-5 py-3.5 transition-colors hover:bg-[#FAF8F2]"
               >
                 <span
                   className={`h-2 w-2 flex-shrink-0 rounded-full ${STATUS_DOT[task.status]}`}
                   aria-hidden
                 />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-slate-900">
+                  <p className="truncate text-sm font-medium text-[#1A1A1A]">
                     {task.name}
                   </p>
-                  <p className="truncate text-xs text-slate-500">{projectName}</p>
+                  <p className="truncate text-xs text-[#6B6B6B]">{projectName}</p>
                 </div>
-                <span className="tabular-nums text-xs font-medium text-slate-700">
+                <span className="tabular-nums text-xs font-medium text-[#3A3A3A]">
                   {task.percentComplete}%
                 </span>
               </Link>

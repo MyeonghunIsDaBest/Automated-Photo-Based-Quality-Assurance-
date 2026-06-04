@@ -118,7 +118,7 @@ export default function NewConversationModal({
 
   const footer = mode === 'group' ? (
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-[#6B6B6B]">
         {selectedIds.length < 2
           ? `Select at least ${2 - selectedIds.length} more member${selectedIds.length === 1 ? '' : 's'}`
           : `${selectedIds.length} member${selectedIds.length === 1 ? '' : 's'} selected`}
@@ -143,7 +143,7 @@ export default function NewConversationModal({
       footer={footer}
     >
       {error && (
-        <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>
+        <p className="mb-3 rounded-[14px] border border-[#FBE5E5] bg-[#FBE5E5] px-3 py-2 text-xs text-[#C44545]">{error}</p>
       )}
 
       {mode === 'choose' && (
@@ -151,28 +151,28 @@ export default function NewConversationModal({
           <button
             type="button"
             onClick={() => setMode('direct')}
-            className="group flex w-full items-center gap-4 rounded-xl border border-slate-100 p-4 transition-colors hover:border-emerald-200 hover:bg-emerald-50/60"
+            className="group flex w-full items-center gap-4 rounded-[14px] border border-[#E6E1D4] p-4 transition-colors hover:border-[#2F8F5C] hover:bg-[#E5F2EA]"
           >
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 transition-colors group-hover:bg-emerald-100">
-              <Users className="h-5 w-5 text-slate-500 group-hover:text-emerald-700" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#F0EDE4] transition-colors group-hover:bg-[#E5F2EA]">
+              <Users className="h-5 w-5 text-[#6B6B6B] group-hover:text-[#246F47]" />
             </div>
             <div className="text-left">
-              <p className="font-medium text-slate-900">Direct message</p>
-              <p className="text-xs text-slate-500">One-on-one with someone on your team</p>
+              <p className="font-medium text-[#1A1A1A]">Direct message</p>
+              <p className="text-xs text-[#6B6B6B]">One-on-one with someone on your team</p>
             </div>
           </button>
 
           <button
             type="button"
             onClick={() => setMode('group')}
-            className="group flex w-full items-center gap-4 rounded-xl border border-slate-100 p-4 transition-colors hover:border-emerald-200 hover:bg-emerald-50/60"
+            className="group flex w-full items-center gap-4 rounded-[14px] border border-[#E6E1D4] p-4 transition-colors hover:border-[#2F8F5C] hover:bg-[#E5F2EA]"
           >
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 transition-colors group-hover:bg-emerald-100">
-              <Hash className="h-5 w-5 text-slate-500 group-hover:text-emerald-700" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#F0EDE4] transition-colors group-hover:bg-[#E5F2EA]">
+              <Hash className="h-5 w-5 text-[#6B6B6B] group-hover:text-[#246F47]" />
             </div>
             <div className="text-left">
-              <p className="font-medium text-slate-900">Group chat</p>
-              <p className="text-xs text-slate-500">Channel for a project, trade, or crew</p>
+              <p className="font-medium text-[#1A1A1A]">Group chat</p>
+              <p className="text-xs text-[#6B6B6B]">Channel for a project, trade, or crew</p>
             </div>
           </button>
         </div>
@@ -183,7 +183,7 @@ export default function NewConversationModal({
           <SearchBar value={search} onChange={setSearch} placeholder="Search people…" />
           <div className="mt-3 max-h-72 overflow-y-auto">
             {results.length === 0 ? (
-              <p className="px-2 py-6 text-center text-xs text-slate-400">No matches.</p>
+              <p className="px-2 py-6 text-center text-xs text-[#A0A0A0]">No matches.</p>
             ) : (
               results.map((p) => (
                 <button
@@ -191,17 +191,17 @@ export default function NewConversationModal({
                   type="button"
                   disabled={busy}
                   onClick={() => handlePickDirect(p.id)}
-                  className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"
+                  className="flex w-full items-center gap-3 rounded-[14px] px-2 py-2 text-left transition-colors hover:bg-[#FAF8F2] disabled:cursor-wait disabled:opacity-60"
                 >
                   <Avatar className="h-9 w-9">
                     <AvatarImage src={p.avatarUrl ?? undefined} />
                     <AvatarFallback className="text-xs">{initials(p)}</AvatarFallback>
                   </Avatar>
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-slate-900">
+                    <p className="truncate text-sm font-medium text-[#1A1A1A]">
                       {p.firstName} {p.lastName}
                     </p>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-[#6B6B6B]">
                       {SECURITY_GROUP_LABELS[p.securityGroup]}
                     </p>
                   </div>
@@ -214,7 +214,7 @@ export default function NewConversationModal({
 
       {mode === 'group' && (
         <div>
-          <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.15em] text-slate-500">
+          <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.15em] text-[#6B6B6B]">
             Group name
           </label>
           <input
@@ -231,10 +231,10 @@ export default function NewConversationModal({
               {selectedProfiles.map((p) => (
                 <span
                   key={p.id}
-                  className="flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-800"
+                  className="flex items-center gap-1 rounded-full bg-[#E5F2EA] px-2.5 py-1 text-xs font-medium text-[#246F47]"
                 >
                   {p.firstName}
-                  <button type="button" onClick={() => toggleMember(p.id)} className="ml-0.5 hover:text-emerald-900">
+                  <button type="button" onClick={() => toggleMember(p.id)} className="ml-0.5 hover:text-[#1A1A1A]">
                     ×
                   </button>
                 </span>
@@ -254,20 +254,20 @@ export default function NewConversationModal({
                   key={p.id}
                   type="button"
                   onClick={() => toggleMember(p.id)}
-                  className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-slate-50"
+                  className="flex w-full items-center gap-3 rounded-[14px] px-2 py-2 text-left transition-colors hover:bg-[#FAF8F2]"
                 >
                   <Avatar className="h-9 w-9">
                     <AvatarImage src={p.avatarUrl ?? undefined} />
                     <AvatarFallback className="text-xs">{initials(p)}</AvatarFallback>
                   </Avatar>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-slate-900">
+                    <p className="truncate text-sm font-medium text-[#1A1A1A]">
                       {p.firstName} {p.lastName}
                     </p>
-                    <p className="text-xs text-slate-500">{SECURITY_GROUP_LABELS[p.securityGroup]}</p>
+                    <p className="text-xs text-[#6B6B6B]">{SECURITY_GROUP_LABELS[p.securityGroup]}</p>
                   </div>
                   <div className={`flex h-5 w-5 items-center justify-center rounded-full border-2 transition-colors ${
-                    selected ? 'border-emerald-600 bg-emerald-600' : 'border-slate-300'
+                    selected ? 'border-[#2F8F5C] bg-[#2F8F5C]' : 'border-[#D8D2C4]'
                   }`}>
                     {selected && <Check className="h-3 w-3 text-white" />}
                   </div>
@@ -284,7 +284,7 @@ export default function NewConversationModal({
 function SearchBar({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   return (
     <div className="relative">
-      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#A0A0A0]" />
       <input
         type="text"
         placeholder={placeholder}

@@ -49,14 +49,15 @@ const NON_ADMIN_GROUPS: SecurityGroup[] = [
 ];
 
 const ROLE_BADGE: Record<SecurityGroup, string> = {
-  company_admin:    'border-emerald-200 bg-emerald-50 text-emerald-700',
-  administrator:    'border-emerald-200 bg-emerald-50 text-emerald-700',
-  construction_mgr: 'border-blue-200 bg-blue-50 text-blue-700',
-  project_manager:  'border-blue-200 bg-blue-50 text-blue-700',
-  site_manager:     'border-blue-200 bg-blue-50 text-blue-700',
-  worker:           'border-slate-200 bg-slate-50 text-slate-600',
-  stakeholder:      'border-violet-200 bg-violet-50 text-violet-700',
-  supplier:         'border-amber-200 bg-amber-50 text-amber-700',
+  company_admin:    'border-[#A8D0B8] bg-[#E5F2EA] text-[#246F47]',
+  administrator:    'border-[#A8D0B8] bg-[#E5F2EA] text-[#246F47]',
+  construction_mgr: 'border-[#D8D2C4] bg-[#EEF1F4] text-[#5B6B7B]',
+  project_manager:  'border-[#D8D2C4] bg-[#EEF1F4] text-[#5B6B7B]',
+  site_manager:     'border-[#D8D2C4] bg-[#EEF1F4] text-[#5B6B7B]',
+  worker:           'border-[#E6E1D4] bg-[#FAF8F2] text-[#6B6B6B]',
+  stakeholder:      'border-[#E6E1D4] bg-[#F0EDE4] text-[#1A1A1A]',
+  supplier:         'border-[#F0D5A0] bg-[#F9EFD9] text-[#C8841E]',
+  dev:              'border-[#1A1A1A] bg-[#1A1A1A] text-white',
 };
 
 type FilterId = 'all' | SecurityGroup | 'disabled';
@@ -235,19 +236,19 @@ export default function UsersTab() {
       {/* ─── Toolbar: search + add ─── */}
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1 sm:max-w-md">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#A0A0A0]" />
           <input
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by name, email, or mobile…"
-            className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-10 text-sm shadow-sm focus:border-slate-900 focus:outline-none"
+            className="h-10 w-full rounded-lg border border-[#E6E1D4] bg-white pl-10 pr-10 text-sm shadow-sm focus:border-[#2F8F5C] focus:outline-none"
           />
           {search && (
             <button
               type="button"
               onClick={() => setSearch('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-900"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-[#A0A0A0] hover:bg-[#FAF8F2] hover:text-[#1A1A1A]"
               aria-label="Clear search"
             >
               <X className="h-3.5 w-3.5" />
@@ -268,11 +269,11 @@ export default function UsersTab() {
       {/* ─── Per-role filter chips ─── */}
       <div className="mb-5">
         <div className="mb-2 flex items-baseline justify-between">
-          <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500">
+          <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-[#6B6B6B]">
             Filter by role
           </span>
-          <span className="text-[11px] text-slate-400">
-            <span className="tabular-nums text-slate-700">{admins.length + others.length}</span>
+          <span className="text-[11px] text-[#A0A0A0]">
+            <span className="tabular-nums text-[#1A1A1A]">{admins.length + others.length}</span>
             {' '}of{' '}
             <span className="tabular-nums">{profiles.length}</span> shown
           </span>
@@ -306,7 +307,7 @@ export default function UsersTab() {
       </div>
 
       {error && (
-        <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div className="mb-4 rounded-[14px] border border-[#F0BFBF] bg-[#FBE5E5] px-3 py-2 text-sm text-[#C44545]">
           {error}
         </div>
       )}
@@ -332,7 +333,7 @@ export default function UsersTab() {
             selectedId={selected?.id}
             emptyHint="No owners yet — first signup is auto-promoted, or grant via Rescue tools."
           />
-          <div className="my-6 h-px bg-slate-200" />
+          <div className="my-6 h-px bg-[#E6E1D4]" />
         </>
       )}
 
@@ -356,7 +357,7 @@ export default function UsersTab() {
         emptyHint="No admins on the system. The first signup auto-promotes to Company Admin."
       />
 
-      <div className="my-6 h-px bg-slate-200" />
+      <div className="my-6 h-px bg-[#E6E1D4]" />
 
       {/* ─── Everyone else ─── */}
       <Group
@@ -378,12 +379,12 @@ export default function UsersTab() {
         emptyHint={
           filtersActive ? (
             <div className="py-6 text-center">
-              <p className="display text-base text-slate-900">No users match.</p>
-              <p className="mt-1 text-xs text-slate-500">Try a different role or clear the search.</p>
+              <p className="display text-base text-[#1A1A1A]">No users match.</p>
+              <p className="mt-1 text-xs text-[#6B6B6B]">Try a different role or clear the search.</p>
               <button
                 type="button"
                 onClick={clearFilters}
-                className="mt-3 text-xs font-medium text-emerald-700 hover:underline"
+                className="mt-3 text-xs font-medium text-[#246F47] hover:underline"
               >
                 Clear filters
               </button>
@@ -434,8 +435,8 @@ function FilterChip({
   tone?: 'default' | 'danger';
 }) {
   const activeClass = tone === 'danger'
-    ? 'border-red-600 bg-red-600 text-white'
-    : 'border-slate-900 bg-slate-900 text-white';
+    ? 'border-[#C44545] bg-[#C44545] text-white'
+    : 'border-[#1A1A1A] bg-[#1A1A1A] text-white';
   return (
     <button
       type="button"
@@ -443,11 +444,11 @@ function FilterChip({
       className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
         active
           ? activeClass
-          : 'border-slate-200 bg-white text-slate-700 hover:border-slate-400'
+          : 'border-[#E6E1D4] bg-white text-[#3A3A3A] hover:border-[#D8D2C4]'
       }`}
     >
       {label}
-      <span className={`text-[10px] tabular-nums ${active ? 'text-white/70' : 'text-slate-400'}`}>
+      <span className={`text-[10px] tabular-nums ${active ? 'text-white/70' : 'text-[#A0A0A0]'}`}>
         {count}
       </span>
     </button>
@@ -467,15 +468,15 @@ function SortBtn({
     <button
       type="button"
       onClick={() => onToggle(col)}
-      className="group inline-flex items-center gap-1 transition-colors hover:text-slate-900"
+      className="group inline-flex items-center gap-1 transition-colors hover:text-[#1A1A1A]"
     >
       {children}
       {active ? (
         sort.dir === 'asc'
-          ? <ArrowUp className="h-3 w-3 text-emerald-700" />
-          : <ArrowDown className="h-3 w-3 text-emerald-700" />
+          ? <ArrowUp className="h-3 w-3 text-[#246F47]" />
+          : <ArrowDown className="h-3 w-3 text-[#246F47]" />
       ) : (
-        <ArrowUpDown className="h-3 w-3 text-slate-300 opacity-0 transition-opacity group-hover:opacity-100" />
+        <ArrowUpDown className="h-3 w-3 text-[#D8D2C4] opacity-0 transition-opacity group-hover:opacity-100" />
       )}
     </button>
   );
@@ -509,10 +510,10 @@ function Group({
   emptyHint,
 }: GroupProps) {
   const accentClass = accent === 'emerald'
-    ? 'bg-emerald-50 text-emerald-700'
+    ? 'bg-[#E5F2EA] text-[#246F47]'
     : accent === 'amber'
-      ? 'bg-amber-50 text-amber-700'
-      : 'bg-slate-100 text-slate-600';
+      ? 'bg-[#F9EFD9] text-[#C8841E]'
+      : 'bg-[#FAF8F2] text-[#6B6B6B]';
 
   const renderActions = (p: Profile) => (
     <div className="flex items-center gap-1">
@@ -521,7 +522,7 @@ function Group({
         onClick={(e) => { e.stopPropagation(); onSelect(p); }}
         title="Documents"
         aria-label="Documents"
-        className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+        className="rounded-md p-1.5 text-[#6B6B6B] hover:bg-[#FAF8F2] hover:text-[#1A1A1A]"
       >
         <FileText className="h-4 w-4" />
       </button>
@@ -530,7 +531,7 @@ function Group({
         onClick={(e) => { e.stopPropagation(); onEdit(p); }}
         title="Edit"
         aria-label="Edit"
-        className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+        className="rounded-md p-1.5 text-[#6B6B6B] hover:bg-[#FAF8F2] hover:text-[#1A1A1A]"
       >
         <Edit className="h-4 w-4" />
       </button>
@@ -552,8 +553,8 @@ function Group({
         aria-label={p.isActive ? 'Disable' : 'Enable'}
         className={`rounded-md p-1.5 transition-colors ${
           p.isActive
-            ? 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
-            : 'text-emerald-600 hover:bg-emerald-50'
+            ? 'text-[#6B6B6B] hover:bg-[#FAF8F2] hover:text-[#1A1A1A]'
+            : 'text-[#2F8F5C] hover:bg-[#E5F2EA]'
         }`}
       >
         <Power className="h-4 w-4" />
@@ -572,7 +573,7 @@ function Group({
         value={p.securityGroup}
         onChange={(e) => onGroupChange(p, e.target.value as SecurityGroup)}
         onClick={(e) => e.stopPropagation()}
-        className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs focus:border-slate-900 focus:outline-none"
+        className="rounded-md border border-[#E6E1D4] bg-white px-2 py-1 text-xs focus:border-[#2F8F5C] focus:outline-none"
       >
         {SECURITY_GROUPS.map((g) => (
           <option
@@ -594,7 +595,7 @@ function Group({
       cell: (p) => (
         <div className="flex items-center gap-3">
           <div className="relative">
-            <div className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-full bg-emerald-100 text-[11px] font-medium text-emerald-800">
+            <div className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-full bg-[#E5F2EA] text-[11px] font-medium text-[#246F47]">
               {(p.firstName?.[0] ?? '?')}{(p.lastName?.[0] ?? '')}
             </div>
             {p.isOwner && (
@@ -608,7 +609,7 @@ function Group({
             )}
           </div>
           <div className="min-w-0">
-            <p className="truncate font-medium text-slate-900">
+            <p className="truncate font-medium text-[#1A1A1A]">
               {[p.firstName, p.lastName].filter(Boolean).join(' ') || '—'}
               {p.isOwner && (
                 <span className="ml-1.5 inline-flex items-center gap-0.5 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-px text-[9px] font-medium uppercase tracking-wider text-amber-700">
@@ -616,7 +617,7 @@ function Group({
                 </span>
               )}
             </p>
-            <p className="truncate text-[12px] text-slate-500">{p.email}</p>
+            <p className="truncate text-[12px] text-[#6B6B6B]">{p.email}</p>
           </div>
         </div>
       ),
@@ -629,7 +630,7 @@ function Group({
     {
       key: 'mobile',
       header: 'Mobile',
-      cell: (p) => <span className="text-slate-600">{p.mobile ?? '—'}</span>,
+      cell: (p) => <span className="text-[#3A3A3A]">{p.mobile ?? '—'}</span>,
       desktopOnly: true,
     },
     {
@@ -638,7 +639,7 @@ function Group({
       cell: (p) => (
         <span
           className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-            p.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'
+            p.isActive ? 'bg-[#E5F2EA] text-[#246F47]' : 'bg-[#F0EDE4] text-[#6B6B6B]'
           }`}
         >
           {p.isActive ? 'Active' : 'Disabled'}
@@ -649,7 +650,7 @@ function Group({
       key: 'joined',
       header: <SortBtn col="joined" sort={sort} onToggle={onToggleSort}>Joined</SortBtn>,
       cell: (p) => (
-        <span className="tabular-nums text-[12px] text-slate-500">
+        <span className="tabular-nums text-[12px] text-[#6B6B6B]">
           {fmtJoined(p.createdAt)}
         </span>
       ),
@@ -664,15 +665,15 @@ function Group({
         <div className={`flex h-7 w-7 items-center justify-center rounded-lg ${accentClass}`}>
           <Icon className="h-4 w-4" />
         </div>
-        <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
-        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium tabular-nums text-slate-600">
+        <h3 className="text-sm font-semibold text-[#1A1A1A]">{title}</h3>
+        <span className="rounded-full bg-[#F0EDE4] px-2 py-0.5 text-[10px] font-medium tabular-nums text-[#6B6B6B]">
           {count}
         </span>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div className="overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_1px_2px_rgba(20,20,20,0.04)]">
         {loading ? (
-          <div className="px-4 py-8 text-center text-sm text-slate-400">Loading…</div>
+          <div className="px-4 py-8 text-center text-sm text-[#A0A0A0]">Loading…</div>
         ) : (
           <ResponsiveDataTable<Profile>
             columns={columns}
@@ -681,23 +682,23 @@ function Group({
             empty={emptyHint}
             mobileCard={(p) => (
               <div
-                className={`space-y-2 ${selectedId === p.id ? 'rounded-lg ring-2 ring-emerald-200' : ''}`}
+                className={`space-y-2 ${selectedId === p.id ? 'rounded-lg ring-2 ring-[#A8D0B8]' : ''}`}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-2">
-                    <div className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-full bg-emerald-100 text-[11px] font-medium text-emerald-800">
+                    <div className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-full bg-[#E5F2EA] text-[11px] font-medium text-[#246F47]">
                       {(p.firstName?.[0] ?? '?')}{(p.lastName?.[0] ?? '')}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-slate-900">
+                      <p className="truncate text-sm font-medium text-[#1A1A1A]">
                         {[p.firstName, p.lastName].filter(Boolean).join(' ') || '—'}
                       </p>
-                      <p className="truncate text-xs text-slate-500">{p.email}</p>
+                      <p className="truncate text-xs text-[#6B6B6B]">{p.email}</p>
                     </div>
                   </div>
                   <span
                     className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                      p.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'
+                      p.isActive ? 'bg-[#E5F2EA] text-[#246F47]' : 'bg-[#F0EDE4] text-[#6B6B6B]'
                     }`}
                   >
                     {p.isActive ? 'Active' : 'Disabled'}
@@ -705,9 +706,9 @@ function Group({
                 </div>
                 {renderRoleControl(p)}
                 {p.mobile && (
-                  <p className="text-[11px] text-slate-500">Mobile: {p.mobile}</p>
+                  <p className="text-[11px] text-[#6B6B6B]">Mobile: {p.mobile}</p>
                 )}
-                <p className="text-[10px] text-slate-400">Joined {fmtJoined(p.createdAt)}</p>
+                <p className="text-[10px] text-[#A0A0A0]">Joined {fmtJoined(p.createdAt)}</p>
                 <div className="flex justify-end pt-1">{renderActions(p)}</div>
               </div>
             )}

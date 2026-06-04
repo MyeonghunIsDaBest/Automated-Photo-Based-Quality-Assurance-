@@ -5,6 +5,7 @@ import { Input } from '../../../components/ui/input';
 import { useAppStore } from '../../../store';
 import { createSafetyDocument } from '../../../lib/api/safetyDocuments';
 import { CATEGORY_BLURB, CATEGORY_LABEL, SafetyDocCategory, SafetyDocument } from '../types';
+import { FRAUNCES } from '../../gantt/components/ledger';
 
 interface SafetyDocumentModalProps {
   open: boolean;
@@ -81,18 +82,20 @@ export function SafetyDocumentModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-      <div className="flex max-h-[90dvh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white shadow-xl"
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#1A1A1A]/50 p-4">
+      <div
+        className="flex max-h-[90dvh] w-full max-w-2xl flex-col overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_8px_28px_rgba(20,20,20,0.12)]"
         style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}
       >
-        <div className="flex items-start justify-between border-b border-slate-200 px-6 py-4">
+        {/* Header */}
+        <div className="flex items-start justify-between border-b border-[#E6E1D4] px-6 py-4">
           <div>
-            <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
+            <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-[#6B6B6B]">
               Safety document
             </p>
             <h2
-              className="mt-1 text-xl font-medium text-slate-900"
-              style={{ fontFamily: "'Fraunces', Georgia, serif", letterSpacing: '-0.02em' }}
+              className="mt-1 text-xl font-medium text-[#1A1A1A]"
+              style={{ fontFamily: FRAUNCES, letterSpacing: '-0.02em' }}
             >
               Upload a {CATEGORY_LABEL[category]} document
             </h2>
@@ -100,7 +103,7 @@ export function SafetyDocumentModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+            className="rounded-md p-2 text-[#A0A0A0] hover:bg-[#F0EDE4] hover:text-[#3A3A3A]"
           >
             <X className="h-5 w-5" />
           </button>
@@ -108,8 +111,10 @@ export function SafetyDocumentModal({
 
         <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-hidden">
           <div className="editorial-scrollbox flex-1 space-y-5 px-6 py-5">
+
+            {/* Category toggle */}
             <div>
-              <label className="mb-2 block text-xs font-medium text-slate-700">Category</label>
+              <label className="mb-2 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">Category</label>
               <div className="grid grid-cols-3 gap-2">
                 {(['ohse', 'swms', 'msds'] as SafetyDocCategory[]).map((cat) => {
                   const isActive = cat === category;
@@ -118,14 +123,14 @@ export function SafetyDocumentModal({
                       key={cat}
                       type="button"
                       onClick={() => setCategory(cat)}
-                      className={`rounded-lg border px-3 py-2.5 text-left transition-all ${
+                      className={`rounded-[10px] border px-3 py-2.5 text-left transition-all ${
                         isActive
-                          ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
-                          : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                          ? 'border-[#1A1A1A] bg-[#1A1A1A] text-white shadow-sm'
+                          : 'border-[#E6E1D4] bg-white text-[#3A3A3A] hover:border-[#D8D2C4]'
                       }`}
                     >
                       <p className="text-sm font-medium">{CATEGORY_LABEL[cat]}</p>
-                      <p className={`mt-0.5 text-[11px] ${isActive ? 'text-slate-300' : 'text-slate-500'}`}>
+                      <p className={`mt-0.5 text-[11px] ${isActive ? 'text-[#A0A0A0]' : 'text-[#6B6B6B]'}`}>
                         {cat === 'ohse' && 'Policy / induction'}
                         {cat === 'swms' && 'Per high-risk task'}
                         {cat === 'msds' && 'Chemical / material'}
@@ -134,12 +139,13 @@ export function SafetyDocumentModal({
                   );
                 })}
               </div>
-              <p className="mt-2 text-xs text-slate-500">{CATEGORY_BLURB[category]}</p>
+              <p className="mt-2 text-xs text-[#6B6B6B]">{CATEGORY_BLURB[category]}</p>
             </div>
 
+            {/* Title + Reference */}
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">Title</label>
+                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">Title</label>
                 <Input
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
@@ -153,8 +159,8 @@ export function SafetyDocumentModal({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">
-                  Reference / Doc ID <span className="font-normal text-slate-400">(optional)</span>
+                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">
+                  Reference / Doc ID <span className="font-normal text-[#A0A0A0]">(optional)</span>
                 </label>
                 <Input
                   value={reference}
@@ -164,9 +170,10 @@ export function SafetyDocumentModal({
               </div>
             </div>
 
+            {/* Effective + Expiry dates */}
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">Effective Date</label>
+                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">Effective Date</label>
                 <Input
                   type="date"
                   value={effectiveDate}
@@ -174,8 +181,8 @@ export function SafetyDocumentModal({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">
-                  Expiry Date <span className="font-normal text-slate-400">(optional)</span>
+                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">
+                  Expiry Date <span className="font-normal text-[#A0A0A0]">(optional)</span>
                 </label>
                 <Input
                   type="date"
@@ -185,20 +192,21 @@ export function SafetyDocumentModal({
               </div>
             </div>
 
+            {/* File drop zone */}
             <div>
-              <label className="mb-2 block text-xs font-medium text-slate-700">Document file</label>
-              <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 px-6 py-8 text-center transition-all hover:border-slate-300 hover:bg-slate-100">
+              <label className="mb-2 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">Document file</label>
+              <label className="flex cursor-pointer flex-col items-center justify-center rounded-[10px] border-2 border-dashed border-[#E6E1D4] bg-[#FAF8F2] px-6 py-8 text-center transition-all hover:border-[#D8D2C4] hover:bg-[#F0EDE4]">
                 <input
                   type="file"
                   className="sr-only"
                   accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
                   onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                 />
-                <UploadIcon className="h-6 w-6 text-slate-400" />
-                <p className="mt-2 text-sm font-medium text-slate-900">
+                <UploadIcon className="h-6 w-6 text-[#A0A0A0]" />
+                <p className="mt-2 text-sm font-medium text-[#1A1A1A]">
                   {file ? file.name : 'Click to choose a file'}
                 </p>
-                <p className="mt-0.5 text-xs text-slate-500">
+                <p className="mt-0.5 text-xs text-[#6B6B6B]">
                   {file
                     ? `${(file.size / 1024).toFixed(0)} KB`
                     : 'PDF, DOC, or image up to 10 MB'}
@@ -206,27 +214,30 @@ export function SafetyDocumentModal({
               </label>
             </div>
 
+            {/* Notes */}
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-700">
-                Notes <span className="font-normal text-slate-400">(optional)</span>
+              <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">
+                Notes <span className="font-normal text-[#A0A0A0]">(optional)</span>
               </label>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={2}
-                className="block w-full rounded-md border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                className="block w-full rounded-md border border-[#E6E1D4] px-3 py-2 text-base shadow-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] sm:text-sm"
                 placeholder="Any context the team should see at a glance"
               />
             </div>
 
+            {/* Error */}
             {error && (
-              <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              <p className="rounded-md border border-[#F0BFBF] bg-[#FBE5E5] px-3 py-2 text-xs text-[#C44545]">
                 {error}
               </p>
             )}
           </div>
 
-          <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50/50 px-6 py-3">
+          {/* Footer */}
+          <div className="flex items-center justify-end gap-2 border-t border-[#E6E1D4] bg-[#FAF8F2] px-6 py-3">
             <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
               Cancel
             </Button>

@@ -1,6 +1,14 @@
 {
-  "generatedAt": "2026-06-01T03:32:53.533Z",
+  "generatedAt": "2026-06-04T12:13:02.383Z",
   "entries": [
+    {
+      "id": "80398f3",
+      "date": "2026-06-01T16:29:00+08:00",
+      "surface": "frontend",
+      "kind": "change",
+      "headline": "Production implementation pt1.",
+      "filesChanged": 25
+    },
     {
       "id": "79f8a0a",
       "date": "2026-06-01T11:31:09+08:00",
@@ -88,14 +96,6 @@
       "kind": "new",
       "headline": "Persist to Supabase + realtime + timeline slide-in (D3/F1-F3).",
       "filesChanged": 6
-    },
-    {
-      "id": "67b33c4",
-      "date": "2026-06-01T07:54:12+08:00",
-      "surface": "frontend",
-      "kind": "chore",
-      "headline": "Remove demo identity from production — gate userSettings + store seeds.",
-      "filesChanged": 3
     }
   ]
 }

@@ -11,9 +11,9 @@ export function EmptyProjectState({
   return (
     <Card>
       <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-        <FolderKanban className="h-10 w-10 text-slate-300" />
-        <p className="mt-3 text-sm font-medium text-slate-900">No project selected</p>
-        <p className="mt-1 max-w-sm text-xs text-slate-500">{message}</p>
+        <FolderKanban className="h-10 w-10 text-[#D8D2C4]" />
+        <p className="mt-3 text-sm font-medium text-[#1A1A1A]">No project selected</p>
+        <p className="mt-1 max-w-sm text-xs text-[#6B6B6B]">{message}</p>
       </CardContent>
     </Card>
   );

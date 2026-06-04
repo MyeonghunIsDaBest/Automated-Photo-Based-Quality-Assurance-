@@ -150,7 +150,7 @@ export default function StakeholdersTab() {
   const renderProjectChips = (s: Stakeholder) => {
     const ids = s.projectIds ?? [];
     if (ids.length === 0) {
-      return <span className="text-xs italic text-slate-400">Not linked</span>;
+      return <span className="text-xs italic text-[#A0A0A0]">Not linked</span>;
     }
     const names = ids.map((id) => projectsById.get(id)?.name ?? '(removed)');
     const head = names.slice(0, 3);
@@ -160,14 +160,14 @@ export default function StakeholdersTab() {
         {head.map((n, i) => (
           <span
             key={`${s.id}-${i}`}
-            className="inline-flex max-w-[10rem] items-center truncate rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-800"
+            className="inline-flex max-w-[10rem] items-center truncate rounded-full border border-[#A8D0B8] bg-[#E5F2EA] px-2 py-0.5 text-[11px] font-medium text-[#246F47]"
             title={n}
           >
             {n}
           </span>
         ))}
         {extra > 0 && (
-          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] tabular-nums text-slate-600">
+          <span className="rounded-full bg-[#F0EDE4] px-2 py-0.5 text-[11px] tabular-nums text-[#6B6B6B]">
             +{extra}
           </span>
         )}
@@ -177,27 +177,27 @@ export default function StakeholdersTab() {
 
   // Mailto / tel quick actions next to email + mobile.
   const renderEmail = (s: Stakeholder) => {
-    if (!s.email) return <span className="text-slate-400">—</span>;
+    if (!s.email) return <span className="text-[#A0A0A0]">—</span>;
     return (
       <a
         href={`mailto:${s.email}`}
         onClick={(e) => e.stopPropagation()}
-        className="inline-flex items-center gap-1 text-slate-600 hover:text-emerald-700"
+        className="inline-flex items-center gap-1 text-[#3A3A3A] hover:text-[#246F47]"
       >
-        <Mail className="h-3 w-3 flex-shrink-0 text-slate-400" />
+        <Mail className="h-3 w-3 flex-shrink-0 text-[#A0A0A0]" />
         <span className="truncate">{s.email}</span>
       </a>
     );
   };
   const renderMobile = (s: Stakeholder) => {
-    if (!s.mobile) return <span className="text-slate-400">—</span>;
+    if (!s.mobile) return <span className="text-[#A0A0A0]">—</span>;
     return (
       <a
         href={`tel:${s.mobile}`}
         onClick={(e) => e.stopPropagation()}
-        className="inline-flex items-center gap-1 text-slate-600 hover:text-emerald-700"
+        className="inline-flex items-center gap-1 text-[#3A3A3A] hover:text-[#246F47]"
       >
-        <Phone className="h-3 w-3 flex-shrink-0 text-slate-400" />
+        <Phone className="h-3 w-3 flex-shrink-0 text-[#A0A0A0]" />
         <span className="truncate tabular-nums">{s.mobile}</span>
       </a>
     );
@@ -209,8 +209,8 @@ export default function StakeholdersTab() {
       header: <SortBtn col="company" sort={sort} onToggle={toggleSort}>Company</SortBtn>,
       cell: (s) => (
         <div className="min-w-0">
-          <p className="truncate font-medium text-slate-900">{s.companyName}</p>
-          {s.role && <p className="truncate text-[11px] text-slate-500">{s.role}</p>}
+          <p className="truncate font-medium text-[#1A1A1A]">{s.companyName}</p>
+          {s.role && <p className="truncate text-[11px] text-[#6B6B6B]">{s.role}</p>}
         </div>
       ),
     },
@@ -218,8 +218,8 @@ export default function StakeholdersTab() {
       key: 'contact',
       header: <SortBtn col="contact" sort={sort} onToggle={toggleSort}>Primary contact</SortBtn>,
       cell: (s) => (
-        <span className="text-slate-700">
-          {primaryContactName(s) || <span className="italic text-slate-400">—</span>}
+        <span className="text-[#3A3A3A]">
+          {primaryContactName(s) || <span className="italic text-[#A0A0A0]">—</span>}
         </span>
       ),
     },
@@ -229,7 +229,7 @@ export default function StakeholdersTab() {
       key: 'contacts',
       header: <SortBtn col="contacts" sort={sort} onToggle={toggleSort}>Contacts</SortBtn>,
       cell: (s) => (
-        <span className="tabular-nums text-xs text-slate-500">
+        <span className="tabular-nums text-xs text-[#6B6B6B]">
           {s.contacts?.length ?? 0}
         </span>
       ),
@@ -249,7 +249,7 @@ export default function StakeholdersTab() {
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); setEditing(s); }}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-500 hover:bg-emerald-50 hover:text-emerald-700 active:bg-emerald-100"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md text-[#6B6B6B] hover:bg-[#E5F2EA] hover:text-[#246F47]"
             title="Edit"
             aria-label={`Edit ${s.companyName}`}
           >
@@ -258,7 +258,7 @@ export default function StakeholdersTab() {
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); void handleDelete(s); }}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-500 hover:bg-red-50 hover:text-red-600 active:bg-red-100"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md text-[#6B6B6B] hover:bg-[#FBE5E5] hover:text-[#C44545]"
             title="Delete"
             aria-label={`Delete ${s.companyName}`}
           >
@@ -286,8 +286,8 @@ export default function StakeholdersTab() {
       {/* ─── Header row ─── */}
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-baseline gap-2">
-          <h2 className="text-lg font-semibold text-slate-900">External contacts</h2>
-          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium tabular-nums text-slate-600">
+          <h2 className="text-lg font-semibold text-[#1A1A1A]">External contacts</h2>
+          <span className="rounded-full bg-[#F0EDE4] px-2 py-0.5 text-[10px] font-medium tabular-nums text-[#6B6B6B]">
             {items.length}
           </span>
         </div>
@@ -301,7 +301,7 @@ export default function StakeholdersTab() {
         </EditorialButton>
       </div>
 
-      <p className="mb-4 max-w-2xl text-sm text-slate-500">
+      <p className="mb-4 max-w-2xl text-sm text-[#6B6B6B]">
         Clients, consultants, council reps. Each company can carry multiple contacts and
         link to one or more projects.
       </p>
@@ -309,19 +309,19 @@ export default function StakeholdersTab() {
       {/* ─── Toolbar ─── */}
       <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1 sm:max-w-md">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#A0A0A0]" />
           <input
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search company, contact, email, role…"
-            className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-10 text-sm shadow-sm focus:border-slate-900 focus:outline-none"
+            className="h-10 w-full rounded-lg border border-[#E6E1D4] bg-white pl-10 pr-10 text-sm shadow-sm focus:border-[#2F8F5C] focus:outline-none"
           />
           {search && (
             <button
               type="button"
               onClick={() => setSearch('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-900"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-[#A0A0A0] hover:bg-[#FAF8F2] hover:text-[#1A1A1A]"
               aria-label="Clear search"
             >
               <X className="h-3.5 w-3.5" />
@@ -341,34 +341,34 @@ export default function StakeholdersTab() {
               onClick={() => setFilter(c.id)}
               className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
                 active
-                  ? 'border-slate-900 bg-slate-900 text-white'
-                  : 'border-slate-200 bg-white text-slate-700 hover:border-slate-400'
+                  ? 'border-[#1A1A1A] bg-[#1A1A1A] text-white'
+                  : 'border-[#E6E1D4] bg-white text-[#3A3A3A] hover:border-[#D8D2C4]'
               }`}
             >
               {c.label}
-              <span className={`text-[10px] tabular-nums ${active ? 'text-white/70' : 'text-slate-400'}`}>
+              <span className={`text-[10px] tabular-nums ${active ? 'text-white/70' : 'text-[#A0A0A0]'}`}>
                 {c.count}
               </span>
             </button>
           );
         })}
-        <span className="ml-auto text-[11px] text-slate-400">
-          <span className="tabular-nums text-slate-700">{filteredRows.length}</span>
+        <span className="ml-auto text-[11px] text-[#A0A0A0]">
+          <span className="tabular-nums text-[#1A1A1A]">{filteredRows.length}</span>
           {' '}of{' '}
           <span className="tabular-nums">{items.length}</span> shown
         </span>
       </div>
 
       {error && (
-        <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div className="mb-4 rounded-[14px] border border-[#F0BFBF] bg-[#FBE5E5] px-3 py-2 text-sm text-[#C44545]">
           {error}
         </div>
       )}
 
       {/* ─── Table ─── */}
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div className="overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_1px_2px_rgba(20,20,20,0.04)]">
         {loading ? (
-          <div className="px-4 py-8 text-center text-sm text-slate-400">Loading…</div>
+          <div className="px-4 py-8 text-center text-sm text-[#A0A0A0]">Loading…</div>
         ) : (
           <ResponsiveDataTable<Stakeholder>
             columns={columns}
@@ -376,14 +376,14 @@ export default function StakeholdersTab() {
             rowKey={(s) => s.id}
             empty={filtersActive ? (
               <div className="py-6 text-center">
-                <p className="display text-base text-slate-900">No stakeholders match.</p>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="display text-base text-[#1A1A1A]">No stakeholders match.</p>
+                <p className="mt-1 text-xs text-[#6B6B6B]">
                   Try a different filter or clear the search.
                 </p>
                 <button
                   type="button"
                   onClick={clearFilters}
-                  className="mt-3 text-xs font-medium text-emerald-700 hover:underline"
+                  className="mt-3 text-xs font-medium text-[#246F47] hover:underline"
                 >
                   Clear filters
                 </button>
@@ -393,8 +393,8 @@ export default function StakeholdersTab() {
               <div className="space-y-2">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-slate-900">{s.companyName}</p>
-                    <p className="truncate text-xs text-slate-500">
+                    <p className="truncate text-sm font-medium text-[#1A1A1A]">{s.companyName}</p>
+                    <p className="truncate text-xs text-[#6B6B6B]">
                       {primaryContactName(s) || '—'}
                       {s.role ? ` · ${s.role}` : ''}
                     </p>
@@ -403,7 +403,7 @@ export default function StakeholdersTab() {
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); setEditing(s); }}
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-500 hover:bg-emerald-50 hover:text-emerald-700 active:bg-emerald-100"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-md text-[#6B6B6B] hover:bg-[#E5F2EA] hover:text-[#246F47]"
                       aria-label="Edit"
                     >
                       <Pencil className="h-4 w-4" />
@@ -411,19 +411,19 @@ export default function StakeholdersTab() {
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); void handleDelete(s); }}
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-500 hover:bg-red-50 hover:text-red-600 active:bg-red-100"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-md text-[#6B6B6B] hover:bg-[#FBE5E5] hover:text-[#C44545]"
                       aria-label="Delete"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-500">
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-[#6B6B6B]">
                   {s.email && (
-                    <a href={`mailto:${s.email}`} onClick={(e) => e.stopPropagation()} className="hover:text-emerald-700">{s.email}</a>
+                    <a href={`mailto:${s.email}`} onClick={(e) => e.stopPropagation()} className="hover:text-[#246F47]">{s.email}</a>
                   )}
                   {s.mobile && (
-                    <a href={`tel:${s.mobile}`} onClick={(e) => e.stopPropagation()} className="hover:text-emerald-700">{s.mobile}</a>
+                    <a href={`tel:${s.mobile}`} onClick={(e) => e.stopPropagation()} className="hover:text-[#246F47]">{s.mobile}</a>
                   )}
                   <span>{(s.contacts?.length ?? 0)} contacts</span>
                 </div>
@@ -459,15 +459,15 @@ function SortBtn({
     <button
       type="button"
       onClick={onToggle.bind(null, col)}
-      className="group inline-flex items-center gap-1 transition-colors hover:text-slate-900"
+      className="group inline-flex items-center gap-1 transition-colors hover:text-[#1A1A1A]"
     >
       {children}
       {active ? (
         sort.dir === 'asc'
-          ? <ArrowUp className="h-3 w-3 text-emerald-700" />
-          : <ArrowDown className="h-3 w-3 text-emerald-700" />
+          ? <ArrowUp className="h-3 w-3 text-[#246F47]" />
+          : <ArrowDown className="h-3 w-3 text-[#246F47]" />
       ) : (
-        <ArrowUpDown className="h-3 w-3 text-slate-300 opacity-0 transition-opacity group-hover:opacity-100" />
+        <ArrowUpDown className="h-3 w-3 text-[#D8D2C4] opacity-0 transition-opacity group-hover:opacity-100" />
       )}
     </button>
   );
@@ -632,18 +632,18 @@ function StakeholderFormModal({
             <button
               type="button"
               onClick={addContact}
-              className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
+              className="inline-flex items-center gap-1 rounded-full border border-[#A8D0B8] bg-[#E5F2EA] px-3 py-1 text-xs font-medium text-[#246F47] hover:bg-[#A8D0B8]/30"
             >
               <Plus className="h-3 w-3" /> Add contact
             </button>
           }
         >
           {form.contacts.length === 0 ? (
-            <p className="text-xs italic text-slate-400">No additional contacts. The primary contact above is enough.</p>
+            <p className="text-xs italic text-[#A0A0A0]">No additional contacts. The primary contact above is enough.</p>
           ) : (
             <div className="space-y-2">
               {form.contacts.map((c, idx) => (
-                <div key={idx} className="rounded-lg border border-slate-200 bg-slate-50/50 p-3">
+                <div key={idx} className="rounded-[9px] border border-[#E6E1D4] bg-[#FAF8F2]/60 p-3">
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <input placeholder="Name" value={c.name} onChange={(e) => updateContact(idx, 'name', e.target.value)} className="editorial-input" />
                     <input placeholder="Role" value={c.role ?? ''} onChange={(e) => updateContact(idx, 'role', e.target.value)} className="editorial-input" />
@@ -660,7 +660,7 @@ function StakeholderFormModal({
                     <button
                       type="button"
                       onClick={() => removeContact(idx)}
-                      className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                      className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-[#C44545] hover:bg-[#FBE5E5]"
                     >
                       <Trash2 className="h-3 w-3" /> Remove
                     </button>
@@ -675,14 +675,14 @@ function StakeholderFormModal({
           title={`Linked projects (${form.projectIds.length})`}
           action={
             projects.length === 0 ? null : (
-              <span className="text-[11px] text-slate-400">
+              <span className="text-[11px] text-[#A0A0A0]">
                 {form.projectIds.length} of {projects.length} selected
               </span>
             )
           }
         >
           {projects.length === 0 ? (
-            <p className="text-xs italic text-slate-400">
+            <p className="text-xs italic text-[#A0A0A0]">
               No projects yet. Create a project first, then come back here to link this stakeholder.
             </p>
           ) : (
@@ -697,13 +697,13 @@ function StakeholderFormModal({
                     aria-pressed={active}
                     className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
                       active
-                        ? 'border-emerald-500 bg-emerald-100 text-emerald-800'
-                        : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400'
+                        ? 'border-[#2F8F5C] bg-[#E5F2EA] text-[#246F47]'
+                        : 'border-[#E6E1D4] bg-white text-[#6B6B6B] hover:border-[#D8D2C4]'
                     }`}
                   >
                     <span
                       className={`flex h-3.5 w-3.5 items-center justify-center rounded-sm border ${
-                        active ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-300 bg-white'
+                        active ? 'border-[#2F8F5C] bg-[#2F8F5C] text-white' : 'border-[#E6E1D4] bg-white'
                       }`}
                     >
                       {active && (
@@ -721,7 +721,7 @@ function StakeholderFormModal({
         </Section>
 
         {error && (
-          <div className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+          <div className="rounded-[14px] border border-[#F0BFBF] bg-[#FBE5E5] px-3 py-2 text-sm text-[#C44545]">{error}</div>
         )}
       </form>
     </EditorialModal>
@@ -822,7 +822,7 @@ function Section({
   return (
     <section>
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <h4 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">{title}</h4>
+        <h4 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6B6B6B]">{title}</h4>
         {action}
       </div>
       {children}
@@ -835,8 +835,8 @@ function Field({
 }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="text-xs font-medium text-slate-600">
-        {label}{required && <span className="ml-0.5 text-red-500">*</span>}
+      <span className="text-xs font-medium text-[#3A3A3A]">
+        {label}{required && <span className="ml-0.5 text-[#C44545]">*</span>}
       </span>
       <div className="mt-1">{children}</div>
     </label>

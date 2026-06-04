@@ -6,6 +6,8 @@ import { useProjectsListStore } from '../store';
 import { useFeatureStore } from '../../../store/features';
 import { deleteProject as apiDeleteProject } from '../../../lib/api/projects';
 import { supabaseConfigured } from '../../../lib/supabase';
+import { FRAUNCES } from '../../gantt/components/ledger';
+import { HEALTH_META, type ProjectHealthInfo } from '../lib/health';
 
 // Demo / generated projects live entirely in the client store — they have
 // non-UUID IDs ("project_demo_inflight", "proj_<timestamp>") and were never
@@ -37,18 +39,21 @@ interface ProjectsListTabProps {
   /** Owner-only — when true, every card gets a trash icon that opens a
    *  confirmation modal and removes the project from local state + Supabase. */
   canDelete?: boolean;
+  /** Per-project momentum/health, keyed by project id (see lib/health). */
+  healthById?: Map<string, ProjectHealthInfo>;
 }
 
 const STATUS_META: Record<ProjectStatus, {
   label: string;
-  pillClass: string;
+  fg: string;
+  bg: string;
   dot: string;
   accent: string;
 }> = {
-  active:    { label: 'Active',    pillClass: 'bg-emerald-50 text-emerald-800', dot: '#10B981', accent: '#0F766E' },
-  on_hold:   { label: 'On Hold',   pillClass: 'bg-amber-50 text-amber-800',     dot: '#F59E0B', accent: '#B45309' },
-  completed: { label: 'Completed', pillClass: 'bg-slate-100 text-slate-600',    dot: '#64748B', accent: '#1E40AF' },
-  archived:  { label: 'Archived',  pillClass: 'bg-slate-100 text-slate-500',    dot: '#94A3B8', accent: '#475569' },
+  active:    { label: 'Active',    fg: '#246F47', bg: '#E5F2EA', dot: '#2F8F5C', accent: '#2F8F5C' },
+  on_hold:   { label: 'On Hold',   fg: '#C8841E', bg: '#F9EFD9', dot: '#D69A2E', accent: '#C8841E' },
+  completed: { label: 'Completed', fg: '#5B6B7B', bg: '#EEF1F4', dot: '#6B7A8F', accent: '#5B6B7B' },
+  archived:  { label: 'Archived',  fg: '#6B6B6B', bg: '#F0EDE4', dot: '#A0A0A0', accent: '#A0A0A0' },
 };
 
 function fmtDate(iso: string): string {
@@ -73,6 +78,7 @@ export function ProjectsListTab({
   mostRecentId,
   sortMode,
   canDelete,
+  healthById,
 }: ProjectsListTabProps) {
   const [pendingDelete, setPendingDelete] = useState<Project | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -118,6 +124,7 @@ export function ProjectsListTab({
             pinned={pinnedIds?.has(p.id) ?? false}
             isMostRecent={mostRecentId === p.id}
             highlightOutstanding={sortMode === 'tasks_outstanding'}
+            health={healthById?.get(p.id)}
             onOpen={() => onOpen?.(p.id)}
             onTogglePin={onTogglePin ? () => onTogglePin(p.id) : undefined}
             onDelete={canDelete ? () => setPendingDelete(p) : undefined}
@@ -156,31 +163,31 @@ function DeleteProjectModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[#1A1A1A]/40 p-4 backdrop-blur-sm"
       onClick={onCancel}
       role="dialog"
       aria-modal="true"
     >
       <div
-        className="w-full max-w-md overflow-hidden rounded-xl bg-white shadow-2xl"
+        className="w-full max-w-md overflow-hidden rounded-[14px] bg-white shadow-[0_8px_28px_rgba(20,20,20,0.12)]"
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-          <h3 className="text-base font-semibold text-slate-900">Delete project</h3>
+        <header className="flex items-center justify-between border-b border-[#EFEBE0] px-5 py-4">
+          <h3 className="text-base font-semibold text-[#1A1A1A]" style={{ fontFamily: FRAUNCES }}>Delete project</h3>
           <button
             type="button"
             onClick={onCancel}
             disabled={busy}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-40"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md text-[#A0A0A0] hover:bg-[#F0EDE4] hover:text-[#3A3A3A] disabled:opacity-40"
             aria-label="Close"
           >
             <X className="h-4 w-4" />
           </button>
         </header>
-        <div className="space-y-3 px-5 py-4 text-sm text-slate-600">
+        <div className="space-y-3 px-5 py-4 text-sm text-[#3A3A3A]">
           <p>
             You're about to permanently delete{' '}
-            <strong className="text-slate-900">{project.name}</strong> and every
+            <strong className="text-[#1A1A1A]">{project.name}</strong> and every
             task, photo, comment, and audit entry attached to it.
           </p>
           <p>
@@ -192,20 +199,20 @@ function DeleteProjectModal({
             onChange={(e) => setTyped(e.target.value)}
             placeholder={required}
             disabled={busy}
-            className="block w-full rounded-md border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500"
+            className="block w-full rounded-md border border-[#E6E1D4] px-3 py-2 text-sm shadow-sm focus:border-[#C44545] focus:outline-none focus:ring-1 focus:ring-[#C44545]"
           />
           {error && (
-            <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+            <p className="rounded-md border border-[#FBE5E5] bg-[#FBE5E5] px-3 py-2 text-xs text-[#C44545]">
               {error}
             </p>
           )}
         </div>
-        <footer className="flex items-center justify-end gap-2 border-t border-slate-100 bg-slate-50/50 px-5 py-3">
+        <footer className="flex items-center justify-end gap-2 border-t border-[#EFEBE0] bg-[#FAF8F2] px-5 py-3">
           <button
             type="button"
             onClick={onCancel}
             disabled={busy}
-            className="inline-flex h-9 items-center rounded-md border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+            className="inline-flex h-9 items-center rounded-full border border-[#E6E1D4] bg-white px-3 text-xs font-medium text-[#3A3A3A] hover:bg-[#FAF8F2] disabled:opacity-40"
           >
             Cancel
           </button>
@@ -213,7 +220,7 @@ function DeleteProjectModal({
             type="button"
             onClick={onConfirm}
             disabled={busy || typed !== required}
-            className="inline-flex h-9 items-center gap-1.5 rounded-md bg-red-600 px-3 text-xs font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-9 items-center gap-1.5 rounded-full bg-[#C44545] px-3 text-xs font-medium text-white hover:bg-[#a33636] disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Trash2 className="h-3.5 w-3.5" />
             {busy ? 'Deleting…' : 'Delete project'}
@@ -229,6 +236,7 @@ interface ProjectCardProps {
   pinned: boolean;
   isMostRecent: boolean;
   highlightOutstanding: boolean;
+  health?: ProjectHealthInfo;
   onOpen: () => void;
   onTogglePin?: () => void;
   onDelete?: () => void;
@@ -239,11 +247,17 @@ function ProjectCard({
   pinned,
   isMostRecent,
   highlightOutstanding,
+  health,
   onOpen,
   onTogglePin,
   onDelete,
 }: ProjectCardProps) {
-  const meta = STATUS_META[p.status];
+  // Active projects lead with momentum (on track / caution / delayed) — chip,
+  // top accent, and progress bar all take its colour, so a stalled job reads as
+  // red at a glance. Non-active projects keep the lifecycle status + colour.
+  const isActive = p.status === 'active';
+  const healthMeta = health ? HEALTH_META[health.health] : null;
+  const meta = isActive && healthMeta ? healthMeta : STATUS_META[p.status];
   const remaining = daysToEnd(p.endDate);
   const overdue = remaining < 0 && p.status !== 'completed' && p.status !== 'archived';
   const soon = !overdue && remaining <= 30 && p.status !== 'completed';
@@ -265,7 +279,7 @@ function ProjectCard({
         }
       }}
       aria-label={`Open ${p.name}, ${meta.label}, ${p.percentComplete}% complete`}
-      className={`group relative cursor-pointer overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-elev-1 transition-[border-color,box-shadow] hover:border-slate-400 hover:shadow-elev-2 focus-visible:border-slate-900 focus-visible:outline-none ${pinned ? 'ring-1 ring-emerald-200' : ''}`}
+      className={`group relative cursor-pointer overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_1px_2px_rgba(20,20,20,0.04)] transition-[border-color,box-shadow] hover:border-[#D8D2C4] hover:shadow-[0_4px_12px_rgba(20,20,20,0.08)] focus-visible:border-[#1A1A1A] focus-visible:outline-none ${pinned ? 'ring-1 ring-[#A8D0B8]' : ''}`}
     >
       {/* Status accent strip across the top */}
       <div
@@ -286,12 +300,12 @@ function ProjectCard({
             title={pinned ? 'Unpin' : 'Pin to top'}
             className={`grid h-7 w-7 place-items-center rounded-full transition-opacity ${
               pinned
-                ? 'bg-emerald-50 text-emerald-700'
-                : 'text-slate-300 opacity-0 hover:bg-slate-100 hover:text-slate-700 group-hover:opacity-100 focus:opacity-100'
+                ? 'bg-[#E5F2EA] text-[#246F47]'
+                : 'text-[#D8D2C4] opacity-0 hover:bg-[#F0EDE4] hover:text-[#3A3A3A] group-hover:opacity-100 focus:opacity-100'
             }`}
           >
             <Pin
-              className={`h-3.5 w-3.5 ${pinned ? 'fill-emerald-700' : ''}`}
+              className={`h-3.5 w-3.5 ${pinned ? 'fill-[#246F47]' : ''}`}
               aria-hidden
             />
           </button>
@@ -302,7 +316,7 @@ function ProjectCard({
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
             aria-label="Delete project"
             title="Delete project"
-            className="grid h-7 w-7 place-items-center rounded-full text-slate-300 opacity-100 hover:bg-red-50 hover:text-red-600 focus:opacity-100 md:opacity-0 md:group-hover:opacity-100"
+            className="grid h-7 w-7 place-items-center rounded-full text-[#D8D2C4] opacity-100 hover:bg-[#FBE5E5] hover:text-[#C44545] focus:opacity-100 md:opacity-0 md:group-hover:opacity-100"
           >
             <Trash2 className="h-3.5 w-3.5" aria-hidden />
           </button>
@@ -311,9 +325,10 @@ function ProjectCard({
 
       <div className="p-5">
         {/* Eyebrow row: status pill + optional last-opened chip */}
-        <div className="flex flex-wrap items-center gap-2 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500">
+        <div className="flex flex-wrap items-center gap-2 text-[10px] font-medium uppercase tracking-[0.18em] text-[#6B6B6B]">
           <span
-            className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 ${meta.pillClass}`}
+            className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5"
+            style={{ color: meta.fg, backgroundColor: meta.bg }}
           >
             <span
               className="h-1.5 w-1.5 rounded-full"
@@ -323,32 +338,42 @@ function ProjectCard({
             {meta.label}
           </span>
           {isMostRecent && (
-            <span className="inline-flex items-center gap-1 text-emerald-700">
+            <span className="inline-flex items-center gap-1 text-[#246F47]">
               <Clock className="h-3 w-3" aria-hidden /> Last opened
+            </span>
+          )}
+          {isActive && health?.daysSinceUpdate != null && health.daysSinceUpdate > 0 && (
+            <span
+              className="inline-flex items-center gap-1"
+              style={{ color: health.health === 'on_track' ? '#A0A0A0' : (healthMeta?.fg ?? '#6B6B6B') }}
+              title="Days since the latest task update"
+            >
+              <Clock className="h-3 w-3" aria-hidden />
+              {health.daysSinceUpdate}d quiet
             </span>
           )}
         </div>
 
         {/* Title + client */}
         <h3
-          className="display mt-3 text-xl font-medium leading-tight text-slate-900"
-          style={{ textWrap: 'balance' }}
+          className="mt-3 text-xl font-medium leading-tight text-[#1A1A1A]"
+          style={{ textWrap: 'balance', fontFamily: FRAUNCES }}
         >
           {p.name}
         </h3>
-        <p className="mt-1 truncate text-sm text-slate-500">{p.client}</p>
+        <p className="mt-1 truncate text-sm text-[#6B6B6B]">{p.client}</p>
 
         {/* Progress */}
         <div className="mt-5">
           <div className="flex items-baseline justify-between">
-            <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500">
+            <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-[#6B6B6B]">
               Progress
             </span>
-            <span className="num text-sm font-medium text-slate-900">
+            <span className="text-sm font-medium text-[#1A1A1A]" style={{ fontFamily: FRAUNCES, fontVariantNumeric: 'tabular-nums' }}>
               {p.percentComplete}%
             </span>
           </div>
-          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100">
+          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[#F0EDE4]">
             <div
               className="h-full rounded-full transition-all"
               style={{
@@ -357,15 +382,14 @@ function ProjectCard({
               }}
             />
           </div>
-          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-slate-500">
-            <span className="num">{p.tasksComplete} done</span>
-            <span className="text-slate-300">·</span>
-            <span className="num">{p.tasksPending} in progress</span>
-            <span className="text-slate-300">·</span>
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-[#6B6B6B]">
+            <span style={{ fontVariantNumeric: 'tabular-nums' }}>{p.tasksComplete} done</span>
+            <span className="text-[#D8D2C4]">·</span>
+            <span style={{ fontVariantNumeric: 'tabular-nums' }}>{p.tasksPending} in progress</span>
+            <span className="text-[#D8D2C4]">·</span>
             <span
-              className={`num ${
-                highlightOutstanding ? 'font-semibold text-amber-700' : ''
-              }`}
+              style={{ fontVariantNumeric: 'tabular-nums' }}
+              className={highlightOutstanding ? 'font-semibold text-[#C8841E]' : ''}
             >
               {p.tasksOutstanding} to start
             </span>
@@ -373,18 +397,20 @@ function ProjectCard({
         </div>
 
         {/* Schedule */}
-        <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 text-[11px]">
-          <span className="inline-flex items-center gap-1.5 text-slate-500">
-            <Calendar className="h-3 w-3 text-slate-400" aria-hidden />
-            <span className="num">{fmtDate(p.startDate)}</span>
-            <span className="text-slate-300">→</span>
-            <span className="num">{fmtDate(p.endDate)}</span>
+        <div className="mt-4 flex items-center justify-between border-t border-[#EFEBE0] pt-3 text-[11px]">
+          <span className="inline-flex items-center gap-1.5 text-[#6B6B6B]">
+            <Calendar className="h-3 w-3 text-[#A0A0A0]" aria-hidden />
+            <span style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtDate(p.startDate)}</span>
+            <span className="text-[#D8D2C4]">→</span>
+            <span style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtDate(p.endDate)}</span>
           </span>
           {p.status !== 'completed' && p.status !== 'archived' && (
             <span
-              className={`num font-medium ${
-                overdue ? 'text-rose-700' : soon ? 'text-amber-700' : 'text-slate-500'
-              }`}
+              className="font-medium"
+              style={{
+                fontVariantNumeric: 'tabular-nums',
+                color: overdue ? '#C44545' : soon ? '#C8841E' : '#6B6B6B',
+              }}
             >
               {overdue
                 ? `${Math.abs(remaining)}d overdue`
@@ -397,7 +423,7 @@ function ProjectCard({
 
         {/* Hover affordance */}
         <ArrowUpRight
-          className="absolute bottom-4 right-4 h-3.5 w-3.5 text-slate-300 opacity-0 transition-all group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-emerald-600 group-hover:opacity-100"
+          className="absolute bottom-4 right-4 h-3.5 w-3.5 text-[#D8D2C4] opacity-0 transition-all group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-[#2F8F5C] group-hover:opacity-100"
           aria-hidden
         />
       </div>

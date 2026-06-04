@@ -77,7 +77,7 @@ export default function UserDocuments({ profile, onClose }: Props) {
         onClick={(e) => { e.stopPropagation(); void handleDownload(d); }}
         title="Download"
         aria-label="Download"
-        className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+        className="rounded-md p-1.5 text-[#6B6B6B] hover:bg-[#FAF8F2] hover:text-[#1A1A1A]"
       >
         <Download className="h-4 w-4" />
       </button>
@@ -86,7 +86,7 @@ export default function UserDocuments({ profile, onClose }: Props) {
         onClick={(e) => { e.stopPropagation(); void handleDelete(d); }}
         title="Delete"
         aria-label="Delete"
-        className="rounded-md p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600"
+        className="rounded-md p-1.5 text-[#6B6B6B] hover:bg-[#FBE5E5] hover:text-[#C44545]"
       >
         <Trash2 className="h-4 w-4" />
       </button>
@@ -98,19 +98,19 @@ export default function UserDocuments({ profile, onClose }: Props) {
       key: 'name',
       header: 'Name',
       cell: (d) => (
-        <span className="inline-flex items-center gap-2 font-medium text-slate-900">
-          <FileText className="h-4 w-4 text-slate-400" />
+        <span className="inline-flex items-center gap-2 font-medium text-[#1A1A1A]">
+          <FileText className="h-4 w-4 text-[#A0A0A0]" />
           {d.documentName}
         </span>
       ),
     },
-    { key: 'reference', header: 'Reference', cell: (d) => <span className="text-slate-600">{d.referenceNo ?? '—'}</span> },
-    { key: 'expiry',    header: 'Expiry',    cell: (d) => <span className="text-slate-600">{d.expiryDate ?? '—'}</span> },
+    { key: 'reference', header: 'Reference', cell: (d) => <span className="text-[#3A3A3A]">{d.referenceNo ?? '—'}</span> },
+    { key: 'expiry',    header: 'Expiry',    cell: (d) => <span className="text-[#3A3A3A]">{d.expiryDate ?? '—'}</span> },
     {
       key: 'alert',
       header: 'Alert',
       cell: (d) => (
-        <span className="text-slate-600">
+        <span className="text-[#3A3A3A]">
           {d.expiryAlert ? d.expiryAlert.replace('_', ' ') : '—'}
         </span>
       ),
@@ -128,7 +128,7 @@ export default function UserDocuments({ profile, onClose }: Props) {
         size="xl"
       >
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-[#6B6B6B]">
             {docs.length} attached document{docs.length === 1 ? '' : 's'}.
           </p>
           <EditorialButton
@@ -147,9 +147,9 @@ export default function UserDocuments({ profile, onClose }: Props) {
           </div>
         )}
 
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_1px_2px_rgba(20,20,20,0.04)]">
           {loading ? (
-            <div className="px-4 py-8 text-center text-sm text-slate-400">Loading…</div>
+            <div className="px-4 py-8 text-center text-sm text-[#A0A0A0]">Loading…</div>
           ) : (
             <ResponsiveDataTable<UserDocument>
               columns={columns}
@@ -160,11 +160,11 @@ export default function UserDocuments({ profile, onClose }: Props) {
                 <div className="space-y-1.5">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
-                      <p className="flex items-center gap-2 truncate text-sm font-medium text-slate-900">
-                        <FileText className="h-4 w-4 flex-shrink-0 text-slate-400" />
+                      <p className="flex items-center gap-2 truncate text-sm font-medium text-[#1A1A1A]">
+                        <FileText className="h-4 w-4 flex-shrink-0 text-[#A0A0A0]" />
                         <span className="truncate">{d.documentName}</span>
                       </p>
-                      <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-500">
+                      <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-[#6B6B6B]">
                         {d.referenceNo && <span>Ref: {d.referenceNo}</span>}
                         {d.expiryDate && <span>Expires: {d.expiryDate}</span>}
                         {d.expiryAlert && <span>Alert: {d.expiryAlert.replace('_', ' ')}</span>}
@@ -278,8 +278,8 @@ function AddDocumentForm({
         {/* The file picker is rendered as a labeled button so it picks up the
             same touch target sizing as the rest of the form on mobile. */}
         <Field label="File" required>
-          <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-sm text-slate-600 hover:border-slate-400 hover:bg-slate-100">
-            <UploadCloud className="h-5 w-5 flex-shrink-0 text-slate-500" />
+          <label className="flex cursor-pointer items-center gap-3 rounded-[9px] border border-dashed border-[#D8D2C4] bg-[#FAF8F2] px-3 py-3 text-sm text-[#3A3A3A] hover:border-[#A0A0A0] hover:bg-[#F0EDE4]">
+            <UploadCloud className="h-5 w-5 flex-shrink-0 text-[#6B6B6B]" />
             <span className="min-w-0 flex-1 truncate">
               {file ? file.name : 'Tap to choose a file (PDF, image, doc — 10 MB max)'}
             </span>
@@ -347,7 +347,7 @@ function Field({
 }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="text-xs font-medium text-slate-600">
+      <span className="text-xs font-medium text-[#3A3A3A]">
         {label}{required && <span className="ml-0.5 text-red-500">*</span>}
       </span>
       <div className="mt-1">{children}</div>

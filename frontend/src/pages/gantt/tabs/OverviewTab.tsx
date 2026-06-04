@@ -1,22 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertTriangle, ArrowUp, Calendar as CalendarIcon, CheckSquare,
-  ChevronLeft, ChevronRight, ClipboardList, Clock, DollarSign, Eye, FileText,
+  AlertTriangle, ArrowUp, CheckSquare,
+  ChevronRight, ClipboardList, Clock, DollarSign, Eye, FileText,
   GanttChartSquare, Image as ImageIcon, Layers, ListChecks,
   Plus, Receipt, ShieldCheck, ShoppingCart, SquarePen, TrendingUp,
   Truck, Upload as UploadIcon,
 } from 'lucide-react';
 import {
-  Area, AreaChart, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis,
+  Area, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis,
 } from 'recharts';
-import {
-  differenceInDays, eachDayOfInterval, endOfMonth, format, isSameDay,
-  isWithinInterval, parseISO, startOfMonth,
-} from 'date-fns';
+import { differenceInDays, format, parseISO } from 'date-fns';
 import type { Project, Task, User, Zone } from '../../../types';
-import { Card, CardContent } from '../../../components/ui/card';
-import { Badge } from '../../../components/ui/badge';
-import { GanttChart } from '../../../components/ui/GanttChart';
+import { SplitPaneGantt } from '../../../components/ui/SplitPaneGantt';
 import { useFeatureStore } from '../../../store/features';
 import { useGanttSideStore, orderTotal, useDiaryEntries } from '../store';
 import { isVisibleEntry } from './sitediary/diaryRowMapper';
@@ -25,7 +20,7 @@ import ActivityDetailModal from '../../../components/activity/ActivityDetailModa
 import { LiveActivityCard } from './LiveActivityCard';
 import type { ActivityEvent } from '../../../lib/activity/types';
 import { useNavigate } from 'react-router-dom';
-import { TabHeader } from '../components/TabHeader';
+import { LedgerHeader, StatusPill, cardShell, type ToneKey } from '../components/ledger';
 import type { TabId } from '../types';
 
 interface OverviewTabProps {
@@ -45,7 +40,7 @@ interface OverviewTabProps {
 // "trend" overlays the progress curve, "timeline" the Gantt, "calendar" the
 // month grid. Merging the three under one card keeps the page from sprouting
 // three separate sections that each show the same thing differently.
-type HeroMode = 'trend' | 'timeline' | 'calendar';
+type HeroMode = 'trend' | 'timeline';
 
 // The Briefing tab — the default landing surface for a project. Aggregates
 // every project-scoped slice (tasks, orders, deliveries, invoices, punch,
@@ -161,10 +156,20 @@ export function OverviewTab({
       differenceInDays(parseISO(project.endDate), today),
     );
 
+    // Schedule health folds in planned-vs-actual variance (the same baseline the
+    // trend chart draws), not just overdue tasks — so the card and the chart
+    // agree. variance = actual overall − where the linear schedule says we should
+    // be by today (+ ahead, − behind).
+    const startMs = parseISO(project.startDate).getTime();
+    const endMs = Math.max(startMs + 86_400_000, parseISO(project.endDate).getTime());
+    const todayMs = Math.min(endMs, Math.max(startMs, today.getTime()));
+    const plannedPct = Math.round(clampPct(((todayMs - startMs) / (endMs - startMs)) * 100));
+    const variance = overall - plannedPct;
+
     const scheduleHealth: 'on_track' | 'at_risk' | 'behind' =
-      delayed === 0 ? 'on_track' :
-      delayed <= 2 ? 'at_risk' :
-                     'behind';
+      (variance <= -15 || delayed > 2) ? 'behind' :
+      (variance <= -7  || delayed >= 1) ? 'at_risk' :
+                                          'on_track';
 
     return {
       total, overall, deltaWeek, complete, inProgress, notStarted, blocked, delayed,
@@ -173,10 +178,10 @@ export function OverviewTab({
       invoicesOutstanding, invoicesPaid, invoicesOverdue, invoicesPending,
       punchOpen, openIssues,
       warrantiesExpiringSoon,
-      daysRemaining, scheduleHealth,
+      daysRemaining, scheduleHealth, plannedPct, variance,
       trend: projectTrend,
     };
-  }, [tasks, orders, deliveries, invoices, punch, warranties, project.endDate, progressHistory]);
+  }, [tasks, orders, deliveries, invoices, punch, warranties, project.startDate, project.endDate, progressHistory]);
 
   // Empty state used to bail to a separate `SetupGuide` panel — but the user-
   // facing Overview is more useful when the layout is *always* present and the
@@ -192,17 +197,16 @@ export function OverviewTab({
 
   return (
     <>
-      <TabHeader
-        eyebrow="Workspace · Overview"
+      <LedgerHeader
+        kicker="OVR"
+        icon={GanttChartSquare}
+        eyebrow={`Overview · ${project.name}`}
         title={project.name}
-        description={`${dateRange} · ${totals.daysRemaining} day${totals.daysRemaining === 1 ? '' : 's'} remaining`}
-        action={
-          <Badge
-            variant="outline"
-            className={`whitespace-nowrap px-3 py-1 text-[10px] uppercase tracking-wider ${statusBadge(project.status)}`}
-          >
+        meta={`${dateRange} · ${totals.daysRemaining} day${totals.daysRemaining === 1 ? '' : 's'} remaining`}
+        actions={
+          <StatusPill tone={statusTone(project.status)} className="px-3 py-1 uppercase tracking-wider">
             {project.status?.replace('_', ' ') ?? 'active'}
-          </Badge>
+          </StatusPill>
         }
       />
 
@@ -244,7 +248,11 @@ export function OverviewTab({
             totals.scheduleHealth === 'on_track' ? 'emerald' :
             totals.scheduleHealth === 'at_risk'  ? 'amber'   : 'red'
           }
-          caption={`${totals.delayed} delayed · ${totals.complete} complete`}
+          caption={`${
+            totals.variance < 0 ? `${Math.abs(totals.variance)}% behind`
+            : totals.variance > 0 ? `${totals.variance}% ahead`
+            : 'On plan'
+          } · ${totals.delayed} delayed`}
         />
         <KpiCell
           icon={ListChecks}
@@ -273,8 +281,7 @@ export function OverviewTab({
               className="mt-0.5 text-[22px] font-medium leading-tight text-[#1A1A1A]"
               style={{ fontFamily: "'Fraunces', Georgia, serif", letterSpacing: '-0.02em', textWrap: 'balance' }}
             >
-              {heroMode === 'trend'    ? 'Progress trend.'   :
-               heroMode === 'timeline' ? 'Timeline view.'    : 'Calendar view.'}
+              {heroMode === 'trend' ? 'Progress trend.' : 'Timeline view.'}
             </h3>
           </div>
           {/* Segmented mode toggle — pill group */}
@@ -291,29 +298,28 @@ export function OverviewTab({
               icon={GanttChartSquare}
               label="Timeline"
             />
-            <ModeButton
-              active={heroMode === 'calendar'}
-              onClick={() => setHeroMode('calendar')}
-              icon={CalendarIcon}
-              label="Calendar"
-            />
           </div>
         </div>
 
         {heroMode === 'trend' && (
-          <TrendBody trend={totals.trend} overall={totals.overall} delta={totals.deltaWeek} />
+          <TrendBody
+            start={project.startDate}
+            end={project.endDate}
+            history={totals.trend}
+            overall={totals.overall}
+            delta={totals.deltaWeek}
+          />
         )}
         {heroMode === 'timeline' && (
           <div className="p-2 sm:p-3">
-            <GanttChart
+            <SplitPaneGantt
               tasks={tasks}
+              zones={zones}
               startDate={project.startDate}
               endDate={project.endDate}
+              maxHeight="60vh"
             />
           </div>
-        )}
-        {heroMode === 'calendar' && (
-          <CalendarMode tasks={tasks} zones={zones} />
         )}
       </div>
 
@@ -422,248 +428,194 @@ function SetupGuide({
   ];
 
   return (
-    <Card>
-      <CardContent className="p-4 sm:p-6">
-        <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
-          Set up
-        </p>
-        <h3
-          className="mt-2 text-xl font-semibold text-slate-900 sm:text-2xl"
-          style={{ fontFamily: "'Fraunces', Georgia, serif", letterSpacing: '-0.02em', textWrap: 'balance' }}
-        >
-          A clean slate for {project.name}.
-        </h3>
-        <p className="mt-2 max-w-md text-sm text-slate-500">
-          {canEdit
-            ? 'Knock these out in any order — the Overview fills out as you go.'
-            : 'The project lead is still setting things up. Check back shortly.'}
-        </p>
+    <div className={`mb-4 p-4 sm:p-6 ${cardShell}`}>
+      <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#6B6B6B]">Set up</p>
+      <h3
+        className="mt-2 text-xl font-medium text-[#1A1A1A] sm:text-2xl"
+        style={{ fontFamily: "'Fraunces', Georgia, serif", letterSpacing: '-0.02em', textWrap: 'balance' }}
+      >
+        A clean slate for {project.name}.
+      </h3>
+      <p className="mt-2 max-w-md text-[13px] text-[#6B6B6B]">
+        {canEdit
+          ? 'Knock these out in any order — the Overview fills out as you go.'
+          : 'The project lead is still setting things up. Check back shortly.'}
+      </p>
 
-        <ul className="mt-5 grid gap-3 sm:grid-cols-2">
-          {steps.map((s) => {
-            const Icon = s.icon;
-            return (
-              <li key={s.tabId}>
-                <button
-                  type="button"
-                  onClick={() => onJumpToTab?.(s.tabId)}
-                  disabled={!canEdit}
-                  className="flex w-full items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 text-left transition-all hover:border-emerald-300 hover:shadow-sm active:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
-                    <Icon className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium text-slate-900">{s.title}</p>
-                    <p className="mt-0.5 text-xs text-slate-500">{s.body}</p>
-                  </div>
-                  <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-300" />
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      </CardContent>
-    </Card>
+      <ul className="mt-5 grid gap-3 sm:grid-cols-2">
+        {steps.map((s) => {
+          const Icon = s.icon;
+          return (
+            <li key={s.tabId}>
+              <button
+                type="button"
+                onClick={() => onJumpToTab?.(s.tabId)}
+                disabled={!canEdit}
+                className="flex w-full items-start gap-3 rounded-[12px] border border-[#E6E1D4] bg-white p-4 text-left transition-all hover:border-[#2F8F5C] hover:bg-[#FAF8F2] hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[#E5F2EA] text-[#246F47]">
+                  <Icon className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-[#1A1A1A]">{s.title}</p>
+                  <p className="mt-0.5 text-[12px] text-[#6B6B6B]">{s.body}</p>
+                </div>
+                <ChevronRight className="h-4 w-4 flex-shrink-0 text-[#C9C3B4]" />
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 
 // ─── Hero bodies ────────────────────────────────────────────────────────
 
+const clampPct = (n: number) => Math.max(0, Math.min(100, n));
+
+// Build the two-line series for the progress trend over the project window:
+//   • planned (red dashed) — the straight baseline 0%→100% from start to end,
+//     i.e. where the schedule says you "should" be by any given date.
+//   • actual (green) — the real cumulative progress from progressHistory,
+//     anchored to the live overall % at today.
+// Always returns a usable series, even with no history (green sits at the
+// current overall, planned rises toward the deadline — so "behind" reads as a
+// green line under the red one).
+function buildPlannedVsActual(
+  startMs: number, endMs: number, todayMs: number,
+  history: { date: string; progress: number }[], overall: number,
+): { t: number; planned?: number; actual?: number }[] {
+  const span = Math.max(1, endMs - startMs);
+  const plannedAt = (ms: number) => clampPct(((ms - startMs) / span) * 100);
+  const map = new Map<number, { t: number; planned?: number; actual?: number }>();
+  const put = (t: number, patch: Partial<{ planned: number; actual: number }>) =>
+    map.set(t, { t, ...(map.get(t) ?? {}), ...patch });
+
+  put(startMs, { planned: 0 });
+  put(todayMs, { planned: plannedAt(todayMs) });
+  put(endMs, { planned: 100 });
+
+  const pts = history
+    .map((h) => ({ t: parseISO(h.date).getTime(), v: h.progress }))
+    .filter((p) => Number.isFinite(p.t))
+    .map((p) => ({ t: Math.min(endMs, Math.max(startMs, p.t)), v: p.v }))
+    .sort((a, b) => a.t - b.t);
+  if (pts.length === 0) put(startMs, { actual: 0 });
+  for (const p of pts) put(p.t, { actual: p.v });
+  put(todayMs, { actual: overall });
+
+  return [...map.values()].sort((a, b) => a.t - b.t);
+}
+
 function TrendBody({
-  trend, overall, delta,
-}: { trend: { date: string; progress: number }[]; overall: number; delta: number }) {
-  if (trend.length <= 1) {
-    return (
-      <div className="px-4 py-12 text-center text-sm text-[#A0A0A0] sm:px-5">
-        No progress history yet — log a task update to start the curve.
-      </div>
-    );
-  }
-  const firstDate = trend[0]?.date;
-  const lastDate  = trend[trend.length - 1]?.date;
-  const dateRange = firstDate && lastDate
-    ? `${format(parseISO(firstDate), 'MMM d')} → ${format(parseISO(lastDate), 'MMM d')}`
-    : '';
+  start, end, history, overall, delta,
+}: {
+  start: string;
+  end: string;
+  history: { date: string; progress: number }[];
+  overall: number;
+  delta: number;
+}) {
+  const startMs = parseISO(start).getTime();
+  const endMs = Math.max(startMs + 86_400_000, parseISO(end).getTime());
+  const todayMs = Math.min(endMs, Math.max(startMs, Date.now()));
+  const plannedToday = Math.round(clampPct(((todayMs - startMs) / Math.max(1, endMs - startMs)) * 100));
+  const aheadBy = overall - plannedToday;
+  const onTrack = aheadBy >= 0;
+
+  const data = useMemo(
+    () => buildPlannedVsActual(startMs, endMs, todayMs, history, overall),
+    [startMs, endMs, todayMs, history, overall],
+  );
 
   return (
     <div className="px-5 pb-5 pt-4">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-[13px] text-[#6B6B6B]">
-          <span className="h-2 w-2 rounded-full bg-[#246F47]" aria-hidden="true" />
-          Last {trend.length} datapoints
-          {dateRange ? <span className="text-[#A0A0A0]">· {dateRange}</span> : null}
-        </div>
-        <div className="flex items-center gap-2">
-          <span
-            className="text-[34px] font-medium leading-none tabular-nums text-[#1A1A1A]"
-            style={{ fontFamily: "'Fraunces', Georgia, serif" }}
-          >
-            {overall}%
-          </span>
-          {delta !== 0 ? (
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <span
+              className="text-[34px] font-medium leading-none tabular-nums text-[#1A1A1A]"
+              style={{ fontFamily: "'Fraunces', Georgia, serif" }}
+            >
+              {overall}%
+            </span>
             <span
               className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11.5px] font-semibold ${
-                delta > 0
-                  ? 'bg-[#E0EBE3] text-[#246F47]'
-                  : 'bg-[#FBE5E5] text-[#C44545]'
+                onTrack ? 'bg-[#E0EBE3] text-[#246F47]' : 'bg-[#FBE5E5] text-[#C44545]'
               }`}
             >
-              <ArrowUp className={`h-3 w-3 ${delta < 0 ? 'rotate-180' : ''}`} />
-              {delta > 0 ? '+' : ''}{delta}% wk
+              <ArrowUp className={`h-3 w-3 ${onTrack ? '' : 'rotate-180'}`} />
+              {onTrack ? (aheadBy === 0 ? 'On track' : `${aheadBy}% ahead`) : `${Math.abs(aheadBy)}% behind`}
             </span>
-          ) : (
-            <span className="text-[11.5px] text-[#A0A0A0]">flat</span>
-          )}
+          </div>
+          <p className="mt-1 text-[11.5px] text-[#A0A0A0]">
+            Schedule says {plannedToday}% by today
+            {delta !== 0 ? ` · ${delta > 0 ? '+' : ''}${delta}% this week` : ''}
+          </p>
+        </div>
+        <div className="flex items-center gap-3 text-[11px] text-[#6B6B6B]">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-[#2F8F5C]" aria-hidden />Actual
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block h-0 w-4 border-t-2 border-dashed border-[#C44545]" aria-hidden />Planned
+          </span>
         </div>
       </div>
       <div className="h-40 sm:h-48">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={trend} margin={{ top: 4, right: 4, left: -16, bottom: 0 }}>
+          <ComposedChart data={data} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
             <defs>
               <linearGradient id="ovProg" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%"  stopColor="#10B981" stopOpacity={0.35} />
-                <stop offset="100%" stopColor="#10B981" stopOpacity={0} />
+                <stop offset="0%"  stopColor="#2F8F5C" stopOpacity={0.32} />
+                <stop offset="100%" stopColor="#2F8F5C" stopOpacity={0} />
               </linearGradient>
             </defs>
             <XAxis
-              dataKey="date"
-              tick={{ fontSize: 10, fill: '#94a3b8' }}
-              tickFormatter={(d: string) => format(parseISO(d), 'MMM d')}
-              interval="preserveStartEnd"
+              dataKey="t"
+              type="number"
+              scale="time"
+              domain={[startMs, endMs]}
+              tick={{ fontSize: 10, fill: '#A0A0A0' }}
+              tickFormatter={(ms: number) => format(new Date(ms), 'MMM d')}
+              tickCount={5}
             />
-            <YAxis
-              tick={{ fontSize: 10, fill: '#94a3b8' }}
-              domain={[0, 100]}
-              ticks={[0, 50, 100]}
-            />
+            <YAxis tick={{ fontSize: 10, fill: '#A0A0A0' }} domain={[0, 100]} ticks={[0, 50, 100]} />
             <RTooltip
-              contentStyle={{
-                background: 'white',
-                border: '1px solid #e2e8f0',
-                borderRadius: 8,
-                fontSize: 12,
-              }}
-              formatter={((v: number) => [`${v}%`, 'Progress']) as never}
-              labelFormatter={((d: string) => format(parseISO(d), 'MMM d, yyyy')) as never}
+              contentStyle={{ background: 'white', border: '1px solid #E6E1D4', borderRadius: 8, fontSize: 12 }}
+              formatter={((v: number, name: string) => [`${Math.round(v)}%`, name === 'planned' ? 'Planned' : 'Actual']) as never}
+              labelFormatter={((ms: number) => format(new Date(ms), 'MMM d, yyyy')) as never}
+            />
+            <ReferenceLine
+              x={todayMs}
+              stroke="#2F8F5C"
+              strokeWidth={1.5}
+              strokeDasharray="2 3"
+              label={{ value: 'TODAY', position: 'top', fill: '#246F47', fontSize: 9, fontWeight: 700 }}
             />
             <Area
               type="monotone"
-              dataKey="progress"
-              stroke="#10B981"
+              dataKey="actual"
+              stroke="#2F8F5C"
               strokeWidth={2}
-              fillOpacity={1}
               fill="url(#ovProg)"
+              connectNulls
+              dot={false}
+              isAnimationActive={false}
             />
-          </AreaChart>
+            <Line
+              type="linear"
+              dataKey="planned"
+              stroke="#C44545"
+              strokeWidth={1.5}
+              strokeDasharray="5 4"
+              connectNulls
+              dot={false}
+              isAnimationActive={false}
+            />
+          </ComposedChart>
         </ResponsiveContainer>
-      </div>
-    </div>
-  );
-}
-
-// ─── Calendar mode ──────────────────────────────────────────────────────
-
-function CalendarMode({ tasks, zones }: { tasks: Task[]; zones: Zone[] }) {
-  const today = new Date();
-  const [cursor, setCursor] = useState(today);
-  const monthStart = startOfMonth(cursor);
-  const monthEnd   = endOfMonth(cursor);
-  const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
-
-  const zoneById = new Map(zones.map((z) => [z.id, z]));
-
-  // Pad the grid to align Mondays in column 1.
-  const firstDow = monthStart.getDay();    // 0 = Sun
-  const padBefore = (firstDow + 6) % 7;    // align Mon-first
-  const cells: (Date | null)[] = [
-    ...Array.from({ length: padBefore }, () => null),
-    ...days,
-  ];
-
-  const tasksOn = (d: Date) =>
-    tasks.filter((t) =>
-      isWithinInterval(d, { start: parseISO(t.startDate), end: parseISO(t.endDate) }),
-    );
-
-  const DOWS_SHORT = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-  const DOWS_LONG  = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-  return (
-    <div className="p-2 sm:p-4">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <button
-          type="button"
-          onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))}
-          className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-slate-200 text-slate-600 transition-colors hover:bg-slate-50 active:bg-slate-100"
-          aria-label="Previous month"
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </button>
-        <h3
-          className="min-w-0 truncate text-sm font-medium text-slate-900 sm:text-base"
-          style={{ fontFamily: "'Fraunces', Georgia, serif", letterSpacing: '-0.02em' }}
-        >
-          {format(cursor, 'MMMM yyyy')}
-        </h3>
-        <button
-          type="button"
-          onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))}
-          className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-slate-200 text-slate-600 transition-colors hover:bg-slate-50 active:bg-slate-100"
-          aria-label="Next month"
-        >
-          <ChevronRight className="h-4 w-4" />
-        </button>
-      </div>
-
-      <div className="grid grid-cols-7 gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200">
-        {DOWS_LONG.map((dow, i) => (
-          <div
-            key={dow + i}
-            className="bg-slate-50 px-1 py-2 text-center text-[10px] font-medium uppercase tracking-wider text-slate-500"
-          >
-            <span className="hidden sm:inline">{dow}</span>
-            <span className="sm:hidden">{DOWS_SHORT[i]}</span>
-          </div>
-        ))}
-
-        {cells.map((d, i) => {
-          if (!d) return <div key={`pad-${i}`} className="min-h-[56px] bg-white sm:min-h-[80px]" />;
-          const ts = tasksOn(d);
-          const isToday = isSameDay(d, today);
-          const visible = ts.slice(0, 2);
-          return (
-            <div
-              key={d.toISOString()}
-              className={`min-h-[56px] bg-white p-1 sm:min-h-[80px] sm:p-1.5 ${
-                isToday ? 'ring-1 ring-inset ring-emerald-400' : ''
-              }`}
-            >
-              <p
-                className={`mb-1 text-[10px] font-medium tabular-nums sm:text-[11px] ${
-                  isToday ? 'text-emerald-600' : 'text-slate-500'
-                }`}
-              >
-                {format(d, 'd')}
-              </p>
-              <div className="space-y-0.5">
-                {visible.map((t) => (
-                  <div
-                    key={t.id}
-                    className="truncate rounded px-1 py-0.5 text-[9px] text-white sm:text-[10px]"
-                    style={{ backgroundColor: zoneById.get(t.zoneId ?? '')?.colorCode ?? '#64748b' }}
-                    title={`${t.name} — ${t.percentComplete}%`}
-                  >
-                    {t.name}
-                  </div>
-                ))}
-                {ts.length > visible.length && (
-                  <p className="text-[9px] text-slate-400">+{ts.length - visible.length}</p>
-                )}
-              </div>
-            </div>
-          );
-        })}
       </div>
     </div>
   );
@@ -1249,7 +1201,7 @@ function KpiCell({
 
 function ModeButton({
   active, onClick, icon: Icon, label,
-}: { active: boolean; onClick: () => void; icon: typeof CalendarIcon; label: string }) {
+}: { active: boolean; onClick: () => void; icon: typeof TrendingUp; label: string }) {
   return (
     <button
       type="button"
@@ -1281,13 +1233,13 @@ function fmtBytes(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
-function statusBadge(status: string | undefined): string {
+function statusTone(status: string | undefined): ToneKey {
   switch (status) {
-    case 'on_hold':   return 'border-amber-200 bg-amber-50 text-amber-700';
-    case 'completed': return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-    case 'archived':  return 'border-slate-200 bg-slate-50 text-slate-600';
+    case 'on_hold':  return 'amber';
+    case 'archived': return 'slate';
+    case 'completed':
     case 'active':
-    default:          return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+    default:         return 'sage';
   }
 }
 

@@ -13,11 +13,11 @@ export default function WhyPanel({ pillars }: WhyPanelProps) {
   return (
     <section
       aria-labelledby="why-built-heading"
-      className="rounded-2xl border border-slate-200 bg-white px-5 py-7 sm:px-7 sm:py-9"
+      className="rounded-[14px] border border-[#E6E1D4] bg-white px-5 py-7 shadow-[0_1px_2px_rgba(20,20,20,0.04)] sm:px-7 sm:py-9"
     >
       <p
         id="why-built-heading"
-        className="text-[11px] font-medium uppercase tracking-[0.22em] text-slate-500"
+        className="text-[11px] font-medium uppercase tracking-[0.22em] text-[#6B6B6B]"
       >
         Why we built our own
       </p>
@@ -27,15 +27,15 @@ export default function WhyPanel({ pillars }: WhyPanelProps) {
           return (
             <li key={pillar.title} className="flex flex-col gap-2">
               <span
-                className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#E5F2EA] text-[#246F47]"
                 aria-hidden
               >
                 <Icon className="h-4.5 w-4.5" strokeWidth={1.75} />
               </span>
-              <h3 className="display text-lg font-medium text-slate-900">
+              <h3 className="display text-lg font-medium text-[#1A1A1A]">
                 {pillar.title}
               </h3>
-              <p className="text-sm leading-relaxed text-slate-500">
+              <p className="text-sm leading-relaxed text-[#6B6B6B]">
                 {pillar.body}
               </p>
             </li>

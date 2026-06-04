@@ -248,7 +248,7 @@ export default function ProjectConfigTab() {
 
   if (!canEdit) {
     return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+      <div className="rounded-[14px] border border-[#E6E1D4] bg-white p-6 text-sm text-[#6B6B6B]">
         Your role can view this surface but can't edit project configuration.
       </div>
     );
@@ -257,14 +257,14 @@ export default function ProjectConfigTab() {
   return (
     <div className="space-y-6">
       {/* Project picker */}
-      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3">
-        <label className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
+      <div className="flex flex-wrap items-center gap-3 rounded-[14px] border border-[#E6E1D4] bg-white px-4 py-3 shadow-[0_1px_2px_rgba(20,20,20,0.04)]">
+        <label className="text-[11px] font-medium uppercase tracking-[0.18em] text-[#6B6B6B]">
           Project
         </label>
         <select
           value={activeProjectId ?? ''}
           onChange={(e) => setActiveProject(e.target.value)}
-          className="h-9 min-w-[18rem] rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          className="h-9 min-w-[18rem] rounded-md border border-[#E6E1D4] bg-white px-3 text-sm shadow-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
           disabled={projects.length === 0}
         >
           {projects.length === 0 && <option value="">No projects yet</option>}
@@ -274,16 +274,16 @@ export default function ProjectConfigTab() {
             </option>
           ))}
         </select>
-        {isLoading && <span className="text-xs text-slate-400">Loading…</span>}
+        {isLoading && <span className="text-xs text-[#A0A0A0]">Loading…</span>}
         {loadError && (
-          <span className="text-xs text-rose-600" role="alert">
+          <span className="text-xs text-[#C44545]" role="alert">
             {loadError}
           </span>
         )}
       </div>
 
       {!draft || !config ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+        <div className="rounded-[14px] border border-[#E6E1D4] bg-white p-6 text-sm text-[#6B6B6B]">
           {projects.length === 0
             ? 'Create a project first; configuration appears here once one exists.'
             : 'Loading project configuration…'}
@@ -320,12 +320,12 @@ export default function ProjectConfigTab() {
                 type="text"
                 value={draft.aiDefaultModel}
                 onChange={(e) => setDraft({ ...draft, aiDefaultModel: e.target.value })}
-                className="block h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                className="block h-9 w-full rounded-md border border-[#E6E1D4] bg-white px-3 text-sm shadow-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
               />
             </Field>
-            <p className="text-xs text-slate-500">{captionForConfidence(draft.aiAutoUpdateThreshold, draft.aiReviewQueueThreshold)}</p>
+            <p className="text-xs text-[#6B6B6B]">{captionForConfidence(draft.aiAutoUpdateThreshold, draft.aiReviewQueueThreshold)}</p>
             {!thresholdsValid && (
-              <p className="text-xs text-rose-600" role="alert">
+              <p className="text-xs text-[#C44545]" role="alert">
                 Review-queue threshold must not exceed auto-update threshold.
               </p>
             )}
@@ -381,7 +381,7 @@ export default function ProjectConfigTab() {
                 />
               </Field>
             </div>
-            <p className={`text-xs ${weightsValid ? 'text-slate-500' : 'text-rose-600'}`}>
+            <p className={`text-xs ${weightsValid ? 'text-[#6B6B6B]' : 'text-[#C44545]'}`}>
               Weights sum: {weightSum}/100. {weightsValid ? '' : 'Adjust to total exactly 100.'}
             </p>
             <Field label="Target photos per task">
@@ -416,7 +416,7 @@ export default function ProjectConfigTab() {
                 fmt={(v) => `${Math.round(v)}`}
               />
             </Field>
-            <p className="text-xs text-slate-500">Lower = stricter dedup. Higher = catches more near-duplicates at the cost of false positives.</p>
+            <p className="text-xs text-[#6B6B6B]">Lower = stricter dedup. Higher = catches more near-duplicates at the cost of false positives.</p>
           </SubSection>
 
           {/* ── Branding ──────────────────────────────────────────────── */}
@@ -431,7 +431,7 @@ export default function ProjectConfigTab() {
                     key={p.value}
                     type="button"
                     onClick={() => setDraft({ ...draft, accentColor: p.value })}
-                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${draft.accentColor === p.value ? 'border-slate-900 bg-slate-50 text-slate-900' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}
+                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${draft.accentColor === p.value ? 'border-[#1A1A1A] bg-[#FAF8F2] text-[#1A1A1A]' : 'border-[#E6E1D4] text-[#6B6B6B] hover:border-[#D8D2C4]'}`}
                   >
                     <span
                       className="inline-block h-3 w-3 rounded-full"
@@ -444,7 +444,7 @@ export default function ProjectConfigTab() {
                 <button
                   type="button"
                   onClick={() => setShowHex((v) => !v)}
-                  className="rounded-full border border-dashed border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-500 hover:border-slate-400"
+                  className="rounded-full border border-dashed border-[#D8D2C4] px-3 py-1.5 text-xs font-medium text-[#6B6B6B] hover:border-[#A0A0A0]"
                 >
                   {showHex ? 'Hide advanced' : 'Advanced (hex)'}
                 </button>
@@ -455,7 +455,7 @@ export default function ProjectConfigTab() {
                   value={draft.accentColor}
                   onChange={(e) => setDraft({ ...draft, accentColor: e.target.value })}
                   placeholder="#10B981"
-                  className="mt-2 block h-9 w-32 rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="mt-2 block h-9 w-32 rounded-md border border-[#E6E1D4] bg-white px-3 text-sm shadow-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
                 />
               )}
             </Field>
@@ -465,9 +465,9 @@ export default function ProjectConfigTab() {
                 value={draft.logoStoragePath}
                 onChange={(e) => setDraft({ ...draft, logoStoragePath: e.target.value })}
                 placeholder="project-logos/<project-id>.jpg"
-                className="block h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                className="block h-9 w-full rounded-md border border-[#E6E1D4] bg-white px-3 text-sm shadow-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
               />
-              <p className="mt-1 text-[11px] text-slate-400">
+              <p className="mt-1 text-[11px] text-[#A0A0A0]">
                 Upload to the <code>project-logos</code> Storage bucket separately, then paste the path here. Single 200&times;200 JPEG, &lt;50&nbsp;KB.
               </p>
             </Field>
@@ -497,16 +497,16 @@ export default function ProjectConfigTab() {
             title="Demo controls"
             description="Restart the demo flow without leaving the page. Clears all AI analyses for this project, then snaps tasks back to their seed percentages (Hampstead Heights) or to 0% (everything else). Useful when running back-to-back walk-throughs."
           >
-            <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50/40 px-4 py-3">
-              <RotateCcw className="h-4 w-4 flex-shrink-0 text-amber-700" aria-hidden />
-              <div className="min-w-0 flex-1 text-xs text-slate-700">
+            <div className="flex flex-wrap items-center gap-3 rounded-[14px] border border-[#F0D5A0] bg-[#F9EFD9]/40 px-4 py-3">
+              <RotateCcw className="h-4 w-4 flex-shrink-0 text-[#C8841E]" aria-hidden />
+              <div className="min-w-0 flex-1 text-xs text-[#3A3A3A]">
                 {resetStep === 'done' ? (
-                  <span className="font-medium text-emerald-700">
+                  <span className="font-medium text-[#246F47]">
                     Demo reset · AI analyses cleared, task progress restored.
                   </span>
                 ) : (
                   <>
-                    <span className="font-medium text-slate-900">Reset demo state.</span>{' '}
+                    <span className="font-medium text-[#1A1A1A]">Reset demo state.</span>{' '}
                     Wipes Mock-AI analyses + restores task seed values for the active project.
                   </>
                 )}
@@ -516,14 +516,14 @@ export default function ProjectConfigTab() {
                   <button
                     type="button"
                     onClick={() => setResetStep('idle')}
-                    className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 hover:border-slate-300"
+                    className="rounded-full border border-[#E6E1D4] px-3 py-1 text-xs font-medium text-[#6B6B6B] hover:border-[#D8D2C4]"
                   >
                     Cancel
                   </button>
                   <button
                     type="button"
                     onClick={onResetDemo}
-                    className="rounded-full bg-amber-600 px-3 py-1 text-xs font-medium text-white hover:bg-amber-700"
+                    className="rounded-full bg-[#C8841E] px-3 py-1 text-xs font-medium text-white hover:bg-[#B5602A]"
                   >
                     Confirm reset
                   </button>
@@ -533,7 +533,7 @@ export default function ProjectConfigTab() {
                   type="button"
                   onClick={() => setResetStep('confirm')}
                   disabled={resetStep === 'busy'}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-white px-3 py-1 text-xs font-medium text-amber-800 transition-colors hover:border-amber-400 hover:bg-amber-50 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#F0D5A0] bg-white px-3 py-1 text-xs font-medium text-[#C8841E] transition-colors hover:border-[#C8841E] hover:bg-[#F9EFD9] disabled:opacity-50"
                 >
                   <RotateCcw className="h-3 w-3" />
                   Reset demo
@@ -543,18 +543,18 @@ export default function ProjectConfigTab() {
           </SubSection>
 
           {/* ── Action bar ────────────────────────────────────────────── */}
-          <div className="sticky bottom-0 flex items-center justify-end gap-3 rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
+          <div className="sticky bottom-0 flex items-center justify-end gap-3 rounded-[14px] border border-[#E6E1D4] bg-white/95 px-4 py-3 backdrop-blur shadow-[0_1px_2px_rgba(20,20,20,0.04)]">
             {saveError && (
-              <p className="mr-auto text-xs text-rose-600" role="alert">{saveError}</p>
+              <p className="mr-auto text-xs text-[#C44545]" role="alert">{saveError}</p>
             )}
             {savedFlash && (
-              <p className="mr-auto text-xs text-emerald-700">Saved.</p>
+              <p className="mr-auto text-xs text-[#246F47]">Saved.</p>
             )}
             <button
               type="button"
               onClick={onCancel}
               disabled={!isDirty || isSaving}
-              className="rounded-full border border-slate-200 px-4 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:border-slate-300 disabled:opacity-50"
+              className="rounded-full border border-[#E6E1D4] px-4 py-1.5 text-xs font-medium text-[#6B6B6B] transition-colors hover:border-[#D8D2C4] disabled:opacity-50"
             >
               Discard
             </button>
@@ -562,7 +562,7 @@ export default function ProjectConfigTab() {
               type="button"
               onClick={onSave}
               disabled={!isDirty || !weightsValid || !thresholdsValid || isSaving}
-              className="rounded-full bg-slate-900 px-4 py-1.5 text-xs font-medium text-white transition-colors hover:bg-emerald-700 disabled:opacity-50 disabled:hover:bg-slate-900"
+              className="rounded-full bg-[#2F8F5C] px-4 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#246F47] disabled:opacity-50 disabled:hover:bg-[#2F8F5C]"
             >
               {isSaving ? 'Saving…' : 'Save changes'}
             </button>
@@ -585,10 +585,10 @@ function SubSection({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5">
+    <section className="rounded-[14px] border border-[#E6E1D4] bg-white p-5 shadow-[0_1px_2px_rgba(20,20,20,0.04)]">
       <div className="mb-4">
-        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">{title}</p>
-        <p className="mt-1 text-xs text-slate-500">{description}</p>
+        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-[#6B6B6B]">{title}</p>
+        <p className="mt-1 text-xs text-[#6B6B6B]">{description}</p>
       </div>
       <div className="space-y-4">{children}</div>
     </section>
@@ -598,7 +598,7 @@ function SubSection({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="mb-1 block text-xs font-medium text-slate-700">{label}</label>
+      <label className="mb-1 block text-xs font-medium text-[#3A3A3A]">{label}</label>
       {children}
     </div>
   );
@@ -628,9 +628,9 @@ function Slider({
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="flex-1 accent-emerald-600"
+        className="flex-1 accent-[#2F8F5C]"
       />
-      <span className="w-12 text-right text-sm tabular-nums text-slate-700">{fmt(value)}</span>
+      <span className="w-12 text-right text-sm tabular-nums text-[#3A3A3A]">{fmt(value)}</span>
     </div>
   );
 }
@@ -656,9 +656,9 @@ function NumberInput({
         max={max}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="block h-9 w-24 rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+        className="block h-9 w-24 rounded-md border border-[#E6E1D4] bg-white px-3 text-sm shadow-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
       />
-      {suffix && <span className="text-xs text-slate-500">{suffix}</span>}
+      {suffix && <span className="text-xs text-[#6B6B6B]">{suffix}</span>}
     </div>
   );
 }
@@ -681,13 +681,13 @@ function Toggle({
       className="inline-flex items-center gap-3"
     >
       <span
-        className={`inline-flex h-5 w-9 items-center rounded-full border transition-colors ${checked ? 'border-emerald-600 bg-emerald-600' : 'border-slate-300 bg-slate-200'}`}
+        className={`inline-flex h-5 w-9 items-center rounded-full border transition-colors ${checked ? 'border-[#2F8F5C] bg-[#2F8F5C]' : 'border-[#E6E1D4] bg-[#F0EDE4]'}`}
       >
         <span
           className={`ml-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${checked ? 'translate-x-4' : ''}`}
         />
       </span>
-      <span className="text-xs text-slate-600">{label}</span>
+      <span className="text-xs text-[#3A3A3A]">{label}</span>
     </button>
   );
 }
@@ -705,7 +705,7 @@ function ModeChip({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${selected ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}
+      className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${selected ? 'border-[#1A1A1A] bg-[#1A1A1A] text-white' : 'border-[#E6E1D4] text-[#6B6B6B] hover:border-[#D8D2C4]'}`}
     >
       {label}
     </button>

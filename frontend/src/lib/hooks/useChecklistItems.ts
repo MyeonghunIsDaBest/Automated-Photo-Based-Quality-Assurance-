@@ -9,6 +9,7 @@ import type { ChecklistItem } from '../../pages/gantt/types';
 import {
   listChecklistItems,
   createChecklistItem,
+  createChecklistItems,
   updateChecklistItem,
   deleteChecklistItem,
   subscribeToTaskChecklist,
@@ -17,6 +18,7 @@ import {
 export interface UseChecklistItems {
   items: ChecklistItem[];
   addItem: (text: string) => void;
+  addMany: (texts: string[]) => void;
   toggleItem: (id: string) => void;
   removeItem: (id: string) => void;
 }
@@ -46,6 +48,19 @@ export function useChecklistItems(taskId: string): UseChecklistItems {
       .catch(() => { /* surfaced by the realtime miss; non-fatal */ });
   }, [taskId]);
 
+  // Bulk add — applies a checklist template (P4.1) in one round trip. Dedupes
+  // against existing ids so the realtime echo doesn't double-insert.
+  const addMany = useCallback((texts: string[]) => {
+    const cleaned = texts.map((t) => t.trim()).filter(Boolean);
+    if (cleaned.length === 0) return;
+    void createChecklistItems(taskId, cleaned)
+      .then((created) => setItems((prev) => {
+        const have = new Set(prev.map((x) => x.id));
+        return [...prev, ...created.filter((c) => !have.has(c.id))];
+      }))
+      .catch(() => { /* non-fatal */ });
+  }, [taskId]);
+
   const toggleItem = useCallback((id: string) => {
     setItems((prev) => prev.map((x) => {
       if (x.id !== id) return x;
@@ -60,5 +75,5 @@ export function useChecklistItems(taskId: string): UseChecklistItems {
     void deleteChecklistItem(id).catch(() => void 0);
   }, []);
 
-  return { items, addItem, toggleItem, removeItem };
+  return { items, addItem, addMany, toggleItem, removeItem };
 }

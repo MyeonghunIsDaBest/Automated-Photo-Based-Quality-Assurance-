@@ -69,6 +69,12 @@ export interface Capabilities {
   writeGanttInventory: boolean;
   viewGanttPlans: boolean;
   writeGanttPlans: boolean;
+
+  // Role-experience flags (supplier/stakeholder cockpits + management lenses).
+  respondToOwnOrders: boolean;      // supplier — Accept/Hold/Decline their own POs
+  releasePaymentMilestone: boolean; // stakeholder — sign off / release a payment milestone
+  editFinance: boolean;             // write budgets/invoices (read is `viewReportsFinance`)
+  viewPortfolioRollup: boolean;     // construction_mgr / admins — multi-project rollup band
 }
 
 const ALL_OFF: Capabilities = {
@@ -113,11 +119,23 @@ const ALL_OFF: Capabilities = {
   writeGanttInventory: false,
   viewGanttPlans: false,
   writeGanttPlans: false,
+  respondToOwnOrders: false,
+  releasePaymentMilestone: false,
+  editFinance: false,
+  viewPortfolioRollup: false,
 };
+
+// Hidden developer superuser — EVERY flag on. Built from ALL_OFF's keys so new
+// capabilities are auto-granted to dev. DB/seed-assigned only (never in pickers).
+const DEV_ALL: Capabilities = Object.fromEntries(
+  Object.keys(ALL_OFF).map((k) => [k, true]),
+) as unknown as Capabilities;
 
 export const CAPABILITIES_BY_GROUP: Record<SecurityGroup, Capabilities> = {
   company_admin: {
     ...ALL_OFF,
+    editFinance: true,
+    viewPortfolioRollup: true,
     viewDashboard: true,
     viewProjects: true,
     createProjects: true,
@@ -162,6 +180,7 @@ export const CAPABILITIES_BY_GROUP: Record<SecurityGroup, Capabilities> = {
   },
   administrator: {
     ...ALL_OFF,
+    viewPortfolioRollup: true,
     viewDashboard: true,
     viewProjects: true,
     viewGantt: true,
@@ -190,6 +209,7 @@ export const CAPABILITIES_BY_GROUP: Record<SecurityGroup, Capabilities> = {
   },
   construction_mgr: {
     ...ALL_OFF,
+    viewPortfolioRollup: true,
     viewDashboard: true,
     viewProjects: true,
     createProjects: true,
@@ -227,6 +247,7 @@ export const CAPABILITIES_BY_GROUP: Record<SecurityGroup, Capabilities> = {
   },
   project_manager: {
     ...ALL_OFF,
+    editFinance: true,
     viewDashboard: true,
     viewProjects: true,
     createProjects: true,
@@ -320,6 +341,8 @@ export const CAPABILITIES_BY_GROUP: Record<SecurityGroup, Capabilities> = {
   },
   stakeholder: {
     ...ALL_OFF,
+    viewReportsFinance: true,      // finance sponsor — READ-only (editFinance stays false)
+    releasePaymentMilestone: true,
     viewDashboard: true,
     viewProjects: true,
     viewGantt: true,
@@ -339,6 +362,7 @@ export const CAPABILITIES_BY_GROUP: Record<SecurityGroup, Capabilities> = {
   },
   supplier: {
     ...ALL_OFF,
+    respondToOwnOrders: true,
     viewDashboard: true,
     viewProjects: true,
     viewGantt: true,
@@ -354,6 +378,8 @@ export const CAPABILITIES_BY_GROUP: Record<SecurityGroup, Capabilities> = {
     // applies a client-side filter using `profile.supplierId`.
     viewGanttSupplierTab: true,
   },
+  // Hidden developer superuser — full access (see DEV_ALL).
+  dev: DEV_ALL,
 };
 
 export function capabilitiesFor(group: SecurityGroup | undefined | null): Capabilities {

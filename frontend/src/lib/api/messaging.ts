@@ -225,6 +225,25 @@ export async function sendMessage(conversationId: string, body: string): Promise
   return rowToMessage(data as MessageRow);
 }
 
+// Best-effort welcome DM when a worker is added to a project. The inviter is the
+// sender (sender_id = auth.uid()), satisfying messaging RLS — a real message, not
+// a system message. Callers wrap this in try/catch so a messaging failure never
+// fails the underlying invite.
+export async function sendProjectWelcomeDM(
+  workerUserId: string,
+  projectName: string,
+  message?: string,
+): Promise<void> {
+  if (!supabaseConfigured()) return;
+  const conv = await createDirectConversation(workerUserId);
+  await sendMessage(
+    conv.id,
+    // Capacity-tailored copy when the caller supplies it (Add-to-crew picks the
+    // invite capacity); otherwise the default crew welcome.
+    message ?? `You've been added to ${projectName}. Open it from Home → Projects, and clock in under Site Diary → Crew.`,
+  );
+}
+
 // Returns an existing 1:1 conversation between the current user and
 // `otherUserId` if one exists; otherwise creates a fresh conversation +
 // adds both users as members. Idempotent at the application layer — a

@@ -12,7 +12,7 @@
 // The button intentionally doesn't own the textarea — it owns the *runtime*
 // state. The parent controls the source of truth (typically a useState).
 //
-// Diff highlighting: a tiny word-level diff (added words emerald, removed
+// Diff highlighting: a tiny word-level diff (added words sage-tinted, removed
 // words slate strikethrough). No new dependency.
 
 import { useEffect, useState } from 'react';
@@ -58,7 +58,7 @@ export default function WritingAssistButton({ value, onAccept, context, disabled
 
   const onUseDraft = () => {
     if (accepting) return;
-    // Emerald swipe runs for 600ms before the accept fires + modal closes.
+    // Sage swipe runs for 600ms before the accept fires + modal closes.
     // Stops the modal from blinking away the instant the button is pressed.
     setAccepting(true);
     setTimeout(() => {
@@ -85,8 +85,8 @@ export default function WritingAssistButton({ value, onAccept, context, disabled
           type="button"
           onClick={() => setPopoverOpen((o) => !o)}
           disabled={triggerDisabled}
-          className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:opacity-50 disabled:hover:bg-white"
-          style={state === 'running' ? { borderColor: 'var(--accent-color, #10B981)', color: 'var(--accent-color, #047857)' } : undefined}
+          className="inline-flex items-center gap-1.5 rounded-full border border-[#E6E1D4] bg-white px-3 py-1.5 text-xs font-medium text-[#3A3A3A] transition-colors hover:border-[#D8D2C4] hover:bg-[#FAF8F2] disabled:opacity-50 disabled:hover:bg-white"
+          style={state === 'running' ? { borderColor: '#2F8F5C', color: '#246F47' } : undefined}
           aria-haspopup="menu"
           aria-expanded={popoverOpen}
         >
@@ -133,7 +133,7 @@ export default function WritingAssistButton({ value, onAccept, context, disabled
                 animate="visible"
                 exit="exit"
                 role="menu"
-                className="absolute right-0 top-full z-50 mt-2 w-72 origin-top-right overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg"
+                className="absolute right-0 top-full z-50 mt-2 w-72 origin-top-right overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_8px_28px_rgba(20,20,20,0.12)]"
               >
                 {TRANSFORM_OPTIONS.map((opt, idx) => (
                   <motion.button
@@ -143,14 +143,14 @@ export default function WritingAssistButton({ value, onAccept, context, disabled
                     onClick={() => onTransformClick(opt.id)}
                     initial={{ opacity: 0, x: -6 }}
                     animate={{ opacity: 1, x: 0, transition: { delay: 0.05 + idx * 0.04 } }}
-                    className="group/option relative flex w-full flex-col items-start gap-0.5 overflow-hidden border-b border-slate-100 px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-slate-50"
+                    className="group/option relative flex w-full flex-col items-start gap-0.5 overflow-hidden border-b border-[#EFEBE0] px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-[#FAF8F2]"
                   >
                     <span
                       aria-hidden
-                      className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-emerald-100/0 via-emerald-200/40 to-emerald-100/0 transition-transform duration-[1200ms] group-hover/option:translate-x-full"
+                      className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-[#E5F2EA]/0 via-[#E5F2EA]/60 to-[#E5F2EA]/0 transition-transform duration-[1200ms] group-hover/option:translate-x-full"
                     />
-                    <span className="relative text-sm font-medium text-slate-900">{opt.label}</span>
-                    <span className="relative text-[11px] text-slate-500">{opt.description}</span>
+                    <span className="relative text-sm font-medium text-[#1A1A1A]">{opt.label}</span>
+                    <span className="relative text-[11px] text-[#6B6B6B]">{opt.description}</span>
                   </motion.button>
                 ))}
               </motion.div>
@@ -164,7 +164,7 @@ export default function WritingAssistButton({ value, onAccept, context, disabled
           open
           onClose={onDiscard}
           eyebrow="AI assist"
-          title={state === 'success' ? 'Proposed rewrite' : 'Couldn’t draft'}
+          title={state === 'success' ? 'Proposed rewrite' : "Couldn't draft"}
           size="lg"
           footer={
             <div className="flex w-full items-center justify-between gap-3">
@@ -173,17 +173,17 @@ export default function WritingAssistButton({ value, onAccept, context, disabled
                   <TypewriterRationale text={rationale} />
                   <Badge
                     variant="outline"
-                    className={`flex-shrink-0 ${
+                    className={`shrink-0 ${
                       model
-                        ? 'border-violet-200 bg-violet-50 text-violet-700'
-                        : 'border-slate-200 bg-slate-50 text-slate-600'
+                        ? 'border-[#E6E1D4] bg-[#E5F2EA] text-[#246F47]'
+                        : 'border-[#E6E1D4] bg-[#FAF8F2] text-[#6B6B6B]'
                     }`}
                   >
                     {model ? `Real · ${model}` : 'Mock'}
                   </Badge>
                 </div>
               )}
-              <div className="flex flex-shrink-0 items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
                 <EditorialButton variant="ghost" onClick={onDiscard}>
                   <X className="h-3.5 w-3.5" />
                   Discard
@@ -208,7 +208,7 @@ export default function WritingAssistButton({ value, onAccept, context, disabled
                     </EditorialButton>
                     <span
                       aria-hidden
-                      className={`pointer-events-none absolute inset-0 bg-emerald-500 transition-transform duration-[600ms] ${accepting ? 'translate-x-0' : '-translate-x-full'}`}
+                      className={`pointer-events-none absolute inset-0 bg-[#2F8F5C] transition-transform duration-[600ms] ${accepting ? 'translate-x-0' : '-translate-x-full'}`}
                     />
                   </span>
                 )}
@@ -223,14 +223,14 @@ export default function WritingAssistButton({ value, onAccept, context, disabled
           }
         >
           {state === 'error' && (
-            <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            <p className="rounded-[14px] border border-[#C44545]/30 bg-[#FBE5E5] px-3 py-2 text-sm text-[#C44545]">
               {error ?? 'The assistant failed mid-draft. Try again.'}
             </p>
           )}
           {state === 'success' && (
             <div className="space-y-4">
               <Section label="Original">
-                <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-500">{value}</p>
+                <p className="whitespace-pre-wrap text-sm leading-relaxed text-[#6B6B6B]">{value}</p>
               </Section>
               <Section label="Proposed">
                 {editing ? (
@@ -238,10 +238,10 @@ export default function WritingAssistButton({ value, onAccept, context, disabled
                     value={editedDraft}
                     onChange={(e) => setEditedDraft(e.target.value)}
                     rows={Math.max(3, editedDraft.split('\n').length)}
-                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm leading-relaxed text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none"
+                    className="w-full rounded-md border border-[#E6E1D4] bg-white px-3 py-2 text-sm leading-relaxed text-[#1A1A1A] shadow-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
                   />
                 ) : (
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-900">
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-[#1A1A1A]">
                     <Diff before={value} after={draft ?? ''} />
                   </p>
                 )}
@@ -259,15 +259,15 @@ export default function WritingAssistButton({ value, onAccept, context, disabled
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="mb-1 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500">{label}</p>
+      <p className="mb-1 text-[10px] font-medium uppercase tracking-[0.18em] text-[#6B6B6B]">{label}</p>
       {children}
     </div>
   );
 }
 
 // Word-level diff. Compares whitespace-split tokens; words in `after` not
-// present in `before` get emerald background, words in `before` not present
-// in `after` get rendered as strikethrough slate. Naive but sufficient for
+// present in `before` get sage background, words in `before` not present
+// in `after` get rendered as strikethrough. Naive but sufficient for
 // the demo's visual signal — proper LCS lives in a follow-up if it matters.
 function Diff({ before, after }: { before: string; after: string }) {
   const beforeTokens = before.split(/(\s+)/);
@@ -285,7 +285,7 @@ function Diff({ before, after }: { before: string; after: string }) {
           return (
             <span
               key={idx}
-              className="animate-in rounded bg-emerald-50 px-0.5 text-emerald-900"
+              className="animate-in rounded bg-[#E5F2EA] px-0.5 text-[#246F47]"
               style={{ animationDelay: `${delay}ms` }}
             >
               {token}
@@ -326,7 +326,7 @@ function TypewriterRationale({ text }: { text: string }) {
   }, [text]);
 
   return (
-    <p className="min-w-0 flex-1 truncate text-[11px] text-slate-500">
+    <p className="min-w-0 flex-1 truncate text-[11px] text-[#6B6B6B]">
       {text.slice(0, shown)}
       {shown < text.length && <span className="opacity-50">▍</span>}
     </p>

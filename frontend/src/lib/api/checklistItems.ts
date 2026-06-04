@@ -53,6 +53,20 @@ export async function createChecklistItem(taskId: string, text: string): Promise
   return mapChecklistItemRow(data as ChecklistItemRow);
 }
 
+/** Bulk insert — used by the "Apply template" picker (P4.1) so a template's
+ *  items land in one round trip. Returns the persisted rows. */
+export async function createChecklistItems(taskId: string, texts: string[]): Promise<ChecklistItem[]> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const rows = texts.map((text) => ({ task_id: taskId, text, done: false }));
+  if (rows.length === 0) return [];
+  const { data, error } = await supabase
+    .from('checklist_items')
+    .insert(rows)
+    .select('*');
+  if (error) throw error;
+  return (data ?? []).map((r) => mapChecklistItemRow(r as ChecklistItemRow));
+}
+
 export async function updateChecklistItem(
   id: string,
   patch: { text?: string; done?: boolean; closedAt?: string | null },

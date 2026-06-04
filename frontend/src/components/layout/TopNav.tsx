@@ -21,6 +21,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { ScrollArea } from '../ui/scroll-area';
 import ReconnectionPill from './ReconnectionPill';
 import { useProjectConfig } from '../../lib/hooks/useProjectConfig';
+import { FRAUNCES } from '../../pages/gantt/components/ledger';
 import { format } from 'date-fns';
 
 // Every gate accepts at least `User | null` (canUploadPhotos is the narrowest);
@@ -72,14 +73,16 @@ const getNotificationIcon = (type: string) => {
   }
 };
 
+// Notification glyph tints drawn from the ledger TONE palette so the bell
+// reads as part of the warm register, not a separate slate widget.
 const getNotificationColor = (type: string) => {
   switch (type) {
-    case 'safety_alert':  return 'bg-red-100 text-red-600';
-    case 'task_update':   return 'bg-blue-100 text-blue-600';
-    case 'chat_message':  return 'bg-purple-100 text-purple-600';
-    case 'ai_analysis':   return 'bg-amber-100 text-amber-600';
-    case 'weekly_report': return 'bg-green-100 text-green-600';
-    default:              return 'bg-slate-100 text-slate-600';
+    case 'safety_alert':  return 'bg-[#FBE5E5] text-[#C44545]'; // red tone
+    case 'task_update':   return 'bg-[#E5F2EA] text-[#246F47]'; // sage tone
+    case 'chat_message':  return 'bg-[#F0EDE4] text-[#1A1A1A]'; // ink tone
+    case 'ai_analysis':   return 'bg-[#F9EFD9] text-[#C8841E]'; // amber tone
+    case 'weekly_report': return 'bg-[#E5F2EA] text-[#246F47]'; // sage tone
+    default:              return 'bg-[#EEF1F4] text-[#5B6B7B]'; // slate tone
   }
 };
 
@@ -146,23 +149,32 @@ export default function TopNav() {
     .toUpperCase();
 
   return (
-    // Solid white background — `bg-white/85 backdrop-blur` ghosted content
-    // through on mobile WebKit, and the editorial design reads cleaner with
-    // a hard edge anyway.
-    <header className="sticky top-0 z-40 border-b border-slate-200 bg-white">
+    // Warm "site register" chrome — cream wash + #E6E1D4 hairline, matching
+    // the logbook surfaces. Solid (no backdrop-blur): it ghosted content
+    // through on mobile WebKit, and the editorial design reads cleaner with a
+    // hard edge anyway.
+    <header className="sticky top-0 z-40 border-b border-[#E6E1D4] bg-[#FAF8F2]">
       <div className="flex h-16 items-center justify-between gap-6 px-6">
         {/* ─── Left: brand + primary nav ─── */}
         <div className="flex min-w-0 items-center gap-6">
           <Link to="/dashboard" className="flex flex-shrink-0 items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-600">
-              <Building2 className="h-5 w-5 text-white" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-[#2F8F5C] shadow-[0_1px_2px_rgba(20,20,20,0.12)]">
+              <Building2 className="h-5 w-5 text-white" strokeWidth={1.75} />
             </div>
-            <span className="hidden text-lg font-semibold tracking-tight text-slate-900 sm:inline">SiteProof</span>
+            <span
+              className="hidden text-[21px] font-medium tracking-tight text-[#1A1A1A] sm:inline"
+              style={{ fontFamily: FRAUNCES, letterSpacing: '-0.02em' }}
+            >
+              SiteProof
+            </span>
           </Link>
 
-          {/* Project switcher pill */}
+          {/* Project switcher pill — `flex` (not bare `relative`) so the button is
+              a flex child of this min-w-0 box and truncates within its allotted
+              slot instead of overflowing past the gap into the nav (which was
+              clipping the first nav item's leading glyph when the row got tight). */}
           {activeProject && (
-            <div className="relative min-w-0">
+            <div className="relative flex min-w-0">
               <button
                 ref={projectPillRef}
                 type="button"
@@ -175,7 +187,7 @@ export default function TopNav() {
                 aria-haspopup="menu"
                 aria-expanded={projectMenuOpen}
                 title={activeProject.name}
-                className="group flex h-9 min-w-0 max-w-[60vw] items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition-all hover:border-slate-300 hover:bg-slate-50 hover:ring-1 hover:ring-[color-mix(in_srgb,var(--accent-color,#10b981)_40%,transparent)] active:bg-slate-100 sm:max-w-[260px]"
+                className="group flex h-9 min-w-0 max-w-[60vw] items-center gap-1.5 rounded-full border border-[#E6E1D4] bg-white px-3 text-sm font-medium text-[#3A3A3A] transition-all hover:bg-[#FAF8F2] hover:ring-1 hover:ring-[color-mix(in_srgb,var(--accent-color,#2F8F5C)_40%,transparent)] active:bg-[#F0EDE4] sm:max-w-[260px]"
               >
                 <span
                   className="h-2 w-2 flex-shrink-0 rounded-full"
@@ -183,7 +195,7 @@ export default function TopNav() {
                   aria-hidden
                 />
                 <span className="hidden truncate min-[480px]:inline">{activeProject.name}</span>
-                <ChevronDown className={`h-3.5 w-3.5 flex-shrink-0 text-slate-400 transition-transform ${projectMenuOpen ? 'rotate-180' : ''}`} aria-hidden />
+                <ChevronDown className={`h-3.5 w-3.5 flex-shrink-0 text-[#A0A0A0] transition-transform ${projectMenuOpen ? 'rotate-180' : ''}`} aria-hidden />
               </button>
 
               <AnimatePresence>
@@ -204,19 +216,19 @@ export default function TopNav() {
                       exit="exit"
                       role="menu"
                       aria-label="Switch project"
-                      className="absolute left-0 z-50 mt-2 w-72 max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg"
+                      className="absolute left-0 z-50 mt-2 w-72 max-w-[calc(100vw-1rem)] overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_8px_28px_rgba(20,20,20,0.12)]"
                     >
-                    <div className="border-b border-slate-100 px-4 py-2.5">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Active project</p>
-                      <p className="mt-0.5 truncate text-sm font-medium text-slate-900">{activeProject.name}</p>
+                    <div className="border-b border-[#EFEBE0] px-4 py-2.5">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#6B6B6B]">Active project</p>
+                      <p className="mt-0.5 truncate text-sm font-medium text-[#1A1A1A]">{activeProject.name}</p>
                     </div>
                     {projects.length <= 1 ? (
                       <div className="px-4 py-6 text-center">
-                        <p className="text-xs text-slate-500">Only one project on this account.</p>
+                        <p className="text-xs text-[#6B6B6B]">Only one project on this account.</p>
                         <Link
                           to="/projects"
                           onClick={() => setProjectMenuOpen(false)}
-                          className="mt-2 inline-block text-xs font-medium text-emerald-700 hover:text-emerald-800"
+                          className="mt-2 inline-block text-xs font-medium text-[#246F47] hover:text-[#2F8F5C]"
                         >
                           Manage projects →
                         </Link>
@@ -238,8 +250,8 @@ export default function TopNav() {
                                 }}
                                 className={`flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition-colors ${
                                   isActive
-                                    ? 'bg-emerald-50 text-emerald-800'
-                                    : 'text-slate-700 hover:bg-slate-50'
+                                    ? 'bg-[#E5F2EA] text-[#246F47]'
+                                    : 'text-[#3A3A3A] hover:bg-[#FAF8F2]'
                                 }`}
                               >
                                 <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center">
@@ -247,7 +259,7 @@ export default function TopNav() {
                                 </span>
                                 <span className="min-w-0 flex-1 truncate">{p.name}</span>
                                 {p.client && (
-                                  <span className="ml-2 truncate text-[11px] text-slate-400">{p.client}</span>
+                                  <span className="ml-2 truncate text-[11px] text-[#A0A0A0]">{p.client}</span>
                                 )}
                               </button>
                             </li>
@@ -255,11 +267,11 @@ export default function TopNav() {
                         })}
                       </ul>
                     )}
-                    <div className="border-t border-slate-100 px-4 py-2">
+                    <div className="border-t border-[#EFEBE0] px-4 py-2">
                       <Link
                         to="/projects"
                         onClick={() => setProjectMenuOpen(false)}
-                        className="flex items-center justify-between text-xs font-medium text-slate-600 hover:text-slate-900"
+                        className="flex items-center justify-between text-xs font-medium text-[#6B6B6B] hover:text-[#1A1A1A]"
                       >
                         <span>All projects</span>
                         <span aria-hidden>→</span>
@@ -272,7 +284,7 @@ export default function TopNav() {
             </div>
           )}
 
-          <nav className="hidden md:flex items-center gap-1">
+          <nav className="hidden flex-shrink-0 md:flex items-center gap-1">
             {visibleNav.map((item) => {
               const Icon = item.icon;
               const isActive =
@@ -282,13 +294,13 @@ export default function TopNav() {
                 <Link
                   key={item.path}
                   to={item.path}
-                  className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors lg:gap-2 lg:px-3 lg:text-sm ${
+                  className={`flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-medium transition-colors lg:gap-2 lg:px-3.5 lg:text-sm ${
                     isActive
-                      ? 'bg-slate-900 text-white'
-                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 active:bg-slate-200'
+                      ? 'bg-[#1A1A1A] text-white'
+                      : 'text-[#6B6B6B] hover:bg-[#F0EDE4] hover:text-[#1A1A1A] active:bg-[#E6E1D4]'
                   }`}
                 >
-                  <Icon className="h-4 w-4" />
+                  <Icon className="h-4 w-4" strokeWidth={isActive ? 2 : 1.75} />
                   {item.label}
                 </Link>
               );
@@ -307,12 +319,12 @@ export default function TopNav() {
                 setNotificationsOpen((o) => !o);
                 setUserMenuOpen(false);
               }}
-              className="relative flex h-11 w-11 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 active:bg-slate-200"
+              className="relative flex h-11 w-11 items-center justify-center rounded-full text-[#6B6B6B] transition-colors hover:bg-[#F0EDE4] hover:text-[#1A1A1A] active:bg-[#E6E1D4]"
               aria-label="Notifications"
             >
-              <Bell className="h-5 w-5" />
+              <Bell className="h-5 w-5" strokeWidth={1.75} />
               {unreadCount > 0 && (
-                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
+                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#C44545] px-1 text-[10px] font-semibold text-white ring-2 ring-[#FAF8F2]">
                   {unreadCount > 9 ? '9+' : unreadCount}
                 </span>
               )}
@@ -334,10 +346,10 @@ export default function TopNav() {
                     initial="hidden"
                     animate="visible"
                     exit="exit"
-                    className="absolute right-0 z-50 mt-2 w-[calc(100vw-1rem)] max-w-96 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg sm:w-96"
+                    className="absolute right-0 z-50 mt-2 w-[calc(100vw-1rem)] max-w-96 overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_8px_28px_rgba(20,20,20,0.12)] sm:w-96"
                   >
-                  <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-                    <h3 className="text-sm font-semibold text-slate-900">Notifications</h3>
+                  <div className="flex items-center justify-between border-b border-[#EFEBE0] px-4 py-3">
+                    <h3 className="text-sm font-semibold text-[#1A1A1A]">Notifications</h3>
                     {unreadCount > 0 && (
                       <button
                         type="button"
@@ -345,7 +357,7 @@ export default function TopNav() {
                           markAllAsRead();
                           setNotificationsOpen(false);
                         }}
-                        className="text-xs font-medium text-emerald-600 hover:text-emerald-700"
+                        className="text-xs font-medium text-[#246F47] hover:text-[#2F8F5C]"
                       >
                         Mark all read
                       </button>
@@ -355,11 +367,11 @@ export default function TopNav() {
                   <ScrollArea className="max-h-96">
                     {notifications.length === 0 ? (
                       <div className="p-8 text-center">
-                        <Bell className="mx-auto h-10 w-10 text-slate-300" />
-                        <p className="mt-3 text-sm text-slate-500">No notifications yet</p>
+                        <Bell className="mx-auto h-10 w-10 text-[#D8D2C4]" strokeWidth={1.5} />
+                        <p className="mt-3 text-sm text-[#6B6B6B]">No notifications yet</p>
                       </div>
                     ) : (
-                      <div className="divide-y divide-slate-100">
+                      <div className="divide-y divide-[#EFEBE0]">
                         {notifications.map((notification) => {
                           const Icon = getNotificationIcon(notification.type);
                           const colorClass = getNotificationColor(notification.type);
@@ -371,26 +383,26 @@ export default function TopNav() {
                                 markAsRead(notification.id);
                                 setNotificationsOpen(false);
                               }}
-                              className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50 ${
-                                !notification.read ? 'bg-emerald-50/40' : ''
+                              className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-[#FAF8F2] ${
+                                !notification.read ? 'bg-[#E5F2EA]/50' : ''
                               }`}
                             >
-                              <div className={`flex-shrink-0 rounded-lg p-2 ${colorClass}`}>
-                                <Icon className="h-4 w-4" />
+                              <div className={`flex-shrink-0 rounded-[9px] p-2 ${colorClass}`}>
+                                <Icon className="h-4 w-4" strokeWidth={1.75} />
                               </div>
                               <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm font-medium text-slate-900">
+                                <p className="truncate text-sm font-medium text-[#1A1A1A]">
                                   {notification.title}
                                 </p>
-                                <p className="mt-0.5 line-clamp-2 text-xs text-slate-600">
+                                <p className="mt-0.5 line-clamp-2 text-xs text-[#6B6B6B]">
                                   {notification.message}
                                 </p>
-                                <p className="mt-1 text-[10px] text-slate-400">
+                                <p className="mt-1 text-[10px] text-[#A0A0A0]">
                                   {format(new Date(notification.createdAt), 'MMM d, h:mm a')}
                                 </p>
                               </div>
                               {!notification.read && (
-                                <span className="mt-1 h-2 w-2 flex-shrink-0 rounded-full bg-emerald-500" />
+                                <span className="mt-1 h-2 w-2 flex-shrink-0 rounded-full bg-[#2F8F5C]" />
                               )}
                             </button>
                           );
@@ -412,8 +424,8 @@ export default function TopNav() {
                 setUserMenuOpen((o) => !o);
                 setNotificationsOpen(false);
               }}
-              className={`flex min-h-11 items-center gap-2 rounded-full border border-slate-200 py-1 pl-1 pr-2.5 text-sm transition-colors hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 ${
-                userMenuOpen ? 'border-slate-300 bg-slate-50' : ''
+              className={`flex min-h-11 items-center gap-2 rounded-full border border-[#E6E1D4] py-1 pl-1 pr-2.5 text-sm transition-colors hover:bg-[#FAF8F2] active:bg-[#F0EDE4] ${
+                userMenuOpen ? 'border-[#D8D2C4] bg-[#FAF8F2]' : ''
               }`}
               aria-haspopup="menu"
               aria-expanded={userMenuOpen}
@@ -421,11 +433,11 @@ export default function TopNav() {
               <div className="relative">
                 <Avatar className="h-7 w-7">
                   <AvatarImage src={currentUser.avatar} />
-                  <AvatarFallback className="text-[10px] font-semibold">{initials}</AvatarFallback>
+                  <AvatarFallback className="bg-[#F0EDE4] text-[10px] font-semibold text-[#1A1A1A]">{initials}</AvatarFallback>
                 </Avatar>
                 {currentProfile?.isOwner && (
                   <span
-                    className="absolute -right-1 -top-1 grid h-3.5 w-3.5 place-items-center rounded-full bg-amber-500 ring-1 ring-white"
+                    className="absolute -right-1 -top-1 grid h-3.5 w-3.5 place-items-center rounded-full bg-[#D69A2E] ring-1 ring-[#FAF8F2]"
                     title="Owner"
                     aria-label="Owner"
                   >
@@ -433,11 +445,11 @@ export default function TopNav() {
                   </span>
                 )}
               </div>
-              <span className="hidden text-xs font-medium text-slate-700 lg:inline">
+              <span className="hidden text-xs font-medium text-[#3A3A3A] lg:inline">
                 {currentUser.fullName.split(' ')[0]}
               </span>
               <ChevronDown
-                className={`h-3.5 w-3.5 text-slate-400 transition-transform ${
+                className={`h-3.5 w-3.5 text-[#A0A0A0] transition-transform ${
                   userMenuOpen ? 'rotate-180' : ''
                 }`}
               />
@@ -459,20 +471,20 @@ export default function TopNav() {
                     initial="hidden"
                     animate="visible"
                     exit="exit"
-                    className="absolute right-0 z-50 mt-2 w-[calc(100vw-1rem)] max-w-xs overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg sm:w-64"
+                    className="absolute right-0 z-50 mt-2 w-[calc(100vw-1rem)] max-w-xs overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_8px_28px_rgba(20,20,20,0.12)] sm:w-64"
                     role="menu"
                   >
-                  <div className="border-b border-slate-100 px-4 py-3">
-                    <p className="truncate text-sm font-medium text-slate-900">
+                  <div className="border-b border-[#EFEBE0] px-4 py-3">
+                    <p className="truncate text-sm font-medium text-[#1A1A1A]">
                       {currentUser.fullName}
                     </p>
-                    <p className="mt-0.5 truncate text-xs text-slate-500">{currentUser.email}</p>
+                    <p className="mt-0.5 truncate text-xs text-[#6B6B6B]">{currentUser.email}</p>
                     <div className="mt-2 flex flex-wrap gap-1.5">
-                      <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-emerald-700">
+                      <span className="inline-flex items-center rounded-full bg-[#E5F2EA] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[#246F47]">
                         {roleLabel}
                       </span>
                       {currentProfile?.isOwner && (
-                        <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-700">
+                        <span className="inline-flex items-center gap-0.5 rounded-full bg-[#F9EFD9] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[#C8841E]">
                           <Crown className="h-2.5 w-2.5" />
                           Owner
                         </span>
@@ -486,10 +498,10 @@ export default function TopNav() {
                       setUserMenuOpen(false);
                       navigate('/settings');
                     }}
-                    className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-slate-700 transition-colors hover:bg-slate-50"
+                    className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-[#3A3A3A] transition-colors hover:bg-[#FAF8F2]"
                     role="menuitem"
                   >
-                    <Settings className="h-4 w-4 text-slate-400" />
+                    <Settings className="h-4 w-4 text-[#A0A0A0]" strokeWidth={1.75} />
                     Settings
                   </button>
 
@@ -499,10 +511,10 @@ export default function TopNav() {
                       setUserMenuOpen(false);
                       void logout();
                     }}
-                    className="flex w-full items-center gap-2.5 border-t border-slate-100 px-4 py-2.5 text-left text-sm text-slate-700 transition-colors hover:bg-red-50 hover:text-red-700"
+                    className="flex w-full items-center gap-2.5 border-t border-[#EFEBE0] px-4 py-2.5 text-left text-sm text-[#3A3A3A] transition-colors hover:bg-[#FBE5E5] hover:text-[#C44545]"
                     role="menuitem"
                   >
-                    <LogOut className="h-4 w-4 text-slate-400" />
+                    <LogOut className="h-4 w-4 text-[#A0A0A0]" strokeWidth={1.75} />
                     Sign out
                   </button>
                   </motion.div>
@@ -515,10 +527,10 @@ export default function TopNav() {
           <button
             type="button"
             onClick={() => setMobileMenuOpen((o) => !o)}
-            className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 active:bg-slate-200 md:hidden"
+            className="flex h-11 w-11 items-center justify-center rounded-full text-[#6B6B6B] transition-colors hover:bg-[#F0EDE4] hover:text-[#1A1A1A] active:bg-[#E6E1D4] md:hidden"
             aria-label="Toggle menu"
           >
-            {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            {mobileMenuOpen ? <X className="h-5 w-5" strokeWidth={1.75} /> : <Menu className="h-5 w-5" strokeWidth={1.75} />}
           </button>
         </div>
       </div>
@@ -531,7 +543,7 @@ export default function TopNav() {
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1, transition: { duration: 0.3, ease: [0.22, 1, 0.36, 1] } }}
             exit={{ height: 0, opacity: 0, transition: { duration: 0.2 } }}
-            className="overflow-hidden border-t border-slate-200 bg-white md:hidden"
+            className="overflow-hidden border-t border-[#E6E1D4] bg-[#FAF8F2] md:hidden"
           >
             <nav className="space-y-1 p-4">
               {visibleNav.map((item) => {
@@ -544,13 +556,13 @@ export default function TopNav() {
                     key={item.path}
                     to={item.path}
                     onClick={() => setMobileMenuOpen(false)}
-                    className={`flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium ${
+                    className={`flex min-h-11 items-center gap-3 rounded-[10px] px-3 py-2.5 text-sm font-medium ${
                       isActive
-                        ? 'bg-slate-900 text-white'
-                        : 'text-slate-600 hover:bg-slate-50 active:bg-slate-100'
+                        ? 'bg-[#1A1A1A] text-white'
+                        : 'text-[#3A3A3A] hover:bg-white active:bg-[#F0EDE4]'
                     }`}
                   >
-                    <Icon className="h-5 w-5" />
+                    <Icon className="h-5 w-5" strokeWidth={isActive ? 2 : 1.75} />
                     {item.label}
                   </Link>
                 );

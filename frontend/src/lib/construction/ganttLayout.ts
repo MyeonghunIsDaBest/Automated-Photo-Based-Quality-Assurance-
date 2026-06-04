@@ -102,6 +102,10 @@ export interface DayHeader {
   label: string;
   /** Compact label "12". */
   short: string;
+  /** Narrow weekday letter "M" / "T" — for the two-row day axis. */
+  weekday: string;
+  /** True when this cell falls on today — caller highlights the column. */
+  isToday: boolean;
   /** Position percentage. */
   leftPct: number;
   /** Width percentage — always 1 day. */
@@ -115,12 +119,15 @@ export function dayHeaders(window: TimeWindow): DayHeader[] {
   const start = parseISO(window.startDate);
   const headers: DayHeader[] = [];
   const cellWidth = 100 / window.totalDays;
+  const todayKey = format(new Date(), 'yyyy-MM-dd');
   for (let i = 0; i < window.totalDays; i++) {
     const d = addDays(start, i);
     const dow = d.getDay();
     headers.push({
       label: format(d, 'EEE · MMM d'),
       short: format(d, 'd'),
+      weekday: format(d, 'EEEEE'),
+      isToday: format(d, 'yyyy-MM-dd') === todayKey,
       leftPct: i * cellWidth,
       widthPct: cellWidth,
       isWeekend: dow === 0 || dow === 6,
@@ -160,6 +167,31 @@ export function weekHeaders(window: TimeWindow): WeekHeader[] {
     cursor = addDays(weekEndRaw, 1);
   }
   return headers;
+}
+
+export interface AxisTick {
+  /** Position percentage of the tick within the window. */
+  leftPct: number;
+  /** Day-of-month number to print under the month band. */
+  day: number;
+}
+
+/** Weekly (Monday) date-number ticks across the window. Powers the month-zoom
+ *  sub-axis so users can read exact dates, not just the month band. */
+export function weekTicks(window: TimeWindow): AxisTick[] {
+  const start = parseISO(window.startDate);
+  const end = parseISO(window.endDate);
+  const ticks: AxisTick[] = [];
+  let cursor = startOfWeek(start, { weekStartsOn: 1 });
+  if (cursor < start) cursor = addDays(cursor, 7); // first Monday on/after start
+  while (cursor <= end) {
+    ticks.push({
+      leftPct: (differenceInDays(cursor, start) / window.totalDays) * 100,
+      day: cursor.getDate(),
+    });
+    cursor = addDays(cursor, 7);
+  }
+  return ticks;
 }
 
 export interface QuarterHeader {

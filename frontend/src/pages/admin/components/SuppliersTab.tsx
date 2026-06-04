@@ -184,8 +184,8 @@ export default function SuppliersTab() {
     <div>
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <h2 className="text-lg font-semibold text-slate-900">Suppliers ({items.length})</h2>
-          <p className="text-sm text-slate-500">
+          <h2 className="text-lg font-semibold text-[#1A1A1A]">Suppliers ({items.length})</h2>
+          <p className="text-sm text-[#6B6B6B]">
             Vendors and material suppliers. Each can have multiple contacts and branches.
           </p>
         </div>
@@ -200,36 +200,36 @@ export default function SuppliersTab() {
       </div>
 
       {error && (
-        <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div className="mb-4 rounded-[14px] border border-[#F0BFBF] bg-[#FBE5E5] px-3 py-2 text-sm text-[#C44545]">
           {error}
         </div>
       )}
 
       <div className="space-y-3">
         {loading ? (
-          <div className="rounded-xl border border-slate-200 bg-white px-4 py-8 text-center text-slate-400">
+          <div className="rounded-[14px] border border-[#E6E1D4] bg-white px-4 py-8 text-center text-[#A0A0A0]">
             Loading…
           </div>
         ) : items.length === 0 ? (
-          <div className="rounded-xl border border-slate-200 bg-white px-4 py-8 text-center text-slate-400">
+          <div className="rounded-[14px] border border-[#E6E1D4] bg-white px-4 py-8 text-center text-[#A0A0A0]">
             No suppliers yet.
           </div>
         ) : (
           items.map((s) => {
             const isOpen = expanded.has(s.id);
             return (
-              <div key={s.id} className="rounded-xl border border-slate-200 bg-white">
+              <div key={s.id} className="rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_1px_2px_rgba(20,20,20,0.04)]">
                 <div className="flex items-center justify-between gap-2 px-4 py-3">
                   <button
                     onClick={() => toggleExpanded(s.id)}
                     className="flex flex-1 min-w-0 items-center gap-3 text-left"
                   >
                     {isOpen
-                      ? <ChevronDown className="h-4 w-4 flex-shrink-0 text-slate-500" />
-                      : <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-500" />}
+                      ? <ChevronDown className="h-4 w-4 flex-shrink-0 text-[#6B6B6B]" />
+                      : <ChevronRight className="h-4 w-4 flex-shrink-0 text-[#6B6B6B]" />}
                     <div className="min-w-0">
-                      <div className="truncate font-medium text-slate-900">{s.name}</div>
-                      <div className="truncate text-xs text-slate-500">
+                      <div className="truncate font-medium text-[#1A1A1A]">{s.name}</div>
+                      <div className="truncate text-xs text-[#6B6B6B]">
                         {s.abn && <>ABN {s.abn} · </>}
                         {(s.contacts?.length ?? 0)} contact{(s.contacts?.length ?? 0) === 1 ? '' : 's'} ·
                         {' '}{(s.branches?.length ?? 0)} branch{(s.branches?.length ?? 0) === 1 ? '' : 'es'}
@@ -239,7 +239,7 @@ export default function SuppliersTab() {
                   <div className="flex flex-shrink-0 items-center gap-1">
                     <button
                       onClick={() => setEditing(s)}
-                      className="rounded-md p-1.5 text-slate-500 hover:bg-emerald-50 hover:text-emerald-700"
+                      className="rounded-md p-1.5 text-[#6B6B6B] hover:bg-[#E5F2EA] hover:text-[#246F47]"
                       title="Edit"
                       aria-label={`Edit ${s.name}`}
                     >
@@ -247,7 +247,7 @@ export default function SuppliersTab() {
                     </button>
                     <button
                       onClick={() => handleDelete(s)}
-                      className="rounded-md p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600"
+                      className="rounded-md p-1.5 text-[#6B6B6B] hover:bg-[#FBE5E5] hover:text-[#C44545]"
                       title="Delete"
                       aria-label={`Delete ${s.name}`}
                     >
@@ -256,7 +256,7 @@ export default function SuppliersTab() {
                   </div>
                 </div>
                 {isOpen && (
-                  <div className="space-y-4 border-t border-slate-100 bg-slate-50 px-4 py-4 text-sm">
+                  <div className="space-y-4 border-t border-[#EFEBE0] bg-[#FAF8F2] px-4 py-4 text-sm">
                     <DetailGrid s={s} />
                     <ChildList title="Contacts" empty="No contacts">
                       {(s.contacts ?? []).map((c) => {
@@ -264,9 +264,9 @@ export default function SuppliersTab() {
                           ? s.branches?.find((b) => b.id === c.branchId)?.branchName
                           : undefined;
                         return (
-                          <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-white px-3 py-2">
-                            <span className="font-medium text-slate-800">{c.name}</span>
-                            <span className="text-slate-500">
+                          <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 rounded-[9px] bg-white px-3 py-2 border border-[#E6E1D4]">
+                            <span className="font-medium text-[#1A1A1A]">{c.name}</span>
+                            <span className="text-[#6B6B6B]">
                               {[c.role, c.email, c.mobile, branchName ? `Branch: ${branchName}` : null].filter(Boolean).join(' · ') || '—'}
                             </span>
                           </li>
@@ -275,20 +275,20 @@ export default function SuppliersTab() {
                     </ChildList>
                     <ChildList title="Branches" empty="No branches">
                       {(s.branches ?? []).map((b) => (
-                        <li key={b.id} className="space-y-1 rounded-md bg-white px-3 py-2">
+                        <li key={b.id} className="space-y-1 rounded-[9px] bg-white px-3 py-2 border border-[#E6E1D4]">
                           <div className="flex flex-wrap items-center justify-between gap-2">
-                            <span className="font-medium text-slate-800">{b.branchName}</span>
-                            <span className="text-slate-500">
+                            <span className="font-medium text-[#1A1A1A]">{b.branchName}</span>
+                            <span className="text-[#6B6B6B]">
                               {[b.contactName, b.email, b.contactNumber].filter(Boolean).join(' · ') || '—'}
                             </span>
                           </div>
                           {(b.accountsContactName || b.accountsEmail || b.accountsContactNumber) && (
-                            <div className="text-[11px] text-slate-500">
+                            <div className="text-[11px] text-[#6B6B6B]">
                               Accounts: {[b.accountsContactName, b.accountsEmail, b.accountsContactNumber].filter(Boolean).join(' · ')}
                             </div>
                           )}
                           {(formatAddress(b.address) || formatAddress(b.postalAddress)) && (
-                            <div className="text-[11px] text-slate-500">
+                            <div className="text-[11px] text-[#6B6B6B]">
                               {formatAddress(b.address) && <>📍 {formatAddress(b.address)}</>}
                               {formatAddress(b.address) && formatAddress(b.postalAddress) && <> · </>}
                               {formatAddress(b.postalAddress) && <>✉ {formatAddress(b.postalAddress)}</>}
@@ -340,8 +340,8 @@ function formatAddress(a?: SupplierAddress): string | undefined {
 function Detail({ label, value }: { label: string; value?: string }) {
   return (
     <div>
-      <div className="text-[10px] font-medium uppercase tracking-wider text-slate-400">{label}</div>
-      <div className="text-slate-700">{value || '—'}</div>
+      <div className="text-[10px] font-medium uppercase tracking-wider text-[#A0A0A0]">{label}</div>
+      <div className="text-[#3A3A3A]">{value || '—'}</div>
     </div>
   );
 }
@@ -352,9 +352,9 @@ function ChildList({
   const items = Array.isArray(children) ? children : [children];
   return (
     <div>
-      <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">{title}</div>
+      <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]">{title}</div>
       {items.length === 0 ? (
-        <div className="text-xs italic text-slate-400">{empty}</div>
+        <div className="text-xs italic text-[#A0A0A0]">{empty}</div>
       ) : (
         <ul className="space-y-1">{children}</ul>
       )}
@@ -533,7 +533,7 @@ function SupplierFormModal({
             <button
               type="button"
               onClick={addBranch}
-              className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
+              className="inline-flex items-center gap-1 rounded-full border border-[#A8D0B8] bg-[#E5F2EA] px-3 py-1 text-xs font-medium text-[#246F47] hover:bg-[#A8D0B8]/30"
             >
               <Plus className="h-3 w-3" /> Add branch
             </button>
@@ -559,7 +559,7 @@ function SupplierFormModal({
             <button
               type="button"
               onClick={addContact}
-              className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
+              className="inline-flex items-center gap-1 rounded-full border border-[#A8D0B8] bg-[#E5F2EA] px-3 py-1 text-xs font-medium text-[#246F47] hover:bg-[#A8D0B8]/30"
             >
               <Plus className="h-3 w-3" /> Add contact
             </button>
@@ -579,7 +579,7 @@ function SupplierFormModal({
         </Section>
 
         {error && (
-          <div className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+          <div className="rounded-[14px] border border-[#F0BFBF] bg-[#FBE5E5] px-3 py-2 text-sm text-[#C44545]">{error}</div>
         )}
       </form>
     </EditorialModal>
@@ -598,7 +598,7 @@ function BranchCard({
   onToggleAddress: () => void;
 }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3">
+    <div className="rounded-[9px] border border-[#E6E1D4] bg-[#FAF8F2]/60 p-3">
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <input placeholder="Branch name" value={branch.branchName} onChange={(e) => onUpdate('branchName', e.target.value)} className="editorial-input" />
         <input placeholder="Branch contact name" value={branch.contactName ?? ''} onChange={(e) => onUpdate('contactName', e.target.value)} className="editorial-input" />
@@ -615,7 +615,7 @@ function BranchCard({
         <button
           type="button"
           onClick={onToggleAddress}
-          className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-700"
+          className="inline-flex items-center gap-1 text-[11px] font-medium text-[#6B6B6B] hover:text-[#3A3A3A]"
         >
           {branch._showAddress ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
           {branch._showAddress ? 'Hide address' : 'Show address'}
@@ -623,23 +623,23 @@ function BranchCard({
         <button
           type="button"
           onClick={onRemove}
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-[#C44545] hover:bg-[#FBE5E5]"
         >
           <Trash2 className="h-3 w-3" /> Remove
         </button>
       </div>
 
       {branch._showAddress && (
-        <div className="mt-3 space-y-3 border-t border-slate-200 pt-3">
+        <div className="mt-3 space-y-3 border-t border-[#E6E1D4] pt-3">
           <div>
-            <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-slate-500">Branch address</div>
+            <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-[#6B6B6B]">Branch address</div>
             <AddressFields
               address={branch.address ?? {}}
               onChange={(k, v) => onUpdateAddr('address', k, v)}
             />
           </div>
           <div>
-            <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-slate-500">Branch postal address</div>
+            <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-[#6B6B6B]">Branch postal address</div>
             <AddressFields
               address={branch.postalAddress ?? {}}
               onChange={(k, v) => onUpdateAddr('postalAddress', k, v)}
@@ -679,7 +679,7 @@ function ContactCard({
   }, [branches]);
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3">
+    <div className="rounded-[9px] border border-[#E6E1D4] bg-[#FAF8F2]/60 p-3">
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <input placeholder="Contact name" value={contact.name} onChange={(e) => onUpdate('name', e.target.value)} className="editorial-input" />
         <input placeholder="Role" value={contact.role ?? ''} onChange={(e) => onUpdate('role', e.target.value)} className="editorial-input" />
@@ -694,7 +694,7 @@ function ContactCard({
       />
 
       <div className="mt-3">
-        <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-slate-500">
+        <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-[#6B6B6B]">
           Branch
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -708,13 +708,13 @@ function ContactCard({
                 aria-pressed={active}
                 className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
                   active
-                    ? 'border-emerald-500 bg-emerald-100 text-emerald-800'
-                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400'
+                    ? 'border-[#2F8F5C] bg-[#E5F2EA] text-[#246F47]'
+                    : 'border-[#E6E1D4] bg-white text-[#6B6B6B] hover:border-[#D8D2C4]'
                 }`}
               >
                 <span
                   className={`flex h-3.5 w-3.5 items-center justify-center rounded-sm border ${
-                    active ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-300 bg-white'
+                    active ? 'border-[#2F8F5C] bg-[#2F8F5C] text-white' : 'border-[#E6E1D4] bg-white'
                   }`}
                 >
                   {active && (
@@ -734,7 +734,7 @@ function ContactCard({
         <button
           type="button"
           onClick={onRemove}
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-[#C44545] hover:bg-[#FBE5E5]"
         >
           <Trash2 className="h-3 w-3" /> Remove
         </button>
@@ -751,7 +751,7 @@ function Section({
   return (
     <section>
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <h4 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">{title}</h4>
+        <h4 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6B6B6B]">{title}</h4>
         {action}
       </div>
       {children}
@@ -764,8 +764,8 @@ function F({
 }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="text-xs font-medium text-slate-600">
-        {label}{required && <span className="ml-0.5 text-red-500">*</span>}
+      <span className="text-xs font-medium text-[#3A3A3A]">
+        {label}{required && <span className="ml-0.5 text-[#C44545]">*</span>}
       </span>
       <div className="mt-1">{children}</div>
     </label>

@@ -7,7 +7,7 @@
 
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase, supabaseConfigured, isUuid } from '../supabase';
-import type { Order, OrderLineItem, OrderStatus } from '../../pages/gantt/types';
+import type { Order, OrderLineItem, OrderStatus, SupplierResponse } from '../../pages/gantt/types';
 
 export interface OrderRow {
   id: string;
@@ -24,6 +24,11 @@ export interface OrderRow {
   notes: string | null;
   line_items: OrderLineItem[];
   created_at: string;
+  // Migration 47 (deploy-gated). Optional here so a SELECT * pre-deploy (columns
+  // absent) maps cleanly to undefined rather than throwing.
+  supplier_response?: SupplierResponse | null;
+  supplier_responded_at?: string | null;
+  supplier_response_note?: string | null;
 }
 
 export function mapOrderRow(r: OrderRow): Order {
@@ -40,6 +45,9 @@ export function mapOrderRow(r: OrderRow): Order {
     status: r.status,
     notes: r.notes ?? undefined,
     lineItems: Array.isArray(r.line_items) ? r.line_items : [],
+    supplierResponse: r.supplier_response ?? undefined,
+    supplierRespondedAt: r.supplier_responded_at ?? undefined,
+    supplierResponseNote: r.supplier_response_note ?? undefined,
   };
 }
 
@@ -84,6 +92,29 @@ export async function deleteOrderRemote(id: string): Promise<void> {
   if (!supabaseConfigured()) return;
   const { error } = await supabase.from('orders').delete().eq('id', id);
   if (error) console.warn('[orders] delete failed:', error.message);
+}
+
+/** Supplier Accept/Hold/Decline (role-experiences). Targeted update of ONLY the
+ *  response columns — kept separate from `upsertOrder`/`toRow` so normal order
+ *  writes keep working before migration 47 lands. Best-effort: a missing-column
+ *  error pre-deploy is logged, never thrown (the local store already reflects
+ *  the response optimistically). The RLS policy in migration 47 restricts this
+ *  to the supplier's own POs on their invited projects. */
+export async function updateOrderResponse(
+  id: string,
+  response: SupplierResponse,
+  note?: string,
+): Promise<void> {
+  if (!supabaseConfigured()) return;
+  const { error } = await supabase
+    .from('orders')
+    .update({
+      supplier_response: response,
+      supplier_responded_at: new Date().toISOString(),
+      supplier_response_note: note ?? null,
+    })
+    .eq('id', id);
+  if (error) console.warn('[orders] response update failed (saved locally):', error.message);
 }
 
 /** Subscribe to order inserts/updates/deletes for a project. Returns an

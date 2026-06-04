@@ -64,6 +64,8 @@ const BootstrapAdmin = lazyWithRetry(() => import('./pages/admin/BootstrapAdmin'
 const Pricing        = lazyWithRetry(() => import('./pages/Pricing'));
 const RoleHome         = lazyWithRetry(() => import('./pages/home/RoleHome'));
 const RoleHomeRedirect = lazyWithRetry(() => import('./pages/home/RoleHomeRedirect'));
+const SupplierWorkspace = lazyWithRetry(() => import('./pages/supplier/SupplierWorkspace'));
+const SponsorCockpit     = lazyWithRetry(() => import('./pages/sponsor/SponsorCockpit'));
 
 // Lightweight fallback shown while a route chunk is loading. Mirrors the
 // editorial background colour so the page flash isn't jarring.
@@ -119,6 +121,10 @@ function AppRoutes() {
                 <Route index element={<RoleHomeRedirect />} />
                 <Route path="home" element={<ErrorBoundary label="Home"><RoleHome /></ErrorBoundary>} />
                 <Route path="dashboard" element={<ErrorBoundary label="Dashboard"><Dashboard /></ErrorBoundary>} />
+                {/* Supplier cockpit — vendors land here (role-experiences). */}
+                <Route path="supplier" element={<ErrorBoundary label="Supplier"><SupplierWorkspace /></ErrorBoundary>} />
+                {/* Sponsor cockpit — stakeholders (finance sponsors) land here. */}
+                <Route path="sponsor" element={<ErrorBoundary label="Sponsor"><SponsorCockpit /></ErrorBoundary>} />
                 {/* Upload + Gallery retired as standalone pages — UploadsTab on
                     the Gantt covers project-scoped capture + a recent-photos
                     grid. Old links + Dashboard / Safety / Tasks click-throughs

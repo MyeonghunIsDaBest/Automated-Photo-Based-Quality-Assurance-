@@ -17,8 +17,9 @@ import { DayRollupCard, type DayRollup } from './sitediary/DayRollupCard';
 import { DayHeader } from './sitediary/DayHeader';
 import { ProgressBar } from './sitediary/ProgressBar';
 import { TimelineCard } from './sitediary/TimelineCard';
-import { FabCamera } from './sitediary/FabCamera';
 import { DiaryEntryDrawer } from './sitediary/DiaryEntryDrawer';
+import { CrewTab } from './CrewTab';
+import { ClipboardList, Users } from 'lucide-react';
 
 function nowHHmm(): string {
   const d = new Date();
@@ -37,8 +38,10 @@ type DrawerTarget = DiaryEntry | 'new' | null;
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
-export function SiteDiaryTab({ project, currentUser }: SiteDiaryTabProps) {
+export function SiteDiaryTab({ project, currentUser, canEdit, canDelete }: SiteDiaryTabProps) {
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  // Daily log (the diary timeline) vs the Crew register, folded in as a sub-view.
+  const [section, setSection] = useState<'log' | 'crew'>('log');
 
   // ── Subscriptions ──────────────────────────────────────────────────────
   const allEntries = useDiaryEntries(project.id);
@@ -134,7 +137,6 @@ export function SiteDiaryTab({ project, currentUser }: SiteDiaryTabProps) {
   // assistant modal (e.g. clicked Ask Sparky in the empty state).
   const [autoOpenSparky, setAutoOpenSparky] = useState(false);
 
-  const fabFileRef = useRef<HTMLInputElement | null>(null);
   const quickAddFileRef = useRef<HTMLInputElement | null>(null);
 
   // When we just created a new entry via quick-add or FAB, look it up by id
@@ -233,15 +235,8 @@ export function SiteDiaryTab({ project, currentUser }: SiteDiaryTabProps) {
   );
 
   // ── Photo upload entry points ─────────────────────────────────────────
-  const openFabPicker = useCallback(() => fabFileRef.current?.click(), []);
   const openQuickAddPicker = useCallback(() => quickAddFileRef.current?.click(), []);
 
-  const onPhotoFromFab = useCallback((files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    setPendingPhoto(files[0]);
-    setDrawerTarget('new');
-    if (fabFileRef.current) fabFileRef.current.value = '';
-  }, []);
   const onPhotoFromQuickAdd = useCallback((files: FileList | null) => {
     if (!files || files.length === 0) return;
     setPendingPhoto(files[0]);
@@ -285,6 +280,35 @@ export function SiteDiaryTab({ project, currentUser }: SiteDiaryTabProps) {
         </div>
       </div>
 
+      {/* Sub-nav — the Daily log timeline vs the Crew register (folded in). */}
+      <div className="px-7 pb-3">
+        <div className="inline-flex items-center gap-1 rounded-full border border-[#E6E1D4] bg-white p-1 shadow-[0_1px_2px_rgba(20,20,20,0.04)]">
+          {([['log', 'Daily log', ClipboardList], ['crew', 'Crew', Users]] as const).map(([id, label, Icon]) => {
+            const active = section === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setSection(id)}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition-colors ${
+                  active ? 'bg-[#1A1A1A] text-white' : 'text-[#6B6B6B] hover:bg-[#FAF8F2] hover:text-[#1A1A1A]'
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {section === 'crew' && (
+        <div className="px-7 pb-20">
+          <CrewTab project={project} canEdit={canEdit} canDelete={canDelete} />
+        </div>
+      )}
+
+      {section === 'log' && (
       <main className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-5 px-7 pb-20">
         {/* LEFT COLUMN */}
         <aside className="space-y-4">
@@ -318,18 +342,9 @@ export function SiteDiaryTab({ project, currentUser }: SiteDiaryTabProps) {
           />
         </section>
       </main>
+      )}
 
-      <FabCamera onClick={openFabPicker} pulse={rollup.entries === 0} />
-
-      {/* Hidden file inputs for the FAB + QuickAdd photo paths */}
-      <input
-        ref={fabFileRef}
-        type="file"
-        accept="image/*,video/mp4,video/quicktime"
-        capture="environment"
-        onChange={(e) => onPhotoFromFab(e.target.files)}
-        className="hidden"
-      />
+      {/* Hidden file input for the QuickAdd photo path */}
       <input
         ref={quickAddFileRef}
         type="file"

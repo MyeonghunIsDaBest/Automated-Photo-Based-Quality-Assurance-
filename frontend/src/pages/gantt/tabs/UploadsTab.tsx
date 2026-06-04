@@ -5,7 +5,7 @@
 // Each tile has a hover-revealed delete affordance that calls deletePhoto()
 // against Supabase Storage + the photos table.
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image as ImageIcon,
   Lock,
@@ -14,9 +14,8 @@ import {
   Video as VideoIcon,
   X,
 } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { format, formatDistanceToNow, isToday, isYesterday, parseISO } from 'date-fns';
 import type { Project, User } from '../../../types';
-import { Badge } from '../../../components/ui/badge';
 import {
   deletePhoto,
   getPhotoUrl,
@@ -25,7 +24,7 @@ import {
   type PhotoRow,
 } from '../../../lib/api/photos';
 import { supabaseConfigured } from '../../../lib/supabase';
-import { TabHeader } from '../components/TabHeader';
+import { LedgerHeader, LedgerStatRow, StatusPill } from '../components/ledger';
 
 interface UploadsTabProps {
   project: Project;
@@ -46,6 +45,9 @@ const ACCEPT_ATTR = 'image/*,video/mp4,video/quicktime,.heic,.heif';
 
 export function UploadsTab({ project, currentUser, canUpload }: UploadsTabProps) {
   const [items, setItems] = useState<PhotoTile[]>([]);
+  // Full row metadata (all uploads, not just the 24 shown) so the stat strip
+  // reflects the true totals — already fetched by listPhotos, no extra query.
+  const [allRows, setAllRows] = useState<PhotoRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -78,6 +80,7 @@ export function UploadsTab({ project, currentUser, canUpload }: UploadsTabProps)
       try {
         const rows = await listPhotos(projectId);
         if (cancelled) return;
+        setAllRows(rows);
         const tiles = await Promise.all(rows.slice(0, 24).map(resolveTile));
         if (!cancelled) setItems(tiles);
       } catch (e) {
@@ -104,6 +107,7 @@ export function UploadsTab({ project, currentUser, canUpload }: UploadsTabProps)
     try {
       for (const file of list) {
         const row = await uploadPhoto({ file, projectId: project.id });
+        setAllRows((prev) => [row, ...prev]);
         const tile = await resolveTile(row);
         setItems((prev) => [tile, ...prev].slice(0, 24));
       }
@@ -122,6 +126,7 @@ export function UploadsTab({ project, currentUser, canUpload }: UploadsTabProps)
     try {
       await deletePhoto(tile.row);
       setItems((prev) => prev.filter((t) => t.id !== tile.id));
+      setAllRows((prev) => prev.filter((r) => r.id !== tile.id));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not delete file.');
     } finally {
@@ -129,20 +134,53 @@ export function UploadsTab({ project, currentUser, canUpload }: UploadsTabProps)
     }
   };
 
+  // Strip metrics from the rows already fetched (no extra query).
+  const stats = useMemo(() => {
+    const weekAgo = Date.now() - 7 * 86_400_000;
+    let videos = 0;
+    let thisWeek = 0;
+    for (const r of allRows) {
+      const ext = (r.filename.split('.').pop() ?? '').toLowerCase();
+      if (ext === 'mp4' || ext === 'mov') videos += 1;
+      const t = Date.parse(r.uploaded_at);
+      if (Number.isFinite(t) && t >= weekAgo) thisWeek += 1;
+    }
+    return { total: allRows.length, photos: allRows.length - videos, videos, thisWeek };
+  }, [allRows]);
+
+  // Group the shown tiles by upload date so the gallery reads as a timeline.
+  // `items` is already newest-first, so order within each day is preserved.
+  const grouped = useMemo(() => {
+    const m = new Map<string, PhotoTile[]>();
+    for (const t of items) {
+      const key = (t.uploadedAt ?? '').slice(0, 10) || 'unknown';
+      const arr = m.get(key) ?? [];
+      arr.push(t);
+      m.set(key, arr);
+    }
+    return [...m.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+  }, [items]);
+
   return (
     <>
-      <TabHeader
-        eyebrow={`Workspace · Uploads · ${project.name}`}
+      <LedgerHeader
+        kicker="PIX"
+        icon={ImageIcon}
+        eyebrow={`Photo log · ${project.name}`}
         title="Photos & site footage."
-        description="Drop site photos and videos. Files land in the project's gallery, feed the AI analyzer, and surface in the activity stream."
-        action={
-          canUpload ? null : (
-            <Badge variant="secondary" className="gap-1.5 px-3 py-1.5">
-              <Lock className="h-3.5 w-3.5" />
-              Read-only
-            </Badge>
-          )
-        }
+        meta={<>{stats.total} upload{stats.total === 1 ? '' : 's'} · feeds the AI analyzer + activity stream</>}
+        actions={canUpload ? undefined : (
+          <StatusPill tone="slate" className="px-3 py-1.5"><Lock className="h-3.5 w-3.5" /> Read-only</StatusPill>
+        )}
+      />
+
+      <LedgerStatRow
+        stats={[
+          { value: stats.total,    label: 'Total uploads', sub: 'photos & video', tone: 'ink' },
+          { value: stats.thisWeek, label: 'This week',      sub: 'last 7 days',    tone: 'sage' },
+          { value: stats.photos,   label: 'Photos',         tone: 'slate' },
+          { value: stats.videos,   label: 'Videos',         tone: 'amber' },
+        ]}
       />
 
       {/* Editorial dropzone */}
@@ -233,8 +271,15 @@ export function UploadsTab({ project, currentUser, canUpload }: UploadsTabProps)
             </p>
           </div>
         ) : (
-          <div className="grid gap-2.5 p-3 grid-cols-2 sm:grid-cols-3 xl:grid-cols-4">
-            {items.map((tile) => {
+          <div className="space-y-5 p-3">
+            {grouped.map(([dayKey, tiles]) => (
+              <div key={dayKey}>
+                <div className="mb-2 flex items-baseline gap-2 px-0.5">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6B6B6B]">{dayLabel(dayKey)}</span>
+                  <span className="text-[11px] tabular-nums text-[#A0A0A0]">{tiles.length}</span>
+                </div>
+                <div className="grid gap-2.5 grid-cols-2 sm:grid-cols-3 xl:grid-cols-4">
+                  {tiles.map((tile) => {
               const isConfirming = confirmId === tile.id;
               const isDeleting = deleting === tile.id;
               return (
@@ -330,16 +375,30 @@ export function UploadsTab({ project, currentUser, canUpload }: UploadsTabProps)
                     <p className="truncate text-[12px] font-semibold text-[#1A1A1A]" title={tile.filename}>
                       {tile.filename}
                     </p>
-                    <p className="text-[10.5px] text-[#A0A0A0]">
-                      {format(parseISO(tile.uploadedAt), 'MMM d, h:mm a')}
+                    <p
+                      className="text-[10.5px] text-[#A0A0A0]"
+                      title={format(parseISO(tile.uploadedAt), 'MMM d, yyyy h:mm a')}
+                    >
+                      {formatDistanceToNow(parseISO(tile.uploadedAt), { addSuffix: true })}
                     </p>
                   </div>
                 </div>
               );
-            })}
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
     </>
   );
+}
+
+function dayLabel(key: string): string {
+  if (key === 'unknown') return 'Undated';
+  const d = parseISO(key);
+  if (isToday(d)) return 'Today';
+  if (isYesterday(d)) return 'Yesterday';
+  return format(d, 'EEEE, MMM d');
 }

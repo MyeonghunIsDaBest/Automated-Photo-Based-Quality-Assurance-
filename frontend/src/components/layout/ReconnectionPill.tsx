@@ -39,7 +39,7 @@ export default function ReconnectionPill() {
 
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700"
+      className="inline-flex items-center gap-1.5 rounded-full border border-[#E8D4A8] bg-[#F9EFD9] px-2 py-0.5 text-[10px] font-medium text-[#C8841E]"
       role="status"
       aria-live="polite"
       title="Realtime channel is reconnecting"
