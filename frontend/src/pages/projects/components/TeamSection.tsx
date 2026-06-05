@@ -28,7 +28,6 @@ const SECURITY_GROUP_LABEL: Partial<Record<SecurityGroup, string>> = {
   worker:           'Worker',
   stakeholder:      'Stakeholder',
   supplier:         'Supplier',
-  site_manager:     'Site manager',
   project_manager:  'Project manager',
   construction_mgr: 'Construction manager',
   administrator:    'Administrator',

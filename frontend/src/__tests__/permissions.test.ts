@@ -25,7 +25,6 @@ const ALL_GROUPS: SecurityGroup[] = [
   'administrator',
   'construction_mgr',
   'project_manager',
-  'site_manager',
   'worker',
   'stakeholder',
   'supplier',
@@ -53,7 +52,6 @@ describe('canSeeAdminDashboard', () => {
     ['administrator', true],
     ['construction_mgr', false],
     ['project_manager', false],
-    ['site_manager', false],
     ['worker', false],
     ['stakeholder', false],
     ['supplier', false],
@@ -106,11 +104,6 @@ describe('Phase A: new helpers per security_group', () => {
       gallery: true, messages: true, projectFiles: true, confirmAI: true,
       exportAudit: false, viewProject: true, supplierTabView: true,
       supplierTabEdit: true, resolveSafety: true, logSafety: true, finance: true,
-    },
-    site_manager: {
-      gallery: true, messages: true, projectFiles: true, confirmAI: true,
-      exportAudit: false, viewProject: true, supplierTabView: true,
-      supplierTabEdit: false, resolveSafety: true, logSafety: true, finance: false,
     },
     worker: {
       gallery: true, messages: true, projectFiles: true, confirmAI: false,
@@ -178,8 +171,8 @@ describe('canAssignSecurityGroup', () => {
   });
 
   it('non-admin roles cannot assign anything', () => {
-    expect(canAssignSecurityGroup(makeProfile('site_manager'), 'worker')).toBe(false);
     expect(canAssignSecurityGroup(makeProfile('worker'), 'worker')).toBe(false);
+    expect(canAssignSecurityGroup(makeProfile('supplier'), 'worker')).toBe(false);
   });
 
   it('dev (superuser) can assign any role; nobody else can mint dev', () => {
@@ -228,7 +221,7 @@ describe('owner-only project lifecycle', () => {
   it('canDeleteProject is true only for owners', () => {
     expect(canDeleteProject(makeProfile('company_admin', { isOwner: true }))).toBe(true);
     expect(canDeleteProject(makeProfile('administrator', { isOwner: true }))).toBe(true);
-    expect(canDeleteProject(makeProfile('site_manager'))).toBe(false);
+    expect(canDeleteProject(makeProfile('worker'))).toBe(false);
     expect(canDeleteProject(null)).toBe(false);
   });
 });

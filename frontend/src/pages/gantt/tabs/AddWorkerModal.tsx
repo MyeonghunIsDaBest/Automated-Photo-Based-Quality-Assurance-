@@ -48,14 +48,12 @@ type Mode = 'create' | 'invite';
 // admin land on the role-adaptive Dashboard (different lens); field/external
 // roles get their cockpits.
 type InviteCapacity =
-  | 'worker' | 'site_manager' | 'project_manager' | 'construction_mgr'
+  | 'worker' | 'project_manager' | 'construction_mgr'
   | 'company_admin' | 'supplier' | 'stakeholder';
 
 const CAPACITY: Record<InviteCapacity, { label: string; lands: string; welcome: (p: string) => string }> = {
   worker:           { label: 'Worker',           lands: 'Home — clock in & upload photos',
     welcome: (p) => `You've been added to ${p} as crew. Open Home, clock in under Site Diary → Crew, and upload your site photos.` },
-  site_manager:     { label: 'Site Manager',     lands: 'Dashboard — site ops (crew, tasks, safety)',
-    welcome: (p) => `You've been added to ${p} as site manager. Run tasks, crew, photos, and safety from your Dashboard.` },
   project_manager:  { label: 'Project Manager',  lands: 'Dashboard — command + finance',
     welcome: (p) => `You've been added to ${p} as project manager. Plan, schedule, finance, and reports live on your Dashboard.` },
   construction_mgr: { label: 'Construction Mgr', lands: 'Dashboard — portfolio across projects',
@@ -67,7 +65,7 @@ const CAPACITY: Record<InviteCapacity, { label: string; lands: string; welcome: 
   stakeholder:      { label: 'Stakeholder',      lands: 'Sponsor cockpit — budget & progress',
     welcome: (p) => `You've been added to ${p} as a project sponsor. Track spend vs progress and review milestones in your Sponsor view.` },
 };
-const CAPACITY_ORDER: InviteCapacity[] = ['worker', 'site_manager', 'project_manager', 'construction_mgr', 'company_admin', 'supplier', 'stakeholder'];
+const CAPACITY_ORDER: InviteCapacity[] = ['worker', 'project_manager', 'construction_mgr', 'company_admin', 'supplier', 'stakeholder'];
 
 // Temp password: upper + lower + digit so it clears common policies; the worker
 // resets it on first login. Ambiguous chars (0/O, 1/l/I) omitted for hand-off.

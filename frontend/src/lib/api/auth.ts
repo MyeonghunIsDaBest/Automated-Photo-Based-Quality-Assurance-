@@ -29,6 +29,12 @@ interface ProfileRow {
 }
 
 export function rowToProfile(r: ProfileRow): Profile {
+  // `site_manager` is removed (merged into project_manager). Coerce any lingering
+  // DB value here — the single profile-load boundary — so a pre-migration row
+  // can't surface a dead role and lock the user out. Migration 52 makes it
+  // permanent server-side.
+  const securityGroup: SecurityGroup =
+    (r.security_group as string) === 'site_manager' ? 'project_manager' : r.security_group;
   return {
     id: r.id,
     email: r.email,
@@ -38,7 +44,7 @@ export function rowToProfile(r: ProfileRow): Profile {
     emergencyContactName: r.emergency_contact_name ?? undefined,
     emergencyContactEmail: r.emergency_contact_email ?? undefined,
     emergencyContactMobile: r.emergency_contact_mobile ?? undefined,
-    securityGroup: r.security_group,
+    securityGroup,
     isActive: r.is_active,
     isOwner: Boolean(r.is_owner),
     avatarUrl: r.avatar_url ?? undefined,
@@ -62,7 +68,6 @@ export async function signIn(email: string, password: string): Promise<Session> 
 // (01_security_group_expand.sql §3) downgrades any other value to 'worker'.
 export type SignupRole =
   | 'worker'
-  | 'site_manager'
   | 'project_manager'
   | 'construction_mgr';
 

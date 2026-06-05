@@ -19,7 +19,6 @@ const SECURITY_GROUPS: SecurityGroup[] = [
   'company_admin',
   'construction_mgr',
   'project_manager',
-  'site_manager',
   'worker',
   'stakeholder',
   'supplier',

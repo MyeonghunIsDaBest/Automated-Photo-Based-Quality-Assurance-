@@ -24,7 +24,6 @@ const ASSIGNABLE_GROUPS: SecurityGroup[] = [
   'administrator',
   'construction_mgr',
   'project_manager',
-  'site_manager',
   'worker',
 ];
 

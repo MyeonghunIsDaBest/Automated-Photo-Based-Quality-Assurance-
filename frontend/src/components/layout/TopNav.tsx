@@ -49,11 +49,11 @@ type NavItem = {
 // "Dashboard → /dashboard" (the data-dense panel). The rest of the strip
 // is shared.
 const SHARED_NAV_TAIL: NavItem[] = [
-  { label: 'Projects', icon: FolderOpen,    path: '/projects' },
-  { label: 'Messages', icon: MessageSquare, path: '/messages' },
-  { label: 'Reports',  icon: DollarSign,    path: '/reports' },
-  { label: 'Safety',   icon: HardHat,       path: '/safety' },
-  { label: 'Admin',    icon: ShieldCheck,   path: '/admin',  gate: canSeeAdminDashboard },
+  { label: 'Materials', icon: FolderOpen,    path: '/projects' },
+  { label: 'Messages',  icon: MessageSquare, path: '/messages' },
+  { label: 'Reports',   icon: DollarSign,    path: '/reports' },
+  { label: 'Safety',    icon: HardHat,       path: '/safety' },
+  { label: 'Admin',     icon: ShieldCheck,   path: '/admin',  gate: canSeeAdminDashboard },
 ];
 
 function homeNavItemFor(principal: User | Profile | null): NavItem {

@@ -4,12 +4,12 @@ import { motion } from 'framer-motion';
 import { useAppStore } from '../store';
 import { useFeatureStore } from '../store/features';
 import {
-  ArrowLeft, CalendarDays,
+  ArrowLeft, CalendarDays, DollarSign,
   FileBox, Inbox, Layers, LayoutDashboard, ListChecks, Package,
   type LucideIcon,
 } from 'lucide-react';
-import type { Task } from '../types';
-import { canEditTasks, canDeleteTasks, canUploadPhotos } from '../lib/permissions';
+import type { Task, User } from '../types';
+import { canEditTasks, canDeleteTasks, canUploadPhotos, canViewFinance } from '../lib/permissions';
 import {
   createTaskShared,
   saveTaskShared,
@@ -34,12 +34,15 @@ import { SiteDiaryTab } from './gantt/tabs/SiteDiaryTab';
 // four nav entries to one. Each child tab is reused as-is via a `hideHeader`
 // prop so we don't duplicate logic / drawers / wizards.
 import { SupplierTab }     from './gantt/tabs/SupplierTab';
+import { FinanceTab }      from './gantt/tabs/FinanceTab';
 
 
 interface TabSpec {
   id: TabId;
   label: string;
   icon: LucideIcon;
+  /** Optional visibility gate. Omitted → always visible to anyone on the Gantt. */
+  gate?: (user: User | null) => boolean;
 }
 
 // Overview lands first so clicking into a project always opens the briefing.
@@ -53,6 +56,7 @@ const TAB_SPECS: TabSpec[] = [
   { id: 'review',      label: 'AI-Analysis', icon: Inbox },
   { id: 'site_diary',  label: 'Site Diary', icon: CalendarDays },
   { id: 'supplier',    label: 'Supplier',   icon: Package },
+  { id: 'finance',     label: 'Finance',    icon: DollarSign, gate: canViewFinance },
   { id: 'inventory',   label: 'Inventory',  icon: Layers },
   { id: 'files',       label: 'Files',      icon: FileBox },
 ];
@@ -89,6 +93,14 @@ export default function Gantt() {
   const canDelete = canDeleteTasks(currentUser);
   const canUpload = canUploadPhotos(currentUser);
 
+  // Role-gated tab strip — e.g. Finance shows only for finance viewers
+  // (company_admin / project_manager / construction_mgr / site_manager /
+  // stakeholder / dev). Other tabs have no gate and show for everyone.
+  const visibleTabs = useMemo(
+    () => TAB_SPECS.filter((t) => !t.gate || t.gate(currentUser)),
+    [currentUser],
+  );
+
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
   const [initialOpenTaskId, setInitialOpenTaskId] = useState<string | null>(null);
 
@@ -100,7 +112,7 @@ export default function Gantt() {
     onApplyExtras: ({ tab, task }) => {
       if (tab === 'punch_list') {
         setActiveTab('site_diary');
-      } else if (tab && TAB_SPECS.some((s) => s.id === tab)) {
+      } else if (tab && visibleTabs.some((s) => s.id === tab)) {
         setActiveTab(tab as ActiveTab);
       }
       if (task) setInitialOpenTaskId(task);
@@ -229,7 +241,7 @@ export default function Gantt() {
       <div className="mb-6 flex items-center gap-3 sm:gap-4">
         <div className="min-w-0 flex-1 overflow-x-auto pb-1">
           <div className="inline-flex items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
-            {TAB_SPECS.map((tab) => {
+            {visibleTabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
               const count = counts[tab.id as keyof typeof counts];
@@ -278,7 +290,7 @@ export default function Gantt() {
       </div>
 
       {/* ─── Active tab ─── */}
-      <ErrorBoundary label={TAB_SPECS.find((t) => t.id === activeTab)?.label ?? activeTab}>
+      <ErrorBoundary label={visibleTabs.find((t) => t.id === activeTab)?.label ?? activeTab}>
         {activeTab === 'overview' && (
           <OverviewTab
             project={project}
@@ -331,6 +343,8 @@ export default function Gantt() {
         {activeTab === 'supplier' && (
           <SupplierTab project={project} canEdit={canEdit} canDelete={canDelete} />
         )}
+
+        {activeTab === 'finance' && <FinanceTab />}
 
         {activeTab === 'inventory' && (
           <InventoryTab

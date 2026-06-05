@@ -15,7 +15,6 @@ import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../../store';
 import { useMyMemberships } from './useMyMemberships';
-import { isFieldRole } from '../permissions';
 
 export function useProjectAccessGuard(projectId: string | undefined): void {
   const navigate = useNavigate();
@@ -32,7 +31,12 @@ export function useProjectAccessGuard(projectId: string | undefined): void {
                                              // would read it as admin bypass
                                              // and let the page render one
                                              // frame before the redirect).
-    if (!isFieldRole(currentProfile)) return; // admin / PM bypass
+    // Only org-wide admins (company_admin / administrator / dev) bypass the
+    // membership check. Project Manager + Construction Manager are now scoped to
+    // projects they created or were invited to — same as field roles — so they
+    // get redirected off a project they're not a member of.
+    const sg = currentProfile.securityGroup;
+    if (sg === 'company_admin' || sg === 'administrator' || sg === 'dev') return;
 
     const hasAccess = memberships.some(
       (m) => m.projectId === projectId && !m.removedAt,

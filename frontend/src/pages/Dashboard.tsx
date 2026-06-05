@@ -56,7 +56,6 @@ const ROLE_BLURB: Record<SecurityGroup, string> = {
   administrator:    'Manage users, stakeholders, and suppliers. Full project visibility.',
   construction_mgr: 'Multi-site oversight. Edit projects, tasks, and add comments.',
   project_manager:  'Plan + scheduling. Edit Gantt, run reports, edit tasks.',
-  site_manager:     'Run a single site. Update tasks, manage photos and comments.',
   worker:           'Field crew. Upload photos against tasks, leave notes, view your assignments.',
   dev:              'Developer — hidden superuser with full access across every surface.',
   stakeholder:      'Read-only client view. Track progress and review reports for your linked projects.',
@@ -137,7 +136,6 @@ function weatherIconFor(tone: WeatherTone) {
 // Map a security_group label → short trade chip displayed on the Team row.
 function tradeChip(group: SecurityGroup): string {
   switch (group) {
-    case 'site_manager':     return 'GENERAL';
     case 'construction_mgr': return 'GENERAL';
     case 'project_manager':  return 'GENERAL';
     case 'company_admin':    return 'ADMIN';
@@ -156,8 +154,8 @@ export default function Dashboard() {
   const { users, zones, project, currentProfile, currentUser, setNotification } = useAppStore();
   const stats = useDashboardStats();
   // Role-adaptive lens (Phase 1): construction_mgr → portfolio rollup band,
-  // project_manager + admins → command (+ finance summary), site_manager →
-  // site-ops (no finance). Managers/admins all share this one Dashboard.
+  // project_manager + admins → command (+ finance summary). Managers/admins all
+  // share this one Dashboard.
   const lens = dashboardLens(currentProfile);
   const showFinanceSummary = lens === 'command' && canViewFinance(currentUser);
   const activeJobs = useActiveJobs(6);

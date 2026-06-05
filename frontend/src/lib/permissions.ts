@@ -215,17 +215,18 @@ export function canForceTaskProgress(p: AdminPrincipal): boolean {
   return isOwnerPrincipal(p);
 }
 
-// Project lifecycle (create + delete) is owner-only. The legacy
-// `canCreateProjects` helper lives on for any callers still wired to the
-// security-group capability matrix — the singular-named gates here are what
-// the owner-tier rework consumes. Workers / inspectors / stakeholders never
-// see the create / delete affordances.
+// Project lifecycle. Owners + Project Managers can create projects (a PM owns
+// the ones they create — the RPC stamps `created_by` and auto-adds them as a
+// member). Delete is owner-or-creator: a PM can delete a project they created
+// (RLS enforces `created_by = auth.uid()` server-side, so the affordance only
+// succeeds on their own projects). Workers / stakeholders / suppliers never see
+// the create / delete affordances.
 export function canCreateProject(p: AdminPrincipal): boolean {
-  return isOwnerPrincipal(p);
+  return isOwnerPrincipal(p) || principalGroup(p) === 'project_manager';
 }
 
 export function canDeleteProject(p: AdminPrincipal): boolean {
-  return isOwnerPrincipal(p);
+  return isOwnerPrincipal(p) || principalGroup(p) === 'project_manager';
 }
 
 // Project-administration gate — used to control the "Team" section's invite
@@ -241,8 +242,7 @@ export function canAdminProjects(p: AdminPrincipal): boolean {
     sg === 'company_admin'    ||
     sg === 'administrator'    ||
     sg === 'project_manager'  ||
-    sg === 'construction_mgr' ||
-    sg === 'site_manager'
+    sg === 'construction_mgr'
   );
 }
 
@@ -255,17 +255,17 @@ export function isFieldRole(p: AdminPrincipal): boolean {
   return sg === 'worker' || sg === 'stakeholder' || sg === 'supplier';
 }
 
-// Dashboard "lens" — the management tier (Construction Mgr / PM / Site Manager)
-// + admins all share one Dashboard; the lens re-emphasizes sections per role:
+// Dashboard "lens" — the management tier (Construction Mgr / PM) + admins all
+// share one Dashboard; the lens re-emphasizes sections per role:
 //   • portfolio  → Construction Manager + admins (multi-project rollup band)
-//   • site_ops   → Site Manager (crew / tasks / photos / safety; no finance)
 //   • command    → Project Manager (full dashboard + finance summary) + default
+// ('site_ops' stays in the union for back-compat but is no longer produced
+//  now that Site Manager is merged into Project Manager.)
 export type DashboardLens = 'command' | 'site_ops' | 'portfolio';
 export function dashboardLens(p: AdminPrincipal): DashboardLens {
   const sg = principalGroup(p);
   // dev (god mode) + construction_mgr → portfolio rollup across ALL projects.
   if (sg === 'dev' || sg === 'construction_mgr') return 'portfolio';
-  if (sg === 'site_manager') return 'site_ops';
   return 'command';
 }
 
@@ -278,6 +278,12 @@ export function canAssignSecurityGroup(actor: AdminPrincipal, target: SecurityGr
   // deprecated and not offered. Company Admin can assign every other role.
   if (actorGroup === 'company_admin') return target !== 'dev';
   if (actorGroup === 'administrator') return target !== 'company_admin' && target !== 'dev';
+  // Project Managers run their own crew — they can assign any NON-admin role
+  // (worker / project_manager / construction_mgr / supplier / stakeholder) to
+  // people they invite, but never the admin tiers or the hidden dev superuser.
+  if (actorGroup === 'project_manager') {
+    return target !== 'company_admin' && target !== 'administrator' && target !== 'dev';
+  }
   return false;
 }
 
@@ -297,7 +303,6 @@ export const SECURITY_GROUP_LABELS: Record<SecurityGroup, string> = {
   administrator: 'Administrator', // deprecated — alias of Company Admin
   construction_mgr: 'Construction Manager',
   project_manager: 'Project Manager',
-  site_manager: 'Site Manager',
   worker: 'Worker',
   stakeholder: 'Stakeholder',
   supplier: 'Supplier',

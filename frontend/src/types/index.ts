@@ -18,7 +18,6 @@ export type SecurityGroup =
   | 'administrator'  // @deprecated — alias of company_admin; not assignable
   | 'construction_mgr'
   | 'project_manager'
-  | 'site_manager'
   | 'worker'
   | 'stakeholder'
   | 'supplier'
@@ -193,7 +192,6 @@ export function mapSecurityGroupToLegacyRole(group: SecurityGroup): UserRole {
       return 'admin';
     case 'construction_mgr':
     case 'project_manager':
-    case 'site_manager':
       return 'supervisor';
     case 'worker':
       return 'subcontractor';

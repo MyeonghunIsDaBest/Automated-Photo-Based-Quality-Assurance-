@@ -12,6 +12,7 @@ export type TabId =
   | 'overview'
   | 'tasks'
   | 'review'        // AI analysis hub — Mock-AI runner + review queue
+  | 'finance'       // money view — spend vs progress, budget, milestones, invoices
   | 'crew'          // legacy deep-link target → resolves to 'site_diary' (merged in)
   | 'site_diary'
   | 'punch_list'

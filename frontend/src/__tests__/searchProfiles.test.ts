@@ -30,7 +30,7 @@ const { fakeProfiles } = vi.hoisted(() => ({
       email: 'me@example.com',
       firstName: 'Self',
       lastName: 'User',
-      securityGroup: 'site_manager',
+      securityGroup: 'project_manager',
       isActive: true,
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',

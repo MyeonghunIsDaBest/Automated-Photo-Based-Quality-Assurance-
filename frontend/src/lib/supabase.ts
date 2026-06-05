@@ -23,10 +23,31 @@ if (!url || !anonKey) {
   );
 }
 
+// supabase-js persists the auth session in localStorage by default, and touches
+// it on init + every token refresh — deep in the React tree. In a browser where
+// storage is blocked (Firefox strict tracking protection / cookies blocked /
+// partitioned cross-origin iframe / private mode) EVERY localStorage access
+// throws "SecurityError: The operation is insecure", which crashes the whole app
+// at the root ErrorBoundary. This adapter swallows those throws and falls back
+// to an in-memory (this-tab-only) session so the app degrades instead of dying.
+const memoryStore: Record<string, string> = {};
+const safeAuthStorage = {
+  getItem(key: string): string | null {
+    try { return localStorage.getItem(key); } catch { return key in memoryStore ? memoryStore[key] : null; }
+  },
+  setItem(key: string, value: string): void {
+    try { localStorage.setItem(key, value); } catch { memoryStore[key] = value; }
+  },
+  removeItem(key: string): void {
+    try { localStorage.removeItem(key); } catch { delete memoryStore[key]; }
+  },
+};
+
 export const supabase: SupabaseClient = createClient(url ?? '', anonKey ?? '', {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
+    storage: safeAuthStorage,
   },
 });
 

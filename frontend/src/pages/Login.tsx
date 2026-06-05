@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   GanttChartSquare,
   HardHat,
-  ClipboardList,
   Briefcase,
   Wrench,
   Eye,
@@ -26,7 +25,6 @@ const ROLE_OPTIONS: {
   caption: string;
 }[] = [
   { value: 'worker',          label: 'Worker',           Icon: HardHat,        caption: 'On-site labour. Upload photos, leave notes.' },
-  { value: 'site_manager',    label: 'Site Manager',     Icon: ClipboardList,  caption: 'Run a site. Update tasks, manage photos.' },
   { value: 'project_manager', label: 'Project Manager',  Icon: Briefcase,      caption: 'Plan + scheduling. Edit Gantt + reports.' },
   { value: 'construction_mgr',label: 'Construction Mgr', Icon: Wrench,         caption: 'Multi-site oversight. Edit projects + tasks.' },
 ];

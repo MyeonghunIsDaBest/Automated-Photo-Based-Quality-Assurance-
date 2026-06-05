@@ -29,7 +29,6 @@ const SECURITY_GROUPS: SecurityGroup[] = [
   'administrator',
   'construction_mgr',
   'project_manager',
-  'site_manager',
   'worker',
   'stakeholder',
   'supplier',
@@ -42,7 +41,6 @@ const ADMIN_GROUPS: SecurityGroup[] = ['company_admin', 'administrator'];
 const NON_ADMIN_GROUPS: SecurityGroup[] = [
   'construction_mgr',
   'project_manager',
-  'site_manager',
   'worker',
   'stakeholder',
   'supplier',
@@ -53,7 +51,6 @@ const ROLE_BADGE: Record<SecurityGroup, string> = {
   administrator:    'border-[#A8D0B8] bg-[#E5F2EA] text-[#246F47]',
   construction_mgr: 'border-[#D8D2C4] bg-[#EEF1F4] text-[#5B6B7B]',
   project_manager:  'border-[#D8D2C4] bg-[#EEF1F4] text-[#5B6B7B]',
-  site_manager:     'border-[#D8D2C4] bg-[#EEF1F4] text-[#5B6B7B]',
   worker:           'border-[#E6E1D4] bg-[#FAF8F2] text-[#6B6B6B]',
   stakeholder:      'border-[#E6E1D4] bg-[#F0EDE4] text-[#1A1A1A]',
   supplier:         'border-[#F0D5A0] bg-[#F9EFD9] text-[#C8841E]',

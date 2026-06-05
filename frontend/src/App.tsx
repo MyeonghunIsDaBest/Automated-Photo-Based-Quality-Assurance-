@@ -30,6 +30,18 @@ import { pageTransition } from './lib/motion/variants';
 const CHUNK_RELOAD_KEY = 'chunk-reload-attempted';
 const CHUNK_ERROR_RE = /Failed to fetch dynamically imported module|Importing a module script failed|ChunkLoadError/i;
 
+// Storage access can THROW — Firefox with cookies/site-data blocked, strict
+// tracking protection, a partitioned/cross-origin iframe, or private mode all
+// raise "SecurityError: The operation is insecure" the instant you touch
+// sessionStorage/localStorage. These guards run at the app root, so an
+// unguarded throw here takes down the entire app via the root ErrorBoundary.
+// Swallow it and degrade — the chunk-reload guard is a nicety, not load-bearing.
+const safeSession = {
+  get(key: string): string | null { try { return sessionStorage.getItem(key); } catch { return null; } },
+  set(key: string, value: string) { try { sessionStorage.setItem(key, value); } catch { /* storage blocked */ } },
+  remove(key: string) { try { sessionStorage.removeItem(key); } catch { /* storage blocked */ } },
+};
+
 function lazyWithRetry<T extends ComponentType<any>>(
   loader: () => Promise<{ default: T }>,
 ): LazyExoticComponent<T> {
@@ -41,8 +53,8 @@ function lazyWithRetry<T extends ComponentType<any>>(
         return await loader();
       } catch (secondErr) {
         const msg = secondErr instanceof Error ? secondErr.message : String(secondErr);
-        if (CHUNK_ERROR_RE.test(msg) && !sessionStorage.getItem(CHUNK_RELOAD_KEY)) {
-          sessionStorage.setItem(CHUNK_RELOAD_KEY, '1');
+        if (CHUNK_ERROR_RE.test(msg) && !safeSession.get(CHUNK_RELOAD_KEY)) {
+          safeSession.set(CHUNK_RELOAD_KEY, '1');
           window.location.reload();
           return await new Promise<never>(() => {});
         }
@@ -90,7 +102,7 @@ function AppRoutes() {
   // Clear the one-shot reload guard after any successful navigation, so a
   // chunk-load failure later in the session can still trigger one reload.
   useEffect(() => {
-    sessionStorage.removeItem(CHUNK_RELOAD_KEY);
+    safeSession.remove(CHUNK_RELOAD_KEY);
   }, [location.pathname]);
   return (
     <AnimatePresence mode="wait" initial={false}>
