@@ -60,7 +60,7 @@ type ReportType = Report['reportType']; // 'daily' | 'weekly' | 'monthly'
 type EntityFilter = 'all' | AuditLog['entityType'];
 
 const REPORT_TYPE_META: Record<ReportType, { label: string; window: string; Icon: typeof CalendarDays; accent: string }> = {
-  daily:   { label: 'Daily',   window: 'Last 24 hours',     Icon: CalendarDays,  accent: '#2F8F5C' },
+  daily:   { label: 'Daily',   window: 'Today',             Icon: CalendarDays,  accent: '#2F8F5C' },
   weekly:  { label: 'Weekly',  window: 'Last 7 days',       Icon: CalendarRange, accent: '#246F47' },
   monthly: { label: 'Monthly', window: 'Last 30 days',      Icon: Calendar,      accent: '#6B6B6B' },
 };

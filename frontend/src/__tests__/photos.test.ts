@@ -40,12 +40,14 @@ const fromMock = vi.fn(() => ({ insert: insertMock }));
 const uploadMock = vi.fn(async () => ({ data: { path: 'x' }, error: null }));
 const storageFromMock = vi.fn(() => ({ upload: uploadMock }));
 const rpcMock = vi.fn(() => ({ then: (onOk: () => void) => { onOk(); } }));
+const getSessionMock = vi.fn(async () => ({ data: { session: { user: { id: 'user-123' } } }, error: null }));
 
 vi.mock('../lib/supabase', () => ({
   supabase: {
     from: () => fromMock(),
     storage: { from: () => storageFromMock() },
     rpc: () => rpcMock(),
+    auth: { getSession: () => getSessionMock() },
   },
   supabaseConfigured: () => true,
 }));
@@ -75,6 +77,7 @@ describe('uploadPhoto auto-analyse wiring', () => {
     singleMock.mockClear();
     insertMock.mockClear();
     uploadMock.mockClear();
+    getSessionMock.mockClear();
   });
 
   it('fires requestAnalysis once with the new photo id after a successful insert', async () => {
@@ -102,5 +105,15 @@ describe('uploadPhoto auto-analyse wiring', () => {
     expect(row.id).toBe('photo-xyz');
     // The rejection is swallowed by the .catch in uploadPhoto, so the await
     // above resolves normally.
+  });
+
+  it('stamps uploaded_by from the signed-in session so per-user AI metering works', async () => {
+    await uploadPhoto({ file: makeFile(), projectId: PROJECT_ID });
+    // analyze-photo reads photos.uploaded_by to attribute the vision call to a
+    // user (per-user daily cap, migration 35). If the insert omits it, that cap
+    // is a no-op and one user can drain the global budget via uploads.
+    expect(insertMock).toHaveBeenCalledWith(
+      expect.objectContaining({ uploaded_by: 'user-123' }),
+    );
   });
 });

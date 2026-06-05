@@ -102,6 +102,14 @@ export async function uploadPhoto({
     });
   if (upload.error) throw upload.error;
 
+  // Attribute the upload to the signed-in user so analyze-photo can meter the
+  // vision call against this user's PER-USER AI daily cap (migration 35) — not
+  // just the global cap. getSession() reads the local session (no extra network
+  // round-trip on this hot path). Best-effort: a missing session falls back to
+  // null (global-only metering) and never blocks the upload.
+  const { data: sessionData } = await supabase.auth.getSession();
+  const uploadedBy = sessionData.session?.user?.id ?? null;
+
   const { data, error } = await supabase
     .from('photos')
     .insert({
@@ -109,6 +117,7 @@ export async function uploadPhoto({
       project_id: projectId,
       task_id: taskId ?? null,
       zone_id: zoneId ?? null,
+      uploaded_by: uploadedBy,
       filename: file.name,
       storage_path: storagePath,
       file_size_kb: Math.round(file.size / 1024),
