@@ -27,6 +27,7 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 
 import { callAnthropic } from '../_shared/anthropic.ts';
+import { getUserId } from '../_shared/auth.ts';
 import { logAction } from '../_shared/auditLog.ts';
 import { CORS_HEADERS, handleCorsPreflight } from '../_shared/cors.ts';
 
@@ -131,12 +132,14 @@ serve(async (req: Request) => {
   // per-surface tail is appended without a cache_control breakpoint so
   // every surface (site_diary, incident_report, …) reads the same cached
   // prefix instead of writing 5 separate cache entries.
+  const userId = await getUserId(supabase, req);
   const result = await callAnthropic(supabase, {
     system: {
       stable: SYSTEM_PROMPT,
       variable: `\n\nSurface: ${body.surface} — ${surfaceGuidance}`,
     },
     messages: [{ role: 'user', content: text }],
+    userId,
   });
 
   if (!result.ok) {

@@ -22,6 +22,7 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 
 import { callAnthropicVision } from '../_shared/anthropic.ts';
+import { getUserId } from '../_shared/auth.ts';
 import { logAction } from '../_shared/auditLog.ts';
 import { CORS_HEADERS, handleCorsPreflight } from '../_shared/cors.ts';
 import { CONDITIONS_SYSTEM, CONDITIONS_USER_TEXT, parseConditions } from '../_shared/conditionsPrompt.ts';
@@ -85,12 +86,14 @@ serve(async (req: Request) => {
     return json({ skipped: true }, 200);
   }
 
+  const userId = await getUserId(supabase, req);
   const result = await callAnthropicVision(supabase, {
     system: CONDITIONS_SYSTEM,
     userText: CONDITIONS_USER_TEXT,
     imageBase64: body.imageBase64,
     mediaType: body.mediaType as 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif',
     maxTokens: 200,
+    userId,
   });
 
   if (!result.ok) {

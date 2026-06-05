@@ -20,7 +20,7 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 // @ts-expect-error Deno-only import.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 
-import { callAnthropic, callAnthropicStream, APPROX_CENTS_PER_TOKEN } from '../_shared/anthropic.ts';
+import { callAnthropic, callAnthropicStream, pricingCents } from '../_shared/anthropic.ts';
 import { logAction } from '../_shared/auditLog.ts';
 import { CORS_HEADERS, handleCorsPreflight } from '../_shared/cors.ts';
 import { renderDiarySnapshot, type SnapshotEntry } from '../_shared/renderDiarySnapshot.ts';
@@ -74,6 +74,23 @@ function bad(json: unknown, status: number): Response {
     status,
     headers: { 'content-type': 'application/json', ...CORS_HEADERS },
   });
+}
+
+// Keep the isolate alive until background work (usage metering + audit) lands.
+// Supabase's Edge runtime exposes EdgeRuntime.waitUntil for exactly this; once
+// the streamed Response settles a plain fire-and-forget can be reclaimed before
+// the RPC reaches Postgres, which would silently drop the usage bump (letting a
+// streamed turn escape the daily cap). Falls back to a catch-only when the
+// global is absent (e.g. local dev) so a rejection isn't unhandled.
+function keepAlive(p: Promise<unknown>): void {
+  // EdgeRuntime is a Supabase Edge-runtime global; reach it via globalThis so
+  // this compiles + runs where it's absent (local dev) without a type shim.
+  const edge = (globalThis as { EdgeRuntime?: { waitUntil?: (promise: Promise<unknown>) => void } }).EdgeRuntime;
+  if (edge && typeof edge.waitUntil === 'function') {
+    edge.waitUntil(p);
+    return;
+  }
+  void p.catch(() => void 0);
 }
 
 function validateBody(body: unknown): RequestBody | { error: string } {
@@ -135,6 +152,7 @@ serve(async (req: Request) => {
   // Both are non-fatal lookups; failures fall back to 'mate' / 'Unknown
   // project' so the assistant turn still completes.
   let userFirstName: string | null = null;
+  let userId: string | null = null;
   let projectName = 'Unknown project';
   const [userRes, projRes] = await Promise.allSettled([
     jwt ? supabase.auth.getUser(jwt) : Promise.resolve(null),
@@ -143,6 +161,7 @@ serve(async (req: Request) => {
   if (userRes.status === 'fulfilled' && userRes.value) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const u = (userRes.value as any)?.data?.user;
+    userId = u?.id ?? null;   // for per-user AI rate-limit attribution
     // Prefer `full_name` from user_metadata. Fall back to email LOCAL part
     // only ("jordan" not "jordan@casone.com.au") so Sparky's greeting reads
     // like a name, not an inbox.
@@ -201,6 +220,7 @@ serve(async (req: Request) => {
     const stream = await callAnthropicStream(supabase, {
       system: { stable: STABLE_PROMPT, variable: variableTail },
       messages: v.messages.map((m) => ({ role: m.role, content: m.content })),
+      userId,
     });
 
     if (!stream.ok) {
@@ -280,14 +300,11 @@ serve(async (req: Request) => {
           sse({ type: 'error', detail: e instanceof Error ? e.message : String(e) });
         }
 
-        // Finalize: meter usage (fire-and-forget, mirroring callAnthropic's
-        // cost math), extract the draft, emit done + [DONE], write audit row.
-        const totalTokens = inputTokens + outputTokens;
-        const costCents = Math.ceil(totalTokens * APPROX_CENTS_PER_TOKEN);
-        supabase
-          .rpc('record_ai_call', { p_tokens: totalTokens, p_cost_cents: costCents })
-          .then(() => void 0, () => void 0);
-
+        // Finalize: extract the draft, emit done + [DONE], close the client
+        // stream, THEN meter usage + write the audit row. Both must outlive the
+        // response, so they go through keepAlive (EdgeRuntime.waitUntil) — a
+        // plain fire-and-forget can be dropped once the Response settles, which
+        // would lose the usage bump and let streamed turns escape the cap.
         const draftText = extractDraftBlock(accumulated);
         const resolvedModel = model || 'claude';
 
@@ -295,22 +312,31 @@ serve(async (req: Request) => {
         controller.enqueue(encoder.encode('data: [DONE]\n\n'));
         controller.close();
 
-        // Same audit row the JSON path writes (fire-and-forget; the stream is
-        // already closed for the client).
-        void logAction({
-          supabase,
-          projectId: v.projectId,
-          userId: null,
-          action: 'ai_assistant_turn',
-          entityType: 'project_config',
-          entityId: v.projectId,
-          notes:
-            `turns=${turnCount}; ` +
-            `had_draft=${draftText !== null}; ` +
-            `tokens_in=${inputTokens}; tokens_out=${outputTokens}; ` +
-            `streamed=true; ` +
-            `model=${resolvedModel}`,
-        });
+        const totalTokens = inputTokens + outputTokens;
+        // Model-aware pricing — the SAME pricingCents() the non-streaming paths
+        // use, so a streamed turn's cost_cents matches a JSON turn's (no
+        // per-path drift between the blended APPROX rate and real model prices).
+        const costCents = pricingCents(resolvedModel, inputTokens, outputTokens);
+        // Per-user attribution (bumps global + per-user counters) so streaming
+        // Sparky turns count against the per-user daily cap too. Bundled with the
+        // audit write under one keepAlive so both complete post-close.
+        keepAlive(Promise.allSettled([
+          supabase.rpc('record_ai_call_for_user', { p_user_id: userId, p_tokens: totalTokens, p_cost_cents: costCents }),
+          logAction({
+            supabase,
+            projectId: v.projectId,
+            userId: null,
+            action: 'ai_assistant_turn',
+            entityType: 'project_config',
+            entityId: v.projectId,
+            notes:
+              `turns=${turnCount}; ` +
+              `had_draft=${draftText !== null}; ` +
+              `tokens_in=${inputTokens}; tokens_out=${outputTokens}; ` +
+              `streamed=true; ` +
+              `model=${resolvedModel}`,
+          }),
+        ]));
       },
     });
 
@@ -326,6 +352,7 @@ serve(async (req: Request) => {
   const result = await callAnthropic(supabase, {
     system: { stable: STABLE_PROMPT, variable: variableTail },
     messages: v.messages.map((m) => ({ role: m.role, content: m.content })),
+    userId,
   });
 
   if (!result.ok) {

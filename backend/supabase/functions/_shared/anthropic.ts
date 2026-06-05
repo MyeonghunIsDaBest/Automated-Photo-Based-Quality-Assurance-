@@ -27,6 +27,14 @@ const DEFAULT_MODEL = Deno.env.get('ANTHROPIC_DEFAULT_MODEL') ?? 'claude-haiku-4
 const DAILY_CALL_CAP = Number(Deno.env.get('ANTHROPIC_DAILY_CALL_CAP') ?? 50);
 // @ts-expect-error Deno globals.
 const DAILY_TOKEN_CAP = Number(Deno.env.get('ANTHROPIC_DAILY_TOKEN_CAP') ?? 200_000);
+// Per-user daily caps — sit BELOW the global caps so a single user can't drain
+// the shared budget (abuse / runaway-cost guard, migration 35). Enforced only
+// when a caller supplies a userId; otherwise behaviour is unchanged (global
+// caps only). Fail-open on a counter read miss, same as the global path.
+// @ts-expect-error Deno globals.
+const USER_DAILY_CALL_CAP = Number(Deno.env.get('ANTHROPIC_USER_DAILY_CALL_CAP') ?? 30);
+// @ts-expect-error Deno globals.
+const USER_DAILY_TOKEN_CAP = Number(Deno.env.get('ANTHROPIC_USER_DAILY_TOKEN_CAP') ?? 120_000);
 // @ts-expect-error Deno globals.
 const MAX_TOKENS_CEILING = Number(Deno.env.get('ANTHROPIC_MAX_TOKENS') ?? 1024);
 // Vision-specific ceiling. Vision returns small JSON (~150–250 output
@@ -118,6 +126,9 @@ export interface AnthropicCallInput {
   maxTokens?: number;
   /** Override the default model. */
   model?: string;
+  /** Calling user's id, for per-user daily caps + attributed usage metering.
+   *  Omit / null in cron or service contexts → global-only caps (unchanged). */
+  userId?: string | null;
 }
 
 export interface AnthropicCallSuccess {
@@ -253,6 +264,7 @@ async function postToAnthropic(
  *  previously inlined (and duplicated) in callAnthropic + callAnthropicVision. */
 export async function checkAnthropicGate(
   supabase: SupabaseClient,
+  userId?: string | null,
 ): Promise<AnthropicCallFailure | null> {
   // 1. Kill switch.
   if (DISABLED) {
@@ -262,8 +274,8 @@ export async function checkAnthropicGate(
     return { ok: false, reason: 'missing_key', retryable: false };
   }
 
-  // 2. Daily cap check. RPC handles "no row yet" by returning zeros, so the
-  // first call of the day passes through cleanly.
+  // 2. Global daily cap check. RPC handles "no row yet" by returning zeros, so
+  // the first call of the day passes through cleanly.
   const { data: usageRows, error: usageErr } = await supabase
     .rpc('current_ai_usage_today');
   if (usageErr) {
@@ -294,15 +306,67 @@ export async function checkAnthropicGate(
     }
   }
 
+  // 3. Per-user daily cap — only when the call is attributed to a user.
+  // Sits below the global cap so one user can't drain the shared budget.
+  // Fail-open on a read miss (same rationale as the global path).
+  if (userId) {
+    const { data: userRows, error: userErr } = await supabase
+      .rpc('current_ai_usage_today_for_user', { p_user_id: userId });
+    if (userErr) {
+      // deno-lint-ignore no-console
+      console.warn('[anthropic] per-user usage read failed:', userErr.message);
+    } else {
+      const u = (Array.isArray(userRows) ? userRows[0] : userRows) as UsageRow | undefined;
+      if (u) {
+        if (u.call_count >= USER_DAILY_CALL_CAP) {
+          return {
+            ok: false,
+            reason: 'rate_limited',
+            detail: `Per-user daily call cap reached (${u.call_count}/${USER_DAILY_CALL_CAP})`,
+            retryable: true,
+          };
+        }
+        if (u.tokens_used >= USER_DAILY_TOKEN_CAP) {
+          return {
+            ok: false,
+            reason: 'rate_limited',
+            detail: `Per-user daily token cap reached (${u.tokens_used}/${USER_DAILY_TOKEN_CAP})`,
+            retryable: true,
+          };
+        }
+      }
+    }
+  }
+
   return null;
+}
+
+// Record usage after a successful call. When a userId is supplied, routes
+// through record_ai_call_for_user (bumps GLOBAL + per-user counters in one
+// atomic RPC); otherwise the global-only record_ai_call. Non-fatal: a metering
+// miss is logged but never fails the user's call.
+async function recordUsage(
+  supabase: SupabaseClient,
+  userId: string | null | undefined,
+  totalTokens: number,
+  costCents: number,
+  tag = '[anthropic]',
+): Promise<void> {
+  const { error } = userId
+    ? await supabase.rpc('record_ai_call_for_user', { p_user_id: userId, p_tokens: totalTokens, p_cost_cents: costCents })
+    : await supabase.rpc('record_ai_call', { p_tokens: totalTokens, p_cost_cents: costCents });
+  if (error) {
+    // deno-lint-ignore no-console
+    console.warn(`${tag} record usage failed (under-counted):`, error.message);
+  }
 }
 
 export async function callAnthropic(
   supabase: SupabaseClient,
   input: AnthropicCallInput,
 ): Promise<AnthropicCallResult> {
-  // 1+2. Kill-switch + missing-key + daily-cap gate (shared).
-  const gate = await checkAnthropicGate(supabase);
+  // 1+2+3. Kill-switch + missing-key + global + per-user cap gate (shared).
+  const gate = await checkAnthropicGate(supabase, input.userId);
   if (gate) return gate;
 
   // 3. Build the request. Always clamp max_tokens to the env ceiling so a
@@ -371,14 +435,8 @@ export async function callAnthropic(
   // Price from the ACTUAL model the API reported (P0.3), split in/out.
   const costCents = pricingCents(payload.model ?? body.model, inputTokens, outputTokens);
 
-  // 5. Record usage. Awaited + checked (P0.3) so metering drift is visible in
-  // logs — but still non-fatal: a counter miss never fails the user's call.
-  const { error: recErr } = await supabase
-    .rpc('record_ai_call', { p_tokens: totalTokens, p_cost_cents: costCents });
-  if (recErr) {
-    // deno-lint-ignore no-console
-    console.warn('[anthropic] record_ai_call failed (usage under-counted):', recErr.message);
-  }
+  // 5. Record usage (global + per-user when attributed). Non-fatal.
+  await recordUsage(supabase, input.userId, totalTokens, costCents, '[anthropic]');
 
   return {
     ok: true,
@@ -435,15 +493,18 @@ export interface AnthropicVisionInput {
   maxTokens?: number;
   /** Override the default model. */
   model?: string;
+  /** Calling user's id, for per-user daily caps + attributed usage metering.
+   *  Omit / null in cron or service contexts → global-only caps (unchanged). */
+  userId?: string | null;
 }
 
 export async function callAnthropicVision(
   supabase: SupabaseClient,
   input: AnthropicVisionInput,
 ): Promise<AnthropicCallResult> {
-  // 1+2. Same kill-switch + missing-key + daily-cap gate as callAnthropic
-  // (shared helper — single source of truth).
-  const gate = await checkAnthropicGate(supabase);
+  // 1+2+3. Same kill-switch + missing-key + global + per-user cap gate as
+  // callAnthropic (shared helper — single source of truth).
+  const gate = await checkAnthropicGate(supabase, input.userId);
   if (gate) return gate;
 
   // 3. Build the request. Image content block first, then text. Anthropic
@@ -523,14 +584,8 @@ export async function callAnthropicVision(
   // in/out split matters for accurate accounting.
   const costCents = pricingCents(payload.model ?? body.model, inputTokens, outputTokens);
 
-  // 5. Usage record — awaited + checked (P0.3) but non-fatal: a counter miss
-  // doesn't justify failing the user-visible analysis.
-  const { error: recErr } = await supabase
-    .rpc('record_ai_call', { p_tokens: totalTokens, p_cost_cents: costCents });
-  if (recErr) {
-    // deno-lint-ignore no-console
-    console.warn('[anthropic.vision] record_ai_call failed (usage under-counted):', recErr.message);
-  }
+  // 5. Usage record (global + per-user when attributed). Non-fatal.
+  await recordUsage(supabase, input.userId, totalTokens, costCents, '[anthropic.vision]');
 
   return {
     ok: true,
@@ -556,7 +611,7 @@ export async function callAnthropicStream(
   supabase: SupabaseClient,
   input: AnthropicCallInput,
 ): Promise<{ ok: true; upstream: Response } | AnthropicCallFailure> {
-  const gate = await checkAnthropicGate(supabase);
+  const gate = await checkAnthropicGate(supabase, input.userId);
   if (gate) return gate;
   const maxTokens = Math.min(Math.max(64, input.maxTokens ?? MAX_TOKENS_CEILING), MAX_TOKENS_CEILING);
   const body = {

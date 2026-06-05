@@ -24,6 +24,7 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 
 import { callAnthropic } from '../_shared/anthropic.ts';
+import { getUserId } from '../_shared/auth.ts';
 import { logAction } from '../_shared/auditLog.ts';
 import { CORS_HEADERS, handleCorsPreflight } from '../_shared/cors.ts';
 import { SYNTHESIS_SYSTEM, parseProjectStatus } from '../_shared/synthesisPrompt.ts';
@@ -136,10 +137,12 @@ serve(async (req: Request) => {
     })
     .join('\n\n');
 
+  const userId = await getUserId(supabase, req);
   const result = await callAnthropic(supabase, {
     system: SYNTHESIS_SYSTEM,
     messages: [{ role: 'user', content: `Confirmed analyses by phase:\n\n${corpus}` }],
     maxTokens: 800,
+    userId,
   });
 
   if (!result.ok) {

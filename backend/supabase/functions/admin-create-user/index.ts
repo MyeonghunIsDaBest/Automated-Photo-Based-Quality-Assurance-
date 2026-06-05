@@ -65,7 +65,6 @@ const SECURITY_GROUPS = [
   'administrator',
   'construction_mgr',
   'project_manager',
-  'site_manager',
   'worker',
   'stakeholder',
   'supplier',
@@ -173,8 +172,12 @@ serve(async (req: Request) => {
   const callerGroup = callerProfile.security_group as SecurityGroup;
   const callerIsAdminTier =
     callerGroup === 'company_admin' || callerGroup === 'administrator';
-  if (!callerIsAdminTier) {
-    return json(403, { error: 'Only admin tiers can create users.' });
+  const callerIsDev = (callerProfile.security_group as string) === 'dev';
+  // Project Managers can create their own crew (non-admin roles only — enforced
+  // below). dev is the hidden superuser. Everyone else is rejected.
+  const callerIsProjectManager = callerGroup === 'project_manager';
+  if (!callerIsAdminTier && !callerIsDev && !callerIsProjectManager) {
+    return json(403, { error: 'Only admins and project managers can create users.' });
   }
 
   // ── 3. Parse + validate the request body ────────────────────────────
@@ -205,6 +208,11 @@ serve(async (req: Request) => {
   // Administrators can assign every group except company_admin.
   if (callerGroup === 'administrator' && requestedGroup === 'company_admin') {
     return json(403, { error: 'Only Company Admin can assign Company Admin.' });
+  }
+  // Project Managers manage their own crew — non-admin roles only.
+  if (callerIsProjectManager &&
+      (requestedGroup === 'company_admin' || requestedGroup === 'administrator')) {
+    return json(403, { error: 'Project managers can only create non-admin accounts.' });
   }
 
   // ── 3a. Validate linkTo payload (stakeholder/supplier accounts only) ─

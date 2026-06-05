@@ -101,6 +101,9 @@ async function callClaudeVision(
     storagePath: string;
     phaseHint?: ConstructionPhase | null;
     model: string;
+    /** Photo uploader — attributes the vision call's cost to the user whose
+     *  upload triggered it, for the per-user daily cap (migration 35). */
+    userId?: string | null;
   },
 ): Promise<AnalysisResult> {
   // 1. Media type from extension.
@@ -134,6 +137,7 @@ async function callClaudeVision(
     imageBase64: base64,
     mediaType:   media.mediaType,
     model:       args.model,
+    userId:      args.userId,
   });
   if (!call.ok) {
     return failureResult(args.model, `${call.reason}${call.detail ? `: ${call.detail}` : ''}`);
@@ -244,7 +248,7 @@ serve(async (req: Request) => {
   // and stamp the right default model on the row from the very first write.
   const { data: photoRow, error: photoErr } = await sb
     .from('photos')
-    .select('project_id, task_id, storage_path')
+    .select('project_id, task_id, storage_path, uploaded_by')
     .eq('id', photoId)
     .single();
 
@@ -281,6 +285,7 @@ serve(async (req: Request) => {
       storagePath: photoRow.storage_path,
       phaseHint:   resolvedPhaseHint,
       model:       resolvedModel,
+      userId:      photoRow.uploaded_by ?? null,
     });
   }
 

@@ -37,7 +37,7 @@ const MANAGER_GROUPS = new Set([
   'administrator',
   'construction_mgr',
   'project_manager',
-  'site_manager',
+  'dev',
 ]);
 
 interface ConfirmPayload {
