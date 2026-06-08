@@ -15,6 +15,7 @@ export interface ConversationRow {
   is_group: boolean;
   created_by: string | null;
   created_at: string;
+  avatar_url?: string | null;
 }
 
 export interface ConversationMemberRow {
@@ -40,6 +41,8 @@ export interface Conversation {
   isGroup: boolean;
   createdBy: string | null;
   createdAt: string;
+  /** Group photo (public URL in the `avatars` bucket). Null/absent for DMs. */
+  avatarUrl?: string | null;
   /** Most-recent message body — joined when fetching the inbox. */
   lastMessageBody?: string | null;
   lastMessageAt?: string | null;
@@ -78,6 +81,7 @@ export function rowToConversation(r: ConversationRow): Conversation {
     isGroup: r.is_group,
     createdBy: r.created_by,
     createdAt: r.created_at,
+    avatarUrl: r.avatar_url ?? null,
   };
 }
 
@@ -359,6 +363,54 @@ export async function updateConversationName(
   const { data, error } = await supabase
     .from('conversations')
     .update({ name: trimmed })
+    .eq('id', conversationId)
+    .select('*')
+    .single();
+  if (error) throw error;
+  return rowToConversation(data as ConversationRow);
+}
+
+// ─── Group photo ─────────────────────────────────────────────────────────
+
+// Shared public avatar bucket (migration 54). Group images live under the
+// uploader's own folder so the bucket's owner-folder RLS is satisfied:
+//   avatars/{uploader_uid}/groups/{conversation_id}_{ts}.{ext}
+const AVATARS_BUCKET = 'avatars';
+const MAX_GROUP_AVATAR_BYTES = 5 * 1024 * 1024; // 5 MB
+const extOf = (name: string): string => (name.split('.').pop() || 'jpg').toLowerCase();
+
+// Uploads a group-chat photo and returns its public URL. Persist the URL with
+// `updateConversationAvatar`. Validates type + size up front for a readable
+// error instead of a raw storage/RLS failure.
+export async function uploadGroupAvatar(conversationId: string, file: File): Promise<string> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  if (!file.type.startsWith('image/')) {
+    throw new Error('Please choose an image file (JPG, PNG, GIF, or WebP).');
+  }
+  if (file.size > MAX_GROUP_AVATAR_BYTES) {
+    throw new Error('Image is too large — please keep it under 5 MB.');
+  }
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not signed in.');
+  const path = `${user.id}/groups/${conversationId}_${Date.now()}.${extOf(file.name)}`;
+  const { error } = await supabase.storage
+    .from(AVATARS_BUCKET)
+    .upload(path, file, { contentType: file.type || 'image/jpeg', upsert: true });
+  if (error) throw error;
+  const { data } = supabase.storage.from(AVATARS_BUCKET).getPublicUrl(path);
+  return data.publicUrl;
+}
+
+// Sets (or clears, with null) a group's photo. RLS lets the creator/admin
+// update the conversation row (migration 55).
+export async function updateConversationAvatar(
+  conversationId: string,
+  avatarUrl: string | null,
+): Promise<Conversation> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { data, error } = await supabase
+    .from('conversations')
+    .update({ avatar_url: avatarUrl })
     .eq('id', conversationId)
     .select('*')
     .single();

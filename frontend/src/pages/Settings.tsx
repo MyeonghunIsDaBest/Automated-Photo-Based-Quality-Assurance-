@@ -1,12 +1,13 @@
-import { useState } from 'react';
+import { useState, useRef, type ChangeEvent } from 'react';
 import { useAppStore } from '../store';
 import { useFeatureStore } from '../store/features';
-import { User, Bell, Shield, Mail, Phone, Globe, Lock, Key, Save, Eye, EyeOff } from 'lucide-react';
+import { uploadAvatar, updateProfile } from '../lib/api/profiles';
+import { User, Bell, Shield, Mail, Phone, Globe, Lock, Key, Save, Eye, EyeOff, Camera, Loader2, Trash2 } from 'lucide-react';
 import { EditorialPageHeader, PageContainer, StatStrip, StatCell } from '../components/editorial';
 import { FRAUNCES } from './gantt/components/ledger';
 
 export default function Settings() {
-  const { currentUser, setNotification } = useAppStore();
+  const { currentUser, setNotification, setCurrentAvatar } = useAppStore();
   const { userSettings, updateUserSettings, updatePassword, updateEmail } = useFeatureStore();
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'notifications'>('profile');
 
@@ -31,6 +32,56 @@ export default function Settings() {
 
   // Notifications state
   const [notifications, setNotifications] = useState(userSettings.notifications);
+
+  // Avatar / profile photo. Lives on the real Supabase profile (avatar_url),
+  // mirrored into the store via setCurrentAvatar so the nav + directory update
+  // immediately without a full refreshProfile (which is idempotent per user).
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const avatarUrl = currentUser?.avatar;
+  const initials = (currentUser?.fullName || 'U')
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
+  const handleAvatarSelect = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // let the user re-pick the same file later
+    if (!file || !currentUser) return;
+    setAvatarBusy(true);
+    try {
+      const url = await uploadAvatar(currentUser.id, file);
+      await updateProfile(currentUser.id, { avatarUrl: url });
+      setCurrentAvatar(url);
+      setNotification({ message: 'Profile photo updated!', type: 'success' });
+    } catch (err) {
+      setNotification({
+        message: err instanceof Error ? err.message : 'Could not upload photo.',
+        type: 'error',
+      });
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+
+  const handleAvatarRemove = async () => {
+    if (!currentUser) return;
+    setAvatarBusy(true);
+    try {
+      await updateProfile(currentUser.id, { avatarUrl: null });
+      setCurrentAvatar(null);
+      setNotification({ message: 'Profile photo removed.', type: 'success' });
+    } catch (err) {
+      setNotification({
+        message: err instanceof Error ? err.message : 'Could not remove photo.',
+        type: 'error',
+      });
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
 
   // At-a-glance account metrics for the header stat strip — all derived from
   // data already in scope (no new queries). Profile completion counts the
@@ -149,12 +200,19 @@ export default function Settings() {
 
                 {/* User Info */}
                 <div className="text-center">
-                  {currentUser?.avatar && (
+                  {avatarUrl ? (
                     <img
-                      src={currentUser.avatar}
-                      alt={currentUser.fullName}
-                      className="mx-auto h-20 w-20 rounded-full border-2 border-[#E6E1D4]"
+                      src={avatarUrl}
+                      alt={currentUser?.fullName || 'Profile photo'}
+                      className="mx-auto h-20 w-20 rounded-full border-2 border-[#E6E1D4] object-cover"
                     />
+                  ) : (
+                    <div
+                      className="mx-auto grid h-20 w-20 place-items-center rounded-full border-2 border-[#E6E1D4] bg-[#E5F2EA] text-2xl font-semibold text-[#246F47]"
+                      style={{ fontFamily: FRAUNCES }}
+                    >
+                      {initials}
+                    </div>
                   )}
                   <p className="mt-3 font-medium text-[#1A1A1A]" style={{ fontFamily: FRAUNCES }}>{currentUser?.fullName}</p>
                   <p className="text-sm text-[#6B6B6B]">{currentUser?.email}</p>
@@ -175,6 +233,64 @@ export default function Settings() {
                   <p className="mt-0.5 text-sm text-[#6B6B6B]">Update your personal information and preferences</p>
                 </div>
                 <div className="p-6 space-y-6">
+                  {/* Profile photo */}
+                  <div className="flex flex-col gap-4 border-b border-[#EFEBE0] pb-6 sm:flex-row sm:items-center">
+                    <div className="relative h-20 w-20 shrink-0">
+                      {avatarUrl ? (
+                        <img
+                          src={avatarUrl}
+                          alt={currentUser?.fullName || 'Profile photo'}
+                          className="h-20 w-20 rounded-full border border-[#E6E1D4] object-cover"
+                        />
+                      ) : (
+                        <div
+                          className="grid h-20 w-20 place-items-center rounded-full bg-[#E5F2EA] text-2xl font-semibold text-[#246F47]"
+                          style={{ fontFamily: FRAUNCES }}
+                        >
+                          {initials}
+                        </div>
+                      )}
+                      {avatarBusy && (
+                        <div className="absolute inset-0 grid place-items-center rounded-full bg-black/40">
+                          <Loader2 className="h-6 w-6 animate-spin text-white" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-[#1A1A1A]">Profile photo</p>
+                      <p className="mt-0.5 text-xs text-[#6B6B6B]">JPG, PNG, GIF, or WebP — up to 5 MB.</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => avatarInputRef.current?.click()}
+                          disabled={avatarBusy}
+                          className="inline-flex items-center gap-1.5 rounded-full bg-[#2F8F5C] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#246F47] disabled:opacity-60"
+                        >
+                          <Camera className="h-4 w-4" />
+                          {avatarUrl ? 'Change photo' : 'Upload photo'}
+                        </button>
+                        {avatarUrl && (
+                          <button
+                            type="button"
+                            onClick={handleAvatarRemove}
+                            disabled={avatarBusy}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-[#E6E1D4] bg-white px-4 py-2 text-sm font-medium text-[#C44545] transition-colors hover:bg-[#FBE5E5] disabled:opacity-60"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <input
+                      ref={avatarInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleAvatarSelect}
+                      className="hidden"
+                    />
+                  </div>
+
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     <div>
                       <label className="mb-2 block text-sm font-medium text-[#3A3A3A]">

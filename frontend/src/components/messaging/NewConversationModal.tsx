@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { Check, Hash, Search, Users } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { EditorialButton, EditorialModal } from '../editorial';
@@ -7,7 +7,10 @@ import {
   createDirectConversation,
   createGroupConversation,
   searchProfiles,
+  updateConversationAvatar,
+  uploadGroupAvatar,
 } from '../../lib/api/messaging';
+import { useMessagingStore } from '../../store/messaging';
 import type { Profile } from '../../types';
 
 interface NewConversationModalProps {
@@ -37,6 +40,15 @@ export default function NewConversationModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Optional group photo, chosen before the group exists. Held locally with an
+  // object-URL preview; uploaded once createGroupConversation returns an id.
+  const groupPhotoInputRef = useRef<HTMLInputElement | null>(null);
+  const [groupPhoto, setGroupPhoto] = useState<File | null>(null);
+  const [groupPhotoPreview, setGroupPhotoPreview] = useState<string | null>(null);
+  // Remember a created group's id so a photo failure + retry doesn't spawn a
+  // duplicate group — we reuse the id and only re-run the photo step.
+  const [createdConvId, setCreatedConvId] = useState<string | null>(null);
+
   // Reset state when the modal closes so a fresh open lands at the chooser.
   useEffect(() => {
     if (!open) {
@@ -47,8 +59,40 @@ export default function NewConversationModal({
       setResults([]);
       setBusy(false);
       setError(null);
+      setGroupPhoto(null);
+      setGroupPhotoPreview(null);
+      setCreatedConvId(null);
     }
   }, [open]);
+
+  // Revoke the previous object URL whenever the preview changes / on unmount.
+  useEffect(() => {
+    return () => {
+      if (groupPhotoPreview) URL.revokeObjectURL(groupPhotoPreview);
+    };
+  }, [groupPhotoPreview]);
+
+  const handleGroupPhotoSelect = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setError('Please choose an image file (JPG, PNG, GIF, or WebP).');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Image is too large — please keep it under 5 MB.');
+      return;
+    }
+    setError(null);
+    setGroupPhoto(file);
+    setGroupPhotoPreview(URL.createObjectURL(file));
+  };
+
+  const clearGroupPhoto = () => {
+    setGroupPhoto(null);
+    setGroupPhotoPreview(null);
+  };
 
   // Search debounce — 200ms is enough to feel snappy without spamming the
   // profiles endpoint on every keystroke.
@@ -99,10 +143,27 @@ export default function NewConversationModal({
     setBusy(true);
     setError(null);
     try {
-      const conv = await createGroupConversation({ name: groupName, memberIds: selectedIds });
-      onCreated(conv.id);
+      // Create the group once; reuse its id on a retry so a photo failure
+      // doesn't create duplicate groups.
+      let convId = createdConvId;
+      if (!convId) {
+        const conv = await createGroupConversation({ name: groupName, memberIds: selectedIds });
+        convId = conv.id;
+        setCreatedConvId(convId);
+      }
+      if (groupPhoto) {
+        const url = await uploadGroupAvatar(convId, groupPhoto);
+        const updated = await updateConversationAvatar(convId, url);
+        // Patch the cache directly so the photo shows immediately — realtime
+        // may be reconnecting and there's no guarantee its UPDATE arrives.
+        useMessagingStore.getState().patchConversation(convId, { avatarUrl: updated.avatarUrl });
+      }
+      onCreated(convId);
       onClose();
     } catch (e) {
+      // Surface the real error (e.g. a missing column / RLS) instead of
+      // silently dropping the photo — the group is already created, so closing
+      // + reopening group settings lets them retry the photo there too.
       setError(e instanceof Error ? e.message : 'Failed to create group.');
     } finally {
       setBusy(false);
@@ -214,6 +275,53 @@ export default function NewConversationModal({
 
       {mode === 'group' && (
         <div>
+          {/* Group photo (optional) */}
+          <div className="mb-4 flex items-center gap-3">
+            <div className="h-14 w-14 shrink-0">
+              {groupPhotoPreview ? (
+                <img
+                  src={groupPhotoPreview}
+                  alt="Group"
+                  className="h-14 w-14 rounded-full border border-[#E6E1D4] object-cover"
+                />
+              ) : (
+                <div className="grid h-14 w-14 place-items-center rounded-full bg-[#E5F2EA] text-[#246F47]">
+                  <Users className="h-6 w-6" />
+                </div>
+              )}
+            </div>
+            <div>
+              <p className="text-xs font-medium text-[#1A1A1A]">
+                Group photo <span className="font-normal text-[#A0A0A0]">· optional</span>
+              </p>
+              <div className="mt-1.5 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => groupPhotoInputRef.current?.click()}
+                  className="rounded-full border border-[#E6E1D4] bg-white px-3 py-1.5 text-xs font-medium text-[#3A3A3A] hover:bg-[#FAF8F2]"
+                >
+                  {groupPhotoPreview ? 'Change' : 'Add photo'}
+                </button>
+                {groupPhotoPreview && (
+                  <button
+                    type="button"
+                    onClick={clearGroupPhoto}
+                    className="rounded-full px-3 py-1.5 text-xs font-medium text-[#C44545] hover:bg-[#FBE5E5]"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            </div>
+            <input
+              ref={groupPhotoInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleGroupPhotoSelect}
+              className="hidden"
+            />
+          </div>
+
           <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.15em] text-[#6B6B6B]">
             Group name
           </label>

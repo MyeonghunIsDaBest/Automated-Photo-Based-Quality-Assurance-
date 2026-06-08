@@ -56,7 +56,11 @@ interface AppState {
   ) => Promise<{ error: string | null }>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
-  
+  /** Patch the signed-in user's avatar locally after a DB write. refreshProfile
+   *  is idempotent for the same user, so it won't re-pull a changed avatar —
+   *  this keeps the nav + settings + team directory in sync immediately. */
+  setCurrentAvatar: (url: string | null) => void;
+
   // Data
   project: Project;
   users: User[];
@@ -151,6 +155,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const profile = await getCurrentProfile();
       if (profile) {
+        // Idempotent: if we're already authenticated as this same user, don't
+        // churn fresh currentUser/users references (profileToUser + listUsers
+        // build new objects every call). Re-running this on every auth event —
+        // e.g. routine token refreshes — caused a re-render storm.
+        const prev = get();
+        if (prev.isAuthenticated && prev.currentProfile?.id === profile.id) {
+          if (prev.isAuthLoading) set({ isAuthLoading: false });
+          return;
+        }
         set({
           currentProfile: profile,
           currentUser: profileToUser(profile),
@@ -180,7 +193,19 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ isAuthLoading: false });
     }
   },
-  
+
+  setCurrentAvatar: (url) => {
+    const next = url ?? undefined;
+    const { currentProfile, currentUser, users } = get();
+    set({
+      currentProfile: currentProfile ? { ...currentProfile, avatarUrl: next } : currentProfile,
+      currentUser: currentUser ? { ...currentUser, avatar: next } : currentUser,
+      users: currentUser
+        ? users.map((u) => (u.id === currentUser.id ? { ...u, avatar: next } : u))
+        : users,
+    });
+  },
+
   // Data State. `project` is mirrored from useProjectsListStore by the
   // subscription below so changing the active project propagates here.
   // `users` hydrates from Supabase on auth (see refreshProfile) — the
@@ -364,7 +389,18 @@ useFeatureStore.subscribe((state, prevState) => {
 // to auth changes so SIGNED_OUT in another tab clears local state too.
 if (supabaseConfigured()) {
   void useAppStore.getState().refreshProfile();
+  // Dedupe auth events by user id. Supabase re-emits onAuthStateChange for
+  // routine TOKEN_REFRESHED / repeat INITIAL_SESSION events — and in a context
+  // where the session can't persist (blocked / partitioned storage) it can fire
+  // repeatedly. Acting only on a genuine sign-in / sign-out / user change stops
+  // a refreshProfile() → re-render storm that previously spammed <Navigate> and
+  // tripped the browser's History-API rate limit (the "operation is insecure"
+  // SecurityError loop).
+  let lastHandledUserId: string | null = null;
   onAuthStateChange((session) => {
+    const uid = session?.user?.id ?? null;
+    if (uid === lastHandledUserId) return;
+    lastHandledUserId = uid;
     if (!session) {
       useAppStore.setState({
         currentUser: null,

@@ -532,9 +532,17 @@ export default function Messages() {
                     )}
                     <div className="relative shrink-0">
                       {conv.isGroup ? (
-                        <div className="grid h-10 w-10 place-items-center rounded-full bg-[#E5F2EA] text-[#246F47]">
-                          <Hash className="h-4 w-4" />
-                        </div>
+                        conv.avatarUrl ? (
+                          <img
+                            src={conv.avatarUrl}
+                            alt={conv.name ?? 'Group'}
+                            className="h-10 w-10 rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className="grid h-10 w-10 place-items-center rounded-full bg-[#E5F2EA] text-[#246F47]">
+                            <Hash className="h-4 w-4" />
+                          </div>
+                        )
                       ) : otherProfile?.avatarUrl ? (
                         <Avatar className="h-10 w-10">
                           <AvatarImage src={otherProfile.avatarUrl} />
@@ -607,9 +615,17 @@ export default function Messages() {
                       }`}
                     >
                       {activeConversation.isGroup ? (
-                        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#E5F2EA] text-[#246F47]">
-                          <Users className="h-5 w-5" />
-                        </div>
+                        activeConversation.avatarUrl ? (
+                          <img
+                            src={activeConversation.avatarUrl}
+                            alt={activeConversation.name ?? 'Group'}
+                            className="h-10 w-10 shrink-0 rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#E5F2EA] text-[#246F47]">
+                            <Users className="h-5 w-5" />
+                          </div>
+                        )
                       ) : otherDmProfile?.avatarUrl ? (
                         <Avatar className="h-10 w-10 shrink-0">
                           <AvatarImage src={otherDmProfile.avatarUrl} />

@@ -8,6 +8,34 @@ const NOT_CONFIGURED = new Error(
   'Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in frontend/.env.local.',
 );
 
+// Public bucket holding profile pictures. Layout: `avatars/{user_id}/{ts}.{ext}`.
+// RLS (migration 54) only lets a user write into their own `{user_id}/` folder;
+// reads are public so the URL renders anywhere without a signed request.
+const AVATARS_BUCKET = 'avatars';
+const MAX_AVATAR_BYTES = 5 * 1024 * 1024; // 5 MB
+const extOf = (name: string): string => (name.split('.').pop() || 'jpg').toLowerCase();
+
+// Uploads an avatar image and returns its public URL. The caller persists the
+// URL with `updateProfile(id, { avatarUrl })` and mirrors it into the store via
+// `setCurrentAvatar`. Validates type + size up front so RLS/storage errors are
+// rare and the message is human-readable.
+export async function uploadAvatar(userId: string, file: File): Promise<string> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  if (!file.type.startsWith('image/')) {
+    throw new Error('Please choose an image file (JPG, PNG, GIF, or WebP).');
+  }
+  if (file.size > MAX_AVATAR_BYTES) {
+    throw new Error('Image is too large — please keep it under 5 MB.');
+  }
+  const path = `${userId}/${Date.now()}.${extOf(file.name)}`;
+  const { error } = await supabase.storage
+    .from(AVATARS_BUCKET)
+    .upload(path, file, { contentType: file.type || 'image/jpeg', upsert: true });
+  if (error) throw error;
+  const { data } = supabase.storage.from(AVATARS_BUCKET).getPublicUrl(path);
+  return data.publicUrl;
+}
+
 export interface ProfilePatch {
   firstName?: string;
   lastName?: string;

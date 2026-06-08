@@ -3,7 +3,9 @@ import { supabase, supabaseConfigured } from '../supabase';
 import { useMessagingStore } from '../../store/messaging';
 import {
   listMyConversations,
+  rowToConversation,
   rowToMessage,
+  type ConversationRow,
   type MessageRow,
 } from '../api/messaging';
 
@@ -85,6 +87,20 @@ export function useMessagingRealtime(currentUserId: string | null | undefined): 
           const row = payload.new as { conversation_id: string; last_read_at: string | null };
           if (row.last_read_at) {
             updateLastRead(row.conversation_id, row.last_read_at);
+          }
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'conversations' },
+        (payload) => {
+          // A conversation row changed — group rename or photo. Patch the
+          // cached row (rowToConversation omits members/lastMessage*, so the
+          // upsert merge preserves them) so the inbox + header refresh live.
+          const row = payload.new as ConversationRow;
+          const store = useMessagingStore.getState();
+          if (store.conversations.some((c) => c.id === row.id)) {
+            store.upsertConversation(rowToConversation(row));
           }
         },
       )

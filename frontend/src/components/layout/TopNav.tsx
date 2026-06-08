@@ -44,12 +44,11 @@ type NavItem = {
 // surfaces, and Settings stays in the user-menu dropdown below. Routes for
 // the removed pages remain in App.tsx so existing bookmarks still resolve.
 //
-// The first item is role-aware: field roles (worker / stakeholder /
-// supplier) see "Home → /home" (their editorial landing); admins/PMs see
-// "Dashboard → /dashboard" (the data-dense panel). The rest of the strip
-// is shared.
+// The first two items are role-aware (see the helpers below); the rest of the
+// strip is shared. Item 1 swaps Home/Dashboard by role; item 2 is the projects
+// list, which a supplier reads as "Materials" (their world is POs / deliveries)
+// and every other role reads as "Projects".
 const SHARED_NAV_TAIL: NavItem[] = [
-  { label: 'Materials', icon: FolderOpen,    path: '/projects' },
   { label: 'Messages',  icon: MessageSquare, path: '/messages' },
   { label: 'Reports',   icon: DollarSign,    path: '/reports' },
   { label: 'Safety',    icon: HardHat,       path: '/safety' },
@@ -60,6 +59,14 @@ function homeNavItemFor(principal: User | Profile | null): NavItem {
   return isFieldRole(principal)
     ? { label: 'Home',      icon: LayoutDashboard, path: '/home' }
     : { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' };
+}
+
+// The projects list. A supplier's mental model is purchase orders and
+// deliveries, so they see it as "Materials"; every other role (worker, PM,
+// manager, admin, stakeholder) sees the portfolio it actually is — "Projects".
+function projectsNavItemFor(principal: User | Profile | null): NavItem {
+  const isSupplier = principal?.securityGroup === 'supplier';
+  return { label: isSupplier ? 'Materials' : 'Projects', icon: FolderOpen, path: '/projects' };
 }
 
 const getNotificationIcon = (type: string) => {
@@ -100,8 +107,10 @@ export default function TopNav() {
   // First nav item swaps Home/Dashboard based on role; the tail is shared.
   // `currentProfile` carries the canonical securityGroup; `currentUser`
   // covers the legacy mock-data path that doesn't have a profile yet.
+  const navPrincipal = currentProfile ?? currentUser ?? null;
   const navItems: NavItem[] = [
-    homeNavItemFor(currentProfile ?? currentUser ?? null),
+    homeNavItemFor(navPrincipal),
+    projectsNavItemFor(navPrincipal),
     ...SHARED_NAV_TAIL,
   ];
   const visibleNav = navItems.filter((item) => (item.gate ? item.gate(currentUser) : true));

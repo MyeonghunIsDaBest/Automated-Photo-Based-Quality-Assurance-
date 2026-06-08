@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Check, LogOut, Pencil, Search, Trash2, UserPlus, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { Camera, Check, Loader2, LogOut, Pencil, Search, Trash2, UserPlus, Users, X } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { EditorialButton, EditorialModal } from '../editorial';
 import { SECURITY_GROUP_LABELS } from '../../lib/permissions';
@@ -8,7 +8,9 @@ import {
   leaveConversation,
   removeConversationMember,
   searchProfiles,
+  updateConversationAvatar,
   updateConversationName,
+  uploadGroupAvatar,
   type Conversation,
 } from '../../lib/api/messaging';
 import type { Profile } from '../../types';
@@ -45,6 +47,42 @@ export default function GroupSettingsModal({
   const [editingName, setEditingName] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Group photo (creator-only edit). Uploads to the shared avatars bucket then
+  // persists the URL on the conversation row; onUpdated patches the cache so
+  // the inbox + header refresh immediately.
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+
+  const handleAvatarSelect = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setAvatarBusy(true);
+    setError(null);
+    try {
+      const url = await uploadGroupAvatar(conversation.id, file);
+      await updateConversationAvatar(conversation.id, url);
+      onUpdated({ avatarUrl: url });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update photo.');
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+
+  const handleAvatarRemove = async () => {
+    setAvatarBusy(true);
+    setError(null);
+    try {
+      await updateConversationAvatar(conversation.id, null);
+      onUpdated({ avatarUrl: null });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to remove photo.');
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
 
   // Add-members tab state
   const [search, setSearch] = useState('');
@@ -239,6 +277,69 @@ export default function GroupSettingsModal({
 
       {tab === 'overview' && (
         <div className="space-y-5">
+          {/* Group photo */}
+          <div className="flex items-center gap-4">
+            <div className="relative h-16 w-16 shrink-0">
+              {conversation.avatarUrl ? (
+                <img
+                  src={conversation.avatarUrl}
+                  alt={conversation.name ?? 'Group'}
+                  className="h-16 w-16 rounded-full border border-[#E6E1D4] object-cover"
+                />
+              ) : (
+                <div className="grid h-16 w-16 place-items-center rounded-full bg-[#E5F2EA] text-[#246F47]">
+                  <Users className="h-7 w-7" />
+                </div>
+              )}
+              {avatarBusy && (
+                <div className="absolute inset-0 grid place-items-center rounded-full bg-black/40">
+                  <Loader2 className="h-5 w-5 animate-spin text-white" />
+                </div>
+              )}
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-[#1A1A1A]">Group photo</p>
+              {isCreator ? (
+                <>
+                  <p className="mt-0.5 text-xs text-[#6B6B6B]">JPG, PNG, GIF, or WebP — up to 5 MB.</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={avatarBusy}
+                      onClick={() => avatarInputRef.current?.click()}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-[#2F8F5C] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#246F47] disabled:opacity-50"
+                    >
+                      <Camera className="h-3.5 w-3.5" />
+                      {conversation.avatarUrl ? 'Change' : 'Upload'}
+                    </button>
+                    {conversation.avatarUrl && (
+                      <button
+                        type="button"
+                        disabled={avatarBusy}
+                        onClick={() => void handleAvatarRemove()}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-[#E6E1D4] bg-white px-3 py-1.5 text-xs font-medium text-[#C44545] hover:bg-[#FBE5E5] disabled:opacity-50"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <p className="mt-0.5 text-[11px] text-[#A0A0A0]">
+                  Only the group&apos;s creator can change the photo.
+                </p>
+              )}
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarSelect}
+                className="hidden"
+              />
+            </div>
+          </div>
+
           {/* Group name */}
           <div>
             <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.18em] text-[#6B6B6B]">
