@@ -11,7 +11,7 @@ import type { DiaryEntry } from '../../pages/gantt/types';
 
 // snake_case row <-> camelCase DiaryEntry. Column names MUST match what the
 // site-diary-assistant Edge Function reads (date, description, weather,
-// temperature_f, personnel) — see 20_diary_entries.sql.
+// temperature_c, personnel) — see 20_diary_entries.sql + 57_diary_temperature_celsius.sql.
 function toRow(e: DiaryEntry) {
   return {
     id: e.id,
@@ -19,7 +19,7 @@ function toRow(e: DiaryEntry) {
     date: e.date,
     description: e.description,
     weather: e.weather ?? null,
-    temperature_f: e.temperatureF ?? null,
+    temperature_c: e.temperatureC ?? null,
     personnel: e.personnel,
     photo_ids: e.photoIds,
     start_time: e.startTime ?? null,
@@ -37,7 +37,7 @@ export function rowToEntry(r: Record<string, unknown>): DiaryEntry {
     date: String(r.date),
     description: String(r.description ?? ''),
     weather: (r.weather as DiaryEntry['weather']) ?? undefined,
-    temperatureF: r.temperature_f == null ? undefined : Number(r.temperature_f),
+    temperatureC: r.temperature_c == null ? undefined : Number(r.temperature_c),
     personnel: Array.isArray(r.personnel) ? (r.personnel as DiaryEntry['personnel']) : [],
     photoIds: Array.isArray(r.photo_ids) ? (r.photo_ids as string[]) : [],
     startTime: (r.start_time as string) ?? undefined,

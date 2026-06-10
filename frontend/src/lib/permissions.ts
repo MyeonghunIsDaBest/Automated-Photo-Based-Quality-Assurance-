@@ -104,6 +104,15 @@ export function canReleasePaymentMilestone(p: AdminPrincipal): boolean {
   return caps(p).releasePaymentMilestone;
 }
 
+/** Set / edit a project's budget total. The funder (stakeholder, via
+ *  releasePaymentMilestone) plus the finance editors (project_manager /
+ *  company_admin / administrator / dev, via editFinance). Deliberately broader
+ *  than canEditFinance so it can include the stakeholder WITHOUT granting them
+ *  invoice-write power. */
+export function canEditBudget(p: AdminPrincipal): boolean {
+  return caps(p).editFinance || caps(p).releasePaymentMilestone;
+}
+
 /** Construction Manager / admins — see the multi-project portfolio rollup. */
 export function canViewPortfolio(p: AdminPrincipal): boolean {
   return caps(p).viewPortfolioRollup;

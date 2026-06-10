@@ -213,7 +213,7 @@ export function AddWorkerModal({
           <motion.div
             variants={modalCard} initial="hidden" animate="visible" exit="exit"
             role="dialog" aria-modal="true" aria-label="Add to crew"
-            className="fixed inset-x-2 top-1/2 z-[61] mx-auto w-auto max-w-md -translate-y-1/2 overflow-hidden rounded-[16px] bg-white shadow-2xl sm:inset-x-0"
+            className="fixed inset-x-2 top-1/2 z-[61] mx-auto max-h-[90dvh] w-auto max-w-md -translate-y-1/2 overflow-y-auto overscroll-contain rounded-[16px] bg-white shadow-2xl sm:inset-x-0"
           >
             <header className="flex items-center justify-between gap-3 border-b border-[#EFEBE0] px-5 py-3">
               <div className="min-w-0">

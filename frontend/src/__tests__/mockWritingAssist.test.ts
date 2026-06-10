@@ -31,7 +31,7 @@ describe('mockWritingAssist', () => {
         'Footings poured at L2 west.',
         {
           weather: 'cloudy',
-          temperatureF: 68,
+          temperatureC: 20,
           personnel: [
             { company: 'Casone Electrical' },
             { company: 'Casone Electrical' },
@@ -40,7 +40,7 @@ describe('mockWritingAssist', () => {
         },
       );
       // Preface includes weather + temp + crew size + company breakdown.
-      expect(r.improved).toMatch(/Cloudy, 68°F/);
+      expect(r.improved).toMatch(/Cloudy, 20°C/);
       expect(r.improved).toMatch(/crew of 3 on site/);
       expect(r.improved).toMatch(/2 from Casone Electrical/);
       expect(r.improved).toMatch(/1 from Aetna Civil/);

@@ -3,6 +3,7 @@ import { Project } from './types';
 import { mockProjects } from './mocks/projects';
 import { listProjects, type ProjectRow } from '../../lib/api/projects';
 import { supabaseConfigured } from '../../lib/supabase';
+import { useFinanceStore } from '../../store/finance';
 
 interface ProjectsListState {
   projects: Project[];
@@ -33,6 +34,7 @@ function projectRowToProject(row: ProjectRow): Project {
     startDate: row.start_date,
     endDate: row.end_date,
     status: row.status,
+    budget: row.budget ?? undefined,
     // Stats are derived from tasks at render time; default to 0 here and let
     // the Gantt / Dashboard pages fill them in once the tasks slice loads.
     percentComplete: 0,
@@ -63,6 +65,21 @@ export const useProjectsListStore = create<ProjectsListState>((set) => ({
     try {
       const rows = await listProjects();
       const projects = rows.map(projectRowToProject);
+      // Hydrate the finance store's budget TOTAL from the DB so the Finance tab
+      // / Sponsor cockpit / Dashboard reflect the budget set at creation. (Spent
+      // + committed are computed live from invoices/orders in the panel.)
+      const fin = useFinanceStore.getState();
+      for (const p of projects) {
+        if (typeof p.budget === 'number' && p.budget > 0) {
+          const existing = fin.budgets[p.id];
+          fin.setBudget({
+            projectId: p.id,
+            total: p.budget,
+            spent: existing?.spent ?? 0,
+            committed: existing?.committed ?? 0,
+          });
+        }
+      }
       set((state) => ({
         projects,
         activeProjectId:

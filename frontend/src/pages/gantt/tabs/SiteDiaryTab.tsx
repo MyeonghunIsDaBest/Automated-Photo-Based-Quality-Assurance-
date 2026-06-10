@@ -179,11 +179,11 @@ export function SiteDiaryTab({ project, currentUser, canEdit, canDelete }: SiteD
   // ── Conditions handler — patches the most recent day entry or creates a
   //    silent stub if no entry exists yet.
   const handleConditionsChange = useCallback(
-    (patch: { weather?: WeatherKind; temperatureF?: number | null }) => {
+    (patch: { weather?: WeatherKind; temperatureC?: number | null }) => {
       const writePatch: Partial<DiaryEntry> = {};
       if (patch.weather !== undefined) writePatch.weather = patch.weather;
-      if (patch.temperatureF !== undefined) {
-        writePatch.temperatureF = patch.temperatureF == null ? undefined : patch.temperatureF;
+      if (patch.temperatureC !== undefined) {
+        writePatch.temperatureC = patch.temperatureC == null ? undefined : patch.temperatureC;
       }
       if (dayConditionsEntry) {
         updateDiaryEntry(project.id, dayConditionsEntry.id, writePatch);
@@ -192,7 +192,7 @@ export function SiteDiaryTab({ project, currentUser, canEdit, canDelete }: SiteD
           date: today,
           description: '',
           weather: patch.weather ?? 'sunny',
-          temperatureF: patch.temperatureF == null ? undefined : patch.temperatureF,
+          temperatureC: patch.temperatureC == null ? undefined : patch.temperatureC,
           personnel: [],
           photoIds: [],
           createdBy: currentUser?.id ?? 'unknown',
@@ -246,7 +246,7 @@ export function SiteDiaryTab({ project, currentUser, canEdit, canDelete }: SiteD
 
   // ── Render ────────────────────────────────────────────────────────────
   const conditionsWeather: WeatherKind = dayConditionsEntry?.weather ?? 'sunny';
-  const conditionsTempF: number | null = dayConditionsEntry?.temperatureF ?? null;
+  const conditionsTempC: number | null = dayConditionsEntry?.temperatureC ?? null;
   const quickAddInitials =
     currentUser?.fullName?.trim().split(/\s+/).filter(Boolean).slice(0, 2)
       .map((w) => w[0])
@@ -314,7 +314,7 @@ export function SiteDiaryTab({ project, currentUser, canEdit, canDelete }: SiteD
         <aside className="space-y-4">
           <ConditionsCard
             weather={conditionsWeather}
-            temperatureF={conditionsTempF}
+            temperatureC={conditionsTempC}
             onChange={handleConditionsChange}
           />
           <DayRollupCard rollup={rollup} />

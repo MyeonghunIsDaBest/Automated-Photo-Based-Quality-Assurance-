@@ -8,7 +8,7 @@ export type ConditionsWeather = 'sunny' | 'cloudy' | 'rain' | 'storm';
 
 export interface DetectedConditions {
   weather: ConditionsWeather;
-  temperatureF: number | null;
+  temperatureC: number | null;
   crewCount: number;
   confidence: number;
 }

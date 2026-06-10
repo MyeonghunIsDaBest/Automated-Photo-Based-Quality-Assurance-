@@ -31,6 +31,12 @@ export interface CreateProjectInput {
   endDate: string;
   status?: ProjectRow['status'];
   budget?: number;
+  /** Built-in construction phases to KEEP at creation; the others are dropped.
+   *  Omit / undefined ⇒ keep all 8 (backward compatible). */
+  phases?: string[];
+  /** Names of extra custom phases to add at creation (dates default to the
+   *  project window, editable later in the Gantt). */
+  customPhases?: string[];
   milestones?: Array<{
     name: string;
     phase?: string;
@@ -77,6 +83,11 @@ export async function createProjectWithTasks(input: CreateProjectInput): Promise
     p_status: input.status ?? 'active',
     p_budget: input.budget ?? null,
     p_milestones: input.milestones ?? [],
+    p_phases: input.phases ?? null,
+    p_custom_phases:
+      input.customPhases && input.customPhases.length > 0
+        ? input.customPhases.map((name) => ({ name }))
+        : null,
   });
   if (error) throw error;
   return data as string;

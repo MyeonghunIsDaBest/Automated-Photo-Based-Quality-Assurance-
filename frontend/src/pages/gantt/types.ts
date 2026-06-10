@@ -49,7 +49,7 @@ export interface DiaryEntry {
   date: string;           // ISO date — one entry per project per date (UI enforces)
   description: string;
   weather?: WeatherKind;
-  temperatureF?: number;
+  temperatureC?: number;
   personnel: DiaryPersonnel[];
   photoIds: string[];     // refs into the documents store
   createdBy: string;

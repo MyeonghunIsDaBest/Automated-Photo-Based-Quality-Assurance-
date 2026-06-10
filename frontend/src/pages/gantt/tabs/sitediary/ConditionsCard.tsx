@@ -10,8 +10,8 @@ import type { WeatherKind } from '../../types';
 
 interface ConditionsCardProps {
   weather: WeatherKind;
-  temperatureF: number | null;
-  onChange: (patch: { weather?: WeatherKind; temperatureF?: number | null }) => void;
+  temperatureC: number | null;
+  onChange: (patch: { weather?: WeatherKind; temperatureC?: number | null }) => void;
 }
 
 const WEATHER_OPTIONS: Array<{ value: WeatherKind; label: string; Icon: typeof Sun }> = [
@@ -21,18 +21,18 @@ const WEATHER_OPTIONS: Array<{ value: WeatherKind; label: string; Icon: typeof S
   { value: 'storm',  label: 'Storm',  Icon: CloudSnow },
 ];
 
-export function ConditionsCard({ weather, temperatureF, onChange }: ConditionsCardProps) {
+export function ConditionsCard({ weather, temperatureC, onChange }: ConditionsCardProps) {
   const [editingTemp, setEditingTemp] = useState(false);
   const [draftTemp, setDraftTemp] = useState<string>(
-    temperatureF == null ? '' : String(temperatureF),
+    temperatureC == null ? '' : String(temperatureC),
   );
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!editingTemp) {
-      setDraftTemp(temperatureF == null ? '' : String(temperatureF));
+      setDraftTemp(temperatureC == null ? '' : String(temperatureC));
     }
-  }, [temperatureF, editingTemp]);
+  }, [temperatureC, editingTemp]);
 
   useEffect(() => {
     if (editingTemp) inputRef.current?.focus();
@@ -41,10 +41,10 @@ export function ConditionsCard({ weather, temperatureF, onChange }: ConditionsCa
   const commitTemp = () => {
     const trimmed = draftTemp.trim();
     if (trimmed === '') {
-      onChange({ temperatureF: null });
+      onChange({ temperatureC: null });
     } else {
       const n = Number(trimmed);
-      if (Number.isFinite(n)) onChange({ temperatureF: Math.round(n) });
+      if (Number.isFinite(n)) onChange({ temperatureC: Math.round(n) });
     }
     setEditingTemp(false);
   };
@@ -94,7 +94,7 @@ export function ConditionsCard({ weather, temperatureF, onChange }: ConditionsCa
                 e.preventDefault();
                 commitTemp();
               } else if (e.key === 'Escape') {
-                setDraftTemp(temperatureF == null ? '' : String(temperatureF));
+                setDraftTemp(temperatureC == null ? '' : String(temperatureC));
                 setEditingTemp(false);
               }
             }}
@@ -104,12 +104,12 @@ export function ConditionsCard({ weather, temperatureF, onChange }: ConditionsCa
         ) : (
           <span>
             <span
-              className={`text-xl font-medium ${temperatureF == null ? 'text-[#A0A0A0]' : ''}`}
+              className={`text-xl font-medium ${temperatureC == null ? 'text-[#A0A0A0]' : ''}`}
               style={{ fontFamily: "'Fraunces', Georgia, serif" }}
             >
-              {temperatureF == null ? '—' : temperatureF}
+              {temperatureC == null ? '—' : temperatureC}
             </span>
-            <span className="text-[#6B6B6B] text-xs ml-0.5">°F</span>
+            <span className="text-[#6B6B6B] text-xs ml-0.5">°C</span>
           </span>
         )}
       </button>

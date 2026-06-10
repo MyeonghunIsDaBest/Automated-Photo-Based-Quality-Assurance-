@@ -1,6 +1,14 @@
 {
-  "generatedAt": "2026-06-08T05:38:48.530Z",
+  "generatedAt": "2026-06-09T09:56:10.386Z",
   "entries": [
+    {
+      "id": "3b45224",
+      "date": "2026-06-08T20:02:39+08:00",
+      "surface": "frontend",
+      "kind": "fix",
+      "headline": "Fix and UI update.",
+      "filesChanged": 13
+    },
     {
       "id": "24297d4",
       "date": "2026-06-05T22:46:23+08:00",
@@ -87,14 +95,6 @@
       "surface": "frontend",
       "kind": "chore",
       "headline": "Per-route ErrorBoundary + CORS origin lock + operator runbook (D6).",
-      "filesChanged": 3
-    },
-    {
-      "id": "3bdf34a",
-      "date": "2026-06-01T08:43:14+08:00",
-      "surface": "frontend",
-      "kind": "change",
-      "headline": "A11y: aria-labels on review actions/slider, ConfidenceRing progressbar, diary photo input (D6).",
       "filesChanged": 3
     }
   ]

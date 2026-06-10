@@ -59,7 +59,7 @@ const SEVERITY_TONE: Record<DefectSeverity, ToneKey> = {
 const SEVERITY_RANK: Record<DefectSeverity, number> = { critical: 0, high: 1, medium: 2, low: 3 };
 
 const fmtUSD = (n: number) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
+  new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 }).format(n);
 
 const outstandingOf = (ds: Defect[]) => ds.filter((d) => d.status !== 'verified');
 function topSeverity(ds: Defect[]): DefectSeverity {

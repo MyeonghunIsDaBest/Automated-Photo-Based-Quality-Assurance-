@@ -7,7 +7,7 @@ import { DollarSign } from 'lucide-react';
 // canViewFinance upstream). Read-only glance; the editable detail lives on the
 // Reports → Financial tab. Reads the same finance store as Reports.
 const fmt = (n: number) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
+  new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 }).format(n);
 
 export default function FinanceSummaryCard({ projectId }: { projectId: string }) {
   const budget = useFinanceStore((s) => s.budgets[projectId]);

@@ -37,7 +37,7 @@ const STATUS_FILTERS: { id: OrderStatus | 'all' | 'open'; label: string }[] = [
 ];
 
 const fmtUSD = (n: number) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
+  new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 }).format(n);
 
 export function OrdersTab({ project, canEdit, canDelete, hideHeader = false }: OrdersTabProps) {
   const orders = useOrdersForProject(project.id);

@@ -23,7 +23,7 @@ import {
 import RoiCalculator from '../RoiCalculator';
 
 const fmt = (n: number) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
+  new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 }).format(n);
 const orderTotal = (o: Order) => o.lineItems.reduce((s, li) => s + li.qty * li.unitCost, 0);
 
 const STATUS_TONE: Record<OrderStatus, ToneKey> = {

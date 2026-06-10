@@ -37,7 +37,7 @@ const STATUS_BADGE: Record<InvoiceStatus, string> = {
 };
 
 const fmtUSD = (n: number) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(n);
+  new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 2 }).format(n);
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -343,7 +343,7 @@ function DetailsPane({
         </Field>
       </div>
 
-      <Field label="Amount (USD)">
+      <Field label="Amount (AUD)">
         <Input
           type="number"
           inputMode="decimal"

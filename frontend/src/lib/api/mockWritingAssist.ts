@@ -30,7 +30,7 @@ export interface WritingContext {
   /** ISO date — added to the expanded-context preface. */
   date?: string;
   weather?: WeatherKind;
-  temperatureF?: number;
+  temperatureC?: number;
   personnel?: WritingContextPersonnel[];
 }
 
@@ -113,7 +113,7 @@ function buildPreface(ctx: WritingContext): string {
   const parts: string[] = [];
   if (ctx.weather) {
     const label = WEATHER_LABEL[ctx.weather];
-    const temp = typeof ctx.temperatureF === 'number' ? `, ${ctx.temperatureF}°F` : '';
+    const temp = typeof ctx.temperatureC === 'number' ? `, ${ctx.temperatureC}°C` : '';
     parts.push(`${label}${temp}`);
   }
   if (ctx.personnel && ctx.personnel.length > 0) {

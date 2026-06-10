@@ -11,23 +11,28 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { DollarSign, CheckCircle2, Lock, FileText, Image as ImageIcon, Activity, X, PenLine, Loader2 } from 'lucide-react';
+import { DollarSign, CheckCircle2, Lock, FileText, Image as ImageIcon, Activity, X, PenLine, Plus, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAppStore } from '../../store';
 import { useFeatureStore } from '../../store/features';
 import { useFinanceStore } from '../../store/finance';
+import { useGanttSideStore, orderTotal } from '../gantt/store';
 import { useDashboardStats } from '../../store/dashboard';
 import { PlannedVsActualTrend, plannedPctNow } from '../../components/charts/PlannedVsActualTrend';
 import { listPhaseStatuses } from '../../lib/api/phaseStatus';
 import { listMilestoneReleases, releaseMilestone, type MilestoneRelease } from '../../lib/api/paymentMilestones';
-import { canReleasePaymentMilestone } from '../../lib/permissions';
+import { canReleasePaymentMilestone, canEditBudget } from '../../lib/permissions';
+import { updateProject } from '../../lib/api/projects';
+import { supabaseConfigured } from '../../lib/supabase';
+import { SetBudgetModal } from '../../components/finance/SetBudgetModal';
 import { phaseColor } from '../../lib/construction/phaseColors';
 import type { ConstructionPhase } from '../../lib/ai/contract';
 import SignaturePad from '../../components/ui/SignaturePad';
 import { cardShell, StatusPill, FRAUNCES, type ToneKey } from '../gantt/components/ledger';
 
 const PHASES: ConstructionPhase[] = ['excavation', 'foundation', 'framing', 'roofing', 'electrical', 'plumbing', 'drywall', 'finishing'];
-const fmt = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
+const fmt = (n: number) => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 }).format(n);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type MilestoneState = 'released' | 'ready' | 'locked';
 interface Milestone {
@@ -46,13 +51,35 @@ export default function ProjectFinancePanel() {
   const history = useFeatureStore((s) => s.progressHistory);
   const budget = useFinanceStore((s) => (project?.id ? s.budgets[project.id] : undefined));
   const allInvoices = useFinanceStore((s) => s.invoices);
+  // Live project finance records (purchase orders + invoices) for real spend.
+  const allOrders = useGanttSideStore((s) => s.orders);
+  const allGanttInvoices = useGanttSideStore((s) => s.invoices);
 
   const projectId = project?.id;
   const canRelease = canReleasePaymentMilestone(currentProfile);
+  const mayEditBudget = canEditBudget(currentProfile);
+
+  // Real budget figures: total from the DB-hydrated finance store; spent = paid
+  // invoices; committed = open POs (placed, not yet received/cancelled). The
+  // gantt-side records are loaded in the Gantt Finance tab; on the Sponsor
+  // cockpit they may be empty → spend shows 0, but the budget total still shows.
+  const orders = useMemo(() => (projectId ? allOrders?.[projectId] ?? [] : []), [allOrders, projectId]);
+  const ganttInvoices = useMemo(() => (projectId ? allGanttInvoices?.[projectId] ?? [] : []), [allGanttInvoices, projectId]);
+  const spent = useMemo(
+    () => ganttInvoices.filter((i) => i.status === 'paid').reduce((s, i) => s + i.amount, 0),
+    [ganttInvoices],
+  );
+  const committed = useMemo(
+    () => orders.filter((o) => o.status !== 'received' && o.status !== 'cancelled').reduce((s, o) => s + orderTotal(o), 0),
+    [orders],
+  );
+  const total = budget?.total ?? 0;
+  const hasBudget = total > 0;
 
   const [phaseStatus, setPhaseStatus] = useState<Record<string, string>>({});
   const [releases, setReleases] = useState<MilestoneRelease[]>([]);
   const [releasing, setReleasing] = useState<Milestone | null>(null);
+  const [budgetModalOpen, setBudgetModalOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!projectId) return;
@@ -66,25 +93,52 @@ export default function ProjectFinancePanel() {
   }, [projectId]);
   useEffect(() => { void load(); }, [load]);
 
+  // Set / edit the project budget. Preserve live spent/committed (the panel
+  // re-derives those from invoices/orders); persist the total to projects.budget.
+  const saveBudget = async (newTotal: number) => {
+    if (!projectId) return;
+    const fin = useFinanceStore.getState();
+    const existing = fin.budgets[projectId];
+    fin.setBudget({
+      projectId,
+      total: newTotal,
+      spent: existing?.spent ?? 0,
+      committed: existing?.committed ?? 0,
+    });
+    if (supabaseConfigured() && UUID_RE.test(projectId)) {
+      try {
+        await updateProject(projectId, { budget: newTotal });
+      } catch (e) {
+        useAppStore.getState().setNotification({
+          message: `Budget saved locally but couldn't persist: ${e instanceof Error ? e.message : 'unknown error'}.`,
+          type: 'error',
+        });
+      }
+    }
+    setBudgetModalOpen(false);
+  };
+
   const invoices = useMemo(() => allInvoices.filter((i) => i.projectId === projectId), [allInvoices, projectId]);
 
   // Spend-vs-progress: where the money's gone vs how much work is done.
   const overall = stats.overallProgress;
-  const spentPct = budget && budget.total > 0 ? Math.round((budget.spent / budget.total) * 100) : 0;
+  const spentPct = hasBudget ? Math.round((spent / total) * 100) : 0;
+  const available = Math.max(0, total - spent - committed);
+  const availablePct = hasBudget ? Math.round((available / total) * 100) : 0;
   const planned = project ? plannedPctNow(project.startDate, project.endDate) : 0;
   const variance = overall - planned;
   const spendAhead = spentPct - overall; // >0 means money is outrunning progress
 
   // Milestones = the project's phases, one per phase, with their release/verdict state.
   const milestones = useMemo<Milestone[]>(() => {
-    const perPhase = budget && budget.total > 0 ? Math.round(budget.total / PHASES.length) : 0;
+    const perPhase = hasBudget ? Math.round(total / PHASES.length) : 0;
     return PHASES.map((p) => {
       const release = releases.find((r) => r.phase === p);
       const verified = phaseStatus[p] === 'complete';
       const state: MilestoneState = release ? 'released' : verified ? 'ready' : 'locked';
       return { phase: p, label: phaseColor(p).label, amount: release?.amount ?? perPhase, state, release };
     });
-  }, [releases, phaseStatus, budget]);
+  }, [releases, phaseStatus, hasBudget, total]);
 
   const releasedTotal = releases.reduce((s, r) => s + r.amount, 0);
   const readyCount = milestones.filter((m) => m.state === 'ready').length;
@@ -95,13 +149,14 @@ export default function ProjectFinancePanel() {
     <>
       {/* Spend vs progress headline */}
       <section className={`mb-4 overflow-hidden ${cardShell}`}>
-        <div className="grid gap-px bg-[#EFEBE0] sm:grid-cols-[1fr_1fr_1.4fr]">
-          <HeadlineCell label="Budget spent" value={budget ? `${spentPct}%` : '—'} sub={budget ? fmt(budget.spent) : 'No budget set'} tone="amber" />
+        <div className="grid gap-px bg-[#EFEBE0] sm:grid-cols-[1fr_1fr_1fr_1.6fr]">
+          <HeadlineCell label="Budget spent" value={hasBudget ? `${spentPct}%` : '—'} sub={hasBudget ? `${fmt(spent)} of ${fmt(total)}` : 'No budget set'} tone="amber" />
+          <HeadlineCell label="Budget available" value={hasBudget ? `${availablePct}%` : '—'} sub={hasBudget ? `${fmt(available)} left` : 'No budget set'} tone="sage" />
           <HeadlineCell label="Work complete" value={`${overall}%`} sub={variance < 0 ? `${Math.abs(variance)}% behind schedule` : 'on / ahead of schedule'} tone={variance < 0 ? 'red' : 'sage'} />
           <div className="bg-white p-4">
             <div className="mb-1 flex items-center justify-between">
               <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6B6B6B]">Spend vs progress</span>
-              {budget && (
+              {hasBudget && (
                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${spendAhead > 10 ? 'bg-[#FBE5E5] text-[#C44545]' : 'bg-[#E5F2EA] text-[#246F47]'}`}>
                   {spendAhead > 10 ? `spend ${spendAhead}% ahead of work` : 'value on track'}
                 </span>
@@ -113,20 +168,50 @@ export default function ProjectFinancePanel() {
       </section>
 
       {/* Budget health (read-only) */}
-      {budget && (
+      {hasBudget && (
         <section className={`mb-4 p-5 ${cardShell}`}>
           <div className="mb-2 flex items-center justify-between text-[11px] font-medium uppercase tracking-[0.16em] text-[#6B6B6B]">
             <span className="flex items-center gap-1.5"><DollarSign className="h-3.5 w-3.5 text-[#2F8F5C]" /> Budget</span>
-            <span className="tabular-nums">{fmt(budget.total)} authorised</span>
+            <span className="flex items-center gap-2">
+              <span className="tabular-nums">{fmt(total)} authorised</span>
+              {mayEditBudget && (
+                <button
+                  type="button"
+                  onClick={() => setBudgetModalOpen(true)}
+                  className="inline-flex items-center gap-1 rounded-full border border-[#E6E1D4] bg-white px-2 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-[#246F47] transition-colors hover:bg-[#E5F2EA]"
+                >
+                  <PenLine className="h-3 w-3" /> Edit
+                </button>
+              )}
+            </span>
           </div>
           <div className="flex h-3 w-full overflow-hidden rounded-full bg-[#F0EDE4]">
             <div className="h-full bg-[#2F8F5C]" style={{ width: `${Math.min(100, spentPct)}%` }} title="Spent" />
-            <div className="h-full bg-[#C8841E]" style={{ width: `${Math.min(100 - Math.min(100, spentPct), budget.total > 0 ? Math.round((budget.committed / budget.total) * 100) : 0)}%` }} title="Committed" />
+            <div className="h-full bg-[#C8841E]" style={{ width: `${Math.min(100 - Math.min(100, spentPct), hasBudget ? Math.round((committed / total) * 100) : 0)}%` }} title="Committed" />
           </div>
           <div className="mt-3 flex flex-wrap justify-between gap-2 text-[12px] text-[#6B6B6B]">
-            <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-[#2F8F5C]" /> Spent {fmt(budget.spent)}</span>
-            <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-[#C8841E]" /> Committed {fmt(budget.committed)}</span>
-            <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-[#E6E1D4]" /> Remaining {fmt(budget.total - budget.spent - budget.committed)}</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-[#2F8F5C]" /> Spent {fmt(spent)}</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-[#C8841E]" /> Committed {fmt(committed)}</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-[#E6E1D4]" /> Remaining {fmt(Math.max(0, total - spent - committed))}</span>
+          </div>
+        </section>
+      )}
+
+      {/* No budget yet — let an authorised user add one right here. */}
+      {!hasBudget && mayEditBudget && (
+        <section className={`mb-4 p-5 ${cardShell}`}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[14px] font-medium text-[#1A1A1A]">No budget set yet</p>
+              <p className="text-[12px] text-[#6B6B6B]">Authorise a budget to track spend, committed costs, and payment milestones.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setBudgetModalOpen(true)}
+              className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-full bg-[#2F8F5C] px-4 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-[#246F47]"
+            >
+              <Plus className="h-4 w-4" /> Add budget
+            </button>
           </div>
         </section>
       )}
@@ -227,6 +312,15 @@ export default function ProjectFinancePanel() {
           notify={(message, type) => useAppStore.getState().setNotification({ message, type })}
         />
       )}
+
+      {budgetModalOpen && (
+        <SetBudgetModal
+          projectName={project.name}
+          current={hasBudget ? total : undefined}
+          onClose={() => setBudgetModalOpen(false)}
+          onSave={saveBudget}
+        />
+      )}
     </>
   );
 }
@@ -237,7 +331,7 @@ function HeadlineCell({ label, value, sub, tone }: { label: string; value: strin
     <div className="bg-white p-4">
       <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6B6B6B]">{label}</p>
       <p className="mt-1 text-[32px] font-medium leading-none tabular-nums" style={{ fontFamily: FRAUNCES, color }}>{value}</p>
-      <p className="mt-1.5 text-[11.5px] text-[#6B6B6B]">{sub}</p>
+      <p className="mt-1.5 text-[13.5px] font-medium tabular-nums text-[#3A3A3A]">{sub}</p>
     </div>
   );
 }

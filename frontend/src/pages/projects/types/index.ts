@@ -11,6 +11,8 @@ export interface Project {
   startDate: string;
   endDate: string;
   status: ProjectStatus;
+  /** Authorised budget (AUD), from projects.budget. Undefined when unset. */
+  budget?: number;
 }
 
 export interface Worker {

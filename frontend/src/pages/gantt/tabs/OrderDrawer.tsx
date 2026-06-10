@@ -48,7 +48,7 @@ const UNITS = ['ea', 'box', 'm', 'm²', 'm³', 'kg', 'lf', 'sf', 'pallet'] as co
 
 const fmtUSD = (n: number) =>
   n === 0 ? '$0' :
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(n);
+  new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 2 }).format(n);
 
 const today = () => new Date().toISOString().slice(0, 10);
 

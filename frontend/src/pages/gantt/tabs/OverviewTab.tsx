@@ -1223,7 +1223,7 @@ function ModeButton({
 const fmtUSD = (n: number) =>
   n === 0
     ? '$0'
-    : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
+    : new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 }).format(n);
 
 function fmtBytes(bytes: number): string {
   if (!bytes) return '0 B';

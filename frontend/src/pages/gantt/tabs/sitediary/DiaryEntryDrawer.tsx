@@ -79,7 +79,7 @@ export function DiaryEntryDrawer({
   const [endTime, setEndTime] = useState('');
   const [status, setStatus] = useState<DiaryStatus>('pending');
   const [weather, setWeather] = useState<WeatherKind>('sunny');
-  const [tempF, setTempF] = useState<string>('');
+  const [tempC, setTempC] = useState<string>('');
   const [tags, setTags] = useState<string[]>([]);
   const [draftPersonnel, setDraftPersonnel] = useState<DiaryPersonnel[]>([]);
   const [tagDraft, setTagDraft] = useState('');
@@ -126,8 +126,8 @@ export function DiaryEntryDrawer({
       const flagged = new Set<'weather' | 'temp' | 'crew'>();
       setWeather(res.weather);
       flagged.add('weather');
-      if (res.temperatureF != null) {
-        setTempF(String(res.temperatureF));
+      if (res.temperatureC != null) {
+        setTempC(String(res.temperatureC));
         flagged.add('temp');
       }
       if (res.crewCount > 0) {
@@ -167,7 +167,7 @@ export function DiaryEntryDrawer({
       setEndTime(entry.endTime ?? '');
       setStatus(entry.status ?? 'pending');
       setWeather(entry.weather ?? 'sunny');
-      setTempF(entry.temperatureF == null ? '' : String(entry.temperatureF));
+      setTempC(entry.temperatureC == null ? '' : String(entry.temperatureC));
       setTags(entry.tags ?? []);
       setDraftPersonnel(entry.personnel);
     } else {
@@ -178,7 +178,7 @@ export function DiaryEntryDrawer({
       setEndTime('');
       setStatus('pending');
       setWeather('sunny');
-      setTempF('');
+      setTempC('');
       setTags(seedTags ?? []);
       setDraftPersonnel(currentUser ? [{
         id: 'draft-primary',
@@ -264,11 +264,11 @@ export function DiaryEntryDrawer({
   };
   const commitTemp = () => {
     if (!entry) return;
-    const trimmed = tempF.trim();
+    const trimmed = tempC.trim();
     const next: number | undefined = trimmed === '' ? undefined : Number(trimmed);
     if (next != null && !Number.isFinite(next)) return;
-    if ((entry.temperatureF ?? undefined) === next) return;
-    updateDiaryEntry(projectId, entry.id, { temperatureF: next });
+    if ((entry.temperatureC ?? undefined) === next) return;
+    updateDiaryEntry(projectId, entry.id, { temperatureC: next });
   };
   const commitTags = (next: string[]) => {
     setTags(next);
@@ -479,12 +479,12 @@ export function DiaryEntryDrawer({
         return;
       }
 
-      const tempNum = tempF.trim() === '' ? undefined : Number(tempF);
+      const tempNum = tempC.trim() === '' ? undefined : Number(tempC);
       addDiaryEntry(projectId, {
         date: entry?.date ?? todayISO,
         description: description.trim(),
         weather,
-        temperatureF: tempNum != null && Number.isFinite(tempNum) ? tempNum : undefined,
+        temperatureC: tempNum != null && Number.isFinite(tempNum) ? tempNum : undefined,
         personnel: draftPersonnel.map((p) => ({
           ...p,
           id: p.id.startsWith('draft-') ? `pers_${Date.now()}_${Math.random().toString(36).slice(2, 6)}` : p.id,
@@ -527,7 +527,7 @@ export function DiaryEntryDrawer({
       ariaLabel="Site diary entry"
       sizeClass="sm:w-[520px] lg:w-[600px]"
     >
-      <div className="flex h-full flex-col">
+      <div className="flex h-full min-h-0 flex-col">
         {/* Header */}
         <header className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
           <div>
@@ -549,7 +549,7 @@ export function DiaryEntryDrawer({
         </header>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+        <div className="editorial-scrollbox flex-1 px-5 py-4 space-y-5">
           {/* Description */}
           <section>
             <div className="flex items-center justify-between mb-1.5">
@@ -786,13 +786,13 @@ export function DiaryEntryDrawer({
                 <input
                   type="number"
                   inputMode="numeric"
-                  value={tempF}
-                  onChange={(e) => setTempF(e.target.value)}
+                  value={tempC}
+                  onChange={(e) => setTempC(e.target.value)}
                   onBlur={commitTemp}
                   placeholder="—"
                   className="w-16 rounded-md border border-slate-200 px-2 py-1 text-sm text-right"
                 />
-                <span className="text-xs text-slate-500">°F</span>
+                <span className="text-xs text-slate-500">°C</span>
               </div>
             </div>
 

@@ -91,6 +91,28 @@ export default defineConfig({
       },
     }),
   ],
+  build: {
+    // Split the big, rarely-changing vendor libs into their own long-cached
+    // chunks instead of letting them duplicate across per-route chunks. Smaller
+    // route bundles (incl. the heavy Gantt) + far better cross-deploy caching
+    // (these chunks' hashes only change when the lib upgrades). Only well-known
+    // leaf libraries are pinned; everything else keeps Vite's default
+    // per-route splitting.
+    rollupOptions: {
+      output: {
+        manualChunks(id: string) {
+          if (!id.includes('node_modules')) return undefined;
+          if (/[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/.test(id)) return 'vendor-react';
+          if (id.includes('framer-motion')) return 'vendor-motion';
+          if (/(recharts|d3-|victory-vendor|internmap)/.test(id)) return 'vendor-charts';
+          if (id.includes('date-fns')) return 'vendor-date';
+          if (id.includes('@supabase')) return 'vendor-supabase';
+          if (id.includes('@radix-ui')) return 'vendor-radix';
+          return undefined;
+        },
+      },
+    },
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),

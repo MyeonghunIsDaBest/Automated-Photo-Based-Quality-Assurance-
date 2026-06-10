@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAppStore } from '../store';
@@ -23,18 +23,23 @@ import { useUrlHydration } from '../lib/hooks/useUrlHydration';
 import { useProjectAccessGuard } from '../lib/hooks/useProjectAccessGuard';
 import { EditorialPageHeader } from '../components/editorial';
 
+// Overview + Tasks stay eager — one of them is always the first tab shown, so
+// lazy-loading them would just add a load-flash on Gantt open.
 import { OverviewTab }     from './gantt/tabs/OverviewTab';
 import { TasksTab }        from './gantt/tabs/TasksTab';
-import { ReviewQueueTab }  from './gantt/tabs/ReviewQueueTab';
-import { InventoryTab }    from './gantt/tabs/InventoryTab';
-import { FilesTab }        from './gantt/tabs/FilesTab';
-import { SiteDiaryTab } from './gantt/tabs/SiteDiaryTab';
-// SupplierTab merges OrdersTab + DeliveriesTab + InvoicesTab + WarrantiesTab
-// under one editorial header so the procurement surface area collapses from
-// four nav entries to one. Each child tab is reused as-is via a `hideHeader`
-// prop so we don't duplicate logic / drawers / wizards.
-import { SupplierTab }     from './gantt/tabs/SupplierTab';
-import { FinanceTab }      from './gantt/tabs/FinanceTab';
+
+// The 6 secondary tabs are lazy-loaded (each its own chunk, fetched on first
+// visit) so the Gantt's initial load doesn't ship the procurement / finance /
+// inventory / files / review / site-diary surfaces (+ their drawers, wizards,
+// and Sparky) up front. Rendered inside a <Suspense> below; the existing
+// ErrorBoundary covers a failed chunk fetch. Named exports → unwrap to default.
+// (SupplierTab merges Orders + Deliveries + Invoices + Warranties under one header.)
+const ReviewQueueTab = lazy(() => import('./gantt/tabs/ReviewQueueTab').then((m) => ({ default: m.ReviewQueueTab })));
+const SiteDiaryTab   = lazy(() => import('./gantt/tabs/SiteDiaryTab').then((m) => ({ default: m.SiteDiaryTab })));
+const SupplierTab    = lazy(() => import('./gantt/tabs/SupplierTab').then((m) => ({ default: m.SupplierTab })));
+const FinanceTab     = lazy(() => import('./gantt/tabs/FinanceTab').then((m) => ({ default: m.FinanceTab })));
+const InventoryTab   = lazy(() => import('./gantt/tabs/InventoryTab').then((m) => ({ default: m.InventoryTab })));
+const FilesTab       = lazy(() => import('./gantt/tabs/FilesTab').then((m) => ({ default: m.FilesTab })));
 
 
 interface TabSpec {
@@ -291,6 +296,13 @@ export default function Gantt() {
 
       {/* ─── Active tab ─── */}
       <ErrorBoundary label={visibleTabs.find((t) => t.id === activeTab)?.label ?? activeTab}>
+        <Suspense
+          fallback={
+            <div className="flex min-h-[40vh] items-center justify-center">
+              <span className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-[#E6E1D4] border-t-[#2F8F5C]" aria-hidden />
+            </div>
+          }
+        >
         {activeTab === 'overview' && (
           <OverviewTab
             project={project}
@@ -359,6 +371,7 @@ export default function Gantt() {
         {activeTab === 'files' && (
           <FilesTab project={project} canEdit={canEdit} canUpload={canUpload} currentUser={currentUser} />
         )}
+        </Suspense>
       </ErrorBoundary>
       </div>
     </div>

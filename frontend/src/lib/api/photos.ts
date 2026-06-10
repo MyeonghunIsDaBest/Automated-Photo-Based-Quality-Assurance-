@@ -4,6 +4,7 @@
 // The bucket is private — `getPhotoUrl()` returns a short-lived signed URL.
 
 import { supabase, supabaseConfigured } from '../supabase';
+import { downscaleImageForUpload } from '../images/downscaleImage';
 import { requestAnalysis } from './aiAnalyses';
 import type { ConstructionPhase } from '../ai/contract';
 
@@ -90,14 +91,20 @@ export async function uploadPhoto({
     );
   }
 
+  // Downscale/compress on the device before upload — full-res camera photos
+  // (3–12 MB) are the main mobile upload slowness. Best-effort: falls back to
+  // the original file for non-images / undecodable HEIC / decode failures.
+  const optimized = await downscaleImageForUpload(file);
+  const uploadFile = optimized.file;
+
   // crypto.randomUUID() is in every modern browser Vite supports.
   const photoId = crypto.randomUUID();
-  const storagePath = `${projectId}/${photoId}.${extOf(file.name)}`;
+  const storagePath = `${projectId}/${photoId}.${extOf(uploadFile.name)}`;
 
   const upload = await supabase.storage
     .from(PHOTOS_BUCKET)
-    .upload(storagePath, file, {
-      contentType: file.type || 'application/octet-stream',
+    .upload(storagePath, uploadFile, {
+      contentType: uploadFile.type || 'application/octet-stream',
       upsert: false,
     });
   if (upload.error) throw upload.error;
@@ -118,11 +125,11 @@ export async function uploadPhoto({
       task_id: taskId ?? null,
       zone_id: zoneId ?? null,
       uploaded_by: uploadedBy,
-      filename: file.name,
+      filename: uploadFile.name,
       storage_path: storagePath,
-      file_size_kb: Math.round(file.size / 1024),
-      width: width ?? 0,
-      height: height ?? 0,
+      file_size_kb: Math.round(uploadFile.size / 1024),
+      width: optimized.width || width || 0,
+      height: optimized.height || height || 0,
       taken_at: takenAt ?? null,
       gps_lat: gpsLat ?? null,
       gps_lng: gpsLng ?? null,

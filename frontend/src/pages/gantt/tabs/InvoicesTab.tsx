@@ -31,7 +31,7 @@ const STATUS_FILTERS: { id: InvoiceStatus | 'all' | 'open'; label: string }[] = 
 ];
 
 const fmtUSD = (n: number) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
+  new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 }).format(n);
 
 // Mark an invoice "overdue" on read if its due date passed and it isn't paid.
 function effectiveStatus(inv: Invoice): InvoiceStatus {

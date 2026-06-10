@@ -115,7 +115,7 @@ export default function Pricing() {
             ))}
           </div>
           <p className="mx-auto mt-6 max-w-2xl text-center text-[11px] text-slate-400">
-            Pricing in USD. Prices ex-tax. AI analysis costs roughly $0.01 per photo
+            Pricing in AUD. Prices ex-tax. AI analysis costs roughly $0.01 per photo
             processed by Claude Vision — Pro plans absorb the first 500/site/month,
             anything past that bills at-cost.
           </p>

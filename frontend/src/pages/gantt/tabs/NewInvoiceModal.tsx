@@ -39,7 +39,7 @@ const inDays = (n: number) =>
   new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
 
 const fmtUSD = (n: number) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(n);
+  new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 2 }).format(n);
 
 export default function NewInvoiceModal({
   isOpen, onClose, projectId, orders,
@@ -232,7 +232,7 @@ export default function NewInvoiceModal({
             </div>
 
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Amount (USD)</label>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Amount (AUD)</label>
               <Input
                 type="number"
                 inputMode="decimal"

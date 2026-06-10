@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  AlertTriangle, CalendarRange, CheckCheck, CheckSquare, ChevronDown, ChevronRight,
-  Lock, Pencil, Plus, Sparkles, Square, Tag, Trash2,
+  AlertTriangle, CalendarRange, Check, CheckCheck, CheckSquare, ChevronDown, ChevronRight,
+  Lock, Pencil, Plus, Search, Sparkles, Square, Tag, Trash2,
   User as UserIcon, X,
 } from 'lucide-react';
 import { addDays, differenceInCalendarDays, format, parseISO } from 'date-fns';
@@ -25,6 +25,7 @@ import {
 import GanttToolbar from '../../../components/ui/GanttToolbar';
 import PhaseEditModal from './PhaseEditModal';
 import { phaseColor } from '../../../lib/construction/phaseColors';
+import { tasksForPhase } from '../../../lib/construction/phaseTaskCatalog';
 
 interface TasksTabProps {
   project: Project;
@@ -139,6 +140,10 @@ export function TasksTab({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerMode, setDrawerMode] = useState<'edit' | 'create'>('edit');
   const [addPhaseOpen, setAddPhaseOpen] = useState(false);
+
+  // "Add tasks" picker target — the phase anchor we're adding sub-tasks to
+  // (catalog multi-select + custom add). Replaces the old inline free-text add.
+  const [tasksModalAnchor, setTasksModalAnchor] = useState<Task | null>(null);
 
   // Pencil-icon target — when set, opens the phase-scoped batch edit modal.
   const [phaseToEdit, setPhaseToEdit] = useState<Task | null>(null);
@@ -283,7 +288,7 @@ export function TasksTab({
             parentAnchor: anchor,
             emptyLabel: filters.size > 0
               ? 'No matching sub-tasks in this phase.'
-              : 'No sub-tasks yet. Click + to add one.',
+              : 'No tasks yet — add from the list.',
           });
         }
       }
@@ -659,9 +664,10 @@ export function TasksTab({
                       onToggleCollapse={() =>
                         item.task && toggleCollapsed(item.task.id)
                       }
-                      onAddSubTask={() =>
-                        item.task && setAddingFor(item.task.id)
-                      }
+                      onAddSubTask={() => {
+                        const a = item.task ?? item.parentAnchor;
+                        if (a) setTasksModalAnchor(a);
+                      }}
                       onEditPhase={() =>
                         item.task && setPhaseToEdit(item.task)
                       }
@@ -876,9 +882,10 @@ export function TasksTab({
                     onEditPhase={() =>
                       item.task && setPhaseToEdit(item.task)
                     }
-                    onAddSubTask={() =>
-                      item.task && setAddingFor(item.task.id)
-                    }
+                    onAddSubTask={() => {
+                      const a = item.task ?? item.parentAnchor;
+                      if (a) setTasksModalAnchor(a);
+                    }}
                     onOpenTask={() =>
                       item.task && openTask(item.task)
                     }
@@ -916,6 +923,26 @@ export function TasksTab({
         <AddPhaseModal
           onClose={() => setAddPhaseOpen(false)}
           onCreate={createPhase}
+        />
+      )}
+
+      {tasksModalAnchor && (
+        <AddTasksModal
+          anchor={tasksModalAnchor}
+          catalog={tasksModalAnchor.isCustom ? [] : tasksForPhase(tasksModalAnchor.phase)}
+          existingNames={new Set(
+            tasks
+              .filter((t) => t.parentTaskId === tasksModalAnchor.id)
+              .map((t) => t.name.trim().toLowerCase()),
+          )}
+          onClose={() => setTasksModalAnchor(null)}
+          onConfirm={async (names) => {
+            for (const n of names) {
+              // eslint-disable-next-line no-await-in-loop
+              await createSubTask(tasksModalAnchor, n);
+            }
+            setTasksModalAnchor(null);
+          }}
         />
       )}
 
@@ -1048,10 +1075,21 @@ function LeftRowRender({
   if (item.kind === 'empty') {
     return (
       <div
-        className="flex items-center pl-9 pr-3 text-[11px] text-[#A0A0A0]"
+        className="flex items-center pl-9 pr-3"
         style={{ height: ROW_HEIGHT_PX }}
       >
-        {item.emptyLabel}
+        {canEdit ? (
+          <button
+            type="button"
+            onClick={onAddSubTask}
+            className="inline-flex items-center gap-1 rounded text-[11px] text-[#6B6B6B] transition-colors hover:text-[#246F47]"
+          >
+            <Plus className="h-3 w-3" />
+            {item.emptyLabel}
+          </button>
+        ) : (
+          <span className="text-[11px] text-[#A0A0A0]">{item.emptyLabel}</span>
+        )}
       </div>
     );
   }
@@ -1665,6 +1703,124 @@ function AddPhaseModal({
         <>
           <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
           <Button onClick={() => void submit()} disabled={!canSubmit}>{busy ? 'Creating…' : 'Create phase'}</Button>
+        </>
+      }
+    />
+  );
+}
+
+// ─── "Add tasks" picker — multi-select from the phase's catalog + custom add.
+// Replaces the old inline free-text "+". Catalog comes from
+// `phaseTaskCatalog.ts` (seeded, editable per job/client); custom phases pass an
+// empty catalog and get just the custom-add field.
+function AddTasksModal({
+  anchor, catalog, existingNames, onClose, onConfirm,
+}: {
+  anchor: Task;
+  catalog: string[];
+  existingNames: Set<string>;
+  onClose: () => void;
+  onConfirm: (names: string[]) => Promise<void> | void;
+}) {
+  const disp = phaseDisplay(anchor);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState('');
+  const [custom, setCustom] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  // Hide catalog entries already added as sub-tasks under this phase.
+  const available = useMemo(
+    () => catalog.filter((n) => !existingNames.has(n.trim().toLowerCase())),
+    [catalog, existingNames],
+  );
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return q ? available.filter((n) => n.toLowerCase().includes(q)) : available;
+  }, [available, search]);
+
+  const toggle = (name: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(name) ? next.delete(name) : next.add(name);
+      return next;
+    });
+
+  const customTrimmed = custom.trim();
+  const total = selected.size + (customTrimmed ? 1 : 0);
+
+  const submit = async () => {
+    if (total === 0 || busy) return;
+    const names = [...selected];
+    if (customTrimmed) names.push(customTrimmed);
+    setBusy(true);
+    try { await onConfirm(names); } finally { setBusy(false); }
+  };
+
+  return (
+    <ModalShell
+      title={`Add tasks · ${disp.label}`}
+      onClose={onClose}
+      body={
+        <div className="space-y-3">
+          {catalog.length > 0 ? (
+            <>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#A0A0A0]" />
+                <input
+                  autoFocus
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search tasks…"
+                  className="w-full rounded-md border border-[#E6E1D4] bg-white py-2 pl-8 pr-3 text-sm shadow-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
+                />
+              </div>
+              <ul className="max-h-60 divide-y divide-[#EFEBE0] overflow-y-auto rounded-md border border-[#E6E1D4]">
+                {visible.length === 0 && (
+                  <li className="px-3 py-4 text-center text-xs text-[#A0A0A0]">
+                    {available.length === 0 ? 'Every preset task is already added.' : `No tasks match “${search}”.`}
+                  </li>
+                )}
+                {visible.map((name) => {
+                  const checked = selected.has(name);
+                  return (
+                    <li key={name}>
+                      <button
+                        type="button"
+                        onClick={() => toggle(name)}
+                        className={`flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors ${checked ? 'bg-[#E5F2EA]' : 'hover:bg-[#FAF8F2]'}`}
+                      >
+                        <span className={`grid h-4 w-4 flex-shrink-0 place-items-center rounded-[5px] border transition-colors ${checked ? 'border-[#2F8F5C] bg-[#2F8F5C] text-white' : 'border-[#D8D2C4] bg-white'}`}>
+                          {checked && <Check className="h-3 w-3" strokeWidth={3} />}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-[13px] text-[#1A1A1A]">{name}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
+          ) : (
+            <p className="text-[11px] text-[#A0A0A0]">No preset tasks for this phase — add a custom one below.</p>
+          )}
+
+          <label className="block">
+            <span className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">Add a custom task</span>
+            <input
+              value={custom}
+              onChange={(e) => setCustom(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') void submit(); }}
+              placeholder="e.g. Client-specific switchboard relocation"
+              className="w-full rounded-md border border-[#E6E1D4] bg-white px-3 py-2 text-sm shadow-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
+            />
+          </label>
+        </div>
+      }
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button onClick={() => void submit()} disabled={total === 0 || busy}>
+            {busy ? 'Adding…' : total > 0 ? `Add ${total} task${total === 1 ? '' : 's'}` : 'Add tasks'}
+          </Button>
         </>
       }
     />
