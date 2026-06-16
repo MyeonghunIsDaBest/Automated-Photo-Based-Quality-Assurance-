@@ -12,13 +12,15 @@ import { supabaseConfigured } from '../lib/supabase';
 import ActivityFeed from '../components/activity/ActivityFeed';
 import ActivityDetailModal from '../components/activity/ActivityDetailModal';
 import type { ActivityEvent } from '../lib/activity/types';
-import { SECURITY_GROUP_LABELS, canConfirmAIAnalysis, canViewSafetyIncident, canViewFinance, dashboardLens } from '../lib/permissions';
+import { SECURITY_GROUP_LABELS, canConfirmAIAnalysis, canViewSafetyIncident, canViewFinance, dashboardLens, isFieldRole } from '../lib/permissions';
+import AuditTrailPanel from '../components/audit/AuditTrailPanel';
 import type { SecurityGroup } from '../types';
 import {
   ArrowUpRight,
   Camera,
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
   Cloud,
   CloudOff,
@@ -60,6 +62,7 @@ const ROLE_BLURB: Record<SecurityGroup, string> = {
   dev:              'Developer — hidden superuser with full access across every surface.',
   stakeholder:      'Read-only client view. Track progress and review reports for your linked projects.',
   supplier:         'Read-only vendor view. See your scoped orders, deliveries, invoices, and warranties.',
+  customer:         'Property owner portal. Log and track maintenance requests for your properties.',
 };
 
 const STATUS_BADGE: Record<string, string> = {
@@ -143,6 +146,7 @@ function tradeChip(group: SecurityGroup): string {
     case 'worker':           return 'FIELD';
     case 'stakeholder':      return 'CLIENT';
     case 'supplier':         return 'VENDOR';
+    case 'customer':         return 'OWNER';
     default:                 return '—';
   }
 }
@@ -151,7 +155,7 @@ function tradeChip(group: SecurityGroup): string {
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { users, zones, project, currentProfile, currentUser, setNotification } = useAppStore();
+  const { users, zones, project, auditLogs, currentProfile, currentUser, setNotification } = useAppStore();
   const stats = useDashboardStats();
   // Role-adaptive lens (Phase 1): construction_mgr → portfolio rollup band,
   // project_manager + admins → command (+ finance summary). Managers/admins all
@@ -187,6 +191,9 @@ export default function Dashboard() {
       if (captureInputRef.current) captureInputRef.current.value = '';
     }
   };
+
+  // Audit trail section expand/collapse (collapsed by default).
+  const [auditOpen, setAuditOpen] = useState(false);
 
   // Recent-activity expand/collapse.
   const [showAllActivity, setShowAllActivity] = useState(false);
@@ -345,7 +352,7 @@ export default function Dashboard() {
 
               <button
                 type="button"
-                onClick={() => navigate('/reports')}
+                onClick={() => navigate('/gantt?tab=reports')}
                 className="group flex shrink-0 items-center gap-1.5 rounded-full bg-[#1A1A1A] px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#246F47]"
               >
                 <Sparkles className="h-3.5 w-3.5 transition-transform group-hover:-translate-y-px" />
@@ -868,6 +875,36 @@ export default function Dashboard() {
             </section>
           </aside>
         </div>
+
+        {/* ─── Audit trail — collapsed section, non-field roles only ─────── */}
+        {!isFieldRole(currentProfile) && (
+          <div className="mt-8">
+            <button
+              type="button"
+              onClick={() => setAuditOpen((o) => !o)}
+              className="flex w-full items-center justify-between gap-3 rounded-[14px] border border-[#E6E1D4] bg-white px-6 py-4 text-left shadow-[0_1px_2px_rgba(20,20,20,0.04)] transition-colors hover:bg-[#FAF8F2]"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#6B6B6B]">
+                  Audit Trail
+                </span>
+                <span className="rounded-full border border-[#E6E1D4] bg-[#FAF8F2] px-2 py-0.5 text-[10px] font-medium tabular-nums text-[#6B6B6B]">
+                  {auditLogs.length}
+                </span>
+              </div>
+              {auditOpen ? (
+                <ChevronDown className="h-4 w-4 text-[#A0A0A0]" />
+              ) : (
+                <ChevronRight className="h-4 w-4 text-[#A0A0A0]" />
+              )}
+            </button>
+            {auditOpen && (
+              <div className="mt-3">
+                <AuditTrailPanel />
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <ActivityDetailModal

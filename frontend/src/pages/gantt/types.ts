@@ -15,6 +15,7 @@ export type TabId =
   | 'finance'       // money view — spend vs progress, budget, milestones, invoices
   | 'crew'          // legacy deep-link target → resolves to 'site_diary' (merged in)
   | 'site_diary'
+  | 'reports'        // project-scoped Progress + Financial + Sign-offs (extracted from /reports)
   | 'punch_list'
   | 'supplier'      // merged: orders + deliveries + invoices + warranties
   | 'orders'        // legacy deep-link target → resolves to 'supplier'

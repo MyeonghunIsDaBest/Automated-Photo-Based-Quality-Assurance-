@@ -15,7 +15,7 @@ import {
   Clock, Check, ScanLine, PenLine, ShieldCheck, TrendingUp,
   Camera, BookOpen, UserRound, FolderPlus, Users,
   LayoutDashboard, ShoppingCart, Truck, Receipt, DollarSign, FileText,
-  Image as ImageIcon, BarChart3, Eye,
+  Image as ImageIcon, BarChart3, Eye, Wrench, PlusCircle,
 } from 'lucide-react';
 
 export type Tone = 'green' | 'amber' | 'slate' | 'dark';
@@ -148,22 +148,22 @@ const PROJECT_MANAGER: RoleDeck = {
     title: 'Run your projects,',
     accent: 'end to end.',
     sub: 'Create a project, build the crew, and let the photos keep the schedule honest. Spend, progress, and the daily record stay in one place — and update themselves.',
-    primary: { label: 'Create a project', icon: FolderPlus, to: '/projects', variant: 'dark' },
+    primary: { label: 'Create a project', icon: FolderPlus, to: '/jobs?view=projects', variant: 'dark' },
     secondary: { label: 'Go to dashboard', icon: LayoutDashboard, to: '/dashboard', variant: 'ghost' },
   },
   yourDay: {
     eyebrow: 'Your command surface', title: 'Plan, track,', accent: 'and prove.',
     cards: [
       { icon: BarChart3, tone: 'green', tag: 'Plan 01', title: 'Schedule & tasks', body: 'Build the Gantt; photos move progress so the plan reflects the real build.', to: '/gantt' },
-      { icon: DollarSign, tone: 'amber', tag: 'Plan 02', title: 'Budget & invoices', body: 'Track spend against progress, raise invoices, and watch the burn live.', to: '/reports' },
+      { icon: DollarSign, tone: 'amber', tag: 'Plan 02', title: 'Budget & invoices', body: 'Track spend against progress, raise invoices, and watch the burn live.', to: '/gantt?tab=reports' },
       { icon: Users, tone: 'slate', tag: 'Plan 03', title: 'Your crew', body: 'Invite people, set their role, and see who clocked in across the day.', to: '/gantt?tab=site_diary' },
     ],
   },
   getReady: {
     eyebrow: 'Get started', title: 'Three steps to', accent: 'your first project.',
     cards: [
-      { icon: FolderPlus, tone: 'green', tag: 'Step 1', title: 'Create the project', body: 'Name it, set the dates, and SiteProof seeds the standard phases for you.', to: '/projects' },
-      { icon: Users, tone: 'dark', tag: 'Step 2', title: 'Invite your crew', body: 'Add your people and pick each one’s role — workers, suppliers, sponsors.', to: '/projects' },
+      { icon: FolderPlus, tone: 'green', tag: 'Step 1', title: 'Create the project', body: 'Name it, set the dates, and SiteProof seeds the standard phases for you.', to: '/jobs?view=projects' },
+      { icon: Users, tone: 'dark', tag: 'Step 2', title: 'Invite your crew', body: "Add your people and pick each one's role — workers, suppliers, sponsors.", to: '/jobs?view=projects' },
       { icon: BarChart3, tone: 'amber', tag: 'Step 3', title: 'Lay out the schedule', body: 'Drop in the tasks; the photos your crew takes keep them moving.', to: '/gantt' },
     ],
   },
@@ -172,7 +172,7 @@ const PROJECT_MANAGER: RoleDeck = {
     headline: 'Create a project',
     body: 'You own the projects you create — invite your crew, set their roles, and run the schedule and budget. Only you and the people you invite can see them.',
     actions: [
-      { label: 'Create a project', icon: FolderPlus, to: '/projects', variant: 'dark' },
+      { label: 'Create a project', icon: FolderPlus, to: '/jobs?view=projects', variant: 'dark' },
       { label: 'Open dashboard', icon: LayoutDashboard, to: '/dashboard', variant: 'ghost' },
     ],
     note: 'Projects you create are private to you and the team you invite.',
@@ -197,7 +197,7 @@ const CONSTRUCTION_MANAGER: RoleDeck = {
     eyebrow: 'Your portfolio lens', title: 'Every site,', accent: 'at a glance.',
     cards: [
       { icon: TrendingUp, tone: 'green', tag: 'Oversee 01', title: 'Portfolio rollup', body: 'Progress, behind-schedule count, and open hazards across all your projects.', to: '/dashboard' },
-      { icon: BarChart3, tone: 'slate', tag: 'Oversee 02', title: 'Drill into a project', body: 'Tap any project to scope the full dashboard to it — tasks, photos, safety.', to: '/projects' },
+      { icon: BarChart3, tone: 'slate', tag: 'Oversee 02', title: 'Drill into a project', body: 'Tap any project to scope the full dashboard to it — tasks, photos, safety.', to: '/jobs?view=projects' },
       { icon: ShieldCheck, tone: 'amber', tag: 'Oversee 03', title: 'Safety & QA', body: 'Confirm AI calls and close out hazards before they become a problem.', to: '/safety' },
     ],
   },
@@ -206,7 +206,7 @@ const CONSTRUCTION_MANAGER: RoleDeck = {
     cards: [
       { icon: LayoutDashboard, tone: 'green', tag: 'Step 1', title: 'Scan the portfolio', body: 'Open the dashboard to see which projects are on track and which are behind.', to: '/dashboard' },
       { icon: Eye, tone: 'dark', tag: 'Step 2', title: 'Review the AI queue', body: 'Confirm or correct the photo analyses waiting on a manager.', to: '/gantt?tab=review' },
-      { icon: FileText, tone: 'amber', tag: 'Step 3', title: 'Pull a report', body: 'Generate a progress report to share up the chain.', to: '/reports' },
+      { icon: FileText, tone: 'amber', tag: 'Step 3', title: 'Pull a report', body: 'Generate a progress report to share up the chain.', to: '/gantt?tab=reports' },
     ],
   },
   final: {
@@ -236,16 +236,16 @@ const COMPANY_ADMIN: RoleDeck = {
     eyebrow: 'Your control surface', title: 'Run the', accent: 'whole operation.',
     cards: [
       { icon: Users, tone: 'green', tag: 'Admin 01', title: 'People & roles', body: 'Add staff, set roles, and rescue accounts — the whole company directory.', to: '/admin' },
-      { icon: LayoutDashboard, tone: 'slate', tag: 'Admin 02', title: 'Every project', body: 'See and manage all projects across the company, not just your own.', to: '/projects' },
-      { icon: DollarSign, tone: 'amber', tag: 'Admin 03', title: 'Finance & reports', body: 'Budgets, invoices, and exportable reports across the portfolio.', to: '/reports' },
+      { icon: LayoutDashboard, tone: 'slate', tag: 'Admin 02', title: 'Every project', body: 'See and manage all projects across the company, not just your own.', to: '/jobs?view=projects' },
+      { icon: DollarSign, tone: 'amber', tag: 'Admin 03', title: 'Finance & reports', body: 'Budgets, invoices, and exportable reports across the portfolio.', to: '/gantt?tab=reports' },
     ],
   },
   getReady: {
     eyebrow: 'Set up your company', title: 'Three steps to', accent: 'go live.',
     cards: [
       { icon: Users, tone: 'green', tag: 'Step 1', title: 'Invite your team', body: 'Add your managers and crew, and set each person’s access level.', to: '/admin' },
-      { icon: FolderPlus, tone: 'dark', tag: 'Step 2', title: 'Create projects', body: 'Spin up your live jobs so managers and crews can get to work.', to: '/projects' },
-      { icon: BookOpen, tone: 'amber', tag: 'Step 3', title: 'Review the guide', body: 'A quick tour of roles, access levels, and the daily photo flow.', to: '/reports' },
+      { icon: FolderPlus, tone: 'dark', tag: 'Step 2', title: 'Create projects', body: 'Spin up your live jobs so managers and crews can get to work.', to: '/jobs?view=projects' },
+      { icon: BookOpen, tone: 'amber', tag: 'Step 3', title: 'Review the guide', body: 'A quick tour of roles, access levels, and the daily photo flow.', to: '/gantt?tab=reports' },
     ],
   },
   final: {
@@ -324,7 +324,7 @@ const STAKEHOLDER: RoleDeck = {
     cards: [
       { icon: Eye, tone: 'green', tag: 'Note 01', title: 'Read-only by design', body: 'You see the same live data the site team sees — nothing to manage.', to: '/sponsor' },
       { icon: DollarSign, tone: 'dark', tag: 'Note 02', title: 'You hold the release', body: 'Funds only move when you sign off — tied to verified progress.', to: '/sponsor' },
-      { icon: FileText, tone: 'amber', tag: 'Note 03', title: 'Export anytime', body: 'Pull the full project history and reports as a single document.', to: '/reports' },
+      { icon: FileText, tone: 'amber', tag: 'Note 03', title: 'Export anytime', body: 'Pull the full project history and reports as a single document.', to: '/gantt?tab=reports' },
     ],
   },
   final: {
@@ -332,6 +332,44 @@ const STAKEHOLDER: RoleDeck = {
     headline: 'Open the sponsor view',
     body: 'Your home compares spend to progress on the projects shared with you, and lets you release payment milestones as each stage is verified.',
     actions: [{ label: 'Go to my view', icon: DollarSign, to: '/sponsor', variant: 'dark' }],
+  },
+};
+
+// ─── Customer ─────────────────────────────────────────────────────────────────
+const CUSTOMER: RoleDeck = {
+  roleLabel: 'Customer · portal',
+  eyebrowSuffix: (n) => (n > 0 ? `${n} propert${n === 1 ? 'y' : 'ies'} registered` : 'account ready'),
+  finalRailLabel: 'Your portal',
+  skipTo: '/customer',
+  cover: {
+    eyebrow: 'Welcome to SiteProof',
+    badges: [{ tone: 'green', icon: Check, label: 'Account ready' }],
+    title: 'Your properties &',
+    accent: 'maintenance.',
+    sub: 'View your registered properties, report a problem, and track every maintenance request through to completion — all in one place.',
+    primary: { label: 'Go to my portal', icon: Wrench, to: '/customer', variant: 'dark' },
+  },
+  yourDay: {
+    eyebrow: 'Your customer view', title: 'Properties &', accent: 'requests.',
+    cards: [
+      { icon: Wrench, tone: 'amber', tag: 'Portal 01', title: 'Report a problem', body: 'Lodge a new maintenance request for any of your registered properties in seconds.', to: '/customer' },
+      { icon: Eye, tone: 'green', tag: 'Portal 02', title: 'Track my requests', body: 'See every open and past request — status, notes, and scheduled visits.', to: '/customer' },
+      { icon: ShieldCheck, tone: 'slate', tag: 'Portal 03', title: 'Service history', body: 'A permanent record of every job completed at your properties.', to: '/customer' },
+    ],
+  },
+  getReady: {
+    eyebrow: 'Getting started', title: 'Two things to', accent: 'know.',
+    cards: [
+      { icon: UserRound, tone: 'green', tag: 'Note 01', title: 'Confirm your details', body: 'Make sure your contact details are up to date so we can reach you.', to: '/settings' },
+      { icon: PlusCircle, tone: 'dark', tag: 'Note 02', title: 'Report a problem', body: "Use the portal to lodge any maintenance request — we'll take it from there.", to: '/customer' },
+      { icon: Eye, tone: 'amber', tag: 'Note 03', title: 'Track progress', body: "We'll keep you updated as your request moves through scheduling and completion.", to: '/customer' },
+    ],
+  },
+  final: {
+    eyebrow: 'Next step', title: 'Into your', accent: 'portal.',
+    headline: 'Open your portal',
+    body: 'Your portal shows only your own properties and requests. Lodge a new job or check on an open one — we keep the status current as work progresses.',
+    actions: [{ label: 'Go to my portal', icon: Wrench, to: '/customer', variant: 'dark' }],
   },
 };
 
@@ -344,6 +382,7 @@ export const ROLE_DECKS: Partial<Record<SecurityGroup, RoleDeck>> = {
   dev: COMPANY_ADMIN,           // hidden superuser — reuse the admin deck
   supplier: SUPPLIER,
   stakeholder: STAKEHOLDER,
+  customer: CUSTOMER,
 };
 
 // Brand mark + rail step labels (shared). The final step label comes from the

@@ -7,6 +7,10 @@ export interface Project {
   percentComplete: number;
   tasksComplete: number;
   tasksPending: number;
+  /** Tasks with status 'blocked' — subset of the old tasksOutstanding bucket. */
+  tasksBlocked: number;
+  /** Tasks not yet started (status 'not_started') or any other non-terminal,
+   *  non-blocked, non-in-progress status. */
   tasksOutstanding: number;
   startDate: string;
   endDate: string;

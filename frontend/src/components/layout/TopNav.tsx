@@ -7,12 +7,16 @@ import { useNotificationStore } from '../../store/notifications';
 import { fadeIn, popover } from '../../lib/motion/variants';
 import {
   LayoutDashboard, FolderOpen, MessageSquare,
-  DollarSign, Bell, Settings, LogOut, Building2,
+  Bell, Settings, LogOut, Building2,
   Menu, X, Shield, MessageCircle, TrendingUp, FileCheck, HardHat,
-  ShieldCheck, ChevronDown, Check, Crown,
+  ShieldCheck, ChevronDown, Check, Crown, Wrench, ClipboardList, Package, ReceiptText,
 } from 'lucide-react';
 import {
   canSeeAdminDashboard,
+  canManageMaintenance,
+  canManageCatalogue,
+  canManageSales,
+  canViewJobsBoard,
   isFieldRole,
   SECURITY_GROUP_LABELS,
 } from '../../lib/permissions';
@@ -46,13 +50,32 @@ type NavItem = {
 //
 // The first two items are role-aware (see the helpers below); the rest of the
 // strip is shared. Item 1 swaps Home/Dashboard by role; item 2 is the projects
-// list, which a supplier reads as "Materials" (their world is POs / deliveries)
-// and every other role reads as "Projects".
-const SHARED_NAV_TAIL: NavItem[] = [
+// list (suppliers/stakeholders only — internal staff reach projects via the
+// Jobs hub at /jobs?view=projects so the standalone /projects entry is
+// omitted for them). The tail runs Jobs → Customers → Messages so the
+// most-used operations surface first. Jobs uses ClipboardList (not
+// KanbanSquare) so it doesn't read as a twin of the Dashboard grid glyph.
+// The strip grew with the Customer portal; OVERFLOW collapses non-daily
+// items (Safety, Admin) into a "More ▾" pill below xl.
+const CORE_NAV_TAIL: NavItem[] = [
+  { label: 'Jobs',      icon: ClipboardList, path: '/jobs',      gate: canViewJobsBoard },
+  { label: 'Customers', icon: Wrench,        path: '/customers', gate: canManageMaintenance },
   { label: 'Messages',  icon: MessageSquare, path: '/messages' },
-  { label: 'Reports',   icon: DollarSign,    path: '/reports' },
-  { label: 'Safety',    icon: HardHat,       path: '/safety' },
-  { label: 'Admin',     icon: ShieldCheck,   path: '/admin',  gate: canSeeAdminDashboard },
+];
+
+const OVERFLOW_NAV: NavItem[] = [
+  { label: 'Sales',        icon: ReceiptText,   path: '/sales',       gate: canManageSales },
+  { label: 'Catalogue',    icon: Package,       path: '/catalogue',   gate: canManageCatalogue },
+  { label: 'Safety',       icon: HardHat,       path: '/safety' },
+  { label: 'Admin',        icon: ShieldCheck,   path: '/admin',       gate: canSeeAdminDashboard },
+];
+
+// Customer-only nav — a minimal single-item strip scoped to the portal.
+// Mirrors the supplier/stakeholder pattern: no project-scoped items, no
+// construction tooling, no admin. Settings remains accessible via the user-menu
+// dropdown (same as every other role) so it is not duplicated here.
+const CUSTOMER_NAV: NavItem[] = [
+  { label: 'My maintenance', icon: Wrench, path: '/customer' },
 ];
 
 function homeNavItemFor(principal: User | Profile | null): NavItem {
@@ -108,17 +131,33 @@ export default function TopNav() {
   // `currentProfile` carries the canonical securityGroup; `currentUser`
   // covers the legacy mock-data path that doesn't have a profile yet.
   const navPrincipal = currentProfile ?? currentUser ?? null;
-  const navItems: NavItem[] = [
-    homeNavItemFor(navPrincipal),
-    projectsNavItemFor(navPrincipal),
-    ...SHARED_NAV_TAIL,
-  ];
-  const visibleNav = navItems.filter((item) => (item.gate ? item.gate(currentUser) : true));
+  const isCustomer = navPrincipal?.securityGroup === 'customer';
+
+  // Customers get a minimal portal-only strip; all other roles get the full
+  // construction nav (gated per item as usual). The project switcher is also
+  // suppressed for customers — they have no project context.
+  // Internal staff (canViewJobsBoard) reach Projects via /jobs?view=projects
+  // inside the hub — skip the standalone projects entry for them so the nav
+  // doesn't list a route that immediately redirects. Suppliers and
+  // stakeholders lack Jobs Board access and keep the standalone Projects item.
+  const coreItems: NavItem[] = isCustomer
+    ? CUSTOMER_NAV
+    : [
+        homeNavItemFor(navPrincipal),
+        ...(!canViewJobsBoard(navPrincipal) ? [projectsNavItemFor(navPrincipal)] : []),
+        ...CORE_NAV_TAIL,
+      ];
+  const overflowItems: NavItem[] = isCustomer ? [] : OVERFLOW_NAV;
+  const visibleCore = coreItems.filter((item) => (item.gate ? item.gate(currentUser) : true));
+  const visibleOverflow = overflowItems.filter((item) => (item.gate ? item.gate(currentUser) : true));
+  // The mobile drawer shows everything in one column, original behaviour.
+  const visibleNav = [...visibleCore, ...visibleOverflow];
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
 
   const activeProject = projects.find((p) => p.id === activeProjectId) ?? null;
   const projectPillRef = useRef<HTMLButtonElement | null>(null);
@@ -182,7 +221,7 @@ export default function TopNav() {
               a flex child of this min-w-0 box and truncates within its allotted
               slot instead of overflowing past the gap into the nav (which was
               clipping the first nav item's leading glyph when the row got tight). */}
-          {activeProject && (
+          {activeProject && !isCustomer && (
             <div className="relative flex min-w-0">
               <button
                 ref={projectPillRef}
@@ -293,27 +332,125 @@ export default function TopNav() {
             </div>
           )}
 
-          <nav className="hidden flex-shrink-0 md:flex items-center gap-1">
-            {visibleNav.map((item) => {
-              const Icon = item.icon;
-              const isActive =
-                location.pathname === item.path ||
-                location.pathname.startsWith(`${item.path}/`);
-              return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  className={`flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-medium transition-colors lg:gap-2 lg:px-3.5 lg:text-sm ${
-                    isActive
-                      ? 'bg-[#1A1A1A] text-white'
-                      : 'text-[#6B6B6B] hover:bg-[#F0EDE4] hover:text-[#1A1A1A] active:bg-[#E6E1D4]'
-                  }`}
-                >
-                  <Icon className="h-4 w-4" strokeWidth={isActive ? 2 : 1.75} />
-                  {item.label}
-                </Link>
+          <nav className="hidden flex-shrink-0 md:flex items-center gap-0.5 xl:gap-1">
+            {(() => {
+              // One pill renderer for core, inline-overflow, and dropdown rows
+              // so sizing/weights can never drift apart again. Tightened at md
+              // (the 8-item strip was crowding the row); roomier from xl up.
+              const navPill = (item: NavItem) => {
+                const Icon = item.icon;
+                const isActive =
+                  location.pathname === item.path ||
+                  location.pathname.startsWith(`${item.path}/`);
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    className={`flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-medium transition-colors xl:gap-2 xl:px-3 xl:text-sm ${
+                      isActive
+                        ? 'bg-[#1A1A1A] text-white'
+                        : 'text-[#6B6B6B] hover:bg-[#F0EDE4] hover:text-[#1A1A1A] active:bg-[#E6E1D4]'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" strokeWidth={isActive ? 2 : 1.75} />
+                    {item.label}
+                  </Link>
+                );
+              };
+              const overflowActive = visibleOverflow.some(
+                (item) =>
+                  location.pathname === item.path ||
+                  location.pathname.startsWith(`${item.path}/`),
               );
-            })}
+              return (
+                <>
+                  {visibleCore.map(navPill)}
+
+                  {/* Wide screens: overflow items sit inline as before. */}
+                  {visibleOverflow.length > 0 && (
+                    <div className="hidden xl:flex items-center gap-1">
+                      {visibleOverflow.map(navPill)}
+                    </div>
+                  )}
+
+                  {/* md → xl: overflow collapses into a "More ▾" pill so the
+                      row can never crowd or clip, whatever we add later. */}
+                  {visibleOverflow.length > 0 && (
+                    <div className="relative xl:hidden">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMoreMenuOpen((o) => !o);
+                          setNotificationsOpen(false);
+                          setUserMenuOpen(false);
+                          setProjectMenuOpen(false);
+                        }}
+                        aria-haspopup="menu"
+                        aria-expanded={moreMenuOpen}
+                        className={`flex items-center gap-1 rounded-full px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                          overflowActive
+                            ? 'bg-[#1A1A1A] text-white'
+                            : 'text-[#6B6B6B] hover:bg-[#F0EDE4] hover:text-[#1A1A1A] active:bg-[#E6E1D4]'
+                        }`}
+                      >
+                        More
+                        <ChevronDown
+                          className={`h-3.5 w-3.5 transition-transform ${moreMenuOpen ? 'rotate-180' : ''}`}
+                          aria-hidden
+                        />
+                      </button>
+
+                      <AnimatePresence>
+                        {moreMenuOpen && (
+                          <>
+                            <motion.div
+                              variants={fadeIn}
+                              initial="hidden"
+                              animate="visible"
+                              exit="exit"
+                              className="fixed inset-0 z-40"
+                              onClick={() => setMoreMenuOpen(false)}
+                            />
+                            <motion.div
+                              variants={popover}
+                              initial="hidden"
+                              animate="visible"
+                              exit="exit"
+                              role="menu"
+                              aria-label="More pages"
+                              className="absolute left-0 z-50 mt-2 w-48 overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white py-1 shadow-[0_8px_28px_rgba(20,20,20,0.12)]"
+                            >
+                              {visibleOverflow.map((item) => {
+                                const Icon = item.icon;
+                                const isActive =
+                                  location.pathname === item.path ||
+                                  location.pathname.startsWith(`${item.path}/`);
+                                return (
+                                  <Link
+                                    key={item.path}
+                                    to={item.path}
+                                    role="menuitem"
+                                    onClick={() => setMoreMenuOpen(false)}
+                                    className={`flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors ${
+                                      isActive
+                                        ? 'bg-[#E5F2EA] text-[#246F47]'
+                                        : 'text-[#3A3A3A] hover:bg-[#FAF8F2]'
+                                    }`}
+                                  >
+                                    <Icon className="h-4 w-4 text-[#A0A0A0]" strokeWidth={1.75} />
+                                    {item.label}
+                                  </Link>
+                                );
+                              })}
+                            </motion.div>
+                          </>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </nav>
         </div>
 

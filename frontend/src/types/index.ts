@@ -21,6 +21,7 @@ export type SecurityGroup =
   | 'worker'
   | 'stakeholder'
   | 'supplier'
+  | 'customer'       // external property owner — maintenance portal only
   | 'dev';            // hidden developer superuser — DB/seed only
 
 // Document expiry alert window (matches the `expiry_alert` enum in 0005).
@@ -75,6 +76,9 @@ export interface Profile {
   // CHECK constraint enforces at most one of these is set.
   stakeholderId?: string | null;
   supplierId?: string | null;
+  // Maintenance domain linkage (migration 59): customer accounts point at
+  // their customers directory record for portal scoping.
+  customerId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -201,6 +205,10 @@ export function mapSecurityGroupToLegacyRole(group: SecurityGroup): UserRole {
       // Supplier has no legacy equivalent; closest read-only viewer is
       // 'stakeholder' from the legacy taxonomy.
       return 'stakeholder';
+    case 'customer':
+      // Customer (maintenance portal) has no legacy equivalent; maps to
+      // the closest read-only role from the legacy taxonomy.
+      return 'stakeholder';
     case 'dev':
       return 'admin'; // hidden superuser → legacy admin
   }
@@ -213,7 +221,8 @@ export function profileToUser(p: Profile): User {
   const isCompany =
     p.securityGroup === 'company_admin' || p.securityGroup === 'administrator';
   const isClient =
-    p.securityGroup === 'stakeholder' || p.securityGroup === 'supplier';
+    p.securityGroup === 'stakeholder' || p.securityGroup === 'supplier' ||
+    p.securityGroup === 'customer';
   return {
     id: p.id,
     email: p.email,

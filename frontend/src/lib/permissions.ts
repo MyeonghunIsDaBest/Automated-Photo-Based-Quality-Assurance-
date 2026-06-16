@@ -169,6 +169,34 @@ export function canLogSafetyIncident(p: AdminPrincipal): boolean {
   return caps(p).logSafetyIncident;
 }
 
+// ─── Maintenance domain gates ─────────────────────────────────────────────
+
+/** Customer (portal) — file a new maintenance request. */
+export function canCreateMaintenanceRequest(p: AdminPrincipal): boolean { return caps(p).createMaintenanceRequest; }
+
+/** Customer (portal) — view their own requests / properties. */
+export function canViewOwnMaintenance(p: AdminPrincipal): boolean { return caps(p).viewOwnMaintenance; }
+
+/** Internal staff (admin/mgr tier) — access the full /maintenance area. */
+export function canManageMaintenance(p: AdminPrincipal): boolean { return caps(p).manageMaintenance; }
+
+// ─── Service jobs + jobs board gates ─────────────────────────────────────────
+
+/** All internal staff — see the /jobs kanban board. */
+export function canViewJobsBoard(p: AdminPrincipal): boolean { return caps(p).viewJobsBoard; }
+
+/** Manager tier — create/delete service jobs, drag-schedule on the board. */
+export function canManageServiceJobs(p: AdminPrincipal): boolean { return caps(p).manageServiceJobs; }
+
+/** Workers + managers — add photos/time entries, flip job status from the field. */
+export function canLogServiceJobWork(p: AdminPrincipal): boolean { return caps(p).logServiceJobWork; }
+
+/** Manager tier — access the materials catalogue, prebuilds, CSV import. */
+export function canManageCatalogue(p: AdminPrincipal): boolean { return caps(p).manageCatalogue; }
+
+/** Manager tier — access the Sales area (quotes, invoices, variations). */
+export function canManageSales(p: AdminPrincipal): boolean { return caps(p).manageSales; }
+
 // ─── Admin-dashboard gates (drive Sidebar/TopNav visibility + RequireAuth) ─
 
 export function canSeeAdminDashboard(p: AdminPrincipal): boolean {
@@ -261,7 +289,7 @@ export function canAdminProjects(p: AdminPrincipal): boolean {
 // data-dense Dashboard.
 export function isFieldRole(p: AdminPrincipal): boolean {
   const sg = principalGroup(p);
-  return sg === 'worker' || sg === 'stakeholder' || sg === 'supplier';
+  return sg === 'worker' || sg === 'stakeholder' || sg === 'supplier' || sg === 'customer';
 }
 
 // Dashboard "lens" — the management tier (Construction Mgr / PM) + admins all
@@ -315,5 +343,6 @@ export const SECURITY_GROUP_LABELS: Record<SecurityGroup, string> = {
   worker: 'Worker',
   stakeholder: 'Stakeholder',
   supplier: 'Supplier',
+  customer: 'Customer',
   dev: 'cooked', // hidden dev superuser — easter-egg title
 };

@@ -75,6 +75,22 @@ export interface Capabilities {
   releasePaymentMilestone: boolean; // stakeholder — sign off / release a payment milestone
   editFinance: boolean;             // write budgets/invoices (read is `viewReportsFinance`)
   viewPortfolioRollup: boolean;     // construction_mgr / admins — multi-project rollup band
+
+  // Maintenance domain
+  createMaintenanceRequest: boolean; // customer portal — file a request
+  viewOwnMaintenance: boolean;       // customer portal — see own requests/properties
+  manageMaintenance: boolean;        // internal — /maintenance area
+
+  // Service jobs + jobs board
+  viewJobsBoard: boolean;      // see /jobs kanban (all internal staff)
+  manageServiceJobs: boolean;  // create/delete jobs, drag-schedule on the board
+  logServiceJobWork: boolean;  // add photos/time entries, flip status from the field
+
+  // TradeDesk P1 — catalogue / prebuilds / import
+  manageCatalogue: boolean;
+
+  // TradeDesk P2 — quotes, invoices, variations
+  manageSales: boolean;
 }
 
 const ALL_OFF: Capabilities = {
@@ -123,6 +139,14 @@ const ALL_OFF: Capabilities = {
   releasePaymentMilestone: false,
   editFinance: false,
   viewPortfolioRollup: false,
+  createMaintenanceRequest: false,
+  viewOwnMaintenance: false,
+  manageMaintenance: false,
+  viewJobsBoard: false,
+  manageServiceJobs: false,
+  logServiceJobWork: false,
+  manageCatalogue: false,
+  manageSales: false,
 };
 
 // Hidden developer superuser — EVERY flag on. Built from ALL_OFF's keys so new
@@ -136,6 +160,12 @@ export const CAPABILITIES_BY_GROUP: Record<SecurityGroup, Capabilities> = {
     ...ALL_OFF,
     editFinance: true,
     viewPortfolioRollup: true,
+    manageMaintenance: true,
+    viewJobsBoard: true,
+    manageServiceJobs: true,
+    logServiceJobWork: true,
+    manageCatalogue: true,
+    manageSales: true,
     viewDashboard: true,
     viewProjects: true,
     createProjects: true,
@@ -181,6 +211,12 @@ export const CAPABILITIES_BY_GROUP: Record<SecurityGroup, Capabilities> = {
   administrator: {
     ...ALL_OFF,
     viewPortfolioRollup: true,
+    manageMaintenance: true,
+    viewJobsBoard: true,
+    manageServiceJobs: true,
+    logServiceJobWork: true,
+    manageCatalogue: true,
+    manageSales: true,
     viewDashboard: true,
     viewProjects: true,
     viewGantt: true,
@@ -210,6 +246,12 @@ export const CAPABILITIES_BY_GROUP: Record<SecurityGroup, Capabilities> = {
   construction_mgr: {
     ...ALL_OFF,
     viewPortfolioRollup: true,
+    manageMaintenance: true,
+    viewJobsBoard: true,
+    manageServiceJobs: true,
+    logServiceJobWork: true,
+    manageCatalogue: true,
+    manageSales: true,
     viewDashboard: true,
     viewProjects: true,
     createProjects: true,
@@ -248,6 +290,12 @@ export const CAPABILITIES_BY_GROUP: Record<SecurityGroup, Capabilities> = {
   project_manager: {
     ...ALL_OFF,
     editFinance: true,
+    manageMaintenance: true,
+    viewJobsBoard: true,
+    manageServiceJobs: true,
+    logServiceJobWork: true,
+    manageCatalogue: true,
+    manageSales: true,
     viewDashboard: true,
     viewProjects: true,
     createProjects: true,
@@ -286,6 +334,8 @@ export const CAPABILITIES_BY_GROUP: Record<SecurityGroup, Capabilities> = {
   },
   worker: {
     ...ALL_OFF,
+    viewJobsBoard: true,
+    logServiceJobWork: true,
     viewDashboard: true,
     viewProjects: true,
     viewGantt: true,
@@ -345,6 +395,15 @@ export const CAPABILITIES_BY_GROUP: Record<SecurityGroup, Capabilities> = {
     // by `supplier_id = own` once join tables land. Until then UI also
     // applies a client-side filter using `profile.supplierId`.
     viewGanttSupplierTab: true,
+  },
+  // ─── Maintenance portal — property owner / customer ──────────────────────
+  // External role scoped entirely to the maintenance portal. No access to
+  // project/Gantt/finance surfaces; can only file and view their own requests.
+  // Portal page scopes data by `currentProfile.customerId` via RLS.
+  customer: {
+    ...ALL_OFF,
+    createMaintenanceRequest: true,
+    viewOwnMaintenance: true,
   },
   // Hidden developer superuser — full access (see DEV_ALL).
   dev: DEV_ALL,

@@ -40,6 +40,7 @@ function projectRowToProject(row: ProjectRow): Project {
     percentComplete: 0,
     tasksComplete: 0,
     tasksPending: 0,
+    tasksBlocked: 0,
     tasksOutstanding: 0,
   };
 }

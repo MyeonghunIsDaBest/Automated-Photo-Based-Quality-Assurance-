@@ -290,7 +290,7 @@ export default function ProjectFinancePanel() {
         <h2 className="mb-3 text-[16px] font-medium text-[#1A1A1A]" style={{ fontFamily: FRAUNCES }}>Assurance</h2>
         <div className="grid gap-2 sm:grid-cols-3">
           {[
-            { icon: FileText, label: 'Reports', to: '/reports' },
+            { icon: FileText, label: 'Reports', to: '/gantt?tab=reports' },
             { icon: ImageIcon, label: 'Photo gallery', to: '/gantt?tab=uploads' },
             { icon: Activity, label: 'Progress & schedule', to: '/gantt' },
           ].map((a) => (

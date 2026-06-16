@@ -1,7 +1,9 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowUpRight, Calendar, Clock, Pin, Trash2, X } from 'lucide-react';
+import { ArrowRight, Calendar, Clock, Pin, Trash2, X } from 'lucide-react';
 import type { Project, ProjectStatus } from '../types';
+import type { RecentEntry } from '../../Projects';
 import { useProjectsListStore } from '../store';
 import { useFeatureStore } from '../../../store/features';
 import { deleteProject as apiDeleteProject } from '../../../lib/api/projects';
@@ -31,8 +33,8 @@ interface ProjectsListTabProps {
   onOpen?: (projectId: string) => void;
   pinnedIds?: Set<string>;
   onTogglePin?: (projectId: string) => void;
-  /** Most-recently-opened project id — gets a "Last opened" chip. */
-  mostRecentId?: string | null;
+  /** Full recent map so cards can show "LAST OPENED · Nd AGO" captions. */
+  recentById?: Map<string, RecentEntry>;
   /** Tells the card which secondary stat to highlight (e.g. "tasks_outstanding"
    *  sort puts an emphasis on outstanding count). Decorative only. */
   sortMode?: string;
@@ -57,17 +59,47 @@ const STATUS_META: Record<ProjectStatus, {
 };
 
 function fmtDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString('en-US', {
-      month: 'short', day: 'numeric', year: 'numeric',
-    });
-  } catch {
-    return iso;
-  }
+  // Parse parts manually — avoid new Date('YYYY-MM-DD') timezone ambiguity.
+  const parts = iso.split('-');
+  if (parts.length !== 3) return iso;
+  const y = Number(parts[0]);
+  const m = Number(parts[1]) - 1;
+  const d = Number(parts[2]);
+  if (Number.isNaN(y) || Number.isNaN(m) || Number.isNaN(d)) return iso;
+  return new Date(y, m, d).toLocaleDateString('en-AU', {
+    month: 'short', day: 'numeric', year: 'numeric',
+  });
 }
 
-function daysToEnd(endIso: string): number {
-  return Math.round((Date.parse(endIso) - Date.now()) / 86_400_000);
+/** Days between an ISO date string end and today. Positive = future. */
+function daysLeft(endIso: string): number {
+  const parts = endIso.split('-');
+  if (parts.length !== 3) return NaN;
+  const y = Number(parts[0]);
+  const mo = Number(parts[1]) - 1;
+  const d = Number(parts[2]);
+  if (Number.isNaN(y) || Number.isNaN(mo) || Number.isNaN(d)) return NaN;
+  // Compare against today at midnight local time (same granularity as the end date).
+  const todayParts = new Date().toLocaleDateString('en-CA').split('-');
+  const ty = Number(todayParts[0]);
+  const tm = Number(todayParts[1]) - 1;
+  const td = Number(todayParts[2]);
+  const endMs   = new Date(y, mo, d).getTime();
+  const todayMs = new Date(ty, tm, td).getTime();
+  return Math.round((endMs - todayMs) / 86_400_000);
+}
+
+/** How many whole days ago a unix-ms timestamp was (0 = today). */
+function daysAgo(ts: number): number {
+  return Math.floor((Date.now() - ts) / 86_400_000);
+}
+
+/** "ACTIVE TODAY" | "1D AGO" | "3D AGO" etc. Returns null when ts is 0 (migrated entry). */
+function lastOpenedLabel(ts: number): string | null {
+  if (ts === 0) return null;
+  const d = daysAgo(ts);
+  if (d <= 0) return 'ACTIVE TODAY';
+  return `${d}D AGO`;
 }
 
 export function ProjectsListTab({
@@ -75,7 +107,7 @@ export function ProjectsListTab({
   onOpen,
   pinnedIds,
   onTogglePin,
-  mostRecentId,
+  recentById,
   sortMode,
   canDelete,
   healthById,
@@ -83,6 +115,7 @@ export function ProjectsListTab({
   const [pendingDelete, setPendingDelete] = useState<Project | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const handleConfirmDelete = async () => {
     if (!pendingDelete) return;
@@ -122,12 +155,16 @@ export function ProjectsListTab({
             key={p.id}
             project={p}
             pinned={pinnedIds?.has(p.id) ?? false}
-            isMostRecent={mostRecentId === p.id}
+            recentEntry={recentById?.get(p.id)}
             highlightOutstanding={sortMode === 'tasks_outstanding'}
             health={healthById?.get(p.id)}
             onOpen={() => onOpen?.(p.id)}
             onTogglePin={onTogglePin ? () => onTogglePin(p.id) : undefined}
             onDelete={canDelete ? () => setPendingDelete(p) : undefined}
+            onViewBoard={() => {
+              useProjectsListStore.getState().setActiveProject(p.id);
+              navigate('/gantt');
+            }}
           />
         ))}
       </div>
@@ -186,7 +223,7 @@ function DeleteProjectModal({
         </header>
         <div className="space-y-3 px-5 py-4 text-sm text-[#3A3A3A]">
           <p>
-            You're about to permanently delete{' '}
+            You&apos;re about to permanently delete{' '}
             <strong className="text-[#1A1A1A]">{project.name}</strong> and every
             task, photo, comment, and audit entry attached to it.
           </p>
@@ -234,33 +271,53 @@ function DeleteProjectModal({
 interface ProjectCardProps {
   project: Project;
   pinned: boolean;
-  isMostRecent: boolean;
+  recentEntry?: RecentEntry;
   highlightOutstanding: boolean;
   health?: ProjectHealthInfo;
   onOpen: () => void;
   onTogglePin?: () => void;
   onDelete?: () => void;
+  onViewBoard: () => void;
 }
 
 function ProjectCard({
   project: p,
   pinned,
-  isMostRecent,
+  recentEntry,
   highlightOutstanding,
   health,
   onOpen,
   onTogglePin,
   onDelete,
+  onViewBoard,
 }: ProjectCardProps) {
   // Active projects lead with momentum (on track / caution / delayed) — chip,
   // top accent, and progress bar all take its colour, so a stalled job reads as
   // red at a glance. Non-active projects keep the lifecycle status + colour.
   const isActive = p.status === 'active';
   const healthMeta = health ? HEALTH_META[health.health] : null;
-  const meta = isActive && healthMeta ? healthMeta : STATUS_META[p.status];
-  const remaining = daysToEnd(p.endDate);
-  const overdue = remaining < 0 && p.status !== 'completed' && p.status !== 'archived';
-  const soon = !overdue && remaining <= 30 && p.status !== 'completed';
+  const meta = (isActive && healthMeta) ? healthMeta : STATUS_META[p.status];
+
+  // Days-left chip logic — parse parts, no new Date('YYYY-MM-DD').
+  const remaining = p.endDate ? daysLeft(p.endDate) : NaN;
+  const hasEnd = !Number.isNaN(remaining);
+  const isEnded = hasEnd && remaining < 0 && p.status !== 'completed' && p.status !== 'archived';
+  const isDone  = p.status === 'completed' || p.status === 'archived';
+  const soon    = hasEnd && !isEnded && remaining <= 30 && !isDone;
+  const urgent  = hasEnd && !isEnded && remaining < 14 && !isDone;
+
+  // Last-opened caption
+  const lastOpenedCaption = recentEntry?.ts ? lastOpenedLabel(recentEntry.ts) : null;
+
+  // Segmented bar — total tasks is the denominator; guard divide-by-zero.
+  const total = p.tasksComplete + p.tasksPending + (p.tasksBlocked ?? 0) + p.tasksOutstanding;
+  const pct = (n: number) => (total > 0 ? Math.round((n / total) * 100) : 0);
+  const donePct       = pct(p.tasksComplete);
+  const inProgPct     = pct(p.tasksPending);
+  const blockedPct    = pct(p.tasksBlocked ?? 0);
+  // Not-started fills the remainder so segments always sum to 100 (avoids
+  // rounding gaps when all tasks are in one bucket).
+  const notStartedPct = Math.max(0, 100 - donePct - inProgPct - blockedPct);
 
   return (
     // `layout` enables FLIP so pinning/unpinning floats the card to its new
@@ -288,9 +345,30 @@ function ProjectCard({
         aria-hidden
       />
 
-      {/* Pin + delete controls — top-right, revealed on hover (pin stays
-          visible when active). Delete is owner-only, comes in via prop. */}
+      {/* Top-right: days-left chip + pin + delete */}
       <div className="absolute right-3 top-3 z-10 flex items-center gap-1">
+        {/* Days-left chip — omitted when no endDate or already done */}
+        {hasEnd && !isDone && (
+          isEnded ? (
+            <span className="inline-flex items-center rounded-full border border-[#E6E1D4] bg-[#F0EDE4] px-2 py-0.5 text-[10px] font-medium text-[#A0A0A0]">
+              Ended
+            </span>
+          ) : (
+            <span
+              className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium tabular-nums"
+              style={
+                urgent
+                  ? { backgroundColor: '#FBE5E5', color: '#C44545', border: '1px solid #F5C6C6' }
+                  : soon
+                    ? { backgroundColor: '#F9EFD9', color: '#C8841E', border: '1px solid #F0D89A' }
+                    : { backgroundColor: '#F0EDE4', color: '#6B6B6B', border: '1px solid #E6E1D4' }
+              }
+            >
+              {remaining}d left
+            </span>
+          )
+        )}
+
         {onTogglePin && (
           <button
             type="button"
@@ -324,7 +402,7 @@ function ProjectCard({
       </div>
 
       <div className="p-5">
-        {/* Eyebrow row: status pill + optional last-opened chip */}
+        {/* Eyebrow row: status pill + last-opened caption */}
         <div className="flex flex-wrap items-center gap-2 text-[10px] font-medium uppercase tracking-[0.18em] text-[#6B6B6B]">
           <span
             className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5"
@@ -337,12 +415,21 @@ function ProjectCard({
             />
             {meta.label}
           </span>
-          {isMostRecent && (
-            <span className="inline-flex items-center gap-1 text-[#246F47]">
-              <Clock className="h-3 w-3" aria-hidden /> Last opened
+
+          {/* "LAST OPENED · 2D AGO" or "ACTIVE TODAY" — only when we have a timestamp */}
+          {lastOpenedCaption && (
+            <span className="inline-flex items-center gap-1 text-[#A0A0A0]">
+              <Clock className="h-3 w-3" aria-hidden />
+              {lastOpenedCaption === 'ACTIVE TODAY' ? (
+                <span className="text-[#246F47]">Active today</span>
+              ) : (
+                <>Last opened · {lastOpenedCaption.toLowerCase()}</>
+              )}
             </span>
           )}
-          {isActive && health?.daysSinceUpdate != null && health.daysSinceUpdate > 0 && (
+
+          {/* Quiet indicator for active projects — only when no last-opened caption */}
+          {!lastOpenedCaption && isActive && health?.daysSinceUpdate != null && health.daysSinceUpdate > 0 && (
             <span
               className="inline-flex items-center gap-1"
               style={{ color: health.health === 'on_track' ? '#A0A0A0' : (healthMeta?.fg ?? '#6B6B6B') }}
@@ -357,75 +444,96 @@ function ProjectCard({
         {/* Title + client */}
         <h3
           className="mt-3 text-xl font-medium leading-tight text-[#1A1A1A]"
-          style={{ textWrap: 'balance', fontFamily: FRAUNCES }}
+          style={{ fontFamily: FRAUNCES }}
         >
           {p.name}
         </h3>
         <p className="mt-1 truncate text-sm text-[#6B6B6B]">{p.client}</p>
 
-        {/* Progress */}
+        {/* Progress — segmented bar */}
         <div className="mt-5">
           <div className="flex items-baseline justify-between">
             <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-[#6B6B6B]">
               Progress
             </span>
-            <span className="text-sm font-medium text-[#1A1A1A]" style={{ fontFamily: FRAUNCES, fontVariantNumeric: 'tabular-nums' }}>
+            <span
+              className="text-sm font-medium text-[#1A1A1A]"
+              style={{ fontFamily: FRAUNCES, fontVariantNumeric: 'tabular-nums' }}
+            >
               {p.percentComplete}%
             </span>
           </div>
-          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[#F0EDE4]">
-            <div
-              className="h-full rounded-full transition-all"
-              style={{
-                width: `${p.percentComplete}%`,
-                backgroundColor: meta.accent,
-              }}
-            />
+
+          {/* 4-segment bar: done · in-progress · blocked · not-started */}
+          <div className="mt-1.5 flex h-2 w-full overflow-hidden rounded-full bg-[#E6E1D4]">
+            {donePct > 0 && (
+              <div className="h-full" style={{ width: `${donePct}%`, backgroundColor: '#2F8F5C' }} />
+            )}
+            {inProgPct > 0 && (
+              <div className="h-full" style={{ width: `${inProgPct}%`, backgroundColor: '#5B6B7B' }} />
+            )}
+            {blockedPct > 0 && (
+              <div className="h-full" style={{ width: `${blockedPct}%`, backgroundColor: '#C44545' }} />
+            )}
+            {notStartedPct > 0 && (
+              <div className="h-full" style={{ width: `${notStartedPct}%`, backgroundColor: '#E6E1D4' }} />
+            )}
           </div>
+
+          {/* Legend */}
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-[#6B6B6B]">
-            <span style={{ fontVariantNumeric: 'tabular-nums' }}>{p.tasksComplete} done</span>
+            <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#2F8F5C] align-middle mr-1" aria-hidden />
+              {p.tasksComplete} done
+            </span>
             <span className="text-[#D8D2C4]">·</span>
-            <span style={{ fontVariantNumeric: 'tabular-nums' }}>{p.tasksPending} in progress</span>
+            <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#5B6B7B] align-middle mr-1" aria-hidden />
+              {p.tasksPending} in progress
+            </span>
+            <span className="text-[#D8D2C4]">·</span>
+            <span
+              style={{ fontVariantNumeric: 'tabular-nums' }}
+              className={(p.tasksBlocked ?? 0) > 0 ? 'text-[#C44545]' : ''}
+            >
+              <span
+                className="inline-block h-1.5 w-1.5 rounded-full align-middle mr-1"
+                style={{ backgroundColor: '#C44545' }}
+                aria-hidden
+              />
+              {p.tasksBlocked ?? 0} blocked
+            </span>
             <span className="text-[#D8D2C4]">·</span>
             <span
               style={{ fontVariantNumeric: 'tabular-nums' }}
               className={highlightOutstanding ? 'font-semibold text-[#C8841E]' : ''}
             >
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#E6E1D4] border border-[#D8D2C4] align-middle mr-1" aria-hidden />
               {p.tasksOutstanding} to start
             </span>
           </div>
         </div>
 
-        {/* Schedule */}
+        {/* Footer: date range + "View board" link */}
         <div className="mt-4 flex items-center justify-between border-t border-[#EFEBE0] pt-3 text-[11px]">
           <span className="inline-flex items-center gap-1.5 text-[#6B6B6B]">
             <Calendar className="h-3 w-3 text-[#A0A0A0]" aria-hidden />
             <span style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtDate(p.startDate)}</span>
-            <span className="text-[#D8D2C4]">→</span>
+            <span className="text-[#D8D2C4]">&rarr;</span>
             <span style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtDate(p.endDate)}</span>
           </span>
-          {p.status !== 'completed' && p.status !== 'archived' && (
-            <span
-              className="font-medium"
-              style={{
-                fontVariantNumeric: 'tabular-nums',
-                color: overdue ? '#C44545' : soon ? '#C8841E' : '#6B6B6B',
-              }}
-            >
-              {overdue
-                ? `${Math.abs(remaining)}d overdue`
-                : remaining === 0
-                  ? 'Due today'
-                  : `${remaining}d left`}
-            </span>
-          )}
-        </div>
 
-        {/* Hover affordance */}
-        <ArrowUpRight
-          className="absolute bottom-4 right-4 h-3.5 w-3.5 text-[#D8D2C4] opacity-0 transition-all group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-[#2F8F5C] group-hover:opacity-100"
-          aria-hidden
-        />
+          {/* "View board →" — stops propagation so it doesn't open the detail modal */}
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onViewBoard(); }}
+            className="inline-flex items-center gap-1 font-medium text-[#246F47] transition-colors hover:text-[#1A1A1A] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#2F8F5C] rounded"
+            aria-label={`View Gantt board for ${p.name}`}
+          >
+            View board
+            <ArrowRight className="h-3 w-3" aria-hidden />
+          </button>
+        </div>
       </div>
     </motion.article>
   );

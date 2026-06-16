@@ -5,7 +5,7 @@ import { useAppStore } from '../store';
 import { useFeatureStore } from '../store/features';
 import {
   ArrowLeft, CalendarDays, DollarSign,
-  FileBox, Inbox, Layers, LayoutDashboard, ListChecks, Package,
+  FileBox, FileText, Inbox, Layers, LayoutDashboard, ListChecks, Package,
   type LucideIcon,
 } from 'lucide-react';
 import type { Task, User } from '../types';
@@ -40,6 +40,7 @@ const SupplierTab    = lazy(() => import('./gantt/tabs/SupplierTab').then((m) =>
 const FinanceTab     = lazy(() => import('./gantt/tabs/FinanceTab').then((m) => ({ default: m.FinanceTab })));
 const InventoryTab   = lazy(() => import('./gantt/tabs/InventoryTab').then((m) => ({ default: m.InventoryTab })));
 const FilesTab       = lazy(() => import('./gantt/tabs/FilesTab').then((m) => ({ default: m.FilesTab })));
+const ReportsTab     = lazy(() => import('./gantt/tabs/ReportsTab').then((m) => ({ default: m.ReportsTab })));
 
 
 interface TabSpec {
@@ -60,6 +61,7 @@ const TAB_SPECS: TabSpec[] = [
   { id: 'tasks',       label: 'Tasks',      icon: ListChecks },
   { id: 'review',      label: 'AI-Analysis', icon: Inbox },
   { id: 'site_diary',  label: 'Site Diary', icon: CalendarDays },
+  { id: 'reports',     label: 'Reports',    icon: FileText },
   { id: 'supplier',    label: 'Supplier',   icon: Package },
   { id: 'finance',     label: 'Finance',    icon: DollarSign, gate: canViewFinance },
   { id: 'inventory',   label: 'Inventory',  icon: Layers },
@@ -195,6 +197,7 @@ export default function Gantt() {
       tasks:      'tasks',
       site_diary: 'site_diary',
       crew:       'site_diary',  // Crew register merged into Site Diary
+      reports:    'reports',
       supplier:   'supplier',
       orders:     'supplier',
       deliveries: 'supplier',
@@ -350,6 +353,10 @@ export default function Gantt() {
             canEdit={canEdit}
             canDelete={canDelete}
           />
+        )}
+
+        {activeTab === 'reports' && (
+          <ReportsTab project={project} currentUser={currentUser} />
         )}
 
         {activeTab === 'supplier' && (

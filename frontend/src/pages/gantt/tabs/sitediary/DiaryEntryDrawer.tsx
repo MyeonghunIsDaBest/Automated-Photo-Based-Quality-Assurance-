@@ -549,7 +549,7 @@ export function DiaryEntryDrawer({
         </header>
 
         {/* Body */}
-        <div className="editorial-scrollbox flex-1 px-5 py-4 space-y-5">
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
           {/* Description */}
           <section>
             <div className="flex items-center justify-between mb-1.5">

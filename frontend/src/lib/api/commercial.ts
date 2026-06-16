@@ -1,0 +1,1526 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// lib/api/commercial.ts — CRUD helpers for quotes, customer invoices,
+// variations, and commercial settings (Revenue Pack, migration 65).
+//
+// Conventions (mirrors materials.ts exactly):
+//   - snake_case Row interfaces match the Supabase schema.
+//   - camelCase domain interfaces used by the rest of the app.
+//   - All write functions throw on error.
+//   - Read functions return [] / null when Supabase is not configured.
+//   - Every item-mutating function calls recomputeQuoteTotals /
+//     recomputeInvoiceTotals / recomputeVariationTotals before returning.
+//   - Snapshot-line copy: description/unit/unit_price_ex_gst are snapshotted
+//     from the catalogue at add-time; material_id is stored for provenance.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { supabase, supabaseConfigured } from '../supabase';
+import { docTotals } from '../commercial/money';
+import { getPrebuildWithItems, getMaterialById } from './materials';
+import { createServiceJob, getServiceJob } from './serviceJobs';
+
+// ---------------------------------------------------------------------------
+// Error sentinel
+// ---------------------------------------------------------------------------
+
+const NOT_CONFIGURED = new Error(
+  'Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in frontend/.env.local.'
+);
+
+// ---------------------------------------------------------------------------
+// Row types (snake_case)
+// ---------------------------------------------------------------------------
+
+interface CommercialSettingsRow {
+  id: number;
+  business_name: string | null;
+  abn: string | null;
+  invoice_prefix: string;
+  quote_prefix: string;
+  gst_rate: number;
+  payment_terms_days: number;
+  variation_customer_approval_threshold: number | null;
+}
+
+interface QuoteRow {
+  id: string;
+  number: string | null;
+  customer_id: string | null;
+  client_name: string | null;
+  client_email: string | null;
+  property_id: string | null;
+  service_job_id: string | null;
+  title: string;
+  status: string;
+  notes: string | null;
+  valid_until: string | null;
+  subtotal_ex_gst: number;
+  gst_amount: number;
+  total_inc_gst: number;
+  sent_at: string | null;
+  viewed_at: string | null;
+  decided_at: string | null;
+  converted_job_id: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface QuoteItemRow {
+  id: string;
+  quote_id: string;
+  material_id: string | null;
+  prebuild_id: string | null;
+  variation_id: string | null;
+  description: string;
+  qty: number;
+  unit: string;
+  unit_price_ex_gst: number;
+  sort_order: number;
+}
+
+interface InvoiceRow {
+  id: string;
+  number: string | null;
+  customer_id: string | null;
+  client_name: string | null;
+  client_email: string | null;
+  property_id: string | null;
+  service_job_id: string | null;
+  quote_id: string | null;
+  job_ref: string | null;
+  status: string;
+  issued_at: string | null;
+  due_date: string | null;
+  subtotal_ex_gst: number;
+  gst_amount: number;
+  total_inc_gst: number;
+  paid_at: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface InvoiceItemRow {
+  id: string;
+  invoice_id: string;
+  material_id: string | null;
+  prebuild_id: string | null;
+  variation_id: string | null;
+  description: string;
+  qty: number;
+  unit: string;
+  unit_price_ex_gst: number;
+  sort_order: number;
+}
+
+interface VariationRow {
+  id: string;
+  service_job_id: string | null;
+  project_id: string | null;
+  title: string;
+  description: string | null;
+  status: string;
+  raised_by: string;
+  subtotal_ex_gst: number;
+  gst_amount: number;
+  total_inc_gst: number;
+  approved_by: string | null;
+  approved_at: string | null;
+  customer_approved_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface VariationItemRow {
+  id: string;
+  variation_id: string;
+  material_id: string | null;
+  prebuild_id: string | null;
+  description: string;
+  qty: number;
+  unit: string;
+  unit_price_ex_gst: number;
+  sort_order: number;
+}
+
+// ---------------------------------------------------------------------------
+// Domain types (camelCase)
+// ---------------------------------------------------------------------------
+
+export type QuoteStatus = 'draft' | 'sent' | 'viewed' | 'accepted' | 'declined' | 'expired';
+export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'voided';
+export type VariationStatus = 'draft' | 'priced' | 'approved' | 'declined';
+
+export interface CommercialSettings {
+  id: number;
+  businessName: string | null;
+  abn: string | null;
+  invoicePrefix: string;
+  quotePrefix: string;
+  gstRate: number;
+  paymentTermsDays: number;
+  variationCustomerApprovalThreshold: number | null;
+}
+
+export interface Quote {
+  id: string;
+  number: string | null;
+  customerId: string | null;
+  clientName: string | null;
+  clientEmail: string | null;
+  propertyId: string | null;
+  serviceJobId: string | null;
+  title: string;
+  status: QuoteStatus;
+  notes: string | null;
+  validUntil: string | null;
+  subtotalExGst: number;
+  gstAmount: number;
+  totalIncGst: number;
+  sentAt: string | null;
+  viewedAt: string | null;
+  decidedAt: string | null;
+  convertedJobId: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  items?: QuoteItem[];
+}
+
+export interface QuoteItem {
+  id: string;
+  quoteId: string;
+  materialId: string | null;
+  prebuildId: string | null;
+  variationId: string | null;
+  description: string;
+  qty: number;
+  unit: string;
+  unitPriceExGst: number;
+  sortOrder: number;
+}
+
+export interface Invoice {
+  id: string;
+  number: string | null;
+  customerId: string | null;
+  clientName: string | null;
+  clientEmail: string | null;
+  propertyId: string | null;
+  serviceJobId: string | null;
+  quoteId: string | null;
+  jobRef: string | null;
+  status: InvoiceStatus;
+  issuedAt: string | null;
+  dueDate: string | null;
+  subtotalExGst: number;
+  gstAmount: number;
+  totalIncGst: number;
+  paidAt: string | null;
+  notes: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  items?: InvoiceItem[];
+}
+
+export interface InvoiceItem {
+  id: string;
+  invoiceId: string;
+  materialId: string | null;
+  prebuildId: string | null;
+  variationId: string | null;
+  description: string;
+  qty: number;
+  unit: string;
+  unitPriceExGst: number;
+  sortOrder: number;
+}
+
+export interface Variation {
+  id: string;
+  serviceJobId: string | null;
+  projectId: string | null;
+  title: string;
+  description: string | null;
+  status: VariationStatus;
+  raisedBy: string;
+  subtotalExGst: number;
+  gstAmount: number;
+  totalIncGst: number;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  customerApprovedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  items?: VariationItem[];
+}
+
+export interface VariationItem {
+  id: string;
+  variationId: string;
+  materialId: string | null;
+  prebuildId: string | null;
+  description: string;
+  qty: number;
+  unit: string;
+  unitPriceExGst: number;
+  sortOrder: number;
+}
+
+// ---------------------------------------------------------------------------
+// Input types
+// ---------------------------------------------------------------------------
+
+export interface CreateQuoteInput {
+  title: string;
+  customerId?: string | null;
+  clientName?: string | null;
+  clientEmail?: string | null;
+  propertyId?: string | null;
+  serviceJobId?: string | null;
+  notes?: string | null;
+  validUntil?: string | null;
+}
+
+export interface UpdateQuoteInput {
+  title?: string;
+  customerId?: string | null;
+  clientName?: string | null;
+  clientEmail?: string | null;
+  propertyId?: string | null;
+  serviceJobId?: string | null;
+  notes?: string | null;
+  validUntil?: string | null;
+}
+
+export interface CreateInvoiceInput {
+  title?: string;
+  customerId?: string | null;
+  clientName?: string | null;
+  clientEmail?: string | null;
+  propertyId?: string | null;
+  serviceJobId?: string | null;
+  quoteId?: string | null;
+  jobRef?: string | null;
+  notes?: string | null;
+}
+
+export interface UpdateInvoiceInput {
+  customerId?: string | null;
+  clientName?: string | null;
+  clientEmail?: string | null;
+  propertyId?: string | null;
+  serviceJobId?: string | null;
+  jobRef?: string | null;
+  notes?: string | null;
+}
+
+export interface CreateVariationInput {
+  title: string;
+  description?: string | null;
+  serviceJobId?: string | null;
+  projectId?: string | null;
+}
+
+export interface AddItemFreeInput {
+  description: string;
+  qty: number;
+  unit: string;
+  unitPriceExGst: number;
+  sortOrder?: number;
+}
+
+export interface UpdateItemInput {
+  description?: string;
+  qty?: number;
+  unit?: string;
+  unitPriceExGst?: number;
+  sortOrder?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Mappers
+// ---------------------------------------------------------------------------
+
+function rowToSettings(r: CommercialSettingsRow): CommercialSettings {
+  return {
+    id: r.id,
+    businessName: r.business_name,
+    abn: r.abn,
+    invoicePrefix: r.invoice_prefix,
+    quotePrefix: r.quote_prefix,
+    gstRate: Number(r.gst_rate),
+    paymentTermsDays: r.payment_terms_days,
+    variationCustomerApprovalThreshold: r.variation_customer_approval_threshold,
+  };
+}
+
+function rowToQuote(r: QuoteRow, items?: QuoteItem[]): Quote {
+  const q: Quote = {
+    id: r.id,
+    number: r.number,
+    customerId: r.customer_id,
+    clientName: r.client_name,
+    clientEmail: r.client_email,
+    propertyId: r.property_id,
+    serviceJobId: r.service_job_id,
+    title: r.title,
+    status: r.status as QuoteStatus,
+    notes: r.notes,
+    validUntil: r.valid_until,
+    subtotalExGst: Number(r.subtotal_ex_gst),
+    gstAmount: Number(r.gst_amount),
+    totalIncGst: Number(r.total_inc_gst),
+    sentAt: r.sent_at,
+    viewedAt: r.viewed_at,
+    decidedAt: r.decided_at,
+    convertedJobId: r.converted_job_id,
+    createdBy: r.created_by,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+  if (items !== undefined) q.items = items;
+  return q;
+}
+
+function rowToQuoteItem(r: QuoteItemRow): QuoteItem {
+  return {
+    id: r.id,
+    quoteId: r.quote_id,
+    materialId: r.material_id,
+    prebuildId: r.prebuild_id,
+    variationId: r.variation_id,
+    description: r.description,
+    qty: Number(r.qty),
+    unit: r.unit,
+    unitPriceExGst: Number(r.unit_price_ex_gst),
+    sortOrder: r.sort_order,
+  };
+}
+
+function rowToInvoice(r: InvoiceRow, items?: InvoiceItem[]): Invoice {
+  const inv: Invoice = {
+    id: r.id,
+    number: r.number,
+    customerId: r.customer_id,
+    clientName: r.client_name,
+    clientEmail: r.client_email,
+    propertyId: r.property_id,
+    serviceJobId: r.service_job_id,
+    quoteId: r.quote_id,
+    jobRef: r.job_ref,
+    status: r.status as InvoiceStatus,
+    issuedAt: r.issued_at,
+    dueDate: r.due_date,
+    subtotalExGst: Number(r.subtotal_ex_gst),
+    gstAmount: Number(r.gst_amount),
+    totalIncGst: Number(r.total_inc_gst),
+    paidAt: r.paid_at,
+    notes: r.notes,
+    createdBy: r.created_by,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+  if (items !== undefined) inv.items = items;
+  return inv;
+}
+
+function rowToInvoiceItem(r: InvoiceItemRow): InvoiceItem {
+  return {
+    id: r.id,
+    invoiceId: r.invoice_id,
+    materialId: r.material_id,
+    prebuildId: r.prebuild_id,
+    variationId: r.variation_id,
+    description: r.description,
+    qty: Number(r.qty),
+    unit: r.unit,
+    unitPriceExGst: Number(r.unit_price_ex_gst),
+    sortOrder: r.sort_order,
+  };
+}
+
+function rowToVariation(r: VariationRow, items?: VariationItem[]): Variation {
+  const v: Variation = {
+    id: r.id,
+    serviceJobId: r.service_job_id,
+    projectId: r.project_id,
+    title: r.title,
+    description: r.description,
+    status: r.status as VariationStatus,
+    raisedBy: r.raised_by,
+    subtotalExGst: Number(r.subtotal_ex_gst),
+    gstAmount: Number(r.gst_amount),
+    totalIncGst: Number(r.total_inc_gst),
+    approvedBy: r.approved_by,
+    approvedAt: r.approved_at,
+    customerApprovedAt: r.customer_approved_at,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+  if (items !== undefined) v.items = items;
+  return v;
+}
+
+function rowToVariationItem(r: VariationItemRow): VariationItem {
+  return {
+    id: r.id,
+    variationId: r.variation_id,
+    materialId: r.material_id,
+    prebuildId: r.prebuild_id,
+    description: r.description,
+    qty: Number(r.qty),
+    unit: r.unit,
+    unitPriceExGst: Number(r.unit_price_ex_gst),
+    sortOrder: r.sort_order,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Settings
+// ---------------------------------------------------------------------------
+
+export async function getCommercialSettings(): Promise<CommercialSettings | null> {
+  if (!supabaseConfigured()) return null;
+  const { data, error } = await supabase
+    .from('commercial_settings')
+    .select('*')
+    .eq('id', 1)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? rowToSettings(data as CommercialSettingsRow) : null;
+}
+
+export async function updateCommercialSettings(
+  patch: Partial<Omit<CommercialSettings, 'id'>>,
+): Promise<CommercialSettings> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const update: Record<string, unknown> = {};
+  if (patch.businessName !== undefined) update.business_name = patch.businessName;
+  if (patch.abn !== undefined) update.abn = patch.abn;
+  if (patch.invoicePrefix !== undefined) update.invoice_prefix = patch.invoicePrefix;
+  if (patch.quotePrefix !== undefined) update.quote_prefix = patch.quotePrefix;
+  if (patch.gstRate !== undefined) update.gst_rate = patch.gstRate;
+  if (patch.paymentTermsDays !== undefined) update.payment_terms_days = patch.paymentTermsDays;
+  if (patch.variationCustomerApprovalThreshold !== undefined) {
+    update.variation_customer_approval_threshold = patch.variationCustomerApprovalThreshold;
+  }
+  const { data, error } = await supabase
+    .from('commercial_settings')
+    .update(update)
+    .eq('id', 1)
+    .select('*')
+    .single();
+  if (error) throw error;
+  return rowToSettings(data as CommercialSettingsRow);
+}
+
+// ---------------------------------------------------------------------------
+// Internal: fetch settings gst_rate (falls back to 0.10 if no row)
+// ---------------------------------------------------------------------------
+
+async function fetchGstRate(): Promise<number> {
+  const settings = await getCommercialSettings();
+  return settings ? settings.gstRate : 0.10;
+}
+
+// ---------------------------------------------------------------------------
+// Quotes — read
+// ---------------------------------------------------------------------------
+
+export async function listQuotes(filters?: {
+  status?: QuoteStatus;
+  customerId?: string;
+}): Promise<Quote[]> {
+  if (!supabaseConfigured()) return [];
+  let q = supabase.from('quotes').select('*');
+  if (filters?.status) q = q.eq('status', filters.status);
+  if (filters?.customerId) q = q.eq('customer_id', filters.customerId);
+  const { data, error } = await q.order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((r) => rowToQuote(r as QuoteRow));
+}
+
+export async function getQuote(id: string): Promise<Quote | null> {
+  if (!supabaseConfigured()) return null;
+  const [quoteResult, itemsResult] = await Promise.all([
+    supabase.from('quotes').select('*').eq('id', id).maybeSingle(),
+    supabase.from('quote_items').select('*').eq('quote_id', id).order('sort_order', { ascending: true }),
+  ]);
+  if (quoteResult.error) throw quoteResult.error;
+  if (itemsResult.error) throw itemsResult.error;
+  if (!quoteResult.data) return null;
+  const items = (itemsResult.data ?? []).map((r) => rowToQuoteItem(r as QuoteItemRow));
+  return rowToQuote(quoteResult.data as QuoteRow, items);
+}
+
+// ---------------------------------------------------------------------------
+// Quotes — write
+// ---------------------------------------------------------------------------
+
+export async function createQuote(input: CreateQuoteInput): Promise<Quote> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const uid = (await supabase.auth.getUser()).data.user?.id ?? null;
+  const { data: numData, error: numError } = await supabase.rpc('next_quote_number');
+  if (numError) throw numError;
+  const { data, error } = await supabase
+    .from('quotes')
+    .insert({
+      number: numData as string,
+      title: input.title,
+      customer_id: input.customerId ?? null,
+      client_name: input.clientName ?? null,
+      client_email: input.clientEmail ?? null,
+      property_id: input.propertyId ?? null,
+      service_job_id: input.serviceJobId ?? null,
+      notes: input.notes ?? null,
+      valid_until: input.validUntil ?? null,
+      created_by: uid,
+    })
+    .select('*')
+    .single();
+  if (error) throw error;
+  return rowToQuote(data as QuoteRow);
+}
+
+export async function updateQuote(id: string, patch: UpdateQuoteInput): Promise<Quote> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const update: Record<string, unknown> = {};
+  if (patch.title !== undefined) update.title = patch.title;
+  if (patch.customerId !== undefined) update.customer_id = patch.customerId;
+  if (patch.clientName !== undefined) update.client_name = patch.clientName;
+  if (patch.clientEmail !== undefined) update.client_email = patch.clientEmail;
+  if (patch.propertyId !== undefined) update.property_id = patch.propertyId;
+  if (patch.serviceJobId !== undefined) update.service_job_id = patch.serviceJobId;
+  if (patch.notes !== undefined) update.notes = patch.notes;
+  if (patch.validUntil !== undefined) update.valid_until = patch.validUntil;
+  const { data, error } = await supabase
+    .from('quotes')
+    .update(update)
+    .eq('id', id)
+    .select('*')
+    .single();
+  if (error) throw error;
+  return rowToQuote(data as QuoteRow);
+}
+
+export async function setQuoteStatus(
+  id: string,
+  status: QuoteStatus,
+): Promise<Quote> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const patch: Record<string, unknown> = { status };
+  if (status === 'sent') patch.sent_at = new Date().toISOString();
+  if (status === 'accepted' || status === 'declined') patch.decided_at = new Date().toISOString();
+  const { data, error } = await supabase
+    .from('quotes')
+    .update(patch)
+    .eq('id', id)
+    .select('*')
+    .single();
+  if (error) throw error;
+  return rowToQuote(data as QuoteRow);
+}
+
+// ---------------------------------------------------------------------------
+// Quotes — mark viewed (fire-and-forget; swallows errors by contract)
+// ---------------------------------------------------------------------------
+
+/**
+ * Stamp a quote as viewed via RPC. Fire-and-forget: errors are swallowed.
+ * Do not await in UI hot-paths — call as `void markQuoteViewed(id)`.
+ */
+export async function markQuoteViewed(quoteId: string): Promise<void> {
+  if (!supabaseConfigured()) return;
+  try {
+    await supabase.rpc('mark_quote_viewed', { p_quote_id: quoteId });
+  } catch {
+    // intentionally silent
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Quotes — item ops (each calls recomputeQuoteTotals before returning)
+// ---------------------------------------------------------------------------
+
+export async function addQuoteItemFromMaterial(
+  quoteId: string,
+  materialId: string,
+  qty: number,
+): Promise<QuoteItem> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const material = await getMaterialById(materialId);
+  if (!material) throw new Error("Material not found: " + materialId);
+  const { data, error } = await supabase
+    .from('quote_items')
+    .insert({
+      quote_id: quoteId,
+      material_id: materialId,
+      description: material.name,
+      qty,
+      unit: material.unit,
+      unit_price_ex_gst: material.sellPrice ?? 0,
+      sort_order: 0,
+    })
+    .select('*')
+    .single();
+  if (error) throw error;
+  await recomputeQuoteTotals(quoteId);
+  return rowToQuoteItem(data as QuoteItemRow);
+}
+
+export async function addQuoteItemFromPrebuild(
+  quoteId: string,
+  prebuildId: string,
+): Promise<QuoteItem[]> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const prebuild = await getPrebuildWithItems(prebuildId);
+  if (!prebuild) throw new Error("Prebuild not found: " + prebuildId);
+  if (prebuild.items.length === 0) return [];
+
+  // Fetch all materials for the prebuild items in parallel
+  const materialResults = await Promise.all(
+    prebuild.items.map((item) => getMaterialById(item.materialId)),
+  );
+
+  const inserts = prebuild.items.map((item, idx) => {
+    const mat = materialResults[idx];
+    return {
+      quote_id: quoteId,
+      material_id: item.materialId,
+      prebuild_id: prebuildId,
+      description: mat ? mat.name : item.materialId,
+      qty: item.qty,
+      unit: mat ? mat.unit : 'ea',
+      unit_price_ex_gst: mat ? (mat.sellPrice ?? 0) : 0,
+      sort_order: item.sortOrder,
+    };
+  });
+
+  const { data, error } = await supabase
+    .from('quote_items')
+    .insert(inserts)
+    .select('*');
+  if (error) throw error;
+  await recomputeQuoteTotals(quoteId);
+  return (data ?? []).map((r) => rowToQuoteItem(r as QuoteItemRow));
+}
+
+export async function addQuoteItemFree(
+  quoteId: string,
+  input: AddItemFreeInput,
+): Promise<QuoteItem> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { data, error } = await supabase
+    .from('quote_items')
+    .insert({
+      quote_id: quoteId,
+      description: input.description,
+      qty: input.qty,
+      unit: input.unit,
+      unit_price_ex_gst: input.unitPriceExGst,
+      sort_order: input.sortOrder ?? 0,
+    })
+    .select('*')
+    .single();
+  if (error) throw error;
+  await recomputeQuoteTotals(quoteId);
+  return rowToQuoteItem(data as QuoteItemRow);
+}
+
+export async function updateQuoteItem(
+  itemId: string,
+  quoteId: string,
+  patch: UpdateItemInput,
+): Promise<QuoteItem> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const update: Record<string, unknown> = {};
+  if (patch.description !== undefined) update.description = patch.description;
+  if (patch.qty !== undefined) update.qty = patch.qty;
+  if (patch.unit !== undefined) update.unit = patch.unit;
+  if (patch.unitPriceExGst !== undefined) update.unit_price_ex_gst = patch.unitPriceExGst;
+  if (patch.sortOrder !== undefined) update.sort_order = patch.sortOrder;
+  const { data, error } = await supabase
+    .from('quote_items')
+    .update(update)
+    .eq('id', itemId)
+    .select('*')
+    .single();
+  if (error) throw error;
+  await recomputeQuoteTotals(quoteId);
+  return rowToQuoteItem(data as QuoteItemRow);
+}
+
+export async function removeQuoteItem(itemId: string, quoteId: string): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { error } = await supabase.from('quote_items').delete().eq('id', itemId);
+  if (error) throw error;
+  await recomputeQuoteTotals(quoteId);
+}
+
+/** Recompute and persist the three money columns on a quote from its current items. */
+export async function recomputeQuoteTotals(quoteId: string): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const [itemsResult, gstRate] = await Promise.all([
+    supabase.from('quote_items').select('qty,unit_price_ex_gst').eq('quote_id', quoteId),
+    fetchGstRate(),
+  ]);
+  if (itemsResult.error) throw itemsResult.error;
+  const lines = (itemsResult.data ?? []).map((r) => ({
+    qty: Number(r.qty),
+    unitPriceExGst: Number(r.unit_price_ex_gst),
+  }));
+  const totals = docTotals(lines, gstRate);
+  const { error } = await supabase
+    .from('quotes')
+    .update({
+      subtotal_ex_gst: totals.subtotalExGst,
+      gst_amount: totals.gstAmount,
+      total_inc_gst: totals.totalIncGst,
+    })
+    .eq('id', quoteId);
+  if (error) throw error;
+}
+
+// ---------------------------------------------------------------------------
+// Quotes — status actions
+// ---------------------------------------------------------------------------
+
+/** Convert an accepted quote to a service job. Patches converted_job_id. */
+export async function convertQuoteToJob(quoteId: string) {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const quote = await getQuote(quoteId);
+  if (!quote) throw new Error("Quote not found: " + quoteId);
+
+  const job = await createServiceJob({
+    title: quote.title,
+    clientName: quote.clientName ?? undefined,
+    customerId: quote.customerId ?? undefined,
+    propertyId: quote.propertyId ?? undefined,
+  });
+
+  const { error } = await supabase
+    .from('quotes')
+    .update({ converted_job_id: job.id })
+    .eq('id', quoteId);
+  if (error) throw error;
+
+  return job;
+}
+
+// ---------------------------------------------------------------------------
+// Invoices — read
+// ---------------------------------------------------------------------------
+
+export async function listInvoices(filters?: {
+  status?: InvoiceStatus;
+  customerId?: string;
+}): Promise<Invoice[]> {
+  if (!supabaseConfigured()) return [];
+  let q = supabase.from('customer_invoices').select('*');
+  if (filters?.status) q = q.eq('status', filters.status);
+  if (filters?.customerId) q = q.eq('customer_id', filters.customerId);
+  const { data, error } = await q.order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((r) => rowToInvoice(r as InvoiceRow));
+}
+
+export async function getInvoice(id: string): Promise<Invoice | null> {
+  if (!supabaseConfigured()) return null;
+  const [invResult, itemsResult] = await Promise.all([
+    supabase.from('customer_invoices').select('*').eq('id', id).maybeSingle(),
+    supabase.from('customer_invoice_items').select('*').eq('invoice_id', id).order('sort_order', { ascending: true }),
+  ]);
+  if (invResult.error) throw invResult.error;
+  if (itemsResult.error) throw itemsResult.error;
+  if (!invResult.data) return null;
+  const items = (itemsResult.data ?? []).map((r) => rowToInvoiceItem(r as InvoiceItemRow));
+  return rowToInvoice(invResult.data as InvoiceRow, items);
+}
+
+// ---------------------------------------------------------------------------
+// Invoices — write
+// ---------------------------------------------------------------------------
+
+export async function createInvoice(input: CreateInvoiceInput): Promise<Invoice> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const uid = (await supabase.auth.getUser()).data.user?.id ?? null;
+  const { data: numData, error: numError } = await supabase.rpc('next_invoice_number');
+  if (numError) throw numError;
+  const { data, error } = await supabase
+    .from('customer_invoices')
+    .insert({
+      number: numData as string,
+      customer_id: input.customerId ?? null,
+      client_name: input.clientName ?? null,
+      client_email: input.clientEmail ?? null,
+      property_id: input.propertyId ?? null,
+      service_job_id: input.serviceJobId ?? null,
+      quote_id: input.quoteId ?? null,
+      job_ref: input.jobRef ?? null,
+      notes: input.notes ?? null,
+      created_by: uid,
+    })
+    .select('*')
+    .single();
+  if (error) throw error;
+  return rowToInvoice(data as InvoiceRow);
+}
+
+/** Create an invoice from an accepted quote, copying all line items. */
+export async function createInvoiceFromQuote(quoteId: string): Promise<Invoice> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const quote = await getQuote(quoteId);
+  if (!quote) throw new Error("Quote not found: " + quoteId);
+
+  const invoice = await createInvoice({
+    customerId: quote.customerId,
+    clientName: quote.clientName,
+    clientEmail: quote.clientEmail,
+    propertyId: quote.propertyId,
+    serviceJobId: quote.serviceJobId,
+    quoteId,
+    jobRef: quote.title,
+    notes: quote.notes,
+  });
+
+  if (quote.items && quote.items.length > 0) {
+    const itemInserts = quote.items.map((item, idx) => ({
+      invoice_id: invoice.id,
+      material_id: item.materialId,
+      prebuild_id: item.prebuildId,
+      variation_id: item.variationId,
+      description: item.description,
+      qty: item.qty,
+      unit: item.unit,
+      unit_price_ex_gst: item.unitPriceExGst,
+      sort_order: idx,
+    }));
+    const { error: itemsErr } = await supabase
+      .from('customer_invoice_items')
+      .insert(itemInserts);
+    if (itemsErr) throw itemsErr;
+    await recomputeInvoiceTotals(invoice.id);
+  }
+
+  return (await getInvoice(invoice.id)) as Invoice;
+}
+
+/** Create an invoice from a service job, appending approved-variation lines. */
+export async function createInvoiceFromJob(serviceJobId: string): Promise<Invoice> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const job = await getServiceJob(serviceJobId);
+  if (!job) throw new Error("Service job not found: " + serviceJobId);
+
+  const invoice = await createInvoice({
+    customerId: job.customerId,
+    clientName: job.clientName,
+    propertyId: job.propertyId,
+    serviceJobId,
+    jobRef: job.title,
+  });
+
+  // Append approved variation items flagged with variation_id
+  const { data: variations, error: varErr } = await supabase
+    .from('variations')
+    .select('id')
+    .eq('service_job_id', serviceJobId)
+    .eq('status', 'approved');
+  if (varErr) throw varErr;
+
+  if (variations && variations.length > 0) {
+    const allItemInserts: Array<Record<string, unknown>> = [];
+    for (const v of variations) {
+      const { data: vitems, error: vitemsErr } = await supabase
+        .from('variation_items')
+        .select('*')
+        .eq('variation_id', v.id)
+        .order('sort_order', { ascending: true });
+      if (vitemsErr) throw vitemsErr;
+      (vitems ?? []).forEach((vi) => {
+        const vr = vi as VariationItemRow;
+        allItemInserts.push({
+          invoice_id: invoice.id,
+          material_id: vr.material_id,
+          prebuild_id: vr.prebuild_id,
+          variation_id: v.id,
+          description: vr.description,
+          qty: vr.qty,
+          unit: vr.unit,
+          unit_price_ex_gst: vr.unit_price_ex_gst,
+          sort_order: vr.sort_order,
+        });
+      });
+    }
+    if (allItemInserts.length > 0) {
+      const { error: insertErr } = await supabase
+        .from('customer_invoice_items')
+        .insert(allItemInserts);
+      if (insertErr) throw insertErr;
+      await recomputeInvoiceTotals(invoice.id);
+    }
+  }
+
+  return (await getInvoice(invoice.id)) as Invoice;
+}
+
+export async function updateInvoice(id: string, patch: UpdateInvoiceInput): Promise<Invoice> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const update: Record<string, unknown> = {};
+  if (patch.customerId !== undefined) update.customer_id = patch.customerId;
+  if (patch.clientName !== undefined) update.client_name = patch.clientName;
+  if (patch.clientEmail !== undefined) update.client_email = patch.clientEmail;
+  if (patch.propertyId !== undefined) update.property_id = patch.propertyId;
+  if (patch.serviceJobId !== undefined) update.service_job_id = patch.serviceJobId;
+  if (patch.jobRef !== undefined) update.job_ref = patch.jobRef;
+  if (patch.notes !== undefined) update.notes = patch.notes;
+  const { data, error } = await supabase
+    .from('customer_invoices')
+    .update(update)
+    .eq('id', id)
+    .select('*')
+    .single();
+  if (error) throw error;
+  return rowToInvoice(data as InvoiceRow);
+}
+
+/** Mark a draft invoice as sent; set issued_at = today, due_date = today + terms. */
+export async function issueInvoice(id: string): Promise<Invoice> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const settings = await getCommercialSettings();
+  const terms = settings ? settings.paymentTermsDays : 14;
+
+  // Date math on YYYY-MM-DD parts without TZ pitfalls
+  const now = new Date();
+  const todayParts = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+  ];
+  const todayIso = todayParts.join('-');
+
+  const dueMs = new Date(todayIso).getTime() + terms * 24 * 60 * 60 * 1000;
+  const dueDate = new Date(dueMs);
+  const dueParts = [
+    dueDate.getUTCFullYear(),
+    String(dueDate.getUTCMonth() + 1).padStart(2, '0'),
+    String(dueDate.getUTCDate()).padStart(2, '0'),
+  ];
+  const dueDateIso = dueParts.join('-');
+
+  const { data, error } = await supabase
+    .from('customer_invoices')
+    .update({ status: 'sent', issued_at: todayIso, due_date: dueDateIso })
+    .eq('id', id)
+    .select('*')
+    .single();
+  if (error) throw error;
+  return rowToInvoice(data as InvoiceRow);
+}
+
+export async function recordPayment(id: string): Promise<Invoice> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { data, error } = await supabase
+    .from('customer_invoices')
+    .update({ status: 'paid', paid_at: new Date().toISOString() })
+    .eq('id', id)
+    .select('*')
+    .single();
+  if (error) throw error;
+  return rowToInvoice(data as InvoiceRow);
+}
+
+export async function voidInvoice(id: string): Promise<Invoice> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { data, error } = await supabase
+    .from('customer_invoices')
+    .update({ status: 'voided' })
+    .eq('id', id)
+    .select('*')
+    .single();
+  if (error) throw error;
+  return rowToInvoice(data as InvoiceRow);
+}
+
+// ---------------------------------------------------------------------------
+// Invoices — item ops (each calls recomputeInvoiceTotals before returning)
+// ---------------------------------------------------------------------------
+
+export async function addInvoiceItemFromMaterial(
+  invoiceId: string,
+  materialId: string,
+  qty: number,
+): Promise<InvoiceItem> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const material = await getMaterialById(materialId);
+  if (!material) throw new Error("Material not found: " + materialId);
+  const { data, error } = await supabase
+    .from('customer_invoice_items')
+    .insert({
+      invoice_id: invoiceId,
+      material_id: materialId,
+      description: material.name,
+      qty,
+      unit: material.unit,
+      unit_price_ex_gst: material.sellPrice ?? 0,
+      sort_order: 0,
+    })
+    .select('*')
+    .single();
+  if (error) throw error;
+  await recomputeInvoiceTotals(invoiceId);
+  return rowToInvoiceItem(data as InvoiceItemRow);
+}
+
+export async function addInvoiceItemFromPrebuild(
+  invoiceId: string,
+  prebuildId: string,
+): Promise<InvoiceItem[]> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const prebuild = await getPrebuildWithItems(prebuildId);
+  if (!prebuild) throw new Error("Prebuild not found: " + prebuildId);
+  if (prebuild.items.length === 0) return [];
+
+  const materialResults = await Promise.all(
+    prebuild.items.map((item) => getMaterialById(item.materialId)),
+  );
+
+  const inserts = prebuild.items.map((item, idx) => {
+    const mat = materialResults[idx];
+    return {
+      invoice_id: invoiceId,
+      material_id: item.materialId,
+      prebuild_id: prebuildId,
+      description: mat ? mat.name : item.materialId,
+      qty: item.qty,
+      unit: mat ? mat.unit : 'ea',
+      unit_price_ex_gst: mat ? (mat.sellPrice ?? 0) : 0,
+      sort_order: item.sortOrder,
+    };
+  });
+
+  const { data, error } = await supabase
+    .from('customer_invoice_items')
+    .insert(inserts)
+    .select('*');
+  if (error) throw error;
+  await recomputeInvoiceTotals(invoiceId);
+  return (data ?? []).map((r) => rowToInvoiceItem(r as InvoiceItemRow));
+}
+
+export async function addInvoiceItemFree(
+  invoiceId: string,
+  input: AddItemFreeInput,
+): Promise<InvoiceItem> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { data, error } = await supabase
+    .from('customer_invoice_items')
+    .insert({
+      invoice_id: invoiceId,
+      description: input.description,
+      qty: input.qty,
+      unit: input.unit,
+      unit_price_ex_gst: input.unitPriceExGst,
+      sort_order: input.sortOrder ?? 0,
+    })
+    .select('*')
+    .single();
+  if (error) throw error;
+  await recomputeInvoiceTotals(invoiceId);
+  return rowToInvoiceItem(data as InvoiceItemRow);
+}
+
+export async function updateInvoiceItem(
+  itemId: string,
+  invoiceId: string,
+  patch: UpdateItemInput,
+): Promise<InvoiceItem> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const update: Record<string, unknown> = {};
+  if (patch.description !== undefined) update.description = patch.description;
+  if (patch.qty !== undefined) update.qty = patch.qty;
+  if (patch.unit !== undefined) update.unit = patch.unit;
+  if (patch.unitPriceExGst !== undefined) update.unit_price_ex_gst = patch.unitPriceExGst;
+  if (patch.sortOrder !== undefined) update.sort_order = patch.sortOrder;
+  const { data, error } = await supabase
+    .from('customer_invoice_items')
+    .update(update)
+    .eq('id', itemId)
+    .select('*')
+    .single();
+  if (error) throw error;
+  await recomputeInvoiceTotals(invoiceId);
+  return rowToInvoiceItem(data as InvoiceItemRow);
+}
+
+export async function removeInvoiceItem(itemId: string, invoiceId: string): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { error } = await supabase.from('customer_invoice_items').delete().eq('id', itemId);
+  if (error) throw error;
+  await recomputeInvoiceTotals(invoiceId);
+}
+
+/** Recompute and persist the three money columns on an invoice. */
+export async function recomputeInvoiceTotals(invoiceId: string): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const [itemsResult, gstRate] = await Promise.all([
+    supabase.from('customer_invoice_items').select('qty,unit_price_ex_gst').eq('invoice_id', invoiceId),
+    fetchGstRate(),
+  ]);
+  if (itemsResult.error) throw itemsResult.error;
+  const lines = (itemsResult.data ?? []).map((r) => ({
+    qty: Number(r.qty),
+    unitPriceExGst: Number(r.unit_price_ex_gst),
+  }));
+  const totals = docTotals(lines, gstRate);
+  const { error } = await supabase
+    .from('customer_invoices')
+    .update({
+      subtotal_ex_gst: totals.subtotalExGst,
+      gst_amount: totals.gstAmount,
+      total_inc_gst: totals.totalIncGst,
+    })
+    .eq('id', invoiceId);
+  if (error) throw error;
+}
+
+// ---------------------------------------------------------------------------
+// Invoices — overdue helper (pure, no I/O)
+// ---------------------------------------------------------------------------
+
+/** Returns true if the invoice is in 'sent' status and its due_date is before todayIso. */
+export function isOverdue(invoice: Invoice, todayIso: string): boolean {
+  if (invoice.status !== 'sent') return false;
+  if (!invoice.dueDate) return false;
+  return invoice.dueDate < todayIso;
+}
+
+// ---------------------------------------------------------------------------
+// Invoices — CSV export (Xero-shaped)
+// ---------------------------------------------------------------------------
+
+/** CSV-escape a single field: wrap in quotes if it contains comma, quote, or newline;
+ *  double any internal quotes. */
+function csvEscape(value: string | number | null | undefined): string {
+  const str = value === null || value === undefined ? '' : String(value);
+  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+    return '"' + str.replace(/"/g, '""') + '"';
+  }
+  return str;
+}
+
+export interface InvoiceWithItemsForCsv extends Invoice {
+  items: InvoiceItem[];
+}
+
+/**
+ * Build a Xero-shaped CSV blob from a list of invoices (each must have items populated).
+ * Columns: ContactName, InvoiceNumber, InvoiceDate, DueDate, Description,
+ *          Quantity, UnitAmount, AccountCode, TaxType
+ *
+ * Dates are emitted as DD/MM/YYYY — Xero AU expects DD/MM/YYYY by default.
+ * Returns { csv, skippedNumbers } so callers can toast about invoices with zero items.
+ * Prepends UTF-8 BOM so Excel opens without an import wizard.
+ */
+export function exportInvoicesCsv(
+  invoices: InvoiceWithItemsForCsv[],
+  customersById?: Map<string, string>,
+): { csv: string; skippedNumbers: string[] } {
+  /** Convert YYYY-MM-DD to DD/MM/YYYY using string parts — no Date object. */
+  function isoToDmY(iso: string | null | undefined): string {
+    if (!iso) return '';
+    const s = iso.slice(0, 10);
+    const [y, m, d] = s.split('-');
+    if (!y || !m || !d) return s;
+    return `${d}/${m}/${y}`;
+  }
+
+  const header = [
+    'ContactName',
+    'InvoiceNumber',
+    'InvoiceDate',
+    'DueDate',
+    'Description',
+    'Quantity',
+    'UnitAmount',
+    'AccountCode',
+    'TaxType',
+  ].join(',');
+
+  const rows: string[] = [header];
+  const skippedNumbers: string[] = [];
+
+  for (const inv of invoices) {
+    // Resolve contact name: map lookup → clientName → "Unknown customer" (never a raw UUID)
+    const resolvedName =
+      (inv.customerId && customersById?.get(inv.customerId)) ??
+      inv.clientName ??
+      'Unknown customer';
+    const contactName = csvEscape(resolvedName);
+    const invNumber = csvEscape(inv.number ?? '');
+    const invDate = csvEscape(isoToDmY(inv.issuedAt));
+    const dueDate = csvEscape(isoToDmY(inv.dueDate));
+
+    const items = inv.items && inv.items.length > 0 ? inv.items : [];
+    if (items.length === 0) {
+      // Skip invoices with zero items; report them so the UI can toast
+      skippedNumbers.push(inv.number ?? inv.id);
+      continue;
+    }
+
+    for (const item of items) {
+      rows.push([
+        contactName,
+        invNumber,
+        invDate,
+        dueDate,
+        csvEscape(item.description),
+        csvEscape(item.qty),
+        csvEscape(item.unitPriceExGst),
+        '',
+        'GST on Income',
+      ].join(','));
+    }
+  }
+
+  // UTF-8 BOM so Excel opens without an import wizard
+  const csv = '﻿' + rows.join('\n');
+  return { csv, skippedNumbers };
+}
+
+// ---------------------------------------------------------------------------
+// Variations — read
+// ---------------------------------------------------------------------------
+
+export async function listVariations(filters?: {
+  status?: VariationStatus;
+  serviceJobId?: string;
+}): Promise<Variation[]> {
+  if (!supabaseConfigured()) return [];
+  let q = supabase.from('variations').select('*');
+  if (filters?.status) q = q.eq('status', filters.status);
+  if (filters?.serviceJobId) q = q.eq('service_job_id', filters.serviceJobId);
+  const { data, error } = await q.order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((r) => rowToVariation(r as VariationRow));
+}
+
+export async function getVariation(id: string): Promise<Variation | null> {
+  if (!supabaseConfigured()) return null;
+  const [varResult, itemsResult] = await Promise.all([
+    supabase.from('variations').select('*').eq('id', id).maybeSingle(),
+    supabase.from('variation_items').select('*').eq('variation_id', id).order('sort_order', { ascending: true }),
+  ]);
+  if (varResult.error) throw varResult.error;
+  if (itemsResult.error) throw itemsResult.error;
+  if (!varResult.data) return null;
+  const items = (itemsResult.data ?? []).map((r) => rowToVariationItem(r as VariationItemRow));
+  return rowToVariation(varResult.data as VariationRow, items);
+}
+
+// ---------------------------------------------------------------------------
+// Variations — write
+// ---------------------------------------------------------------------------
+
+export async function createVariation(input: CreateVariationInput): Promise<Variation> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const uid = (await supabase.auth.getUser()).data.user?.id ?? null;
+  if (!uid) throw new Error("Must be authenticated to create a variation");
+  const { data, error } = await supabase
+    .from('variations')
+    .insert({
+      title: input.title,
+      description: input.description ?? null,
+      service_job_id: input.serviceJobId ?? null,
+      project_id: input.projectId ?? null,
+      raised_by: uid,
+    })
+    .select('*')
+    .single();
+  if (error) throw error;
+  return rowToVariation(data as VariationRow);
+}
+
+export async function addVariationItemFromMaterial(
+  variationId: string,
+  materialId: string,
+  qty: number,
+): Promise<VariationItem> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const material = await getMaterialById(materialId);
+  if (!material) throw new Error("Material not found: " + materialId);
+  const { data, error } = await supabase
+    .from('variation_items')
+    .insert({
+      variation_id: variationId,
+      material_id: materialId,
+      description: material.name,
+      qty,
+      unit: material.unit,
+      unit_price_ex_gst: material.sellPrice ?? 0,
+      sort_order: 0,
+    })
+    .select('*')
+    .single();
+  if (error) throw error;
+  await recomputeVariationTotals(variationId);
+  return rowToVariationItem(data as VariationItemRow);
+}
+
+export async function addVariationItemFromPrebuild(
+  variationId: string,
+  prebuildId: string,
+): Promise<VariationItem[]> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const prebuild = await getPrebuildWithItems(prebuildId);
+  if (!prebuild) throw new Error("Prebuild not found: " + prebuildId);
+  if (prebuild.items.length === 0) return [];
+
+  const materialResults = await Promise.all(
+    prebuild.items.map((item) => getMaterialById(item.materialId)),
+  );
+
+  const inserts = prebuild.items.map((item, idx) => {
+    const mat = materialResults[idx];
+    return {
+      variation_id: variationId,
+      material_id: item.materialId,
+      prebuild_id: prebuildId,
+      description: mat ? mat.name : item.materialId,
+      qty: item.qty,
+      unit: mat ? mat.unit : 'ea',
+      unit_price_ex_gst: mat ? (mat.sellPrice ?? 0) : 0,
+      sort_order: item.sortOrder,
+    };
+  });
+
+  const { data, error } = await supabase
+    .from('variation_items')
+    .insert(inserts)
+    .select('*');
+  if (error) throw error;
+  await recomputeVariationTotals(variationId);
+  return (data ?? []).map((r) => rowToVariationItem(r as VariationItemRow));
+}
+
+export async function addVariationItemFree(
+  variationId: string,
+  input: AddItemFreeInput,
+): Promise<VariationItem> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { data, error } = await supabase
+    .from('variation_items')
+    .insert({
+      variation_id: variationId,
+      description: input.description,
+      qty: input.qty,
+      unit: input.unit,
+      unit_price_ex_gst: input.unitPriceExGst,
+      sort_order: input.sortOrder ?? 0,
+    })
+    .select('*')
+    .single();
+  if (error) throw error;
+  await recomputeVariationTotals(variationId);
+  return rowToVariationItem(data as VariationItemRow);
+}
+
+export async function updateVariationItem(
+  itemId: string,
+  variationId: string,
+  patch: UpdateItemInput,
+): Promise<VariationItem> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const update: Record<string, unknown> = {};
+  if (patch.description !== undefined) update.description = patch.description;
+  if (patch.qty !== undefined) update.qty = patch.qty;
+  if (patch.unit !== undefined) update.unit = patch.unit;
+  if (patch.unitPriceExGst !== undefined) update.unit_price_ex_gst = patch.unitPriceExGst;
+  if (patch.sortOrder !== undefined) update.sort_order = patch.sortOrder;
+  const { data, error } = await supabase
+    .from('variation_items')
+    .update(update)
+    .eq('id', itemId)
+    .select('*')
+    .single();
+  if (error) throw error;
+  await recomputeVariationTotals(variationId);
+  return rowToVariationItem(data as VariationItemRow);
+}
+
+export async function removeVariationItem(itemId: string, variationId: string): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { error } = await supabase.from('variation_items').delete().eq('id', itemId);
+  if (error) throw error;
+  await recomputeVariationTotals(variationId);
+}
+
+/** Recompute and persist the three money columns on a variation. */
+export async function recomputeVariationTotals(variationId: string): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const [itemsResult, gstRate] = await Promise.all([
+    supabase.from('variation_items').select('qty,unit_price_ex_gst').eq('variation_id', variationId),
+    fetchGstRate(),
+  ]);
+  if (itemsResult.error) throw itemsResult.error;
+  const lines = (itemsResult.data ?? []).map((r) => ({
+    qty: Number(r.qty),
+    unitPriceExGst: Number(r.unit_price_ex_gst),
+  }));
+  const totals = docTotals(lines, gstRate);
+  const { error } = await supabase
+    .from('variations')
+    .update({
+      subtotal_ex_gst: totals.subtotalExGst,
+      gst_amount: totals.gstAmount,
+      total_inc_gst: totals.totalIncGst,
+    })
+    .eq('id', variationId);
+  if (error) throw error;
+}
+
+/** Advance a variation to 'priced' status. */
+export async function priceVariation(id: string): Promise<Variation> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { data, error } = await supabase
+    .from('variations')
+    .update({ status: 'priced' })
+    .eq('id', id)
+    .select('*')
+    .single();
+  if (error) throw error;
+  return rowToVariation(data as VariationRow);
+}
+
+/** Approve a variation. Stamps approved_by + approved_at. */
+export async function approveVariation(id: string): Promise<Variation> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const uid = (await supabase.auth.getUser()).data.user?.id ?? null;
+  const { data, error } = await supabase
+    .from('variations')
+    .update({
+      status: 'approved',
+      approved_by: uid,
+      approved_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .select('*')
+    .single();
+  if (error) throw error;
+  return rowToVariation(data as VariationRow);
+}
+
+/** Decline a variation. */
+export async function declineVariation(id: string): Promise<Variation> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { data, error } = await supabase
+    .from('variations')
+    .update({ status: 'declined' })
+    .eq('id', id)
+    .select('*')
+    .single();
+  if (error) throw error;
+  return rowToVariation(data as VariationRow);
+}

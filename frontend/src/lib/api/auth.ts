@@ -26,6 +26,8 @@ interface ProfileRow {
   avatar_url: string | null;
   created_at: string;
   updated_at: string;
+  // Migration 59 — maintenance domain linkage. Optional so pre-59 fetches parse.
+  customer_id?: string | null;
 }
 
 export function rowToProfile(r: ProfileRow): Profile {
@@ -50,6 +52,7 @@ export function rowToProfile(r: ProfileRow): Profile {
     avatarUrl: r.avatar_url ?? undefined,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    customerId: r.customer_id ?? null,
   };
 }
 

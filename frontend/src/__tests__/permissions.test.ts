@@ -16,6 +16,11 @@ import {
   canViewFinance,
   canCreateProject,
   canDeleteProject,
+  canViewJobsBoard,
+  canManageServiceJobs,
+  canLogServiceJobWork,
+  canManageCatalogue,
+  canManageSales,
 } from '../lib/permissions';
 import { CAPABILITIES_BY_GROUP } from '../lib/auth/capabilities';
 import type { Profile, SecurityGroup } from '../types';
@@ -28,6 +33,7 @@ const ALL_GROUPS: SecurityGroup[] = [
   'worker',
   'stakeholder',
   'supplier',
+  'customer',
   'dev',
 ];
 
@@ -55,6 +61,7 @@ describe('canSeeAdminDashboard', () => {
     ['worker', false],
     ['stakeholder', false],
     ['supplier', false],
+    ['customer', false],
     ['dev', true],
   ];
 
@@ -89,41 +96,64 @@ describe('Phase A: new helpers per security_group', () => {
       gallery: true, messages: true, projectFiles: true, confirmAI: true,
       exportAudit: true, viewProject: true, supplierTabView: true,
       supplierTabEdit: true, resolveSafety: true, logSafety: true, finance: true,
+      viewJobsBoard: true, manageServiceJobs: true, logServiceJobWork: true,
+      manageCatalogue: true, manageSales: true,
     },
     administrator: {
       gallery: true, messages: true, projectFiles: true, confirmAI: true,
       exportAudit: true, viewProject: true, supplierTabView: true,
       supplierTabEdit: false, resolveSafety: false, logSafety: false, finance: false,
+      viewJobsBoard: true, manageServiceJobs: true, logServiceJobWork: true,
+      manageCatalogue: true, manageSales: true,
     },
     construction_mgr: {
       gallery: true, messages: true, projectFiles: true, confirmAI: true,
       exportAudit: false, viewProject: true, supplierTabView: true,
       supplierTabEdit: true, resolveSafety: true, logSafety: true, finance: false,
+      viewJobsBoard: true, manageServiceJobs: true, logServiceJobWork: true,
+      manageCatalogue: true, manageSales: true,
     },
     project_manager: {
       gallery: true, messages: true, projectFiles: true, confirmAI: true,
       exportAudit: false, viewProject: true, supplierTabView: true,
       supplierTabEdit: true, resolveSafety: true, logSafety: true, finance: true,
+      viewJobsBoard: true, manageServiceJobs: true, logServiceJobWork: true,
+      manageCatalogue: true, manageSales: true,
     },
     worker: {
       gallery: true, messages: true, projectFiles: true, confirmAI: false,
       exportAudit: false, viewProject: true, supplierTabView: false,
       supplierTabEdit: false, resolveSafety: false, logSafety: true, finance: false,
+      viewJobsBoard: true, manageServiceJobs: false, logServiceJobWork: true,
+      manageCatalogue: false, manageSales: false,
     },
     stakeholder: {
       gallery: true, messages: true, projectFiles: true, confirmAI: false,
       exportAudit: false, viewProject: true, supplierTabView: true,
       supplierTabEdit: false, resolveSafety: false, logSafety: false, finance: true,
+      viewJobsBoard: false, manageServiceJobs: false, logServiceJobWork: false,
+      manageCatalogue: false, manageSales: false,
     },
     supplier: {
       gallery: true, messages: true, projectFiles: true, confirmAI: false,
       exportAudit: false, viewProject: true, supplierTabView: true,
       supplierTabEdit: false, resolveSafety: false, logSafety: false, finance: false,
+      viewJobsBoard: false, manageServiceJobs: false, logServiceJobWork: false,
+      manageCatalogue: false, manageSales: false,
+    },
+    customer: {
+      gallery: false, messages: false, projectFiles: false, confirmAI: false,
+      exportAudit: false, viewProject: false, supplierTabView: false,
+      supplierTabEdit: false, resolveSafety: false, logSafety: false, finance: false,
+      viewJobsBoard: false, manageServiceJobs: false, logServiceJobWork: false,
+      manageCatalogue: false, manageSales: false,
     },
     dev: {
       gallery: true, messages: true, projectFiles: true, confirmAI: true,
       exportAudit: true, viewProject: true, supplierTabView: true,
       supplierTabEdit: true, resolveSafety: true, logSafety: true, finance: true,
+      viewJobsBoard: true, manageServiceJobs: true, logServiceJobWork: true,
+      manageCatalogue: true, manageSales: true,
     },
   };
 
@@ -145,6 +175,11 @@ describe('Phase A: new helpers per security_group', () => {
     expect(canViewFinance({
       id: p.id, email: p.email, fullName: '', role: 'admin', securityGroup: group,
     })).toBe(e.finance);
+    expect(canViewJobsBoard(p)).toBe(e.viewJobsBoard);
+    expect(canManageServiceJobs(p)).toBe(e.manageServiceJobs);
+    expect(canLogServiceJobWork(p)).toBe(e.logServiceJobWork);
+    expect(canManageCatalogue(p)).toBe(e.manageCatalogue);
+    expect(canManageSales(p)).toBe(e.manageSales);
   });
 
   it('all helpers return false for null', () => {

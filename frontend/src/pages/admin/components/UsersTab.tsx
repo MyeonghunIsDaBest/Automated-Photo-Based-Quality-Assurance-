@@ -54,6 +54,7 @@ const ROLE_BADGE: Record<SecurityGroup, string> = {
   worker:           'border-[#E6E1D4] bg-[#FAF8F2] text-[#6B6B6B]',
   stakeholder:      'border-[#E6E1D4] bg-[#F0EDE4] text-[#1A1A1A]',
   supplier:         'border-[#F0D5A0] bg-[#F9EFD9] text-[#C8841E]',
+  customer:         'border-[#C4D9E8] bg-[#EAF3F9] text-[#2A6080]',
   dev:              'border-[#1A1A1A] bg-[#1A1A1A] text-white',
 };
 

@@ -72,6 +72,7 @@ export function createProject(input: NewProjectInput): CreatedProjectResult {
     percentComplete: 0,
     tasksComplete: 0,
     tasksPending: totalDefaultMilestones() + (input.milestones?.length ?? 0),
+    tasksBlocked: 0,
     tasksOutstanding: 0,
     startDate: input.startDate,
     endDate: input.endDate,

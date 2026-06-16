@@ -31,11 +31,11 @@ const NOT_CONFIGURED = new Error(
   'Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in frontend/.env.local.',
 );
 
-// Stakeholder/supplier accounts must be linked to their org-wide directory
-// row. The Edge Function rejects mismatches (e.g. linkTo.type='stakeholder'
-// but securityGroup='worker').
+// Stakeholder/supplier/customer accounts must be linked to their org-wide
+// directory row. The Edge Function rejects mismatches (e.g.
+// linkTo.type='stakeholder' but securityGroup='worker').
 export interface AdminCreateUserLink {
-  type: 'stakeholder' | 'supplier';
+  type: 'stakeholder' | 'supplier' | 'customer';
   id: string;
 }
 
@@ -49,7 +49,7 @@ export interface AdminCreateUserInput {
   emergencyContactName?: string | null;
   emergencyContactEmail?: string | null;
   emergencyContactMobile?: string | null;
-  /** Required when securityGroup is 'stakeholder' or 'supplier'. */
+  /** Required when securityGroup is 'stakeholder', 'supplier', or 'customer'. */
   linkTo?: AdminCreateUserLink | null;
 }
 
@@ -242,14 +242,22 @@ async function adminCreateUserFallback(input: AdminCreateUserInput): Promise<Pro
     patch.emergency_contact_email = input.emergencyContactEmail;
   if (input.emergencyContactMobile !== undefined)
     patch.emergency_contact_mobile = input.emergencyContactMobile;
-  // Phase A: stakeholder/supplier linkage.
+  // Phase A: stakeholder/supplier/customer linkage — each arm sets its own FK
+  // and nulls the other two, mirroring the backend's three-branch pattern.
   if (input.linkTo) {
     if (input.linkTo.type === 'stakeholder') {
       patch.stakeholder_id = input.linkTo.id;
       patch.supplier_id = null;
-    } else {
+      patch.customer_id = null;
+    } else if (input.linkTo.type === 'supplier') {
       patch.supplier_id = input.linkTo.id;
       patch.stakeholder_id = null;
+      patch.customer_id = null;
+    } else {
+      // 'customer'
+      patch.customer_id = input.linkTo.id;
+      patch.stakeholder_id = null;
+      patch.supplier_id = null;
     }
   }
 
@@ -307,4 +315,25 @@ export async function rescueUser(req: RescueRequest): Promise<{ ok: true } & Rec
   }
   if (!data) throw new Error('rescueUser: empty response');
   return data;
+}
+
+// ─── Customer-portal invite ───────────────────────────────────────────────────
+
+/** Invite a customer-portal user: creates the auth account via admin-create-user
+ *  with security group 'customer' linked to a customers row. */
+export async function inviteCustomerUser(input: {
+  email: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+  customerId: string;
+}): Promise<Profile> {
+  return adminCreateUser({
+    email: input.email,
+    password: input.password,
+    firstName: input.firstName,
+    lastName: input.lastName,
+    securityGroup: 'customer',
+    linkTo: { type: 'customer', id: input.customerId },
+  });
 }

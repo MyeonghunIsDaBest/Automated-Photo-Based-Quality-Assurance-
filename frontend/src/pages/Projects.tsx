@@ -45,8 +45,12 @@ const SORT_OPTIONS: { id: SortMode; label: string }[] = [
   { id: 'tasks_outstanding', label: 'Outstanding tasks · most' },
 ];
 
-const PINNED_KEY = 'siteproof:projects:pinned:v1';
-const RECENT_KEY = 'siteproof:projects:recent:v1';
+const PINNED_KEY  = 'siteproof:projects:pinned:v1';
+const RECENT_KEY  = 'siteproof:projects:recent:v1';   // legacy: string[]
+const RECENT_KEY2 = 'siteproof:projects:recent:v2';   // current: {id,ts}[]
+
+/** Shape stored in v2 localStorage. */
+export interface RecentEntry { id: string; ts: number; }
 
 function readSet(key: string): Set<string> {
   try {
@@ -61,18 +65,26 @@ function readSet(key: string): Set<string> {
 function writeSet(key: string, s: Set<string>) {
   try { localStorage.setItem(key, JSON.stringify([...s])); } catch { /* quota */ }
 }
-function readArr(key: string): string[] {
+
+/** Read v2 recent list, with v1 migration fallback (no timestamps for old entries). */
+function readRecent(): RecentEntry[] {
   try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+    const raw2 = localStorage.getItem(RECENT_KEY2);
+    if (raw2) {
+      const parsed = JSON.parse(raw2);
+      if (Array.isArray(parsed)) return parsed as RecentEntry[];
+    }
+    // Migrate from v1: convert legacy string[] to entries without timestamps.
+    const raw1 = localStorage.getItem(RECENT_KEY);
+    if (raw1) {
+      const ids = JSON.parse(raw1);
+      if (Array.isArray(ids)) return (ids as string[]).map((id) => ({ id, ts: 0 }));
+    }
+  } catch { /* ignore */ }
+  return [];
 }
-function writeArr(key: string, a: string[]) {
-  try { localStorage.setItem(key, JSON.stringify(a)); } catch { /* quota */ }
+function writeRecent(entries: RecentEntry[]) {
+  try { localStorage.setItem(RECENT_KEY2, JSON.stringify(entries)); } catch { /* quota */ }
 }
 
 export default function Projects() {
@@ -90,7 +102,7 @@ export default function Projects() {
   const [search, setSearch] = useState('');
   const [sortMode, setSortMode] = useState<SortMode>('recent');
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(() => readSet(PINNED_KEY));
-  const [recentlyOpened, setRecentlyOpened] = useState<string[]>(() => readArr(RECENT_KEY));
+  const [recentlyOpened, setRecentlyOpened] = useState<RecentEntry[]>(() => readRecent());
 
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -116,7 +128,7 @@ export default function Projects() {
 
   // Persist pinned + recent so they survive reloads.
   useEffect(() => { writeSet(PINNED_KEY, pinnedIds); }, [pinnedIds]);
-  useEffect(() => { writeArr(RECENT_KEY, recentlyOpened); }, [recentlyOpened]);
+  useEffect(() => { writeRecent(recentlyOpened); }, [recentlyOpened]);
 
   // Re-derive each project's task counts and progress from the live tasks
   // store. The static fields on the Project record become stale the moment
@@ -124,14 +136,15 @@ export default function Projects() {
   const projectsWithProgress = useMemo<Project[]>(() => {
     return projects.map((p) => {
       const owned = tasks.filter((t) => t.projectId === p.id);
-      if (owned.length === 0) return p;
+      if (owned.length === 0) return { ...p, tasksBlocked: p.tasksBlocked ?? 0 };
       const tasksComplete = owned.filter((t) => t.status === 'complete').length;
       const tasksPending = owned.filter((t) => t.status === 'in_progress').length;
-      const tasksOutstanding = owned.length - tasksComplete - tasksPending;
+      const tasksBlocked = owned.filter((t) => t.status === 'blocked').length;
+      const tasksOutstanding = owned.length - tasksComplete - tasksPending - tasksBlocked;
       const percentComplete = Math.round(
         owned.reduce((sum, t) => sum + t.percentComplete, 0) / owned.length,
       );
-      return { ...p, tasksComplete, tasksPending, tasksOutstanding, percentComplete };
+      return { ...p, tasksComplete, tasksPending, tasksBlocked, tasksOutstanding, percentComplete };
     });
   }, [projects, tasks]);
 
@@ -182,6 +195,30 @@ export default function Projects() {
     };
   }, [projectsWithProgress, healthById, tasks]);
 
+  // 4-week runway trend — honestly RECONSTRUCTED from real project end dates:
+  // runway on day t = avg(endDate − t) across currently-active projects whose
+  // window still covered t. No fake data: with a stable portfolio this is the
+  // true "shrinks one day per day" line; kinks appear where windows end.
+  const runwaySpark = useMemo(() => {
+    const active = projectsWithProgress.filter((p) => p.status === 'active');
+    if (active.length === 0) return undefined;
+    const ends = active
+      .map((p) => Date.parse(p.endDate))
+      .filter((ms) => Number.isFinite(ms));
+    if (ends.length === 0) return undefined;
+    const now = new Date();
+    const todayMs = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const DAY = 86_400_000;
+    const points: number[] = [];
+    for (let back = 27; back >= 0; back--) {
+      const t = todayMs - back * DAY;
+      const remaining = ends.filter((e) => e >= t).map((e) => Math.round((e - t) / DAY));
+      if (remaining.length === 0) continue;
+      points.push(Math.round(remaining.reduce((a, b) => a + b, 0) / remaining.length));
+    }
+    return points.length >= 2 ? points : undefined;
+  }, [projectsWithProgress]);
+
   // Filter → search → sort → pinned-first. Pinned float regardless of sort.
   const visibleProjects = useMemo(() => {
     let list = projectsWithProgress;
@@ -195,7 +232,7 @@ export default function Projects() {
       );
     }
     const recentIndex = (id: string) => {
-      const i = recentlyOpened.indexOf(id);
+      const i = recentlyOpened.findIndex((e) => e.id === id);
       return i === -1 ? Number.MAX_SAFE_INTEGER : i;
     };
     const sorted = [...list].sort((a, b) => {
@@ -215,7 +252,12 @@ export default function Projects() {
     );
   }, [projectsWithProgress, healthFilter, healthById, search, sortMode, pinnedIds, recentlyOpened]);
 
-  const mostRecentId = recentlyOpened[0] ?? null;
+  // Map project id → RecentEntry so the card can render "last opened N days ago".
+  const recentById = useMemo(() => {
+    const m = new Map<string, RecentEntry>();
+    for (const e of recentlyOpened) m.set(e.id, e);
+    return m;
+  }, [recentlyOpened]);
 
   const togglePin = (id: string) => {
     setPinnedIds((prev) => {
@@ -227,7 +269,7 @@ export default function Projects() {
   };
 
   const handleOpenProject = (id: string) => {
-    setRecentlyOpened((prev) => [id, ...prev.filter((x) => x !== id)].slice(0, 8));
+    setRecentlyOpened((prev) => [{ id, ts: Date.now() }, ...prev.filter((e) => e.id !== id)].slice(0, 8));
     setActiveProject(id);
     navigate('/gantt');
   };
@@ -285,7 +327,9 @@ export default function Projects() {
                 <span className="inline-block h-px w-6 bg-[#A0A0A0]" />
                 Portfolio
                 <span className="text-[#D8D2C4]">·</span>
-                <span className="inline-flex items-center gap-1.5 normal-case tracking-normal text-[#246F47]">
+                {/* Small-caps green status per mock — inherits the parent's
+                    uppercase + wide tracking instead of opting out of it. */}
+                <span className="inline-flex items-center gap-1.5 text-[#246F47]">
                   <span className="relative flex h-1.5 w-1.5">
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#A8D0B8] opacity-75" />
                     <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#2F8F5C]" />
@@ -311,7 +355,11 @@ export default function Projects() {
                 <span className="hidden h-8 w-px bg-[#E6E1D4] sm:block" aria-hidden />
                 <HeroStat value={`${stats.openTasks}`} label="Open tasks" />
                 <span className="hidden h-8 w-px bg-[#E6E1D4] sm:block" aria-hidden />
-                <HeroStat value={`${stats.avgRunway}d`} label="Avg. runway" />
+                <HeroStat
+                  value={`${stats.avgRunway}d`}
+                  label={runwaySpark ? 'Avg. runway · 4-wk trend' : 'Avg. runway'}
+                  spark={runwaySpark}
+                />
               </div>
             </div>
 
@@ -456,7 +504,7 @@ export default function Projects() {
               onOpen={handleOpenProject}
               pinnedIds={pinnedIds}
               onTogglePin={togglePin}
-              mostRecentId={mostRecentId}
+              recentById={recentById}
               sortMode={sortMode}
               canDelete={canDelete}
             />
@@ -474,15 +522,49 @@ export default function Projects() {
 
 // ─── Pieces ────────────────────────────────────────────────────────────
 
-function HeroStat({ value, label }: { value: string; label: string }) {
+/** Tiny inline trend line (mock: declining runway with an end dot). Pure SVG,
+ *  no chart lib. Scales to the points' own min/max; flat series renders a
+ *  midline. */
+function Sparkline({ points }: { points: number[] }) {
+  const W = 64;
+  const H = 18;
+  const PAD = 2;
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  const span = max - min;
+  const x = (i: number) => PAD + (i / (points.length - 1)) * (W - PAD * 2);
+  const y = (v: number) =>
+    span === 0 ? H / 2 : PAD + (1 - (v - min) / span) * (H - PAD * 2);
+  const path = points.map((v, i) => `${x(i)},${y(v)}`).join(' ');
+  const lastX = x(points.length - 1);
+  const lastY = y(points[points.length - 1]);
+  return (
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} aria-hidden className="mb-0.5 shrink-0">
+      <polyline
+        points={path}
+        fill="none"
+        stroke="#2F8F5C"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx={lastX} cy={lastY} r="2" fill="#2F8F5C" />
+    </svg>
+  );
+}
+
+function HeroStat({ value, label, spark }: { value: string; label: string; spark?: number[] }) {
   return (
     <div>
-      <p
-        className="text-3xl font-medium leading-none text-[#1A1A1A]"
-        style={{ fontFamily: FRAUNCES, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.03em' }}
-      >
-        {value}
-      </p>
+      <div className="flex items-end gap-2">
+        <p
+          className="text-3xl font-medium leading-none text-[#1A1A1A]"
+          style={{ fontFamily: FRAUNCES, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.03em' }}
+        >
+          {value}
+        </p>
+        {spark && spark.length >= 2 && <Sparkline points={spark} />}
+      </div>
       <p className="mt-1.5 text-[10px] font-medium uppercase tracking-[0.18em] text-[#A0A0A0]">
         {label}
       </p>
