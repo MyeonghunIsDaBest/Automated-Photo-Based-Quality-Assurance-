@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { X, Upload, Calendar, FileText, Image, Users, MessageSquare, DollarSign, Shield, BarChart3, CheckSquare, FolderOpen } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { Separator } from '../ui/separator';
@@ -141,6 +141,7 @@ const quickActionCategories: QuickActionCategory[] = [
 
 export default function QuickActionsSidebar() {
   const navigate = useNavigate();
+  const location = useLocation();
   const currentUser = useAppStore((s) => s.currentUser);
   const [isOpen, setIsOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -219,6 +220,10 @@ export default function QuickActionsSidebar() {
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, []);
+
+  // The customer portal is a standalone shell with its own sidebar — the staff
+  // quick-actions launcher doesn't belong there.
+  if (location.pathname === '/customer') return null;
 
   return (
     <>

@@ -9,7 +9,7 @@
 // gracefully). Reads the active project from the store, so consumers just drop
 // it in — no prop drilling.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DollarSign, CheckCircle2, Lock, FileText, Image as ImageIcon, Activity, X, PenLine, Plus, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -22,13 +22,15 @@ import { PlannedVsActualTrend, plannedPctNow } from '../../components/charts/Pla
 import { listPhaseStatuses } from '../../lib/api/phaseStatus';
 import { listMilestoneReleases, releaseMilestone, type MilestoneRelease } from '../../lib/api/paymentMilestones';
 import { canReleasePaymentMilestone, canEditBudget } from '../../lib/permissions';
-import { updateProject } from '../../lib/api/projects';
+import { updateProject, setContractValue, setMaterialsCost } from '../../lib/api/projects';
 import { supabaseConfigured } from '../../lib/supabase';
 import { SetBudgetModal } from '../../components/finance/SetBudgetModal';
 import { phaseColor } from '../../lib/construction/phaseColors';
 import type { ConstructionPhase } from '../../lib/ai/contract';
 import SignaturePad from '../../components/ui/SignaturePad';
 import { cardShell, StatusPill, FRAUNCES, type ToneKey } from '../gantt/components/ledger';
+import { getProjectProfit, type JobProfitResult } from '../../lib/api/labourRates';
+import ProfitSummaryCard from '../jobs/ProfitSummaryCard';
 
 const PHASES: ConstructionPhase[] = ['excavation', 'foundation', 'framing', 'roofing', 'electrical', 'plumbing', 'drywall', 'finishing'];
 const fmt = (n: number) => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 }).format(n);
@@ -80,6 +82,26 @@ export default function ProjectFinancePanel() {
   const [releases, setReleases] = useState<MilestoneRelease[]>([]);
   const [releasing, setReleasing] = useState<Milestone | null>(null);
   const [budgetModalOpen, setBudgetModalOpen] = useState(false);
+  const [financialsModalOpen, setFinancialsModalOpen] = useState(false);
+  const [profit, setProfit] = useState<JobProfitResult | null>(null);
+  const [profitLoading, setProfitLoading] = useState(false);
+  // Track the projectId the profit was last loaded for — avoid stale data on
+  // project switch without triggering an extra render cycle.
+  const profitForId = useRef<string | null>(null);
+
+  const loadProfit = useCallback(async () => {
+    if (!projectId) return;
+    setProfitLoading(true);
+    profitForId.current = projectId;
+    try {
+      const result = await getProjectProfit(projectId);
+      // Only apply if the projectId hasn't changed while we were awaiting.
+      if (profitForId.current === projectId) setProfit(result);
+    } catch { /* non-fatal — card shows null state */ }
+    finally {
+      if (profitForId.current === projectId) setProfitLoading(false);
+    }
+  }, [projectId]);
 
   const load = useCallback(async () => {
     if (!projectId) return;
@@ -92,6 +114,7 @@ export default function ProjectFinancePanel() {
     setReleases(await listMilestoneReleases(projectId));
   }, [projectId]);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void loadProfit(); }, [loadProfit]);
 
   // Set / edit the project budget. Preserve live spent/committed (the panel
   // re-derives those from invoices/orders); persist the total to projects.budget.
@@ -260,6 +283,17 @@ export default function ProjectFinancePanel() {
         </ul>
       </section>
 
+      {/* Profit summary — manager/finance gated (same gate as budget edit) */}
+      {mayEditBudget && (
+        <section className="mb-4">
+          <ProfitSummaryCard
+            profit={profit}
+            loading={profitLoading}
+            onSetFinancials={() => setFinancialsModalOpen(true)}
+          />
+        </section>
+      )}
+
       {/* Invoices (read-only) */}
       <section className={`mb-4 overflow-hidden ${cardShell}`}>
         <div className="border-b border-[#EFEBE0] px-5 py-3">
@@ -319,6 +353,18 @@ export default function ProjectFinancePanel() {
           current={hasBudget ? total : undefined}
           onClose={() => setBudgetModalOpen(false)}
           onSave={saveBudget}
+        />
+      )}
+
+      {financialsModalOpen && (
+        <SetFinancialsModal
+          projectId={projectId}
+          projectName={project.name}
+          currentRevenue={profit?.revenue ?? null}
+          currentMaterials={profit?.materials ?? null}
+          onClose={() => setFinancialsModalOpen(false)}
+          onSaved={() => { setFinancialsModalOpen(false); void loadProfit(); }}
+          notify={(message, type) => useAppStore.getState().setNotification({ message, type })}
         />
       )}
     </>
@@ -386,6 +432,149 @@ function ReleaseModal({
               className="inline-flex items-center gap-1.5 rounded-full bg-[#2F8F5C] px-5 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-[#246F47] disabled:cursor-not-allowed disabled:opacity-50">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
               {busy ? 'Releasing…' : 'Confirm release'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Set Financials Modal ────────────────────────────────────────────────────
+// Lets a manager/finance-gated user set contract value + materials cost for the
+// project. Both fields are optional/clearable (blank input = null). Mirrors the
+// house modal grammar established by ReleaseModal above.
+
+function SetFinancialsModal({
+  projectId,
+  projectName,
+  currentRevenue,
+  currentMaterials,
+  onClose,
+  onSaved,
+  notify,
+}: {
+  projectId: string;
+  projectName: string;
+  currentRevenue: number | null;
+  currentMaterials: number | null;
+  onClose: () => void;
+  onSaved: () => void;
+  notify: (message: string, type: "success" | "error") => void;
+}) {
+  const [revenue, setRevenue] = useState(currentRevenue !== null ? String(currentRevenue) : "");
+  const [materials, setMaterials] = useState(currentMaterials !== null ? String(currentMaterials) : "");
+  const [busy, setBusy] = useState(false);
+
+  const parseAud = (s: string): number | null => {
+    const trimmed = s.trim();
+    if (!trimmed) return null;
+    const n = Number(trimmed.replace(/,/g, ""));
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const save = async () => {
+    if (busy) return;
+    const rev = parseAud(revenue);
+    const mat = parseAud(materials);
+    if (revenue.trim() !== "" && rev === null) {
+      notify("Contract value must be a number (e.g. 250000).", "error");
+      return;
+    }
+    if (materials.trim() !== "" && mat === null) {
+      notify("Materials cost must be a number (e.g. 45000).", "error");
+      return;
+    }
+    setBusy(true);
+    try {
+      // Only write the fields that actually changed (mirrors ServiceJobDrawer).
+      const writes: Promise<unknown>[] = [];
+      if (rev !== currentRevenue) writes.push(setContractValue(projectId, rev));
+      if (mat !== currentMaterials) writes.push(setMaterialsCost(projectId, mat));
+      if (writes.length > 0) await Promise.all(writes);
+      notify("Financials saved.", "success");
+      onSaved();
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "Could not save financials.", "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const FIELD = "w-full rounded-[10px] border border-[#E6E1D4] bg-white px-3 py-2.5 text-[13.5px] text-[#1A1A1A] placeholder:text-[#A0A0A0] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]/30";
+
+  return (
+    <div
+      className="editorial-root fixed inset-0 z-50 flex items-center justify-center bg-[#1A1A1A]/50 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md overflow-hidden rounded-[14px] bg-white shadow-[0_8px_28px_rgba(20,20,20,0.12)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* header */}
+        <div className="flex items-center justify-between border-b border-[#EFEBE0] px-5 py-4">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#246F47]">Project financials</p>
+            <h3 className="mt-0.5 text-xl font-medium text-[#1A1A1A]" style={{ fontFamily: FRAUNCES }}>
+              {projectName}
+            </h3>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-full p-2 text-[#A0A0A0] hover:bg-[#FAF8F2] hover:text-[#3A3A3A]"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* body */}
+        <div className="space-y-4 px-5 py-4">
+          <p className="text-[13px] text-[#6B6B6B]">
+            Both fields are optional. Leave blank to clear a previously entered value. Figures ex-GST, AUD.
+          </p>
+          <div>
+            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-widest text-[#6B6B6B]">
+              Contract value (revenue ex-GST)
+            </label>
+            <input
+              type="text"
+              inputMode="decimal"
+              placeholder="e.g. 250000"
+              value={revenue}
+              onChange={(e) => setRevenue(e.target.value)}
+              className={FIELD}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-widest text-[#6B6B6B]">
+              Materials cost
+            </label>
+            <input
+              type="text"
+              inputMode="decimal"
+              placeholder="e.g. 45000"
+              value={materials}
+              onChange={(e) => setMaterials(e.target.value)}
+              className={FIELD}
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-full border border-[#E6E1D4] bg-white px-4 py-2 text-[13px] font-semibold text-[#3A3A3A] hover:bg-[#FAF8F2]"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void save()}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 rounded-full bg-[#2F8F5C] px-5 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-[#246F47] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              {busy ? "Saving…" : "Save"}
             </button>
           </div>
         </div>

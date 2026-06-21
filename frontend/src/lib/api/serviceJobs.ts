@@ -20,7 +20,10 @@ export type ServiceJobStatus =
   | 'pending'
   | 'scheduled'
   | 'in_progress'
-  | 'done'
+  | 'done'        // shown as "Completed" on the board
+  | 'invoiced'    // migration 76
+  | 'paid'        // migration 76
+  | 'archived'    // migration 76 — leaves the active board, kept in the archived view
   | 'cancelled';
 
 export type ServiceJobPhotoKind = 'before' | 'after' | 'other';
@@ -34,6 +37,7 @@ interface ServiceJobRow {
   title: string;
   description: string | null;
   external_ref: string | null;
+  job_number: string | null;
   client_name: string | null;
   client_phone: string | null;
   address: string | null;
@@ -44,6 +48,8 @@ interface ServiceJobRow {
   assigned_to: string | null;
   materials: string | null;
   notes: string | null;
+  contract_value: number | null;
+  materials_cost: number | null;
   created_by: string | null;
   created_at: string;
   completed_at: string | null;
@@ -65,6 +71,8 @@ interface ServiceJobTimeEntryRow {
   date: string;
   hours: number;
   note: string | null;
+  /** Added by migration 73 — text null, matches labour_rates.role by name. */
+  role: string | null;
   created_at: string;
 }
 
@@ -77,6 +85,9 @@ export interface ServiceJob {
   title: string;
   description: string | null;
   externalRef: string | null;
+  /** Human-friendly in-app job number (continues the Sim-Pro sequence). Imported
+   *  jobs use externalRef instead — see displayJobNumber(). */
+  jobNumber: string | null;
   clientName: string | null;
   clientPhone: string | null;
   address: string | null;
@@ -87,6 +98,8 @@ export interface ServiceJob {
   assignedTo: string | null;
   materials: string | null;
   notes: string | null;
+  contractValue: number | null;
+  materialsCost: number | null;
   createdBy: string | null;
   createdAt: string;
   completedAt: string | null;
@@ -108,6 +121,8 @@ export interface ServiceJobTimeEntry {
   date: string;
   hours: number;
   note: string | null;
+  /** Role name matching labour_rates.role (migration 73). Null = uncosted. */
+  role: string | null;
   createdAt: string;
 }
 
@@ -121,6 +136,7 @@ function rowToServiceJob(r: ServiceJobRow): ServiceJob {
     title: r.title,
     description: r.description,
     externalRef: r.external_ref,
+    jobNumber: r.job_number,
     clientName: r.client_name,
     clientPhone: r.client_phone,
     address: r.address,
@@ -131,6 +147,8 @@ function rowToServiceJob(r: ServiceJobRow): ServiceJob {
     assignedTo: r.assigned_to,
     materials: r.materials,
     notes: r.notes,
+    contractValue: r.contract_value === null || r.contract_value === undefined ? null : Number(r.contract_value),
+    materialsCost: r.materials_cost === null || r.materials_cost === undefined ? null : Number(r.materials_cost),
     createdBy: r.created_by,
     createdAt: r.created_at,
     completedAt: r.completed_at,
@@ -156,6 +174,7 @@ function rowToServiceJobTimeEntry(r: ServiceJobTimeEntryRow): ServiceJobTimeEntr
     date: r.date,
     hours: Number(r.hours),
     note: r.note,
+    role: r.role ?? null,
     createdAt: r.created_at,
   };
 }
@@ -182,6 +201,21 @@ export async function listServiceJobs(filters?: {
     q = q.eq('status', filters.status);
   }
   const { data, error } = await q.order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((r) => rowToServiceJob(r as ServiceJobRow));
+}
+
+/** A customer's own service / promoted Sim-Pro jobs, newest first — for the
+ *  customer portal so they can raise an issue against a specific job. Migration
+ *  74 RLS scopes service_jobs SELECT to the caller's customer_id, so this only
+ *  ever returns the signed-in customer's jobs. [] when not configured / no id. */
+export async function listServiceJobsForCustomer(customerId: string): Promise<ServiceJob[]> {
+  if (!supabaseConfigured() || !customerId) return [];
+  const { data, error } = await supabase
+    .from('service_jobs')
+    .select('*')
+    .eq('customer_id', customerId)
+    .order('created_at', { ascending: false });
   if (error) throw error;
   return (data ?? []).map((r) => rowToServiceJob(r as ServiceJobRow));
 }
@@ -220,6 +254,14 @@ export interface CreateServiceJobInput {
 export async function createServiceJob(input: CreateServiceJobInput): Promise<ServiceJob> {
   if (!supabaseConfigured()) throw NOT_CONFIGURED;
   const uid = (await supabase.auth.getUser()).data.user?.id ?? null;
+  // Assign the next continuous job number (mig 76). Best-effort: if the RPC is
+  // unavailable (e.g. migration not applied yet) we still create the job with a
+  // null number rather than blocking job creation.
+  let jobNumber: string | null = null;
+  try {
+    const { data: numData, error: numError } = await supabase.rpc('next_job_number');
+    if (!numError && numData != null) jobNumber = String(numData);
+  } catch { /* leave null */ }
   const insert: Record<string, unknown> = {
     title: input.title,
     description: input.description ?? null,
@@ -229,6 +271,7 @@ export async function createServiceJob(input: CreateServiceJobInput): Promise<Se
     customer_id: input.customerId ?? null,
     property_id: input.propertyId ?? null,
     assigned_to: input.assignedTo ?? null,
+    job_number: jobNumber,
     created_by: uid,
   };
   // Only send status / scheduled_for when scheduling upfront; otherwise let
@@ -288,7 +331,13 @@ export async function updateServiceJob(
   return rowToServiceJob(data as ServiceJobRow);
 }
 
-/** Update only the status column (and completed_at when entering/leaving done). */
+/** Statuses at/after completion — the job is finished and stays finished as it
+ *  moves Completed → Invoiced → Paid → Archived. */
+const TERMINAL_STATUSES: ServiceJobStatus[] = ['done', 'invoiced', 'paid', 'archived'];
+
+/** Update only the status column, managing completed_at across the lifecycle:
+ *  stamp it when first completing ('done'), preserve it through invoiced/paid/
+ *  archived, and clear it when re-opening (pending/scheduled/in_progress/cancelled). */
 export async function updateServiceJobStatus(
   id: string,
   status: ServiceJobStatus,
@@ -296,10 +345,12 @@ export async function updateServiceJobStatus(
   if (!supabaseConfigured()) throw NOT_CONFIGURED;
   const statusPatch: Record<string, unknown> = { status };
   if (status === 'done') {
-    // Stamp completion timestamp when entering done
+    // Stamp completion timestamp when first marking complete
     statusPatch.completed_at = new Date().toISOString();
+  } else if (TERMINAL_STATUSES.includes(status)) {
+    // invoiced / paid / archived — preserve the existing completed_at (omit it)
   } else {
-    // Clear timestamp when leaving done for any other status
+    // Re-opened (pending/scheduled/in_progress) or cancelled — clear it
     statusPatch.completed_at = null;
   }
   const { data, error } = await supabase
@@ -421,6 +472,8 @@ export interface AddTimeEntryInput {
   date: string;
   hours: number;
   note?: string;
+  /** Labour role name matching labour_rates.role (migration 73). Null = uncosted. */
+  role?: string | null;
 }
 
 /** Add a time entry to a service job. hours must be > 0. */
@@ -438,6 +491,7 @@ export async function addTimeEntry(
       date: input.date,
       hours: input.hours,
       note: input.note ?? null,
+      role: input.role ?? null,
     })
     .select('*')
     .single();
@@ -472,4 +526,41 @@ export async function deleteTimeEntry(id: string): Promise<void> {
 export function totalHours(entries: ServiceJobTimeEntry[]): number {
   const sum = entries.reduce((acc, e) => acc + e.hours, 0);
   return Math.round(sum * 100) / 100;
+}
+
+/** The number to display for a job: imported jobs keep their original Sim-Pro
+ *  number (external_ref); in-app jobs use their continued job_number. Returns
+ *  null when neither is set (legacy jobs created before mig 76). */
+export function displayJobNumber(job: { externalRef: string | null; jobNumber: string | null }): string | null {
+  return job.externalRef ?? job.jobNumber ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// Financial setters (PP1 — manager-gated by RLS)
+// ---------------------------------------------------------------------------
+
+/**
+ * Set (or clear) the contract value on a service job.
+ * Pass null to explicitly clear the field.
+ */
+export async function setContractValue(id: string, value: number | null): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { error } = await supabase
+    .from('service_jobs')
+    .update({ contract_value: value })
+    .eq('id', id);
+  if (error) throw error;
+}
+
+/**
+ * Set (or clear) the manual materials cost on a service job.
+ * Pass null to explicitly clear the field (means "not entered").
+ */
+export async function setMaterialsCost(id: string, value: number | null): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { error } = await supabase
+    .from('service_jobs')
+    .update({ materials_cost: value })
+    .eq('id', id);
+  if (error) throw error;
 }

@@ -64,10 +64,16 @@ export default function Layout() {
     return <Navigate to="/login" replace />;
   }
 
+  // The customer portal is a standalone, full-screen experience with its OWN
+  // sidebar nav — so it suppresses the global app chrome (TopNav) to avoid a
+  // double navigation. This is also the testbed for the future sidebar-nav
+  // rework that will replace the TopNav app-wide, starting from this domain.
+  const standaloneShell = location.pathname === '/customer';
+
   return (
     <div className="min-h-screen bg-[#FAF8F2]" style={accentStyle}>
       <MissingEnvBanner />
-      <TopNav />
+      {!standaloneShell && <TopNav />}
       <main className="">
         <ErrorBoundary key={location.pathname} label={`Page · ${location.pathname}`}>
           <Outlet />

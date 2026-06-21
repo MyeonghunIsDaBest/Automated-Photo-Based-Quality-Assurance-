@@ -1,9 +1,11 @@
 // TimeEntriesSection — Time log for a service job.
 // Workers add entries for themselves; managers can pick any active tech.
-// Displays tech name resolved from a profiles map, date, hours, note.
+// Displays tech name resolved from a profiles map, date, hours, note, role.
 // Running total shown at the bottom via totalHours().
+// Role picker shows role names only — never $ rates (rate data is manager-only
+// in Settings; this component is used by field workers too).
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Trash2, Plus, Loader2, Clock } from 'lucide-react';
 import {
   addTimeEntry,
@@ -11,6 +13,7 @@ import {
   totalHours,
   type ServiceJobTimeEntry,
 } from '../../lib/api/serviceJobs';
+import { listLabourRates, type LabourRate } from '../../lib/api/labourRates';
 import type { Profile } from '../../types';
 
 interface Props {
@@ -39,9 +42,16 @@ export function TimeEntriesSection({
 }: Props) {
   const profileMap = new Map(profiles.map((p) => [p.id, p]));
 
-  const [formDate,  setFormDate]  = useState(todayISO);
-  const [formHours, setFormHours] = useState('');
-  const [formNote,  setFormNote]  = useState('');
+  // Role list — loaded once on mount; no rates exposed here (names only).
+  const [labourRates, setLabourRates] = useState<LabourRate[]>([]);
+  useEffect(() => {
+    listLabourRates(false).then(setLabourRates).catch(() => {/* silent — non-fatal */});
+  }, []);
+
+  const [formDate,   setFormDate]   = useState(todayISO);
+  const [formHours,  setFormHours]  = useState('');
+  const [formNote,   setFormNote]   = useState('');
+  const [formRole,   setFormRole]   = useState('');
   // Manager-only: tech picker. Defaults to '' (will use currentUserId for workers).
   const [formUserId, setFormUserId] = useState('');
 
@@ -79,11 +89,13 @@ export function TimeEntriesSection({
         date: formDate,
         hours,
         note: formNote.trim() || undefined,
+        role: formRole || null,
       });
       // Reset form
       setFormDate(todayISO);
       setFormHours('');
       setFormNote('');
+      setFormRole('');
       setFormUserId('');
       onChanged();
     } catch (e) {
@@ -158,6 +170,11 @@ export function TimeEntriesSection({
                   {entry.note && (
                     <p className="mt-0.5 text-[11px] text-slate-500 line-clamp-2">
                       {entry.note}
+                    </p>
+                  )}
+                  {entry.role && (
+                    <p className="mt-0.5 text-[10px] font-medium text-slate-400 uppercase tracking-[0.08em]">
+                      {entry.role}
                     </p>
                   )}
                 </div>
@@ -245,6 +262,23 @@ export function TimeEntriesSection({
               className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs"
             />
           </div>
+
+          {labourRates.length > 0 && (
+            <div>
+              <label className="block mb-0.5 text-[10px] font-medium text-slate-500">Role (optional)</label>
+              <select
+                value={formRole}
+                onChange={(e) => setFormRole(e.target.value)}
+                className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs bg-white"
+                aria-label="Select role"
+              >
+                <option value="">{"-- role --"}</option>
+                {labourRates.map((r) => (
+                  <option key={r.id} value={r.role}>{r.role}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {saveError && (
             <p className="text-[11px] text-red-600">{saveError}</p>

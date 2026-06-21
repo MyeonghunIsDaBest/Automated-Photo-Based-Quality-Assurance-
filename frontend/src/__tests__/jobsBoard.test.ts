@@ -14,38 +14,45 @@ describe('jobsBoard status mapping', () => {
     expect(columnForServiceJob('pending')).toBe('pending');
     expect(columnForServiceJob('scheduled')).toBe('scheduled');
     expect(columnForServiceJob('in_progress')).toBe('in_progress');
-    expect(columnForServiceJob('done')).toBe('done');
+    expect(columnForServiceJob('done')).toBe('completed'); // 'done' renders in Completed
+    expect(columnForServiceJob('invoiced')).toBe('invoiced');
+    expect(columnForServiceJob('paid')).toBe('paid');
+    expect(columnForServiceJob('archived')).toBeNull(); // off active board (archived view)
     expect(columnForServiceJob('cancelled')).toBeNull(); // hidden
   });
   it('maps maintenance statuses to columns', () => {
     expect(columnForMaintenance('new')).toBe('pending');
     expect(columnForMaintenance('acknowledged')).toBe('pending');
     expect(columnForMaintenance('scheduled')).toBe('scheduled');
-    expect(columnForMaintenance('completed')).toBe('done');
+    expect(columnForMaintenance('completed')).toBe('completed');
     expect(columnForMaintenance('cancelled')).toBeNull();
   });
   it('maps project statuses to columns', () => {
     expect(columnForProject('on_hold')).toBe('pending');
     expect(columnForProject('active')).toBe('in_progress');
-    expect(columnForProject('completed')).toBe('done');
+    expect(columnForProject('completed')).toBe('completed');
     expect(columnForProject('archived')).toBeNull();
   });
-  it('dropResult: service job drags are unrestricted and need a date for scheduled', () => {
+  it('dropResult: service job drags map columns to statuses (Completed → done)', () => {
     expect(dropResult('service', 'scheduled')).toEqual({ kind: 'needs-date' });
-    expect(dropResult('service', 'done')).toEqual({ kind: 'apply', status: 'done' });
+    expect(dropResult('service', 'completed')).toEqual({ kind: 'apply', status: 'done' });
+    expect(dropResult('service', 'invoiced')).toEqual({ kind: 'apply', status: 'invoiced' });
+    expect(dropResult('service', 'paid')).toEqual({ kind: 'apply', status: 'paid' });
     expect(dropResult('service', 'pending')).toEqual({ kind: 'apply', status: 'pending' });
   });
-  it('dropResult: maintenance maps columns back to its own statuses', () => {
+  it('dropResult: maintenance maps columns back to its own statuses; invoiced/paid blocked', () => {
     expect(dropResult('maintenance', 'pending')).toEqual({ kind: 'apply', status: 'acknowledged' });
     expect(dropResult('maintenance', 'scheduled')).toEqual({ kind: 'needs-date' });
     expect(dropResult('maintenance', 'in_progress')).toEqual({ kind: 'apply', status: 'scheduled' });
-    expect(dropResult('maintenance', 'done')).toEqual({ kind: 'apply', status: 'completed' });
+    expect(dropResult('maintenance', 'completed')).toEqual({ kind: 'apply', status: 'completed' });
+    expect(dropResult('maintenance', 'invoiced').kind).toBe('blocked');
   });
-  it('dropResult: projects confirm Done, block Scheduled', () => {
+  it('dropResult: projects confirm Completed, block Scheduled/Invoiced', () => {
     expect(dropResult('project', 'pending')).toEqual({ kind: 'apply', status: 'on_hold' });
     expect(dropResult('project', 'in_progress')).toEqual({ kind: 'apply', status: 'active' });
-    expect(dropResult('project', 'done')).toEqual({ kind: 'confirm', status: 'completed' });
+    expect(dropResult('project', 'completed')).toEqual({ kind: 'confirm', status: 'completed' });
     expect(dropResult('project', 'scheduled')).toEqual({ kind: 'blocked', reason: 'Projects are scheduled in the Gantt' });
+    expect(dropResult('project', 'paid').kind).toBe('blocked');
   });
 });
 
@@ -83,8 +90,8 @@ describe('priorityFor — maintenance urgency mapping', () => {
   it('urgency 1 → P3', () => {
     expect(priorityFor(makeCard({ type: 'maintenance', urgency: 1, column: 'pending' }), '2026-06-11')).toBe('P3');
   });
-  it('maintenance in done column → null (closed work)', () => {
-    expect(priorityFor(makeCard({ type: 'maintenance', urgency: 5, column: 'done' }), '2026-06-11')).toBeNull();
+  it('maintenance in completed column → null (closed work)', () => {
+    expect(priorityFor(makeCard({ type: 'maintenance', urgency: 5, column: 'completed' }), '2026-06-11')).toBeNull();
   });
   it('maintenance cancelled → null', () => {
     expect(priorityFor(makeCard({ type: 'maintenance', urgency: 5, column: 'pending', cancelled: true }), '2026-06-11')).toBeNull();
@@ -112,8 +119,11 @@ describe('priorityFor — service/project schedule pressure', () => {
   it('service: undated → null (no badge)', () => {
     expect(priorityFor(makeCard({ type: 'service', scheduledFor: null, column: 'pending' }), TODAY)).toBeNull();
   });
-  it('service: done column → null', () => {
-    expect(priorityFor(makeCard({ type: 'service', scheduledFor: '2026-06-10', column: 'done' }), TODAY)).toBeNull();
+  it('service: completed column → null', () => {
+    expect(priorityFor(makeCard({ type: 'service', scheduledFor: '2026-06-10', column: 'completed' }), TODAY)).toBeNull();
+  });
+  it('service: paid column → null (terminal)', () => {
+    expect(priorityFor(makeCard({ type: 'service', scheduledFor: '2026-06-10', column: 'paid' }), TODAY)).toBeNull();
   });
   it('service: cancelled → null', () => {
     expect(priorityFor(makeCard({ type: 'service', scheduledFor: '2026-06-10', column: 'pending', cancelled: true }), TODAY)).toBeNull();
@@ -238,7 +248,7 @@ describe('columnMetrics — pending avg wait hours', () => {
   it('non-pending cards are excluded from pending avg', () => {
     const cards = [
       card({ column: 'scheduled', createdAt: nowMinus(26) }),
-      card({ column: 'done',      createdAt: nowMinus(26) }),
+      card({ column: 'completed',      createdAt: nowMinus(26) }),
     ];
     const result = columnMetrics(cards, TODAY_ISO, NOW);
     expect(result.pendingAvgWaitH).toBeNull();
@@ -288,17 +298,17 @@ describe('columnMetrics — doneClosedToday', () => {
   it('counts done cards whose completedAt LOCAL date === todayIso', () => {
     // Construct completedAt as LOCAL timestamps so the local date is unambiguously today.
     const cards = [
-      card({ column: 'done', completedAt: localToday(9)  }),  // local 09:00 today
-      card({ column: 'done', completedAt: localToday(14) }),  // local 14:00 today
-      card({ column: 'done', completedAt: localYesterday(22) }), // local 22:00 yesterday
-      card({ column: 'done', completedAt: null }),               // no timestamp
+      card({ column: 'completed', completedAt: localToday(9)  }),  // local 09:00 today
+      card({ column: 'completed', completedAt: localToday(14) }),  // local 14:00 today
+      card({ column: 'completed', completedAt: localYesterday(22) }), // local 22:00 yesterday
+      card({ column: 'completed', completedAt: null }),               // no timestamp
     ];
     const result = columnMetrics(cards, TODAY_ISO, NOW);
     expect(result.doneClosedToday).toBe(2);
   });
   it('counts 0 when no cards completed today', () => {
     const cards = [
-      card({ column: 'done', completedAt: localYesterday(9) }), // local 09:00 yesterday
+      card({ column: 'completed', completedAt: localYesterday(9) }), // local 09:00 yesterday
     ];
     const result = columnMetrics(cards, TODAY_ISO, NOW);
     expect(result.doneClosedToday).toBe(0);
@@ -316,7 +326,7 @@ describe('columnMetrics — doneClosedToday', () => {
     // localDateOf() must resolve to TODAY_ISO, not yesterday.
     const earlyMorning = localToday(8);
     expect(localDateOf(earlyMorning)).toBe(TODAY_ISO);
-    const cards = [card({ column: 'done', completedAt: earlyMorning })];
+    const cards = [card({ column: 'completed', completedAt: earlyMorning })];
     const result = columnMetrics(cards, TODAY_ISO, NOW);
     expect(result.doneClosedToday).toBe(1);
   });

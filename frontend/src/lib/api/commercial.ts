@@ -14,9 +14,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { supabase, supabaseConfigured } from '../supabase';
-import { docTotals } from '../commercial/money';
+import { docTotals, quoteFinancials } from '../commercial/money';
 import { getPrebuildWithItems, getMaterialById } from './materials';
-import { createServiceJob, getServiceJob } from './serviceJobs';
+import { createServiceJob, getServiceJob, setContractValue, setMaterialsCost } from './serviceJobs';
+import { ratesMap } from './labourRates';
 
 // ---------------------------------------------------------------------------
 // Error sentinel
@@ -39,6 +40,10 @@ interface CommercialSettingsRow {
   gst_rate: number;
   payment_terms_days: number;
   variation_customer_approval_threshold: number | null;
+  default_material_markup: number;
+  default_labour_markup: number;
+  stc_unit_price: number;
+  veec_unit_value: number;
 }
 
 interface QuoteRow {
@@ -56,6 +61,10 @@ interface QuoteRow {
   subtotal_ex_gst: number;
   gst_amount: number;
   total_inc_gst: number;
+  discount_ex_gst: number;
+  stc_count: number;
+  stc_unit_price_ex_gst: number;
+  veec_rebate_ex_gst: number;
   sent_at: string | null;
   viewed_at: string | null;
   decided_at: string | null;
@@ -75,6 +84,8 @@ interface QuoteItemRow {
   qty: number;
   unit: string;
   unit_price_ex_gst: number;
+  cost_price_ex_gst: number | null;
+  kind: string;
   sort_order: number;
 }
 
@@ -111,6 +122,8 @@ interface InvoiceItemRow {
   qty: number;
   unit: string;
   unit_price_ex_gst: number;
+  cost_price_ex_gst: number | null;
+  kind: string;
   sort_order: number;
 }
 
@@ -141,6 +154,8 @@ interface VariationItemRow {
   qty: number;
   unit: string;
   unit_price_ex_gst: number;
+  cost_price_ex_gst: number | null;
+  kind: string;
   sort_order: number;
 }
 
@@ -152,6 +167,12 @@ export type QuoteStatus = 'draft' | 'sent' | 'viewed' | 'accepted' | 'declined' 
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'voided';
 export type VariationStatus = 'draft' | 'priced' | 'approved' | 'declined';
 
+// Line kind — shared across quote/invoice/variation items (migration 75).
+//   material → from the catalogue (cost snapshotted from materials.cost_price)
+//   labour   → role × hours (cost snapshotted from the role's loaded rate)
+//   custom   → free-text line (cost optional)
+export type QuoteItemKind = 'material' | 'labour' | 'custom';
+
 export interface CommercialSettings {
   id: number;
   businessName: string | null;
@@ -161,6 +182,14 @@ export interface CommercialSettings {
   gstRate: number;
   paymentTermsDays: number;
   variationCustomerApprovalThreshold: number | null;
+  /** Default sell markup for a material with no catalogue sell price (0.25 = +25%). */
+  defaultMaterialMarkup: number;
+  /** Default markup added to a labour line's prefill sell rate (0 = bill at cost). */
+  defaultLabourMarkup: number;
+  /** Current STC certificate price (AUD ex-GST), prefilled into solar quotes. */
+  stcUnitPrice: number;
+  /** Current VEEC certificate value (AUD ex-GST), prefilled into solar quotes. */
+  veecUnitValue: number;
 }
 
 export interface Quote {
@@ -178,6 +207,10 @@ export interface Quote {
   subtotalExGst: number;
   gstAmount: number;
   totalIncGst: number;
+  discountExGst: number;
+  stcCount: number;
+  stcUnitPriceExGst: number;
+  veecRebateExGst: number;
   sentAt: string | null;
   viewedAt: string | null;
   decidedAt: string | null;
@@ -198,6 +231,8 @@ export interface QuoteItem {
   qty: number;
   unit: string;
   unitPriceExGst: number;
+  costPriceExGst: number | null;
+  kind: QuoteItemKind;
   sortOrder: number;
 }
 
@@ -235,6 +270,8 @@ export interface InvoiceItem {
   qty: number;
   unit: string;
   unitPriceExGst: number;
+  costPriceExGst: number | null;
+  kind: QuoteItemKind;
   sortOrder: number;
 }
 
@@ -266,6 +303,8 @@ export interface VariationItem {
   qty: number;
   unit: string;
   unitPriceExGst: number;
+  costPriceExGst: number | null;
+  kind: QuoteItemKind;
   sortOrder: number;
 }
 
@@ -329,6 +368,7 @@ export interface AddItemFreeInput {
   qty: number;
   unit: string;
   unitPriceExGst: number;
+  costPriceExGst?: number | null;
   sortOrder?: number;
 }
 
@@ -354,6 +394,10 @@ function rowToSettings(r: CommercialSettingsRow): CommercialSettings {
     gstRate: Number(r.gst_rate),
     paymentTermsDays: r.payment_terms_days,
     variationCustomerApprovalThreshold: r.variation_customer_approval_threshold,
+    defaultMaterialMarkup: Number(r.default_material_markup ?? 0),
+    defaultLabourMarkup: Number(r.default_labour_markup ?? 0),
+    stcUnitPrice: Number(r.stc_unit_price ?? 0),
+    veecUnitValue: Number(r.veec_unit_value ?? 0),
   };
 }
 
@@ -373,6 +417,10 @@ function rowToQuote(r: QuoteRow, items?: QuoteItem[]): Quote {
     subtotalExGst: Number(r.subtotal_ex_gst),
     gstAmount: Number(r.gst_amount),
     totalIncGst: Number(r.total_inc_gst),
+    discountExGst: Number(r.discount_ex_gst ?? 0),
+    stcCount: Number(r.stc_count ?? 0),
+    stcUnitPriceExGst: Number(r.stc_unit_price_ex_gst ?? 0),
+    veecRebateExGst: Number(r.veec_rebate_ex_gst ?? 0),
     sentAt: r.sent_at,
     viewedAt: r.viewed_at,
     decidedAt: r.decided_at,
@@ -396,6 +444,8 @@ function rowToQuoteItem(r: QuoteItemRow): QuoteItem {
     qty: Number(r.qty),
     unit: r.unit,
     unitPriceExGst: Number(r.unit_price_ex_gst),
+    costPriceExGst: r.cost_price_ex_gst === null ? null : Number(r.cost_price_ex_gst),
+    kind: (r.kind as QuoteItemKind) ?? 'material',
     sortOrder: r.sort_order,
   };
 }
@@ -438,6 +488,8 @@ function rowToInvoiceItem(r: InvoiceItemRow): InvoiceItem {
     qty: Number(r.qty),
     unit: r.unit,
     unitPriceExGst: Number(r.unit_price_ex_gst),
+    costPriceExGst: r.cost_price_ex_gst === null ? null : Number(r.cost_price_ex_gst),
+    kind: (r.kind as QuoteItemKind) ?? 'material',
     sortOrder: r.sort_order,
   };
 }
@@ -474,6 +526,8 @@ function rowToVariationItem(r: VariationItemRow): VariationItem {
     qty: Number(r.qty),
     unit: r.unit,
     unitPriceExGst: Number(r.unit_price_ex_gst),
+    costPriceExGst: r.cost_price_ex_gst === null ? null : Number(r.cost_price_ex_gst),
+    kind: (r.kind as QuoteItemKind) ?? 'material',
     sortOrder: r.sort_order,
   };
 }
@@ -507,6 +561,10 @@ export async function updateCommercialSettings(
   if (patch.variationCustomerApprovalThreshold !== undefined) {
     update.variation_customer_approval_threshold = patch.variationCustomerApprovalThreshold;
   }
+  if (patch.defaultMaterialMarkup !== undefined) update.default_material_markup = patch.defaultMaterialMarkup;
+  if (patch.defaultLabourMarkup !== undefined) update.default_labour_markup = patch.defaultLabourMarkup;
+  if (patch.stcUnitPrice !== undefined) update.stc_unit_price = patch.stcUnitPrice;
+  if (patch.veecUnitValue !== undefined) update.veec_unit_value = patch.veecUnitValue;
   const { data, error } = await supabase
     .from('commercial_settings')
     .update(update)
@@ -524,6 +582,27 @@ export async function updateCommercialSettings(
 async function fetchGstRate(): Promise<number> {
   const settings = await getCommercialSettings();
   return settings ? settings.gstRate : 0.10;
+}
+
+/** Round to 2dp (half-up) — local to avoid importing the money module's private. */
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/** Office-set pricing defaults (markup %s). Falls back to Sim-Pro-like defaults. */
+async function fetchPricingDefaults(): Promise<{ materialMarkup: number; labourMarkup: number }> {
+  const s = await getCommercialSettings();
+  return {
+    materialMarkup: s ? s.defaultMaterialMarkup : 0.25,
+    labourMarkup: s ? s.defaultLabourMarkup : 0,
+  };
+}
+
+/** Default sell for a material: its catalogue sell price if set, else cost × (1+markup). */
+function materialSell(material: { sellPrice: number | null; costPrice: number | null }, markup: number): number {
+  if (material.sellPrice != null) return material.sellPrice;
+  if (material.costPrice != null) return round2(material.costPrice * (1 + markup));
+  return 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -653,15 +732,18 @@ export async function addQuoteItemFromMaterial(
   if (!supabaseConfigured()) throw NOT_CONFIGURED;
   const material = await getMaterialById(materialId);
   if (!material) throw new Error("Material not found: " + materialId);
+  const { materialMarkup } = await fetchPricingDefaults();
   const { data, error } = await supabase
     .from('quote_items')
     .insert({
       quote_id: quoteId,
       material_id: materialId,
+      kind: 'material',
       description: material.name,
       qty,
       unit: material.unit,
-      unit_price_ex_gst: material.sellPrice ?? 0,
+      unit_price_ex_gst: materialSell(material, materialMarkup),
+      cost_price_ex_gst: material.costPrice ?? null,
       sort_order: 0,
     })
     .select('*')
@@ -685,16 +767,19 @@ export async function addQuoteItemFromPrebuild(
     prebuild.items.map((item) => getMaterialById(item.materialId)),
   );
 
+  const { materialMarkup } = await fetchPricingDefaults();
   const inserts = prebuild.items.map((item, idx) => {
     const mat = materialResults[idx];
     return {
       quote_id: quoteId,
       material_id: item.materialId,
       prebuild_id: prebuildId,
+      kind: 'material',
       description: mat ? mat.name : item.materialId,
       qty: item.qty,
       unit: mat ? mat.unit : 'ea',
-      unit_price_ex_gst: mat ? (mat.sellPrice ?? 0) : 0,
+      unit_price_ex_gst: mat ? materialSell(mat, materialMarkup) : 0,
+      cost_price_ex_gst: mat ? (mat.costPrice ?? null) : null,
       sort_order: item.sortOrder,
     };
   });
@@ -717,11 +802,53 @@ export async function addQuoteItemFree(
     .from('quote_items')
     .insert({
       quote_id: quoteId,
+      kind: 'custom',
       description: input.description,
       qty: input.qty,
       unit: input.unit,
       unit_price_ex_gst: input.unitPriceExGst,
+      cost_price_ex_gst: input.costPriceExGst ?? null,
       sort_order: input.sortOrder ?? 0,
+    })
+    .select('*')
+    .single();
+  if (error) throw error;
+  await recomputeQuoteTotals(quoteId);
+  return rowToQuoteItem(data as QuoteItemRow);
+}
+
+/**
+ * Add a labour line to a quote: role × hours at the role's loaded rate.
+ * The sell price prefills from the rate (cost = sell at add-time; the manager
+ * marks it up inline). If the role has no rate set, the line is uncosted
+ * (cost = null, sell = 0) and surfaces in the margin block's "uncosted" flag.
+ * Snapshot semantics: the rate is frozen at add-time (later rate changes don't
+ * retro-alter existing lines), matching the material snapshot behaviour.
+ */
+export async function addQuoteItemLabour(
+  quoteId: string,
+  role: string,
+  hours: number,
+  sortOrder?: number,
+): Promise<QuoteItem> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const rates = await ratesMap();
+  const rate = rates.get(role) ?? null;
+  const { labourMarkup } = await fetchPricingDefaults();
+  // Sell prefills at the loaded rate plus the office labour markup (still editable
+  // inline). Cost stays the raw loaded rate. Null rate ⇒ uncosted (sell 0).
+  const sell = rate === null ? 0 : round2(rate * (1 + labourMarkup));
+  const { data, error } = await supabase
+    .from('quote_items')
+    .insert({
+      quote_id: quoteId,
+      kind: 'labour',
+      description: role,
+      qty: hours,
+      unit: 'hr',
+      unit_price_ex_gst: sell,
+      cost_price_ex_gst: rate,
+      sort_order: sortOrder ?? 0,
     })
     .select('*')
     .single();
@@ -760,25 +887,62 @@ export async function removeQuoteItem(itemId: string, quoteId: string): Promise<
   await recomputeQuoteTotals(quoteId);
 }
 
-/** Recompute and persist the three money columns on a quote from its current items. */
+/** Recompute and persist a quote's money columns from its items, applying the
+ *  document discount: subtotal(raw) − discount → GST on the net → total. The
+ *  stored subtotal stays the raw line sum; the discount lives in its own column.
+ *  Solar rebates (STC/VEEC) are NOT subtracted here — they're a customer-facing
+ *  reduction computed on read (quoteFinancials), revenue-neutral to our totals. */
 export async function recomputeQuoteTotals(quoteId: string): Promise<void> {
   if (!supabaseConfigured()) throw NOT_CONFIGURED;
-  const [itemsResult, gstRate] = await Promise.all([
+  const [itemsResult, quoteResult, gstRate] = await Promise.all([
     supabase.from('quote_items').select('qty,unit_price_ex_gst').eq('quote_id', quoteId),
+    supabase.from('quotes').select('discount_ex_gst').eq('id', quoteId).maybeSingle(),
     fetchGstRate(),
   ]);
   if (itemsResult.error) throw itemsResult.error;
+  if (quoteResult.error) throw quoteResult.error;
   const lines = (itemsResult.data ?? []).map((r) => ({
     qty: Number(r.qty),
     unitPriceExGst: Number(r.unit_price_ex_gst),
   }));
-  const totals = docTotals(lines, gstRate);
+  const discountExGst = Number((quoteResult.data as { discount_ex_gst?: number } | null)?.discount_ex_gst ?? 0);
+  const fin = quoteFinancials(lines, gstRate, { discountExGst });
   const { error } = await supabase
     .from('quotes')
     .update({
-      subtotal_ex_gst: totals.subtotalExGst,
-      gst_amount: totals.gstAmount,
-      total_inc_gst: totals.totalIncGst,
+      subtotal_ex_gst: fin.subtotalExGst,
+      gst_amount: fin.gstAmount,
+      total_inc_gst: fin.totalIncGst,
+    })
+    .eq('id', quoteId);
+  if (error) throw error;
+}
+
+/** Set the document discount (ex-GST) and re-run totals so GST/total reflect it. */
+export async function setQuoteDiscount(quoteId: string, discountExGst: number): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { error } = await supabase
+    .from('quotes')
+    .update({ discount_ex_gst: round2(Math.max(0, discountExGst)) })
+    .eq('id', quoteId);
+  if (error) throw error;
+  await recomputeQuoteTotals(quoteId);
+}
+
+/** Set the solar rebate inputs (STC count × unit price, and a VEEC rebate amount).
+ *  These reduce what the customer pays (computed on read) but don't change the
+ *  stored subtotal/GST/total, so no recompute is needed. */
+export async function setQuoteRebates(
+  quoteId: string,
+  input: { stcCount: number; stcUnitPriceExGst: number; veecRebateExGst: number },
+): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { error } = await supabase
+    .from('quotes')
+    .update({
+      stc_count: Math.max(0, Math.round(input.stcCount)),
+      stc_unit_price_ex_gst: round2(Math.max(0, input.stcUnitPriceExGst)),
+      veec_rebate_ex_gst: round2(Math.max(0, input.veecRebateExGst)),
     })
     .eq('id', quoteId);
   if (error) throw error;
@@ -788,7 +952,15 @@ export async function recomputeQuoteTotals(quoteId: string): Promise<void> {
 // Quotes — status actions
 // ---------------------------------------------------------------------------
 
-/** Convert an accepted quote to a service job. Patches converted_job_id. */
+/**
+ * Convert an accepted quote to a service job. Patches converted_job_id, and
+ * carries the quote's money through so the job's profit card works immediately:
+ *   - contract_value = quote subtotal ex-GST (the revenue)
+ *   - materials_cost = Σ (qty × cost) over material lines that have a cost
+ * Line items are intentionally NOT copied — the job's logged time entries are
+ * the source of truth for ACTUAL labour (quoted labour is only the estimate),
+ * so copying labour lines would double-count against logged time.
+ */
 export async function convertQuoteToJob(quoteId: string) {
   if (!supabaseConfigured()) throw NOT_CONFIGURED;
   const quote = await getQuote(quoteId);
@@ -806,6 +978,20 @@ export async function convertQuoteToJob(quoteId: string) {
     .update({ converted_job_id: job.id })
     .eq('id', quoteId);
   if (error) throw error;
+
+  // Carry the quote's value onto the job's costing fields (net of any discount).
+  await setContractValue(job.id, round2(quote.subtotalExGst - quote.discountExGst));
+
+  const materialLines = (quote.items ?? []).filter(
+    (it) => it.kind === 'material' && it.costPriceExGst !== null,
+  );
+  if (materialLines.length > 0) {
+    const materialsCost = materialLines.reduce(
+      (sum, it) => sum + it.qty * (it.costPriceExGst ?? 0),
+      0,
+    );
+    await setMaterialsCost(job.id, Math.round(materialsCost * 100) / 100);
+  }
 
   return job;
 }
@@ -892,10 +1078,12 @@ export async function createInvoiceFromQuote(quoteId: string): Promise<Invoice> 
       material_id: item.materialId,
       prebuild_id: item.prebuildId,
       variation_id: item.variationId,
+      kind: item.kind,
       description: item.description,
       qty: item.qty,
       unit: item.unit,
       unit_price_ex_gst: item.unitPriceExGst,
+      cost_price_ex_gst: item.costPriceExGst,
       sort_order: idx,
     }));
     const { error: itemsErr } = await supabase
@@ -946,10 +1134,12 @@ export async function createInvoiceFromJob(serviceJobId: string): Promise<Invoic
           material_id: vr.material_id,
           prebuild_id: vr.prebuild_id,
           variation_id: v.id,
+          kind: vr.kind,
           description: vr.description,
           qty: vr.qty,
           unit: vr.unit,
           unit_price_ex_gst: vr.unit_price_ex_gst,
+          cost_price_ex_gst: vr.cost_price_ex_gst,
           sort_order: vr.sort_order,
         });
       });
@@ -1061,10 +1251,12 @@ export async function addInvoiceItemFromMaterial(
     .insert({
       invoice_id: invoiceId,
       material_id: materialId,
+      kind: 'material',
       description: material.name,
       qty,
       unit: material.unit,
       unit_price_ex_gst: material.sellPrice ?? 0,
+      cost_price_ex_gst: material.costPrice ?? null,
       sort_order: 0,
     })
     .select('*')
@@ -1093,10 +1285,12 @@ export async function addInvoiceItemFromPrebuild(
       invoice_id: invoiceId,
       material_id: item.materialId,
       prebuild_id: prebuildId,
+      kind: 'material',
       description: mat ? mat.name : item.materialId,
       qty: item.qty,
       unit: mat ? mat.unit : 'ea',
       unit_price_ex_gst: mat ? (mat.sellPrice ?? 0) : 0,
+      cost_price_ex_gst: mat ? (mat.costPrice ?? null) : null,
       sort_order: item.sortOrder,
     };
   });
@@ -1119,10 +1313,12 @@ export async function addInvoiceItemFree(
     .from('customer_invoice_items')
     .insert({
       invoice_id: invoiceId,
+      kind: 'custom',
       description: input.description,
       qty: input.qty,
       unit: input.unit,
       unit_price_ex_gst: input.unitPriceExGst,
+      cost_price_ex_gst: input.costPriceExGst ?? null,
       sort_order: input.sortOrder ?? 0,
     })
     .select('*')
@@ -1356,10 +1552,12 @@ export async function addVariationItemFromMaterial(
     .insert({
       variation_id: variationId,
       material_id: materialId,
+      kind: 'material',
       description: material.name,
       qty,
       unit: material.unit,
       unit_price_ex_gst: material.sellPrice ?? 0,
+      cost_price_ex_gst: material.costPrice ?? null,
       sort_order: 0,
     })
     .select('*')
@@ -1388,10 +1586,12 @@ export async function addVariationItemFromPrebuild(
       variation_id: variationId,
       material_id: item.materialId,
       prebuild_id: prebuildId,
+      kind: 'material',
       description: mat ? mat.name : item.materialId,
       qty: item.qty,
       unit: mat ? mat.unit : 'ea',
       unit_price_ex_gst: mat ? (mat.sellPrice ?? 0) : 0,
+      cost_price_ex_gst: mat ? (mat.costPrice ?? null) : null,
       sort_order: item.sortOrder,
     };
   });
@@ -1414,10 +1614,12 @@ export async function addVariationItemFree(
     .from('variation_items')
     .insert({
       variation_id: variationId,
+      kind: 'custom',
       description: input.description,
       qty: input.qty,
       unit: input.unit,
       unit_price_ex_gst: input.unitPriceExGst,
+      cost_price_ex_gst: input.costPriceExGst ?? null,
       sort_order: input.sortOrder ?? 0,
     })
     .select('*')

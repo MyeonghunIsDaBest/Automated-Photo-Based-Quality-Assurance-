@@ -9,15 +9,19 @@
 // dropping hidden (null-column) cards unless opts.includeCancelled is set.
 
 import { supabase, supabaseConfigured } from '../supabase';
-import { listServiceJobs } from './serviceJobs';
+import { listServiceJobs, displayJobNumber } from './serviceJobs';
 import { listAllRequests } from './maintenanceRequests';
 import { listProjects, type ProjectRow } from './projects';
+import type { SimproStage } from '../jobs/simproCsv';
 
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
 
-export type BoardColumn = 'pending' | 'scheduled' | 'in_progress' | 'done';
+// Active board columns. 'completed' is the renamed 'done'; 'invoiced'/'paid' are
+// new terminal stages (mig 76). 'archived' is intentionally NOT a column — archived
+// jobs leave the active board and are reached via the toolbar's archived view.
+export type BoardColumn = 'pending' | 'scheduled' | 'in_progress' | 'completed' | 'invoiced' | 'paid';
 export type BoardCardType = 'service' | 'maintenance' | 'project';
 
 export interface BoardCard {
@@ -36,10 +40,20 @@ export interface BoardCard {
   /** ISO timestamp when the card was completed. null for projects (no field) and
    *  open cards. Slice to 'YYYY-MM-DD' for date comparisons. */
   completedAt: string | null;
-  /** Present and true only for cancelled/archived cards included via includeCancelled. */
+  /** Present and true only for cancelled cards included via includeCancelled. */
   cancelled?: boolean;
+  /** Present and true only for archived cards (the archived view). */
+  archived?: boolean;
+  /** Human-friendly job number to display (service: external_ref ?? job_number;
+   *  project: external_ref; maintenance: none). null when the job predates numbering. */
+  number?: string | null;
   /** Project-type cards only: user_ids of active members (accepted + pending, removed_at IS NULL). */
   memberIds?: string[];
+  /** Original Sim-Pro stage for service/project cards promoted from an import
+   *  (matched by external_ref). null when the job didn't come from Sim-Pro. Lets
+   *  the board distinguish Complete / Invoiced / Archived, which otherwise all
+   *  collapse into the single "done" column. */
+  simproStage?: SimproStage | null;
 }
 
 export type DropResult =
@@ -84,8 +98,11 @@ export function priorityFor(
   card: Pick<BoardCard, 'type' | 'urgency' | 'scheduledFor' | 'column' | 'cancelled'>,
   todayIso: string,
 ): BoardPriority {
-  // Closed / cancelled cards have no actionable priority.
-  if (card.column === 'done' || card.cancelled) return null;
+  // Closed / cancelled cards have no actionable priority (Completed/Invoiced/Paid
+  // are all terminal — the work is done).
+  if (card.column === 'completed' || card.column === 'invoiced' || card.column === 'paid' || card.cancelled) {
+    return null;
+  }
 
   if (card.type === 'maintenance') {
     const u = card.urgency;
@@ -183,7 +200,7 @@ export function columnMetrics(
 
   // --- Done: closed today (compare LOCAL date to avoid UTC-vs-local mismatch) ---
   const doneClosedToday = cards.filter(
-    (c) => c.column === 'done' && c.completedAt !== null && localDateOf(c.completedAt) === todayIso,
+    (c) => c.column === 'completed' && c.completedAt !== null && localDateOf(c.completedAt) === todayIso,
   ).length;
 
   return { pendingAvgWaitH, scheduledNextDue, inProgressAvgAgeD, doneClosedToday };
@@ -197,7 +214,10 @@ const SERVICE_COLUMN: Record<string, BoardColumn | null> = {
   pending:    'pending',
   scheduled:  'scheduled',
   in_progress: 'in_progress',
-  done:       'done',
+  done:       'completed',   // 'done' status renders in the "Completed" column
+  invoiced:   'invoiced',
+  paid:       'paid',
+  archived:   null, // off the active board — reached via the archived view
   cancelled:  null, // hidden from the board
 };
 
@@ -217,7 +237,7 @@ const MAINTENANCE_COLUMN: Record<string, BoardColumn | null> = {
   new:          'pending',
   acknowledged: 'pending',
   scheduled:    'scheduled',
-  completed:    'done',
+  completed:    'completed',
   cancelled:    null, // hidden
 };
 
@@ -236,8 +256,8 @@ export function columnForMaintenance(status: string): BoardColumn | null {
 const PROJECT_COLUMN: Record<string, BoardColumn | null> = {
   on_hold:   'pending',
   active:    'in_progress',
-  completed: 'done',
-  archived:  null, // hidden
+  completed: 'completed',
+  archived:  null, // off the active board — reached via the archived view
 };
 
 /** Returns the board column for a project status, or null if hidden (archived). */
@@ -269,9 +289,18 @@ export function columnForProject(status: string): BoardColumn | null {
  */
 export function dropResult(type: BoardCardType, target: BoardColumn): DropResult {
   switch (type) {
-    case 'service':
-      if (target === 'scheduled') return { kind: 'needs-date' };
-      return { kind: 'apply', status: target };
+    case 'service': {
+      // The "Completed" column maps to the DB status 'done' (kept as-is).
+      const SERVICE_DROP: Record<BoardColumn, DropResult> = {
+        pending:     { kind: 'apply', status: 'pending' },
+        scheduled:   { kind: 'needs-date' },
+        in_progress: { kind: 'apply', status: 'in_progress' },
+        completed:   { kind: 'apply', status: 'done' },
+        invoiced:    { kind: 'apply', status: 'invoiced' },
+        paid:        { kind: 'apply', status: 'paid' },
+      };
+      return SERVICE_DROP[target];
+    }
 
     case 'maintenance': {
       const MAINTENANCE_DROP: Record<BoardColumn, DropResult> = {
@@ -280,7 +309,10 @@ export function dropResult(type: BoardCardType, target: BoardColumn): DropResult
         // v1 wrinkle: no native in_progress — apply 'scheduled'; card re-renders
         // in Scheduled column after reload.
         in_progress: { kind: 'apply',     status: 'scheduled' },
-        done:       { kind: 'apply',      status: 'completed' },
+        completed:  { kind: 'apply',      status: 'completed' },
+        // Maintenance requests aren't invoiced/paid through the board.
+        invoiced:   { kind: 'blocked', reason: 'Maintenance requests aren’t invoiced here' },
+        paid:       { kind: 'blocked', reason: 'Maintenance requests aren’t invoiced here' },
       };
       return MAINTENANCE_DROP[target];
     }
@@ -290,7 +322,9 @@ export function dropResult(type: BoardCardType, target: BoardColumn): DropResult
         pending:    { kind: 'apply',   status: 'on_hold' },
         scheduled:  { kind: 'blocked', reason: 'Projects are scheduled in the Gantt' },
         in_progress: { kind: 'apply',  status: 'active' },
-        done:       { kind: 'confirm', status: 'completed' },
+        completed:  { kind: 'confirm', status: 'completed' },
+        invoiced:   { kind: 'blocked', reason: 'Projects aren’t invoiced through the board' },
+        paid:       { kind: 'blocked', reason: 'Projects aren’t invoiced through the board' },
       };
       return PROJECT_DROP[target];
     }
@@ -317,41 +351,85 @@ function compareCards(a: BoardCard, b: BoardCard): number {
 }
 
 /**
+ * Map of external_ref → Sim-Pro stage for every staged job (paginated past the
+ * 1000-row PostgREST ceiling). Lets the board show the real Sim-Pro status on
+ * promoted cards without a schema change — the staging row persists after
+ * promotion and keeps its stage. Failure-tolerant: any error yields an empty
+ * map (badges simply don't render), never blocking the board.
+ */
+async function fetchSimproStages(): Promise<Map<string, SimproStage>> {
+  const map = new Map<string, SimproStage>();
+  if (!supabaseConfigured()) return map;
+  const PAGE = 1000;
+  try {
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await supabase
+        .from('simpro_jobs')
+        .select('external_ref, stage')
+        .range(from, from + PAGE - 1);
+      if (error) break;
+      const rows = (data ?? []) as { external_ref: string | null; stage: SimproStage }[];
+      for (const r of rows) if (r.external_ref) map.set(r.external_ref, r.stage);
+      if (rows.length < PAGE) break;
+    }
+  } catch {
+    // non-fatal — board renders without Sim-Pro badges
+  }
+  return map;
+}
+
+/**
  * Fetch all board cards from the three domains in parallel.
  *
  * - Service jobs and maintenance requests return [] when Supabase is not
  *   configured (module guards), so the board gracefully renders empty.
- * - Cards whose columnFor* mapping returns null are dropped (hidden statuses:
- *   cancelled, archived) UNLESS opts.includeCancelled is true, in which case
- *   those cards are included in the `done` column with `cancelled: true`.
+ * - Cards whose columnFor* mapping returns null are dropped UNLESS the matching
+ *   opt is set: cancelled cards appear in the Completed column with
+ *   `cancelled: true` when `includeCancelled`; archived cards are returned with
+ *   `archived: true` when `includeArchived` (the toolbar's archived view renders
+ *   those as a flat list, not in the columns).
  * - Sort: scheduledFor asc nulls-last, then createdAt asc.
  */
-export async function fetchBoardCards(opts?: { includeCancelled?: boolean }): Promise<BoardCard[]> {
-  const [serviceJobs, maintenanceReqs, projects] = await Promise.all([
+export async function fetchBoardCards(
+  opts?: { includeCancelled?: boolean; includeArchived?: boolean },
+): Promise<BoardCard[]> {
+  const [serviceJobs, maintenanceReqs, projects, simproStages] = await Promise.all([
     listServiceJobs(),
     listAllRequests(),
     listProjects(),
+    fetchSimproStages(),
   ]);
+
+  // Look up a promoted card's original Sim-Pro stage by its job number.
+  const stageFor = (externalRef: string | null | undefined): SimproStage | null =>
+    externalRef ? simproStages.get(externalRef) ?? null : null;
 
   const cards: BoardCard[] = [];
 
   // --- Service jobs ---
   for (const job of serviceJobs) {
     const col = columnForServiceJob(job.status);
+    const number = displayJobNumber(job);
     if (col === null) {
-      if (opts?.includeCancelled) {
+      // Hidden status: 'archived' → archived view; 'cancelled' → cancelled toggle.
+      const isArchived = job.status === 'archived';
+      const include = isArchived ? opts?.includeArchived : opts?.includeCancelled;
+      if (include) {
         cards.push({
           type:         'service',
           id:           job.id,
           title:        job.title,
           clientLabel:  job.clientName ?? null,
-          column:       'done',
+          column:       'completed', // placeholder; archived/cancelled render outside the columns
           urgency:      null,
           assignedTo:   job.assignedTo,
           scheduledFor: job.scheduledFor,
           createdAt:    job.createdAt,
           completedAt:  job.completedAt,
-          cancelled:    true,
+          cancelled:    !isArchived,
+          archived:     isArchived,
+          number,
+          simproStage:  stageFor(job.externalRef),
         });
       }
       continue;
@@ -367,6 +445,8 @@ export async function fetchBoardCards(opts?: { includeCancelled?: boolean }): Pr
       scheduledFor: job.scheduledFor,
       createdAt:    job.createdAt,
       completedAt:  job.completedAt,
+      number,
+      simproStage:  stageFor(job.externalRef),
     });
   }
 
@@ -380,13 +460,14 @@ export async function fetchBoardCards(opts?: { includeCancelled?: boolean }): Pr
     const clientLabel = parts.length > 0 ? parts.join(' · ') : null;
 
     if (col === null) {
+      // Maintenance requests only have a hidden 'cancelled' status (no archive).
       if (opts?.includeCancelled) {
         cards.push({
           type:         'maintenance',
           id:           req.id,
           title:        req.title,
           clientLabel,
-          column:       'done',
+          column:       'completed',
           urgency:      req.urgency,
           assignedTo:   null,
           scheduledFor: req.scheduledFor,
@@ -415,20 +496,24 @@ export async function fetchBoardCards(opts?: { includeCancelled?: boolean }): Pr
   // ProjectRow uses snake_case (returned directly from Supabase, no mapper).
   for (const project of projects as ProjectRow[]) {
     const col = columnForProject(project.status);
+    const number = project.external_ref ?? null;
     if (col === null) {
-      if (opts?.includeCancelled) {
+      // Projects' only hidden status is 'archived' → archived view.
+      if (opts?.includeArchived) {
         cards.push({
           type:         'project',
           id:           project.id,
           title:        project.name,
           clientLabel:  project.client_name ?? null,
-          column:       'done',
+          column:       'completed', // placeholder; archived renders outside the columns
           urgency:      null,
           assignedTo:   null,
           scheduledFor: null,
           createdAt:    project.created_at,
           completedAt:  null,
-          cancelled:    true,
+          archived:     true,
+          number,
+          simproStage:  stageFor(project.external_ref),
         });
       }
       continue;
@@ -444,6 +529,8 @@ export async function fetchBoardCards(opts?: { includeCancelled?: boolean }): Pr
       scheduledFor: null,
       createdAt:    project.created_at,
       completedAt:  null,
+      number,
+      simproStage:  stageFor(project.external_ref),
     });
   }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { lineTotal, docTotals } from '../lib/commercial/money';
+import { lineTotal, docTotals, quoteCostMargin, quoteFinancials, type MarginLine } from '../lib/commercial/money';
 
 describe('lineTotal', () => {
   it('multiplies qty by unit price and rounds to 2dp', () => {
@@ -80,5 +80,74 @@ describe('docTotals', () => {
     expect(result.subtotalExGst).toBe(3.35);
     expect(result.gstAmount).toBe(0.34); // round2(3.35 * 0.1) = round2(0.335) = 0.34
     expect(result.totalIncGst).toBe(3.69); // round2(3.35 + 0.34) = 3.69
+  });
+});
+
+describe('quoteCostMargin', () => {
+  it('empty items returns zeros and null margin', () => {
+    const r = quoteCostMargin([], 0.10);
+    expect(r.sellExGst).toBe(0);
+    expect(r.materialsCost).toBe(0);
+    expect(r.labourCost).toBe(0);
+    expect(r.otherCost).toBe(0);
+    expect(r.uncostedLabourLines).toBe(0);
+    expect(r.profit.net).toBe(0);
+    expect(r.profit.marginPct).toBeNull(); // revenue 0 → margin undefined
+  });
+
+  it('splits cost by kind, marks up labour, and flags uncosted labour', () => {
+    const items: MarginLine[] = [
+      // material: sell 45, cost 20, qty 4
+      { kind: 'material', qty: 4, unitPriceExGst: 45, costPriceExGst: 20 },
+      // labour marked up: sell 140/hr, cost 95/hr, 4 hr
+      { kind: 'labour', qty: 4, unitPriceExGst: 140, costPriceExGst: 95 },
+      // custom line with no cost
+      { kind: 'custom', qty: 1, unitPriceExGst: 50, costPriceExGst: null },
+      // labour line with no rate → uncosted, sell 0
+      { kind: 'labour', qty: 2, unitPriceExGst: 0, costPriceExGst: null },
+    ];
+    const r = quoteCostMargin(items, 0.10);
+    expect(r.sellExGst).toBe(790);     // 180 + 560 + 50 + 0
+    expect(r.materialsCost).toBe(80);  // 4 * 20
+    expect(r.labourCost).toBe(380);    // 4 * 95 (only the costed labour line)
+    expect(r.otherCost).toBe(0);       // custom cost is null
+    expect(r.uncostedLabourLines).toBe(1);
+    expect(r.profit.gross).toBe(710);  // 790 - 80
+    expect(r.profit.net).toBe(330);    // 710 - (380 + 0)
+    expect(r.profit.marginPct).toBe(41.8); // round1(330 / 790 * 100)
+  });
+
+  it('discount reduces the net sell and the margin', () => {
+    const items: MarginLine[] = [
+      { kind: 'material', qty: 1, unitPriceExGst: 1000, costPriceExGst: 600 },
+    ];
+    const r = quoteCostMargin(items, 0.10, 200); // $200 discount
+    expect(r.sellExGst).toBe(800);        // 1000 - 200
+    expect(r.discountExGst).toBe(200);
+    expect(r.materialsCost).toBe(600);
+    expect(r.profit.gross).toBe(200);     // 800 - 600
+    expect(r.grossMarginPct).toBe(25);    // 200 / 800 × 100
+  });
+});
+
+describe('quoteFinancials', () => {
+  it('applies discount before GST, then subtracts STC + VEEC rebates', () => {
+    const items = [{ qty: 1, unitPriceExGst: 10000 }];
+    const r = quoteFinancials(items, 0.10, { discountExGst: 400, stcRebate: 1533, veecRebate: 220 });
+    expect(r.subtotalExGst).toBe(10000);
+    expect(r.discountExGst).toBe(400);
+    expect(r.netSubtotalExGst).toBe(9600);  // 10000 - 400
+    expect(r.gstAmount).toBe(960);          // 9600 × 0.10
+    expect(r.totalIncGst).toBe(10560);      // 9600 + 960
+    expect(r.rebatesTotal).toBe(1753);      // 1533 + 220
+    expect(r.customerPays).toBe(8807);      // 10560 - 1753
+  });
+
+  it('no discount/rebates returns plain totals', () => {
+    const r = quoteFinancials([{ qty: 2, unitPriceExGst: 50 }], 0.10);
+    expect(r.netSubtotalExGst).toBe(100);
+    expect(r.totalIncGst).toBe(110);
+    expect(r.rebatesTotal).toBe(0);
+    expect(r.customerPays).toBe(110);
   });
 });

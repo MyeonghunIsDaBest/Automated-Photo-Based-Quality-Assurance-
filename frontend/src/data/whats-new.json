@@ -1,6 +1,22 @@
 {
-  "generatedAt": "2026-06-15T01:15:29.085Z",
+  "generatedAt": "2026-06-21T18:43:41.236Z",
   "entries": [
+    {
+      "id": "f6eca6d",
+      "date": "2026-06-17T06:56:08+08:00",
+      "surface": "frontend",
+      "kind": "change",
+      "headline": "Update.",
+      "filesChanged": 1
+    },
+    {
+      "id": "e1e9e6b",
+      "date": "2026-06-17T06:46:05+08:00",
+      "surface": "frontend",
+      "kind": "change",
+      "headline": "Sim pro update test.",
+      "filesChanged": 86
+    },
     {
       "id": "18b2d08",
       "date": "2026-06-10T10:35:23+08:00",
@@ -80,22 +96,6 @@
       "kind": "improve",
       "headline": "Real Supabase password/email updates; drop dead simulators (P0.4b).",
       "filesChanged": 12
-    },
-    {
-      "id": "f188f77",
-      "date": "2026-06-01T10:28:51+08:00",
-      "surface": "infra",
-      "kind": "new",
-      "headline": "Retry/backoff + timeout + model-aware cost accounting (P0.2/P0.3).",
-      "filesChanged": 1
-    },
-    {
-      "id": "f9e8718",
-      "date": "2026-06-01T08:52:54+08:00",
-      "surface": "frontend",
-      "kind": "chore",
-      "headline": "Match new aria-label accessible names on confirm/reject.",
-      "filesChanged": 1
     }
   ]
 }

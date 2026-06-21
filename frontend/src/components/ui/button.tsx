@@ -8,22 +8,26 @@ function cn(...inputs: (string | undefined | null | false)[]) {
   return twMerge(clsx(inputs));
 }
 
+// Editorial "ledger" skin — sage primary, cream/hairline neutrals, pill radius.
+// Variant + size API is unchanged so every existing <Button> call still works;
+// only the look is brought onto the house palette (matches btnPrimary/btnGhost
+// in pages/gantt/components/ledger.tsx).
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2F8F5C] focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
   {
     variants: {
       variant: {
-        default: 'bg-emerald-600 text-white hover:bg-emerald-700',
-        destructive: 'bg-red-600 text-white hover:bg-red-700',
-        outline: 'border border-slate-200 bg-white hover:bg-slate-50 text-slate-700',
-        secondary: 'bg-slate-100 text-slate-900 hover:bg-slate-200',
-        ghost: 'hover:bg-slate-100 text-slate-700',
-        link: 'text-emerald-600 underline-offset-4 hover:underline',
+        default: 'bg-[#2F8F5C] text-white hover:bg-[#246F47]',
+        destructive: 'bg-[#C44545] text-white hover:bg-[#A93A3A]',
+        outline: 'border border-[#E6E1D4] bg-white text-[#3A3A3A] hover:bg-[#FAF8F2]',
+        secondary: 'bg-[#F0EDE4] text-[#1A1A1A] hover:bg-[#E6E1D4]',
+        ghost: 'text-[#3A3A3A] hover:bg-[#F0EDE4]',
+        link: 'text-[#246F47] underline-offset-4 hover:underline',
       },
       size: {
         default: 'h-10 px-4 py-2',
-        sm: 'h-9 rounded-md px-3',
-        lg: 'h-11 rounded-md px-8',
+        sm: 'h-9 px-3',
+        lg: 'h-11 px-8',
         icon: 'h-10 w-10',
       },
     },

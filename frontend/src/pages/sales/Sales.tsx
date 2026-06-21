@@ -276,6 +276,7 @@ export default function Sales() {
             <QuotesTab
               initialCustomerFilter={customerParam}
               onChanged={refreshCounts}
+              canSeeCost={!denied}
             />
           )}
           {activeTab === "invoices" && (

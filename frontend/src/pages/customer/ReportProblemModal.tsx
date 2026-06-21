@@ -6,7 +6,7 @@
 // Object URLs are revoked on cleanup and the file input resets after submit.
 
 import { useEffect, useRef, useState } from 'react';
-import { X, Camera, ImagePlus, AlertTriangle } from 'lucide-react';
+import { X, Camera, ImagePlus, AlertTriangle, Wrench } from 'lucide-react';
 import { createRequest, uploadRequestPhoto, type MaintenanceRequest } from '../../lib/api/maintenanceRequests';
 import type { Property } from '../../lib/api/properties';
 import { Input } from '../../components/ui/input';
@@ -57,11 +57,23 @@ const URGENCY_OPTIONS: UrgencyOption[] = [
 
 // ─── Props ───────────────────────────────────────────────────────────────────
 
+/** A specific job the customer is reporting an issue against (migration 74).
+ *  When present, the request is linked to it + the property defaults to the
+ *  job's property. Kept structural (not the full ServiceJob) to stay decoupled. */
+export interface ReportTargetJob {
+  id: string;
+  title: string;
+  externalRef: string | null;
+  propertyId: string | null;
+}
+
 interface ReportProblemModalProps {
   properties: Property[];
   onClose: () => void;
   /** Called on successful submission with a toast message to display. */
   onCreated: (message: string) => void;
+  /** Optional: pre-link the report to a specific job. */
+  serviceJob?: ReportTargetJob | null;
 }
 
 // ─── Photo preview ───────────────────────────────────────────────────────────
@@ -75,11 +87,18 @@ export default function ReportProblemModal({
   properties,
   onClose,
   onCreated,
+  serviceJob = null,
 }: ReportProblemModalProps) {
   const singleProperty = properties.length === 1 ? properties[0] : null;
 
+  // Default to the linked job's property when it's one of the customer's, else
+  // fall back to the single/first property as before.
+  const jobPropertyId =
+    serviceJob?.propertyId && properties.some((p) => p.id === serviceJob.propertyId)
+      ? serviceJob.propertyId
+      : null;
   const [propertyId, setPropertyId] = useState<string>(
-    singleProperty?.id ?? (properties[0]?.id ?? ''),
+    jobPropertyId ?? singleProperty?.id ?? (properties[0]?.id ?? ''),
   );
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -133,6 +152,7 @@ export default function ReportProblemModal({
         description: description.trim() || undefined,
         urgency,
         source: 'portal',
+        serviceJobId: serviceJob?.id ?? null,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not submit the request — please try again.');
@@ -197,6 +217,21 @@ export default function ReportProblemModal({
         {/* Form body */}
         <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-hidden">
           <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5">
+
+            {/* Linked-job banner — when reporting against a specific job */}
+            {serviceJob && (
+              <div className="flex items-start gap-2.5 rounded-[10px] border border-[#E6E1D4] bg-[#FAF8F2] px-4 py-3">
+                <Wrench className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#246F47]" />
+                <p className="text-[13px] leading-snug text-[#3A3A3A]">
+                  Reporting an issue on{' '}
+                  <span className="font-semibold text-[#1A1A1A]">{serviceJob.title}</span>
+                  {serviceJob.externalRef ? (
+                    <span className="ml-1 font-mono text-[12px] text-[#6B6B6B]">#{serviceJob.externalRef}</span>
+                  ) : null}
+                  . Our team will see it's linked to this job.
+                </p>
+              </div>
+            )}
 
             {/* Property picker (skip if only 1 active property) */}
             {singleProperty ? (

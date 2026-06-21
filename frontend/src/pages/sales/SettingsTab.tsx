@@ -18,6 +18,7 @@ import {
   updateCommercialSettings,
   type CommercialSettings,
 } from "../../lib/api/commercial";
+import LabourRatesSettings from "./LabourRatesSettings";
 
 // â”€â”€â”€ types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -69,6 +70,11 @@ export default function SettingsTab({ onChanged }: Props) {
   const [gstPercent, setGstPercent]       = useState("10");
   const [paymentDays, setPaymentDays]     = useState("14");
   const [threshold, setThreshold]         = useState("");
+  // Pricing defaults (Step 1 — markup %s + solar rebate unit figures)
+  const [materialMarkupPct, setMaterialMarkupPct] = useState("25");
+  const [labourMarkupPct, setLabourMarkupPct]     = useState("0");
+  const [stcPrice, setStcPrice]                   = useState("0");
+  const [veecValue, setVeecValue]                 = useState("0");
 
   useEffect(() => {
     if (!isAdmin) { setLoading(false); return; }
@@ -85,6 +91,10 @@ export default function SettingsTab({ onChanged }: Props) {
           setThreshold(s.variationCustomerApprovalThreshold != null
             ? String(s.variationCustomerApprovalThreshold)
             : "");
+          setMaterialMarkupPct(String(Math.round((s.defaultMaterialMarkup ?? 0) * 100)));
+          setLabourMarkupPct(String(Math.round((s.defaultLabourMarkup ?? 0) * 100)));
+          setStcPrice(String(s.stcUnitPrice ?? 0));
+          setVeecValue(String(s.veecUnitValue ?? 0));
         }
       })
       .catch(() => {})
@@ -105,6 +115,10 @@ export default function SettingsTab({ onChanged }: Props) {
         paymentTermsDays: parseInt(paymentDays, 10) || 14,
         variationCustomerApprovalThreshold:
           threshold.trim() === "" ? null : parseFloat(threshold),
+        defaultMaterialMarkup: (parseFloat(materialMarkupPct) || 0) / 100,
+        defaultLabourMarkup: (parseFloat(labourMarkupPct) || 0) / 100,
+        stcUnitPrice: parseFloat(stcPrice) || 0,
+        veecUnitValue: parseFloat(veecValue) || 0,
       });
       setSettings(updated);
       setToast({ message: "Settings saved.", type: "success" });
@@ -140,6 +154,7 @@ export default function SettingsTab({ onChanged }: Props) {
     "w-full rounded-md border border-[#E6E1D4] px-3 py-2 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] disabled:opacity-50";
 
   return (
+    <>
     <div className={`${cardShell} overflow-hidden`}>
       <div className="border-b border-[#E6E1D4] px-6 py-4">
         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6B6B6B]">
@@ -236,6 +251,44 @@ export default function SettingsTab({ onChanged }: Props) {
           />
         </Field>
 
+        <div className="border-t border-[#EFEBE0] pt-5">
+          <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6B6B6B]">
+            Pricing &amp; solar rebates
+          </p>
+          <div className="grid gap-5 sm:grid-cols-2">
+            <Field label="Material markup (%)" hint="Default sell margin for a material with no catalogue price (Sim-Pro uses 25).">
+              <input
+                type="number" min="0" step="any" value={materialMarkupPct}
+                onChange={(e) => setMaterialMarkupPct(e.target.value)}
+                disabled={saving} className={inputCls}
+              />
+            </Field>
+            <Field label="Labour markup (%)" hint="Added to a labour line's prefill rate. 0 = bill at the loaded cost rate.">
+              <input
+                type="number" min="0" step="any" value={labourMarkupPct}
+                onChange={(e) => setLabourMarkupPct(e.target.value)}
+                disabled={saving} className={inputCls}
+              />
+            </Field>
+          </div>
+          <div className="mt-5 grid gap-5 sm:grid-cols-2">
+            <Field label="STC unit price ($)" hint="Current STC certificate price; prefilled into solar quotes.">
+              <input
+                type="number" min="0" step="any" value={stcPrice}
+                onChange={(e) => setStcPrice(e.target.value)}
+                disabled={saving} className={inputCls}
+              />
+            </Field>
+            <Field label="VEEC unit value ($)" hint="Current VEEC certificate value; for reference when entering a quote's VEEC rebate.">
+              <input
+                type="number" min="0" step="any" value={veecValue}
+                onChange={(e) => setVeecValue(e.target.value)}
+                disabled={saving} className={inputCls}
+              />
+            </Field>
+          </div>
+        </div>
+
         <div className="flex items-center justify-end border-t border-[#EFEBE0] pt-4">
           <button type="submit" disabled={saving} className={btnPrimary}>
             {saving ? "Saving..." : "Save settings"}
@@ -247,5 +300,10 @@ export default function SettingsTab({ onChanged }: Props) {
         <Toaster message={toast.message} type={toast.type} onClose={() => setToast(null)} />
       )}
     </div>
+
+    {/* Labour Rates — same admin gate as the tab; LabourRatesSettings has no
+        internal role check because its host (this tab) is already admin-only. */}
+    <LabourRatesSettings />
+    </>
   );
 }

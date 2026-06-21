@@ -23,6 +23,10 @@ export interface Timesheet {
    *  null → the Time-clock view shows a live running timer. */
   timeIn?: string;
   timeOut?: string;
+  /** Labour-costing role (migration 73). Maps to a `labour_rates.role` so
+   *  project labour rolls up at the right rate in getProjectProfit. null/undefined
+   *  = uncosted (the Profit card surfaces those hours honestly). */
+  role?: string | null;
 }
 
 export interface TimesheetRow {
@@ -41,6 +45,7 @@ export interface TimesheetRow {
   updated_at: string;
   time_in: string | null;
   time_out: string | null;
+  role: string | null;
 }
 
 export function mapTimesheetRow(r: TimesheetRow): Timesheet {
@@ -59,6 +64,7 @@ export function mapTimesheetRow(r: TimesheetRow): Timesheet {
     updatedAt: r.updated_at,
     timeIn: r.time_in ?? undefined,
     timeOut: r.time_out ?? undefined,
+    role: r.role ?? null,
   };
 }
 
@@ -107,6 +113,8 @@ export interface TimesheetPatch {
   notes?: string;
   status?: TimesheetStatus;
   approvedBy?: string | null;
+  /** Labour-costing role (migration 73). null clears it. */
+  role?: string | null;
 }
 
 export async function updateTimesheet(id: string, patch: TimesheetPatch): Promise<void> {
@@ -114,6 +122,7 @@ export async function updateTimesheet(id: string, patch: TimesheetPatch): Promis
   const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (patch.hours !== undefined) row.hours = patch.hours;
   if (patch.notes !== undefined) row.notes = patch.notes ?? null;
+  if (patch.role !== undefined) row.role = patch.role;
   if (patch.status !== undefined) {
     row.status = patch.status;
     if (patch.status === 'approved') {
@@ -132,6 +141,28 @@ export async function updateTimesheet(id: string, patch: TimesheetPatch): Promis
 export async function deleteTimesheet(id: string): Promise<void> {
   if (!supabaseConfigured()) throw NOT_CONFIGURED;
   const { error } = await supabase.from('timesheets').delete().eq('id', id);
+  if (error) throw error;
+}
+
+/**
+ * PP1 (migration 73): set the labour-costing role on ALL of a worker's
+ * timesheets for a project at once. The role is constant per worker on a job,
+ * and getProjectProfit rolls up across every submitted/approved row — so a
+ * project-wide set (not per-week) is what makes the worker's hours cost
+ * consistently. Pass null to clear (back to uncosted). Manager-gated in the UI;
+ * RLS enforces manager-only writes. No-op for a demo (non-uuid) project.
+ */
+export async function setProjectWorkerRole(
+  projectId: string,
+  workerName: string,
+  role: string | null,
+): Promise<void> {
+  if (!supabaseConfigured() || !isUuid(projectId)) throw NOT_CONFIGURED;
+  const { error } = await supabase
+    .from('timesheets')
+    .update({ role, updated_at: new Date().toISOString() })
+    .eq('project_id', projectId)
+    .eq('worker_name', workerName);
   if (error) throw error;
 }
 

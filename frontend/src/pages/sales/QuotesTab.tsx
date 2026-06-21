@@ -32,6 +32,8 @@ type ToastState = { message: string; type: "success" | "error" | "info" } | null
 interface Props {
   initialCustomerFilter?: string | null;
   onChanged: () => void;
+  /** Manager-only: surface the internal cost/margin view in the quote editor. */
+  canSeeCost?: boolean;
 }
 
 // â”€â”€â”€ status pill tokens â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -230,7 +232,7 @@ function NewQuoteModal({
 
 const ALL_STATUSES: QuoteStatus[] = ["draft", "sent", "viewed", "accepted", "declined", "expired"];
 
-export default function QuotesTab({ initialCustomerFilter, onChanged }: Props) {
+export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost = false }: Props) {
   const [quotes, setQuotes]       = useState<Quote[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -305,6 +307,7 @@ export default function QuotesTab({ initialCustomerFilter, onChanged }: Props) {
         quoteId={selectedId}
         onClose={handleEditorClose}
         onChanged={() => { void fetchQuotes(); onChanged(); }}
+        canSeeCost={canSeeCost}
       />
     );
   }

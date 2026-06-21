@@ -24,6 +24,7 @@ import { useNavigate } from "react-router-dom";
 import { Calendar, MapPin, User, UserPlus, AlertTriangle, Zap, Wrench, Building2 } from "lucide-react";
 import type { BoardCard, BoardPriority } from "../../lib/api/jobsBoard";
 import { priorityFor, hoursWaiting, localDateOf } from "../../lib/api/jobsBoard";
+import type { SimproStage } from "../../lib/jobs/simproCsv";
 import type { Profile } from "../../types";
 import { useProjectsListStore } from "../projects/store";
 import { FRAUNCES } from "../gantt/components/ledger";
@@ -63,6 +64,16 @@ const TYPE_STAMP: Record<
 const stampClass =
   "inline-flex items-center gap-[3px] rounded-[5px] px-1.5 py-[3px] text-[9px] font-bold uppercase tracking-[0.12em] leading-none";
 
+// ─── Sim-Pro stage badge ───────────────────────────────────────────────────────
+// Only the three stages that collapse into the single "done" column carry a
+// badge — pending / in_progress are already implied by the card's column, so
+// badging them would be redundant noise. Tones drawn from the warm ledger palette.
+const SIMPRO_STAGE_BADGE: Partial<Record<SimproStage, { label: string; bg: string; fg: string }>> = {
+  complete: { label: "Complete", bg: "#EEF1F4", fg: "#5B6B7B" },
+  invoiced: { label: "Invoiced", bg: "#F4E9DB", fg: "#A35C2B" },
+  archived: { label: "Archived", bg: "#ECE8DE", fg: "#6B6B6B" },
+};
+
 // ─── priority badge ───────────────────────────────────────────────────────────
 
 const PRIORITY_STYLES: Record<Exclude<BoardPriority, null>, { bg: string; fg: string }> = {
@@ -97,7 +108,8 @@ const MAX_COINS = 3;
 export interface BoardCardItemProps {
   card: BoardCard;
   draggable: boolean;
-  onDragStart: (e: React.DragEvent<HTMLDivElement>) => void;
+  /** Optional — omitted for read-only contexts like the archived list. */
+  onDragStart?: (e: React.DragEvent<HTMLDivElement>) => void;
   onDragEnd?: () => void;
   isDragging?: boolean;
   onOpenService: (id: string) => void;
@@ -124,6 +136,7 @@ export function BoardCardItem({
 }: BoardCardItemProps) {
   const navigate = useNavigate();
   const stamp = TYPE_STAMP[card.type];
+  const stageBadge = card.simproStage ? SIMPRO_STAGE_BADGE[card.simproStage] : undefined;
   const isCancelled = card.cancelled === true;
 
   const today = todayIso ?? localTodayISO();
@@ -144,8 +157,14 @@ export function BoardCardItem({
   // Warm ring: P1 + waiting chip together
   const showRing = priority === "P1" && showWaiting && !isCancelled;
 
-  // Date treatment — suppressed in Done and on cancelled cards
-  const dateMuted = isCancelled || card.column === "done";
+  // Date treatment — suppressed for closed work (Completed/Invoiced/Paid),
+  // archived, and cancelled cards.
+  const dateMuted =
+    isCancelled ||
+    card.archived === true ||
+    card.column === "completed" ||
+    card.column === "invoiced" ||
+    card.column === "paid";
   const isOverdue = !dateMuted && card.scheduledFor !== null && card.scheduledFor < today;
   const isToday = !dateMuted && card.scheduledFor === today;
 
@@ -164,8 +183,8 @@ export function BoardCardItem({
       return diff > 0 && diff <= 3;
     })();
 
-  // Done column: completed today? Compare LOCAL date to avoid UTC-vs-local mismatch.
-  const isDoneColumn = card.column === "done";
+  // Completed column: completed today? Compare LOCAL date to avoid UTC-vs-local mismatch.
+  const isDoneColumn = card.column === "completed";
   const completedToday =
     isDoneColumn &&
     card.completedAt !== null &&
@@ -192,6 +211,7 @@ export function BoardCardItem({
   // Build aria-label
   const ariaLabel = [
     stamp.label,
+    stageBadge ? stageBadge.label : null,
     card.title,
     priority ? priority : null,
     card.scheduledFor && !dateMuted
@@ -253,6 +273,11 @@ export function BoardCardItem({
             <stamp.Icon className="h-[9px] w-[9px]" strokeWidth={2} />
             {stamp.label}
           </span>
+          {stageBadge && (
+            <span className={stampClass} style={{ backgroundColor: stageBadge.bg, color: stageBadge.fg }}>
+              {stageBadge.label}
+            </span>
+          )}
           {showWaiting && (
             <span
               className="inline-flex items-center gap-[3px] rounded-full px-1.5 py-[3px] text-[9px] font-bold uppercase tracking-[0.12em] leading-none"
@@ -277,10 +302,14 @@ export function BoardCardItem({
         )}
       </div>
 
-      {/* Row 2: title — Fraunces serif across all card types (editorial identity) */}
+      {/* Row 2: job number (when present) + title */}
+      {card.number && (
+        <p className="font-mono text-[11px] leading-none text-[#A0A0A0]">#{card.number}</p>
+      )}
       <p
         className={[
           "text-[15px] leading-snug line-clamp-2",
+          card.number ? "mt-0.5" : "",
           isCancelled ? "text-[#6B6B6B] line-through" : "text-[#1A1A1A]",
         ].join(" ")}
         style={{ fontFamily: FRAUNCES, fontWeight: 500 }}

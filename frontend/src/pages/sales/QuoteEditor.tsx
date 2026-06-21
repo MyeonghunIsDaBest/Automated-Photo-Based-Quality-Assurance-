@@ -10,13 +10,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ArrowLeft, Printer, Plus, Trash2, RefreshCw, Search, Package,
+  ArrowLeft, Printer, Plus, Trash2, RefreshCw, Search, Package, Clock,
 } from "lucide-react";
 
 import { FRAUNCES, TONE, cardShell, btnPrimary, btnGhost } from "../gantt/components/ledger";
 import { SkeletonLine } from "../../components/ui/skeleton";
 import { Toaster } from "../../components/ui/Toaster";
-import { lineTotal } from "../../lib/commercial/money";
+import { lineTotal, quoteCostMargin, quoteFinancials } from "../../lib/commercial/money";
 
 import {
   getQuote,
@@ -25,25 +25,33 @@ import {
   addQuoteItemFromMaterial,
   addQuoteItemFromPrebuild,
   addQuoteItemFree,
+  addQuoteItemLabour,
   updateQuoteItem,
   removeQuoteItem,
   convertQuoteToJob,
+  setQuoteDiscount,
+  setQuoteRebates,
   getCommercialSettings,
   type Quote,
   type QuoteItem,
   type CommercialSettings,
 } from "../../lib/api/commercial";
 import { listMaterials, listPrebuilds, type Material, type Prebuild } from "../../lib/api/materials";
+import { listLabourRates, type LabourRate } from "../../lib/api/labourRates";
 
 // â”€â”€â”€ types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 type ToastState = { message: string; type: "success" | "error" | "info" } | null;
-type AddMode = "catalogue" | "prebuild" | "free" | null;
+type AddMode = "catalogue" | "prebuild" | "free" | "labour" | null;
 
 interface Props {
   quoteId: string;
   onClose: () => void;
   onChanged: () => void;
+  /** Manager-only: show the internal cost/margin view + labour cost. The /sales
+   *  surface is already manager-gated, so this is true there; default false keeps
+   *  cost hidden anywhere the editor is reused without the flag. */
+  canSeeCost?: boolean;
 }
 
 // â”€â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -88,7 +96,7 @@ function NumCell({
 
 // â”€â”€â”€ component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-export default function QuoteEditor({ quoteId, onClose, onChanged }: Props) {
+export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = false }: Props) {
   const [quote, setQuote]           = useState<Quote | null>(null);
   const [settings, setSettings]     = useState<CommercialSettings | null>(null);
   const [loading, setLoading]       = useState(true);
@@ -122,6 +130,18 @@ export default function QuoteEditor({ quoteId, onClose, onChanged }: Props) {
   const [freePrice, setFreePrice]   = useState("0");
   const [addingFree, setAddingFree] = useState(false);
 
+  // Labour line form
+  const [labourRates, setLabourRates] = useState<LabourRate[]>([]);
+  const [labourRole, setLabourRole] = useState("");
+  const [labourHours, setLabourHours] = useState("1");
+  const [addingLabour, setAddingLabour] = useState(false);
+
+  // Discount + solar-rebate inputs (synced from the quote; commit on blur)
+  const [discountStr, setDiscountStr] = useState("0");
+  const [stcCountStr, setStcCountStr] = useState("0");
+  const [stcPriceStr, setStcPriceStr] = useState("0");
+  const [veecStr, setVeecStr] = useState("0");
+
   const loadQuote = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -142,6 +162,16 @@ export default function QuoteEditor({ quoteId, onClose, onChanged }: Props) {
   }, [quoteId]);
 
   useEffect(() => { void loadQuote(); }, [loadQuote]);
+
+  // Sync the discount/rebate inputs whenever the quote (re)loads. STC unit price
+  // prefills from settings when the quote hasn't set its own yet.
+  useEffect(() => {
+    if (!quote) return;
+    setDiscountStr(String(quote.discountExGst ?? 0));
+    setStcCountStr(String(quote.stcCount ?? 0));
+    setStcPriceStr(String(quote.stcUnitPriceExGst || settings?.stcUnitPrice || 0));
+    setVeecStr(String(quote.veecRebateExGst || 0));
+  }, [quote, settings]);
 
   // Debounced notes save
   useEffect(() => {
@@ -178,6 +208,12 @@ export default function QuoteEditor({ quoteId, onClose, onChanged }: Props) {
     if (addMode !== "prebuild" || prebuilds.length > 0) return;
     listPrebuilds().then(setPrebuilds).catch(() => {});
   }, [addMode, prebuilds.length]);
+
+  // Load active labour rates once when the labour mode opens
+  useEffect(() => {
+    if (addMode !== "labour" || labourRates.length > 0) return;
+    listLabourRates(false).then(setLabourRates).catch(() => {});
+  }, [addMode, labourRates.length]);
 
   async function handleItemUpdate(item: QuoteItem, patch: { qty?: number; unitPriceExGst?: number }) {
     setSaving(true);
@@ -258,6 +294,61 @@ export default function QuoteEditor({ quoteId, onClose, onChanged }: Props) {
     }
   }
 
+  async function handleAddLabour(e: React.FormEvent) {
+    e.preventDefault();
+    if (!labourRole) return;
+    setAddingLabour(true);
+    try {
+      await addQuoteItemLabour(quoteId, labourRole, parseFloat(labourHours) || 0);
+      setAddMode(null);
+      setLabourRole(""); setLabourHours("1");
+      await loadQuote();
+      onChanged();
+    } catch (ex) {
+      setToast({ message: ex instanceof Error ? ex.message : "Failed to add labour", type: "error" });
+    } finally {
+      setAddingLabour(false);
+    }
+  }
+
+  async function commitDiscount() {
+    if (!quote) return;
+    const v = Math.max(0, parseFloat(discountStr) || 0);
+    if (v === quote.discountExGst) return;
+    setSaving(true);
+    try {
+      await setQuoteDiscount(quoteId, v);
+      await loadQuote();
+      onChanged();
+    } catch (ex) {
+      setToast({ message: ex instanceof Error ? ex.message : "Failed to save discount", type: "error" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function commitRebates() {
+    if (!quote) return;
+    const stcCount = Math.max(0, parseInt(stcCountStr, 10) || 0);
+    const stcUnitPriceExGst = Math.max(0, parseFloat(stcPriceStr) || 0);
+    const veecRebateExGst = Math.max(0, parseFloat(veecStr) || 0);
+    if (
+      stcCount === quote.stcCount &&
+      stcUnitPriceExGst === quote.stcUnitPriceExGst &&
+      veecRebateExGst === quote.veecRebateExGst
+    ) return;
+    setSaving(true);
+    try {
+      await setQuoteRebates(quoteId, { stcCount, stcUnitPriceExGst, veecRebateExGst });
+      await loadQuote();
+      onChanged();
+    } catch (ex) {
+      setToast({ message: ex instanceof Error ? ex.message : "Failed to save rebates", type: "error" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleStatusAction(action: "send" | "accept" | "decline" | "convertJob") {
     if (!quote) return;
     setSaving(true);
@@ -322,6 +413,27 @@ export default function QuoteEditor({ quoteId, onClose, onChanged }: Props) {
   }[quote.status] ?? TONE.ink;
 
   const isLocked = quote.status === "accepted" || quote.status === "declined" || quote.status === "expired";
+
+  const gstRate = settings?.gstRate ?? 0.1;
+  // Customer-facing money: discount → GST → total → minus STC/VEEC rebates.
+  const fin = quoteFinancials(items, gstRate, {
+    discountExGst: quote.discountExGst,
+    stcRebate: quote.stcCount * quote.stcUnitPriceExGst,
+    veecRebate: quote.veecRebateExGst,
+  });
+
+  // Manager-only cost/margin rollup (never rendered when canSeeCost is false,
+  // and always print:hidden so it can't leak onto the customer's PDF). Discount
+  // folds into the net sell so the margin reflects the real revenue.
+  const margin = canSeeCost ? quoteCostMargin(items, gstRate, quote.discountExGst) : null;
+  const marginTone =
+    margin === null
+      ? TONE.ink
+      : margin.profit.net < 0
+        ? TONE.red
+        : margin.profit.marginPct !== null && margin.profit.marginPct < 10
+          ? TONE.amber
+          : TONE.sage;
 
   return (
     <>
@@ -438,7 +550,14 @@ export default function QuoteEditor({ quoteId, onClose, onChanged }: Props) {
                 const lt = lineTotal({ qty: item.qty, unitPriceExGst: item.unitPriceExGst });
                 return (
                   <tr key={item.id} className="border-b border-[#EFEBE0] hover:bg-[#FAF8F2]">
-                    <td className="px-3 py-2.5 text-[#1A1A1A]">{item.description}</td>
+                    <td className="px-3 py-2.5 text-[#1A1A1A]">
+                      {item.description}
+                      {item.kind !== "material" && (
+                        <span className="ml-2 rounded-full bg-[#EFEBE0] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#6B6B6B] print:hidden">
+                          {item.kind === "labour" ? "Labour" : "Custom"}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-3 py-2.5 text-right">
                       {isLocked ? (
                         <span className="tabular-nums">{item.qty}</span>
@@ -513,6 +632,14 @@ export default function QuoteEditor({ quoteId, onClose, onChanged }: Props) {
                 >
                   <Plus className="h-4 w-4" />
                   Free line
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAddMode("labour")}
+                  className={btnGhost}
+                >
+                  <Clock className="h-4 w-4" />
+                  Labour
                 </button>
               </div>
             )}
@@ -635,33 +762,208 @@ export default function QuoteEditor({ quoteId, onClose, onChanged }: Props) {
                 </div>
               </form>
             )}
+
+            {/* Labour line form */}
+            {addMode === "labour" && (
+              <div className="rounded-[10px] border border-[#E6E1D4] bg-[#FAF8F2] p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-[#6B6B6B]">Labour line</p>
+                  <button type="button" onClick={() => { setAddMode(null); setLabourRole(""); setLabourHours("1"); }} className="text-xs text-[#A0A0A0] hover:text-[#C44545]">Cancel</button>
+                </div>
+                <form onSubmit={(e) => void handleAddLabour(e)} className="flex flex-wrap items-center gap-2">
+                  <select
+                    autoFocus
+                    required
+                    value={labourRole}
+                    onChange={(e) => setLabourRole(e.target.value)}
+                    className="flex-1 min-w-[180px] rounded-md border border-[#E6E1D4] bg-white px-3 py-2 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
+                  >
+                    <option value="">Select a role...</option>
+                    {labourRates.map((r) => (
+                      <option key={r.id} value={r.role}>
+                        {r.role}{r.loadedRate != null ? ` - ${fmtMoney(r.loadedRate)}/hr` : " - no rate set"}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={labourHours}
+                    onChange={(e) => setLabourHours(e.target.value)}
+                    placeholder="Hours"
+                    className="w-24 rounded-md border border-[#E6E1D4] bg-white px-3 py-2 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
+                  />
+                  <button type="submit" disabled={!labourRole || addingLabour} className={btnPrimary}>
+                    {addingLabour ? "Adding..." : "Add labour"}
+                  </button>
+                </form>
+                {labourRates.length === 0 && (
+                  <p className="mt-2 text-[11px] text-[#A0A0A0]">No labour roles configured yet — add rates in Sales settings.</p>
+                )}
+                {labourRole !== "" && labourRates.find((r) => r.role === labourRole)?.loadedRate == null && (
+                  <p className="mt-2 text-[11px] text-[#C8841E]">
+                    This role has no rate set — the line will be added uncosted (price 0); mark it up on the quote.
+                  </p>
+                )}
+                <p className="mt-2 text-[11px] text-[#A0A0A0]">
+                  The line prefills at the role&rsquo;s rate; edit the unit price to mark it up.
+                </p>
+              </div>
+            )}
           </div>
         )}
 
         {/* â”€â”€ Totals footer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        {/* ── Discount & solar rebates (manager-only, screen-only) ────────── */}
+        {canSeeCost && !isLocked && (
+          <div className="mb-6 rounded-[10px] border border-[#E6E1D4] bg-[#FAF8F2] p-4 print:hidden">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-[#6B6B6B]">Discount &amp; solar rebates</p>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <label className="flex flex-col gap-1 text-[11px] font-medium text-[#6B6B6B]">
+                Discount (ex GST)
+                <input
+                  type="number" min="0" step="any" value={discountStr}
+                  onChange={(e) => setDiscountStr(e.target.value)}
+                  onBlur={() => void commitDiscount()}
+                  className="rounded-md border border-[#E6E1D4] bg-white px-2 py-1.5 text-sm tabular-nums text-[#1A1A1A] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-[11px] font-medium text-[#6B6B6B]">
+                STCs (count)
+                <input
+                  type="number" min="0" step="1" value={stcCountStr}
+                  onChange={(e) => setStcCountStr(e.target.value)}
+                  onBlur={() => void commitRebates()}
+                  className="rounded-md border border-[#E6E1D4] bg-white px-2 py-1.5 text-sm tabular-nums text-[#1A1A1A] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-[11px] font-medium text-[#6B6B6B]">
+                STC price (ea)
+                <input
+                  type="number" min="0" step="any" value={stcPriceStr}
+                  onChange={(e) => setStcPriceStr(e.target.value)}
+                  onBlur={() => void commitRebates()}
+                  className="rounded-md border border-[#E6E1D4] bg-white px-2 py-1.5 text-sm tabular-nums text-[#1A1A1A] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-[11px] font-medium text-[#6B6B6B]">
+                VEEC rebate
+                <input
+                  type="number" min="0" step="any" value={veecStr}
+                  onChange={(e) => setVeecStr(e.target.value)}
+                  onBlur={() => void commitRebates()}
+                  className="rounded-md border border-[#E6E1D4] bg-white px-2 py-1.5 text-sm tabular-nums text-[#1A1A1A] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
+                />
+              </label>
+            </div>
+            <p className="mt-2 text-[11px] text-[#A0A0A0]">
+              Rebates reduce what the customer pays; they don&rsquo;t change your margin (you claim the certificate value).
+            </p>
+          </div>
+        )}
+
+        {/* ── Totals footer ───────────────────────────────────────────────── */}
         <div className="mb-8 flex justify-end">
           <div className="w-full max-w-xs space-y-1">
             <div className="flex items-center justify-between text-sm text-[#6B6B6B]">
               <span>Subtotal (ex GST)</span>
-              <span className="tabular-nums">{fmtMoney(quote.subtotalExGst)}</span>
+              <span className="tabular-nums">{fmtMoney(fin.subtotalExGst)}</span>
             </div>
+            {fin.discountExGst > 0 && (
+              <div className="flex items-center justify-between text-sm text-[#6B6B6B]">
+                <span>Discount</span>
+                <span className="tabular-nums">-{fmtMoney(fin.discountExGst)}</span>
+              </div>
+            )}
             <div className="flex items-center justify-between text-sm text-[#6B6B6B]">
-              <span>GST ({((settings?.gstRate ?? 0.1) * 100).toFixed(0)}%)</span>
-              <span className="tabular-nums">{fmtMoney(quote.gstAmount)}</span>
+              <span>GST ({(gstRate * 100).toFixed(0)}%)</span>
+              <span className="tabular-nums">{fmtMoney(fin.gstAmount)}</span>
             </div>
             <div className="flex items-center justify-between border-t border-[#E6E1D4] pt-2 text-base font-semibold text-[#1A1A1A]">
               <span>Total (inc GST)</span>
-              <span
-                className="tabular-nums text-[18px]"
-                style={{ fontFamily: FRAUNCES }}
-              >
-                {fmtMoney(quote.totalIncGst)}
+              <span className="tabular-nums text-[18px]" style={{ fontFamily: FRAUNCES }}>
+                {fmtMoney(fin.totalIncGst)}
               </span>
             </div>
+            {fin.rebatesTotal > 0 && (
+              <>
+                {quote.stcCount > 0 && quote.stcUnitPriceExGst > 0 && (
+                  <div className="flex items-center justify-between pt-1 text-sm text-[#6B6B6B]">
+                    <span>STC rebate ({quote.stcCount}&times;)</span>
+                    <span className="tabular-nums">-{fmtMoney(quote.stcCount * quote.stcUnitPriceExGst)}</span>
+                  </div>
+                )}
+                {quote.veecRebateExGst > 0 && (
+                  <div className="flex items-center justify-between text-sm text-[#6B6B6B]">
+                    <span>VEEC rebate</span>
+                    <span className="tabular-nums">-{fmtMoney(quote.veecRebateExGst)}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between border-t border-[#E6E1D4] pt-2 text-base font-semibold text-[#2F8F5C]">
+                  <span>Customer pays</span>
+                  <span className="tabular-nums text-[18px]" style={{ fontFamily: FRAUNCES }}>
+                    {fmtMoney(fin.customerPays)}
+                  </span>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
         {/* â”€â”€ Notes textarea â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        {/* ── Manager-only cost / margin (screen only; never printed) ───────── */}
+        {canSeeCost && margin && (
+          <div className="mb-8 flex justify-end print:hidden">
+            <div className="w-full max-w-xs rounded-[10px] border border-dashed border-[#D8D2C4] bg-[#FAF8F2] p-3">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#A0A0A0]">
+                Internal — not shown to customer
+              </p>
+              <div className="space-y-1 text-[13px]">
+                <div className="flex items-center justify-between text-[#6B6B6B]">
+                  <span>Sell (ex GST){margin.discountExGst > 0 ? " · after disc." : ""}</span>
+                  <span className="tabular-nums">{fmtMoney(margin.sellExGst)}</span>
+                </div>
+                <div className="flex items-center justify-between text-[#6B6B6B]">
+                  <span>Materials cost</span>
+                  <span className="tabular-nums">{fmtMoney(margin.materialsCost)}</span>
+                </div>
+                <div className="flex items-center justify-between border-t border-[#E6E1D4] pt-1.5 font-medium text-[#1A1A1A]">
+                  <span>Gross profit</span>
+                  <span className="tabular-nums">{fmtMoney(margin.profit.gross)}</span>
+                </div>
+                <div className="flex items-center justify-between text-[#6B6B6B]">
+                  <span>Gross margin</span>
+                  <span className="tabular-nums">{margin.grossMarginPct === null ? "—" : `${margin.grossMarginPct.toFixed(1)}%`}</span>
+                </div>
+                <div className="flex items-center justify-between text-[#6B6B6B]">
+                  <span>Labour cost</span>
+                  <span className="tabular-nums">{fmtMoney(margin.labourCost + margin.otherCost)}</span>
+                </div>
+                <div className="flex items-center justify-between border-t border-[#E6E1D4] pt-1.5 font-medium text-[#1A1A1A]">
+                  <span>Nett profit</span>
+                  <span className="tabular-nums">{fmtMoney(margin.profit.net)}</span>
+                </div>
+                <div className="flex items-center justify-between pt-0.5">
+                  <span className="text-[#6B6B6B]">Nett margin</span>
+                  <span
+                    className="rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums"
+                    style={{ backgroundColor: marginTone.bg, color: marginTone.fg }}
+                  >
+                    {margin.profit.marginPct === null ? "—" : `${margin.profit.marginPct.toFixed(1)}%`}
+                  </span>
+                </div>
+              </div>
+              {margin.uncostedLabourLines > 0 && (
+                <p className="mt-2 text-[11px] text-[#C8841E]">
+                  {margin.uncostedLabourLines} labour line{margin.uncostedLabourLines > 1 ? "s" : ""} uncosted — margin may be overstated.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Notes textarea ─────────────────────────────────────────────── */}
         <div className="mb-8">
           <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.14em] text-[#A0A0A0]">
             Customer-visible notes

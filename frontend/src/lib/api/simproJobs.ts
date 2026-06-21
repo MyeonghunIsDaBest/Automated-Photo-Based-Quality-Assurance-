@@ -134,6 +134,10 @@ function escapeIlike(raw: string): string {
 export async function listSimproJobs(filters?: {
   stage?: SimproStage;
   search?: string;
+  /** Cap rows fetched. A stage can hold 1,000+ imported jobs; the browse table
+   *  windows to this so it never renders a "long receipt". Per-stage totals come
+   *  from stageCounts(), so the count stays accurate even when the list is capped. */
+  limit?: number;
 }): Promise<StagedJob[]> {
   if (!supabaseConfigured()) return [];
   let q = supabase.from('simpro_jobs').select('*');
@@ -149,7 +153,9 @@ export async function listSimproJobs(filters?: {
         pattern,
     );
   }
-  const { data, error } = await q.order('imported_at', { ascending: false });
+  q = q.order('imported_at', { ascending: false });
+  if (filters?.limit && filters.limit > 0) q = q.limit(filters.limit);
+  const { data, error } = await q;
   if (error) throw error;
   return (data ?? []).map((r) => rowToStaged(r as SimproJobDbRow));
 }
@@ -303,6 +309,45 @@ export async function createSimproJob(input: CreateSimproJobInput): Promise<void
   if (error) throw error;
 }
 
+export interface UpdateSimproJobInput {
+  externalRef?: string;
+  description?: string | null;
+  customerName?: string | null;
+  telephone?: string | null;
+  email?: string | null;
+  siteName?: string | null;
+  siteAddress?: string | null;
+  suburb?: string | null;
+  category?: string | null;
+  stage?: SimproStage;
+  dueDate?: string | null;
+}
+
+/** Edit a staged Simpro job's fields and/or stage — for correcting bad imported
+ *  data before confirming. Only keys present in the patch are written (undefined =
+ *  untouched; null = explicitly cleared for nullable fields). external_ref is
+ *  unique — a clash throws (the caller surfaces it). Does NOT touch the schedule
+ *  bar (use scheduleSimproJob) or promotion state — editing the staging row does
+ *  not retro-update an already-promoted live job. */
+export async function updateSimproJob(id: string, patch: UpdateSimproJobInput): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const update: Record<string, unknown> = {};
+  if (patch.externalRef !== undefined) update.external_ref = patch.externalRef;
+  if (patch.description !== undefined) update.description = patch.description;
+  if (patch.customerName !== undefined) update.customer_name = patch.customerName;
+  if (patch.telephone !== undefined) update.telephone = patch.telephone;
+  if (patch.email !== undefined) update.email = patch.email;
+  if (patch.siteName !== undefined) update.site_name = patch.siteName;
+  if (patch.siteAddress !== undefined) update.site_address = patch.siteAddress;
+  if (patch.suburb !== undefined) update.suburb = patch.suburb;
+  if (patch.category !== undefined) update.category = patch.category;
+  if (patch.stage !== undefined) update.stage = patch.stage;
+  if (patch.dueDate !== undefined) update.due_date = patch.dueDate;
+  if (Object.keys(update).length === 0) return;
+  const { error } = await supabase.from('simpro_jobs').update(update).eq('id', id);
+  if (error) throw error;
+}
+
 /** Persist a planned import: inserts the adds, refreshes the updates (matched
  *  on external_ref — promotion state untouched). Failures accumulate per chunk. */
 export async function importStagedJobs(plan: ImportPlan): Promise<{
@@ -391,7 +436,10 @@ function joinAddress(job: StagedJob): string | null {
   return parts.length ? parts.join(', ') : null;
 }
 
-/** service_jobs row for a staged job (matched/idempotent on external_ref). */
+/** service_jobs row for a staged job (matched/idempotent on external_ref).
+ *  scheduled_for prefers the timeline bar the owner actually set on the Sim-Pro
+ *  tab (scheduled_start), falling back to the Simpro due date — so the board
+ *  reflects the scheduling work instead of discarding it on promotion. */
 function serviceJobPayload(job: StagedJob): Record<string, unknown> {
   return {
     title: job.description ?? `Simpro job ${job.externalRef}`,
@@ -400,20 +448,22 @@ function serviceJobPayload(job: StagedJob): Record<string, unknown> {
     address: joinAddress(job),
     external_ref: job.externalRef,
     contract_value: job.contractValue,
-    scheduled_for: job.dueDate,
+    scheduled_for: job.scheduledStart ?? job.dueDate,
     status: SERVICE_STATUS[job.stage],
   };
 }
 
 /** projects row for a staged job. Minimal shape — the richer phase/task scaffold
- *  (RPC) is part of CSV finalisation; for now an imported project gets defaults. */
+ *  (RPC) is part of CSV finalisation; for now an imported project gets defaults.
+ *  Dates prefer the timeline bar (scheduled_start/end) the owner set, falling
+ *  back to today / the due date. */
 function projectPayload(job: StagedJob): Record<string, unknown> {
   const today = new Date().toISOString().slice(0, 10);
   return {
     name: job.description ?? `Simpro job ${job.externalRef}`,
     client_name: job.customerName ?? 'Unknown',
-    start_date: today,
-    end_date: job.dueDate ?? today,
+    start_date: job.scheduledStart ?? today,
+    end_date: job.scheduledEnd ?? job.dueDate ?? today,
     status: PROJECT_STATUS[job.stage],
     external_ref: job.externalRef,
     contract_value: job.contractValue,

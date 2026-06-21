@@ -42,7 +42,12 @@ const SupplierWorkspace = lazyWithRetry(() => import('./pages/supplier/SupplierW
 const SponsorCockpit     = lazyWithRetry(() => import('./pages/sponsor/SponsorCockpit'));
 const Maintenance        = lazyWithRetry(() => import('./pages/maintenance/Maintenance'));
 const JobsHub            = lazyWithRetry(() => import('./pages/jobs/JobsHub'));
-const CustomerPortal     = lazyWithRetry(() => import('./pages/customer/CustomerPortal'));
+// /customer = the FINAL converted React dashboard (CustomerDashboard). Static
+// demo content for now — backend wiring is a later phase. Fallbacks preserved:
+//   ./pages/customer/CustomerPortalMock  (iframe of the raw mock HTML)
+//   ./pages/customer/CustomerPortal      (earlier data-wired ledger portal)
+// Swap the import path to either to fall back. Route element below is unchanged.
+const CustomerPortal     = lazyWithRetry(() => import('./pages/customer/CustomerDashboard'));
 const Catalogue          = lazyWithRetry(() => import('./pages/catalogue/Catalogue'));
 const Sales              = lazyWithRetry(() => import('./pages/sales/Sales'));
 

@@ -49,10 +49,9 @@ function ProjectsGridSkeleton() {
 
 // ─── stat derivation ─────────────────────────────────────────────────────────
 
-// BoardColumn only holds 'done' for closed work; cancellation arrives via card.cancelled
-// (cancelled cards are included in the done column when includeCancelled is set, not
-// as a separate column status).
-const DONE_STATUSES = new Set(["done"]);
+// Terminal/closed board columns (mig 76: Completed/Invoiced/Paid). Cancelled +
+// archived arrive via card.cancelled / card.archived, not as columns.
+const DONE_STATUSES = new Set(["completed", "invoiced", "paid"]);
 
 function deriveStats(cards: BoardCard[]): { open: number; dueThisWeek: number; overdue: number } {
   const now = new Date();
@@ -64,7 +63,7 @@ function deriveStats(cards: BoardCard[]): { open: number; dueThisWeek: number; o
   let overdue = 0;
 
   for (const card of cards) {
-    const isDone = card.cancelled || DONE_STATUSES.has(card.column);
+    const isDone = card.cancelled || card.archived || DONE_STATUSES.has(card.column);
     if (!isDone) open++;
 
     if (card.scheduledFor) {

@@ -41,6 +41,7 @@ interface MaintenanceRequestRow {
   completed_at: string | null;
   created_at: string;
   email_message_id: string | null;
+  service_job_id: string | null;
   // Nested joins (PostgREST — present only when requested via select)
   properties?: {
     name: string;
@@ -75,6 +76,9 @@ export interface MaintenanceRequest {
   completedAt: string | null;
   createdAt: string;
   emailMessageId: string | null;
+  /** Linked service/Sim-Pro job when the customer raised this issue against a
+   *  specific job (migration 74). null for a plain property request. */
+  serviceJobId: string | null;
 }
 
 /** Extended view used by list functions that join property + customer names. */
@@ -111,6 +115,7 @@ function rowToRequest(r: MaintenanceRequestRow): MaintenanceRequest {
     completedAt: r.completed_at,
     createdAt: r.created_at,
     emailMessageId: r.email_message_id,
+    serviceJobId: r.service_job_id ?? null,
   };
 }
 
@@ -230,6 +235,9 @@ export interface CreateRequestInput {
   assignedTo?: string;
   /** DATE string 'YYYY-MM-DD' — passed through untouched. */
   scheduledFor?: string;
+  /** Link the issue to a specific service/Sim-Pro job (migration 74). RLS
+   *  requires the job to belong to the reporting customer. */
+  serviceJobId?: string | null;
 }
 
 export async function createRequest(input: CreateRequestInput): Promise<MaintenanceRequest> {
@@ -249,6 +257,7 @@ export async function createRequest(input: CreateRequestInput): Promise<Maintena
       reported_by: uid,
       assigned_to: input.assignedTo ?? null,
       scheduled_for: input.scheduledFor ?? null,
+      service_job_id: input.serviceJobId ?? null,
     })
     .select('*')
     .single();

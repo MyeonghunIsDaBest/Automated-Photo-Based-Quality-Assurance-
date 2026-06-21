@@ -11,7 +11,7 @@
 // programmatically focus it.
 
 import { forwardRef, useRef, useState } from "react";
-import { Search, SlidersHorizontal, Plus, RefreshCw } from "lucide-react";
+import { Search, SlidersHorizontal, Plus, RefreshCw, ArrowDownWideNarrow, Archive } from "lucide-react";
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -22,6 +22,16 @@ const TYPE_FILTERS: { key: TypeFilter; label: string }[] = [
   { key: "service",     label: "Service" },
   { key: "maintenance", label: "Maintenance" },
   { key: "project",     label: "Projects" },
+];
+
+// Sort mode for cards within each column.
+//   "date" → newest first (createdAt desc; Done keeps most-recently-closed first)
+//   "az"   → alphabetical by customer name (clientLabel)
+export type SortMode = "date" | "az";
+
+const SORT_MODES: { key: SortMode; label: string }[] = [
+  { key: "date", label: "Newest" },
+  { key: "az",   label: "A–Z" },
 ];
 
 // ─── props ────────────────────────────────────────────────────────────────────
@@ -35,6 +45,10 @@ export interface BoardToolbarProps {
   onIncludeCancelledChange: (v: boolean) => void;
   assignedToMe: boolean;
   onAssignedToMeChange: (v: boolean) => void;
+  sortMode: SortMode;
+  onSortModeChange: (m: SortMode) => void;
+  showArchived: boolean;
+  onShowArchivedChange: (v: boolean) => void;
   canManage: boolean;
   loading: boolean;
   onRefresh: () => void;
@@ -54,6 +68,10 @@ export const BoardToolbar = forwardRef<HTMLInputElement, BoardToolbarProps>(
       onIncludeCancelledChange,
       assignedToMe,
       onAssignedToMeChange,
+      sortMode,
+      onSortModeChange,
+      showArchived,
+      onShowArchivedChange,
       canManage,
       loading,
       onRefresh,
@@ -107,6 +125,31 @@ export const BoardToolbar = forwardRef<HTMLInputElement, BoardToolbarProps>(
               ].join(" ")}
             >
               {f.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Sort pill toggle — Newest (createdAt desc) | A–Z (customer) */}
+        <div
+          className="inline-flex items-center gap-0.5 rounded-full border border-[#E6E1D4] bg-white p-0.5"
+          role="group"
+          aria-label="Sort cards"
+        >
+          <ArrowDownWideNarrow className="ml-1.5 mr-0.5 h-3.5 w-3.5 shrink-0 text-[#A0A0A0]" strokeWidth={1.5} />
+          {SORT_MODES.map((s) => (
+            <button
+              key={s.key}
+              type="button"
+              onClick={() => onSortModeChange(s.key)}
+              aria-pressed={sortMode === s.key}
+              className={[
+                "rounded-full px-2.5 py-0.5 text-[12px] font-medium transition-colors",
+                sortMode === s.key
+                  ? "bg-[#1A1A1A] text-white"
+                  : "text-[#3A3A3A] hover:bg-[#FAF8F2]",
+              ].join(" ")}
+            >
+              {s.label}
             </button>
           ))}
         </div>
@@ -171,6 +214,22 @@ export const BoardToolbar = forwardRef<HTMLInputElement, BoardToolbarProps>(
             </>
           )}
         </div>
+
+        {/* Archived view toggle — swaps the board for a searchable archived list */}
+        <button
+          type="button"
+          onClick={() => onShowArchivedChange(!showArchived)}
+          aria-pressed={showArchived}
+          className={[
+            "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-medium transition-colors",
+            showArchived
+              ? "border-[#1A1A1A] bg-[#1A1A1A] text-white"
+              : "border-[#E6E1D4] bg-white text-[#3A3A3A] hover:bg-[#FAF8F2]",
+          ].join(" ")}
+        >
+          <Archive className="h-3.5 w-3.5" strokeWidth={1.5} />
+          {showArchived ? "Active board" : "Archived"}
+        </button>
 
         {/* Spacer */}
         <div className="flex-1" />

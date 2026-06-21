@@ -42,15 +42,23 @@ import {
   deleteServiceJob,
   listServiceJobPhotos,
   listTimeEntries,
+  setContractValue,
+  setMaterialsCost,
+  displayJobNumber,
   type ServiceJob,
   type ServiceJobStatus,
   type ServiceJobPhoto,
   type ServiceJobTimeEntry,
 } from '../../lib/api/serviceJobs';
+import {
+  getServiceJobProfit,
+  type JobProfitResult,
+} from '../../lib/api/labourRates';
 import { listProfiles } from '../../lib/api/profiles';
 import type { Profile } from '../../types';
 import { JobPhotosSection } from './JobPhotosSection';
 import { TimeEntriesSection } from './TimeEntriesSection';
+import ProfitSummaryCard from './ProfitSummaryCard';
 
 // ─── Status metadata ──────────────────────────────────────────────────────────
 
@@ -58,11 +66,15 @@ const STATUS_META: Record<ServiceJobStatus, { label: string; pill: string }> = {
   pending:     { label: 'Pending',     pill: 'bg-[#EEF1F4] text-[#5B6B7B] border-[#D8DFE8]' },
   scheduled:   { label: 'Scheduled',   pill: 'bg-[#F9EFD9] text-[#C8841E] border-[#E8D8B5]' },
   in_progress: { label: 'In Progress', pill: 'bg-[#E5F2EA] text-[#246F47] border-[#C8E0D2]' },
-  done:        { label: 'Done',        pill: 'bg-[#E5F2EA] text-[#246F47] border-[#C8E0D2]' },
+  done:        { label: 'Completed',   pill: 'bg-[#E5F2EA] text-[#246F47] border-[#C8E0D2]' },
+  invoiced:    { label: 'Invoiced',    pill: 'bg-[#F6E7DA] text-[#A35C2B] border-[#E8D0BB]' },
+  paid:        { label: 'Paid',        pill: 'bg-[#E5F2EA] text-[#246F47] border-[#C8E0D2]' },
+  archived:    { label: 'Archived',    pill: 'bg-[#ECE8DE] text-[#6B6B6B] border-[#DAD3C4]' },
   cancelled:   { label: 'Cancelled',   pill: 'bg-[#FBE5E5] text-[#C44545] border-[#F0C8C8]' },
 };
 
-const ALL_STATUSES: ServiceJobStatus[] = ['pending', 'scheduled', 'in_progress', 'done', 'cancelled'];
+const ALL_STATUSES: ServiceJobStatus[] =
+  ['pending', 'scheduled', 'in_progress', 'done', 'invoiced', 'paid', 'archived', 'cancelled'];
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -287,6 +299,66 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
     }
   };
 
+  // ── Profit (manager only) ──────────────────────────────────────────────────
+  const [profit,        setProfit]        = useState<JobProfitResult | null>(null);
+  const [profitLoading, setProfitLoading] = useState(false);
+
+  const fetchProfit = useCallback(async () => {
+    if (!canManage) return;
+    setProfitLoading(true);
+    try {
+      const p = await getServiceJobProfit(jobId);
+      setProfit(p);
+    } catch {
+      // Non-fatal: card stays null
+    } finally {
+      setProfitLoading(false);
+    }
+  }, [canManage, jobId]);
+
+  // Fetch profit on drawer open (after main load) and whenever jobId changes.
+  useEffect(() => {
+    void fetchProfit();
+  }, [fetchProfit]);
+
+  // ── Set Financials modal state ─────────────────────────────────────────────
+  const [finModalOpen,    setFinModalOpen]    = useState(false);
+  const [finContract,     setFinContract]     = useState('');
+  const [finMaterials,    setFinMaterials]    = useState('');
+  const [finSaving,       setFinSaving]       = useState(false);
+  const [finError,        setFinError]        = useState<string | null>(null);
+
+  // Pre-fill financials modal from the current job whenever it opens.
+  useEffect(() => {
+    if (!finModalOpen || !job) return;
+    setFinContract(job.contractValue !== null ? String(job.contractValue) : '');
+    setFinMaterials(job.materialsCost !== null ? String(job.materialsCost) : '');
+    setFinError(null);
+  }, [finModalOpen, job]);
+
+  const handleFinSave = async () => {
+    if (!job) return;
+    setFinSaving(true);
+    setFinError(null);
+    try {
+      const newContract  = finContract.trim()  === '' ? null : parseFloat(finContract);
+      const newMaterials = finMaterials.trim() === '' ? null : parseFloat(finMaterials);
+      const promises: Promise<void>[] = [];
+      if (newContract !== job.contractValue)  promises.push(setContractValue(job.id, newContract));
+      if (newMaterials !== job.materialsCost) promises.push(setMaterialsCost(job.id, newMaterials));
+      await Promise.all(promises);
+      // Refresh job row so contractValue/materialsCost are up-to-date for next open.
+      const refreshed = await getServiceJob(job.id);
+      if (refreshed) setJob(refreshed);
+      setFinModalOpen(false);
+      await fetchProfit();
+    } catch (e) {
+      setFinError(e instanceof Error ? e.message : 'Save failed.');
+    } finally {
+      setFinSaving(false);
+    }
+  };
+
   // ── Delete ─────────────────────────────────────────────────────────────────
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -308,7 +380,8 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
 
   // ── Refresh callback for child sections ────────────────────────────────────
   const handleSectionChanged = useCallback(async () => {
-    // Re-fetch photos + time entries only (not the full job)
+    // Re-fetch photos + time entries only (not the full job), then refresh profit
+    // so adding/removing a time entry is immediately reflected in the profit card.
     try {
       const [ph, te] = await Promise.all([
         listServiceJobPhotos(jobId),
@@ -319,8 +392,9 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
     } catch {
       // Non-fatal: parent can retry
     }
+    void fetchProfit();
     onChanged();
-  }, [jobId, onChanged]);
+  }, [jobId, onChanged, fetchProfit]);
 
   // ─── Render ────────────────────────────────────────────────────────────────
 
@@ -344,6 +418,9 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
           <div className="min-w-0 flex-1">
             {job ? (
               <div className="flex flex-wrap items-center gap-2">
+                {displayJobNumber(job) && (
+                  <span className="font-mono text-[12px] text-[#A0A0A0]">#{displayJobNumber(job)}</span>
+                )}
                 <h2
                   className="text-[17px] font-medium text-[#1A1A1A] truncate"
                   style={{ fontFamily: "'Fraunces', Georgia, serif" }}
@@ -744,6 +821,20 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
                   onChanged={handleSectionChanged}
                 />
               )}
+
+              {/* ── Profit (manager only) ────────────────────────────── */}
+              {canManage && (
+                <section>
+                  <label className="block mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                    Profit
+                  </label>
+                  <ProfitSummaryCard
+                    profit={profit}
+                    loading={profitLoading}
+                    onSetFinancials={() => setFinModalOpen(true)}
+                  />
+                </section>
+              )}
             </>
           )}
         </div>
@@ -792,6 +883,106 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
           </footer>
         )}
       </div>
+
+      {/* ── Set Financials modal (manager only) ────────────────────────── */}
+      {finModalOpen && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-[#1A1A1A]/50 p-4"
+          style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}
+        >
+          <div className="flex max-h-[90dvh] w-full max-w-sm flex-col overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_8px_28px_rgba(20,20,20,0.12)]">
+            {/* Header */}
+            <div className="flex items-start justify-between border-b border-[#E6E1D4] px-6 py-4">
+              <div>
+                <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-[#6B6B6B]">
+                  Service Job
+                </p>
+                <h2
+                  className="mt-1 text-xl font-medium text-[#1A1A1A]"
+                  style={{ fontFamily: "'Fraunces', Georgia, serif", letterSpacing: '-0.02em' }}
+                >
+                  Set financials
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFinModalOpen(false)}
+                disabled={finSaving}
+                className="rounded-md p-2 text-[#A0A0A0] hover:bg-[#F0EDE4] hover:text-[#3A3A3A] disabled:opacity-50"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            {/* Body */}
+            <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
+              <p className="text-sm text-[#6B6B6B]">
+                Enter the contract value (revenue) and materials cost for this job. Both fields are optional and clearable.
+              </p>
+              <div>
+                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">
+                  Contract value (AUD, ex GST)
+                </label>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step={0.01}
+                  value={finContract}
+                  onChange={(e) => setFinContract(e.target.value)}
+                  placeholder="e.g. 1500.00"
+                  disabled={finSaving}
+                  className="block w-full rounded-md border border-[#E6E1D4] px-3 py-2 text-sm shadow-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] disabled:opacity-50"
+                />
+                <p className="mt-0.5 text-[10px] text-[#A0A0A0]">Leave blank to clear.</p>
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">
+                  Materials cost (AUD)
+                </label>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step={0.01}
+                  value={finMaterials}
+                  onChange={(e) => setFinMaterials(e.target.value)}
+                  placeholder="e.g. 320.00"
+                  disabled={finSaving}
+                  className="block w-full rounded-md border border-[#E6E1D4] px-3 py-2 text-sm shadow-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] disabled:opacity-50"
+                />
+                <p className="mt-0.5 text-[10px] text-[#A0A0A0]">Leave blank to clear.</p>
+              </div>
+              {finError && (
+                <p className="rounded-md border border-[#F0BFBF] bg-[#FBE5E5] px-3 py-2 text-xs text-[#C44545]">
+                  {finError}
+                </p>
+              )}
+            </div>
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-2 border-t border-[#E6E1D4] bg-[#FAF8F2] px-6 py-3">
+              <button
+                type="button"
+                onClick={() => setFinModalOpen(false)}
+                disabled={finSaving}
+                className="rounded-full border border-[#E6E1D4] bg-white px-4 py-1.5 text-[12px] font-medium text-[#3A3A3A] hover:bg-[#FAF8F2] disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleFinSave()}
+                disabled={finSaving}
+                className="inline-flex items-center gap-1.5 rounded-full bg-[#2F8F5C] px-4 py-1.5 text-[12px] font-semibold text-white hover:bg-[#246F47] disabled:opacity-50"
+              >
+                {finSaving ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : null}
+                {finSaving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </MotionDrawer>
   );
 }

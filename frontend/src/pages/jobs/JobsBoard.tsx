@@ -42,7 +42,7 @@ import { LedgerHeader, cardShell, FRAUNCES, TONE } from "../gantt/components/led
 import { Toaster } from "../../components/ui/Toaster";
 import { BoardSkeleton } from "../../components/ui/skeleton";
 import { BoardCardItem } from "./BoardCardItem";
-import { BoardToolbar, type TypeFilter } from "./BoardToolbar";
+import { BoardToolbar, type TypeFilter, type SortMode } from "./BoardToolbar";
 import { ScheduleDatePopover } from "./ScheduleDatePopover";
 import { NewWorkModal } from "./NewWorkModal";
 import { ServiceJobDrawer } from "./ServiceJobDrawer";
@@ -71,14 +71,18 @@ const COLUMN_ACCENT: Record<BoardColumn, string> = {
   pending:     "#8A8378",
   scheduled:   "#1A1A1A",
   in_progress: TONE.amber.dot,
-  done:        "#2F8F5C",
+  completed:   "#2F8F5C",
+  invoiced:    "#C8841E",
+  paid:        "#246F47",
 };
 
 const COLUMNS: { key: BoardColumn; label: string }[] = [
   { key: "pending",     label: "Pending" },
   { key: "scheduled",   label: "Scheduled" },
   { key: "in_progress", label: "In Progress" },
-  { key: "done",        label: "Done" },
+  { key: "completed",   label: "Completed" },
+  { key: "invoiced",    label: "Invoiced" },
+  { key: "paid",        label: "Paid" },
 ];
 
 /** Per-column quiet lines — italic serif, the house voice (Design §7). */
@@ -86,7 +90,9 @@ const EMPTY_COPY: Record<BoardColumn, string> = {
   pending:     "Nothing pending — the books are clear.",
   scheduled:   "Nothing scheduled yet.",
   in_progress: "All quiet on the tools.",
-  done:        "Nothing closed out yet.",
+  completed:   "Nothing completed yet.",
+  invoiced:    "Nothing invoiced yet.",
+  paid:        "Nothing paid yet.",
 };
 
 // Entrance choreography: orchestrated fade-up per mount.
@@ -94,6 +100,13 @@ const COL_STAGGER = 0.05;
 const CARD_STAGGER = 0.02;
 const CARD_STAGGER_CAP = 5;
 const ENTRANCE_DURATION = 0.14;
+
+// How many cards a column renders before collapsing the rest behind a
+// "Show all N" toggle. Post-SimPro-import a column can hold 1,000+ cards;
+// rendering them all turns the board into an unreadable "long receipt" and
+// thrashes layout. The column count stays accurate (header shows the true
+// total) — only the DOM is windowed. Expand restores the full (scrollable) list.
+const COLUMN_RENDER_CAP = 20;
 
 /** Settle spring for card moves between/within columns. */
 const CARD_LAYOUT_SPRING = { type: "spring", stiffness: 500, damping: 35 } as const;
@@ -150,11 +163,14 @@ export default function JobsBoard({ embedded = false, onCardsChanged }: JobsBoar
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [includeCancelled, setIncludeCancelled] = useState(false);
+  // When on, the board swaps the active columns for a searchable archived list.
+  const [showArchived, setShowArchived] = useState(false);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
 
   // ── Search + filters ──────────────────────────────────────────────────────
   const [search, setSearch] = useState("");
   const [assignedToMe, setAssignedToMe] = useState(false);
+  const [sortMode, setSortMode] = useState<SortMode>("date");
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // ── Profiles map ──────────────────────────────────────────────────────────
@@ -165,6 +181,8 @@ export default function JobsBoard({ embedded = false, onCardsChanged }: JobsBoar
   const [dragOver, setDragOver] = useState<BoardColumn | null>(null);
   const [draggingKey, setDraggingKey] = useState<string | null>(null);
   const [optimisticMove, setOptimisticMove] = useState<Map<string, BoardColumn>>(new Map());
+  // Columns the user has expanded past COLUMN_RENDER_CAP (the rest stay windowed).
+  const [expandedCols, setExpandedCols] = useState<Set<BoardColumn>>(new Set());
 
   // Date popover
   const [pendingSchedule, setPendingSchedule] = useState<PendingSchedule | null>(null);
@@ -226,13 +244,16 @@ export default function JobsBoard({ embedded = false, onCardsChanged }: JobsBoar
       if (!silent || !hasLoadedRef.current) setLoading(true);
       setError(null);
       try {
-        const data = await fetchBoardCards({ includeCancelled });
+        const data = await fetchBoardCards({ includeCancelled, includeArchived: showArchived });
         setCards(data);
         onCardsChanged?.(data);
         hasLoadedRef.current = true;
         if (!silent) {
-          const open = data.filter((c) => !c.cancelled && c.column !== "done").length;
-          announce(`${open} job${open !== 1 ? "s" : ""} across 4 columns`);
+          const open = data.filter(
+            (c) => !c.cancelled && !c.archived &&
+              c.column !== "completed" && c.column !== "invoiced" && c.column !== "paid",
+          ).length;
+          announce(`${open} open job${open !== 1 ? "s" : ""} across ${COLUMNS.length} columns`);
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Failed to load jobs board.";
@@ -241,7 +262,7 @@ export default function JobsBoard({ embedded = false, onCardsChanged }: JobsBoar
         setLoading(false);
       }
     },
-    [includeCancelled, onCardsChanged, announce],
+    [includeCancelled, showArchived, onCardsChanged, announce],
   );
 
   useEffect(() => {
@@ -498,7 +519,9 @@ export default function JobsBoard({ embedded = false, onCardsChanged }: JobsBoar
       pending: "pending",
       scheduled: "scheduled",
       in_progress: "in_progress",
-      done: "done",
+      completed: "done",
+      invoiced: "invoiced",
+      paid: "paid",
     };
     setNewJobInitialStatus(statusMap[col]);
     setShowNewJobModal(true);
@@ -538,14 +561,45 @@ export default function JobsBoard({ embedded = false, onCardsChanged }: JobsBoar
     return override ? { ...c, column: override } : c;
   });
 
-  // Cards per column — cancelled cards always sink to bottom of Done
-  const cardsForColumn = (col: BoardColumn): BoardCard[] => {
-    const normal = cardsWithOptimistic.filter((c) => c.column === col && !c.cancelled);
-    if (col === "done") {
-      const cancelled = cardsWithOptimistic.filter((c) => c.column === "done" && c.cancelled);
-      return [...normal, ...cancelled];
+  // Sort cards within a column per the toolbar toggle:
+  //   "date" → newest first (createdAt desc)
+  //   "az"   → alphabetical by customer name (clientLabel); nulls last
+  const sortCards = (list: BoardCard[]): BoardCard[] => {
+    if (sortMode === "az") {
+      return [...list].sort((a, b) => {
+        const al = a.clientLabel;
+        const bl = b.clientLabel;
+        if (al === null && bl === null) return 0;
+        if (al === null) return 1; // nulls last
+        if (bl === null) return -1;
+        return al.localeCompare(bl, undefined, { sensitivity: "base" });
+      });
     }
-    return normal;
+    // "date" → newest createdAt first
+    return [...list].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  };
+
+  // Cards per column — cancelled cards always sink to bottom of Done.
+  // Open columns honour the sort toggle. For Done: "date" mode shows
+  // most-recently-closed first (completedAt desc — the meaningful "newest" for
+  // closed work, since the column is windowed to COLUMN_RENDER_CAP); "az" mode
+  // sorts by customer. Either way, cancelled cards sink to the bottom.
+  const cardsForColumn = (col: BoardColumn): BoardCard[] => {
+    const normal = cardsWithOptimistic.filter((c) => c.column === col && !c.cancelled && !c.archived);
+    if (col === "completed") {
+      const ordered =
+        sortMode === "az"
+          ? sortCards(normal)
+          : [...normal].sort((a, b) => {
+              if (a.completedAt && b.completedAt) return b.completedAt.localeCompare(a.completedAt);
+              if (a.completedAt) return -1; // dated-closed before undated (projects)
+              if (b.completedAt) return 1;
+              return 0;
+            });
+      const cancelled = cardsWithOptimistic.filter((c) => c.column === "completed" && c.cancelled);
+      return [...ordered, ...cancelled];
+    }
+    return sortCards(normal);
   };
 
   // ── Micro-metric helper per column ───────────────────────────────────────
@@ -576,13 +630,16 @@ export default function JobsBoard({ embedded = false, onCardsChanged }: JobsBoar
             Avg age {metrics.inProgressAvgAgeD}d
           </span>
         );
-      case "done":
+      case "completed":
         return (
           <span className="flex items-center gap-1 text-[11px] text-[#6B6B6B]">
             <CheckCircle2 className="h-3 w-3 shrink-0" strokeWidth={1.5} />
             {metrics.doneClosedToday} closed today
           </span>
         );
+      case "invoiced":
+      case "paid":
+        return null;
     }
   }
 
@@ -624,6 +681,10 @@ export default function JobsBoard({ embedded = false, onCardsChanged }: JobsBoar
           onIncludeCancelledChange={setIncludeCancelled}
           assignedToMe={assignedToMe}
           onAssignedToMeChange={setAssignedToMe}
+          sortMode={sortMode}
+          onSortModeChange={setSortMode}
+          showArchived={showArchived}
+          onShowArchivedChange={setShowArchived}
           canManage={canManage}
           loading={loading}
           onRefresh={() => void loadCards()}
@@ -651,7 +712,7 @@ export default function JobsBoard({ embedded = false, onCardsChanged }: JobsBoar
         )}
 
         {/* Board columns */}
-        {!loading && !error && (
+        {!loading && !error && !showArchived && (
           <MotionConfig reducedMotion="user">
             <div className="flex gap-3 overflow-x-auto pb-2">
               {COLUMNS.map((col, colIndex) => {
@@ -659,6 +720,13 @@ export default function JobsBoard({ embedded = false, onCardsChanged }: JobsBoar
                 const isOver = dragOver === col.key;
                 const entrancePlayed = entrancePlayedRef.current;
                 const microMetric = renderMicroMetric(col.key);
+                // Window the list: render at most COLUMN_RENDER_CAP unless expanded.
+                const isExpanded = expandedCols.has(col.key);
+                const overCap = colCards.length > COLUMN_RENDER_CAP;
+                // "Add job" makes sense in the working columns, not the terminal
+                // money stages — you don't create a brand-new job already Invoiced/Paid.
+                const canAddHere = canManage && col.key !== "invoiced" && col.key !== "paid";
+                const shownCards = isExpanded ? colCards : colCards.slice(0, COLUMN_RENDER_CAP);
 
                 return (
                   <motion.div
@@ -706,11 +774,15 @@ export default function JobsBoard({ embedded = false, onCardsChanged }: JobsBoar
                       )}
                     </div>
 
-                    {/* Cards */}
+                    {/* Cards — windowed + independently scrollable so the page
+                        never grows past the column's max height (no "long receipt"). */}
                     <div
                       className={[
-                        "flex min-h-[120px] flex-1 flex-col gap-2 p-3",
-                        col.key === "done" ? "opacity-80" : "",
+                        "flex min-h-[120px] flex-1 flex-col gap-2 overflow-y-auto p-3",
+                        "max-h-[60vh]",
+                        col.key === "completed" || col.key === "invoiced" || col.key === "paid"
+                          ? "opacity-80"
+                          : "",
                       ].join(" ")}
                     >
                       {colCards.length === 0 ? (
@@ -721,11 +793,13 @@ export default function JobsBoard({ embedded = false, onCardsChanged }: JobsBoar
                           {EMPTY_COPY[col.key]}
                         </p>
                       ) : (
-                        colCards.map((card, cardIndex) => {
+                        shownCards.map((card, cardIndex) => {
                           const cardKey = `${card.type}-${card.id}`;
+                          // Only stagger the first screenful; expanded tails appear instantly.
                           const cardDelay =
-                            colIndex * COL_STAGGER +
-                            Math.min(cardIndex, CARD_STAGGER_CAP) * CARD_STAGGER;
+                            cardIndex < CARD_STAGGER_CAP
+                              ? colIndex * COL_STAGGER + cardIndex * CARD_STAGGER
+                              : 0;
 
                           return (
                             <motion.div
@@ -756,25 +830,91 @@ export default function JobsBoard({ embedded = false, onCardsChanged }: JobsBoar
                           );
                         })
                       )}
-
-                      {/* Inline composer — ghost "+ Add job" at each column's bottom */}
-                      {canManage && (
-                        <button
-                          type="button"
-                          onClick={() => openNewJobForColumn(col.key)}
-                          className="mt-1 flex items-center gap-1.5 rounded-[9px] border border-dashed border-[#D8D2C4] px-3 py-2 text-[12px] text-[#A0A0A0] transition-colors hover:border-[#2F8F5C] hover:text-[#2F8F5C] hover:bg-[#F0FAF4]"
-                        >
-                          <span className="text-base leading-none">+</span>
-                          Add job
-                        </button>
-                      )}
                     </div>
+
+                    {/* Pinned footer — Show-all toggle + Add job, below the scroll so
+                        both stay reachable and full-opacity (the Done body is muted). */}
+                    {(overCap || canAddHere) && (
+                      <div className="flex flex-col gap-2 border-t border-[#E6E1D4] p-3">
+                        {overCap && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedCols((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(col.key)) next.delete(col.key);
+                                else next.add(col.key);
+                                return next;
+                              })
+                            }
+                            className="self-center rounded-full border border-[#E6E1D4] bg-white px-3 py-1 text-[11px] font-semibold text-[#3A3A3A] transition-colors hover:bg-[#FAF8F2]"
+                          >
+                            {isExpanded
+                              ? `Show less (top ${COLUMN_RENDER_CAP})`
+                              : `Show all ${colCards.length.toLocaleString("en-AU")}`}
+                          </button>
+                        )}
+                        {canAddHere && (
+                          <button
+                            type="button"
+                            onClick={() => openNewJobForColumn(col.key)}
+                            className="flex w-full items-center justify-center gap-1.5 rounded-[9px] border border-dashed border-[#D8D2C4] px-3 py-2 text-[12px] text-[#A0A0A0] transition-colors hover:border-[#2F8F5C] hover:text-[#2F8F5C] hover:bg-[#F0FAF4]"
+                          >
+                            <span className="text-base leading-none">+</span>
+                            Add job
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </motion.div>
                 );
               })}
             </div>
           </MotionConfig>
         )}
+
+        {/* Archived view — a flat, searchable list (archived jobs leave the active
+            board but stay reachable here for reference). Reuses the search + type
+            filters already applied to visibleCards. */}
+        {!loading && !error && showArchived && (() => {
+          const archived = sortCards(visibleCards.filter((c) => c.archived));
+          return (
+            <div className={`${cardShell} overflow-hidden`}>
+              <div className="flex items-center justify-between border-b border-[#E6E1D4] bg-[#FAF8F2] px-4 py-3">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6B6B6B]">
+                  Archived
+                </span>
+                <span className="rounded-full border border-[#E6E1D4] bg-white px-2 py-0.5 text-[11px] font-semibold tabular-nums text-[#3A3A3A]">
+                  {archived.length}
+                </span>
+              </div>
+              {archived.length === 0 ? (
+                <p
+                  className="px-4 py-12 text-center text-[13px] italic text-[#A0A0A0]"
+                  style={{ fontFamily: FRAUNCES }}
+                >
+                  No archived jobs{search.trim() ? " match your search" : ""}.
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 gap-2 p-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {archived.map((card) => (
+                    <BoardCardItem
+                      key={`${card.type}-${card.id}`}
+                      card={card}
+                      draggable={false}
+                      isDragging={false}
+                      onOpenService={(id) => setOpenJobId(id)}
+                      profilesById={profilesById}
+                      canManage={canManage}
+                      todayIso={todayIso}
+                      now={nowDate}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* ── Schedule date popover ─────────────────────────────────────────── */}

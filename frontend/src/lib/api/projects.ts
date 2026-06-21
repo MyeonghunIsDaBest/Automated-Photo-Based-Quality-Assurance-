@@ -18,6 +18,10 @@ export interface ProjectRow {
   end_date: string;
   status: 'active' | 'on_hold' | 'completed' | 'archived';
   budget: number | null;
+  contract_value: number | null;
+  materials_cost: number | null;
+  /** Sim-Pro job number when this project was promoted from an import; else null. */
+  external_ref: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -111,5 +115,35 @@ export async function updateProject(
 export async function deleteProject(id: string): Promise<void> {
   if (!supabaseConfigured()) throw NOT_CONFIGURED;
   const { error } = await supabase.from('projects').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ---------------------------------------------------------------------------
+// Financial setters (PP1 — manager-gated by RLS)
+// ---------------------------------------------------------------------------
+
+/**
+ * Set (or clear) the contract value on a project.
+ * Pass null to explicitly clear the field.
+ */
+export async function setContractValue(id: string, value: number | null): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { error } = await supabase
+    .from('projects')
+    .update({ contract_value: value, updated_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) throw error;
+}
+
+/**
+ * Set (or clear) the manual materials cost on a project.
+ * Pass null to explicitly clear the field (means "not entered").
+ */
+export async function setMaterialsCost(id: string, value: number | null): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { error } = await supabase
+    .from('projects')
+    .update({ materials_cost: value, updated_at: new Date().toISOString() })
+    .eq('id', id);
   if (error) throw error;
 }

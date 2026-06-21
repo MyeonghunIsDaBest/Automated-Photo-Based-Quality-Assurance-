@@ -1,13 +1,17 @@
 import { useState, useRef, type ChangeEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { useFeatureStore } from '../store/features';
 import { uploadAvatar, updateProfile } from '../lib/api/profiles';
-import { User, Bell, Shield, Mail, Phone, Globe, Lock, Key, Save, Eye, EyeOff, Camera, Loader2, Trash2 } from 'lucide-react';
+import { User, Bell, Shield, Mail, Phone, Globe, Lock, Key, Save, Eye, EyeOff, Camera, Loader2, Trash2, LayoutGrid, Building2 } from 'lucide-react';
 import { EditorialPageHeader, PageContainer, StatStrip, StatCell } from '../components/editorial';
-import { FRAUNCES } from './gantt/components/ledger';
+import { FRAUNCES, btnPrimary, btnGhost } from './gantt/components/ledger';
 
 export default function Settings() {
-  const { currentUser, setNotification, setCurrentAvatar } = useAppStore();
+  const { currentUser, currentProfile, setNotification, setCurrentAvatar } = useAppStore();
+  const navigate = useNavigate();
+  // The dev superuser can hop between the staff workspace and the customer portal.
+  const isDev = currentProfile?.securityGroup === 'dev';
   const { userSettings, updateUserSettings, updatePassword, updateEmail } = useFeatureStore();
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'notifications'>('profile');
 
@@ -169,6 +173,29 @@ export default function Settings() {
           <StatCell label="Safety alerts" value={notifications.safetyAlerts ? 'On' : 'Off'} caption="Immediate pages" accent={notifications.safetyAlerts ? 'emerald' : 'rose'} />
           <StatCell label="Timezone" value={tzLabel} caption="Local time" accent="slate" />
         </StatStrip>
+
+        {/* Dev-only — switch between the staff workspace and the customer portal. */}
+        {isDev && (
+          <div className="rounded-[14px] border border-[#E6E1D4] bg-white p-5 shadow-[0_1px_2px_rgba(20,20,20,0.04)]">
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-[#1A1A1A] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-white">Dev</span>
+              <h2 className="text-[15px] font-medium text-[#1A1A1A]" style={{ fontFamily: FRAUNCES }}>Switch view</h2>
+            </div>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-[#6B6B6B]">
+              You're a dev superuser — jump between the staff workspace and the customer portal to test both.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button type="button" onClick={() => navigate('/dashboard')} className={btnPrimary}>
+                <LayoutGrid className="h-4 w-4" />
+                Staff dashboard
+              </button>
+              <button type="button" onClick={() => navigate('/customer')} className={btnGhost}>
+                <Building2 className="h-4 w-4" />
+                Customer portal
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Sidebar stacks above the panel on mobile; sits beside it on md+. */}
         <div className="flex flex-col gap-6 md:flex-row">

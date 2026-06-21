@@ -2,9 +2,11 @@
 // pages/jobs/SimproJobsTab.tsx — the "Sim-Pro Jobs" body of the Jobs hub.
 //
 // A staging workspace for jobs imported from Simpro CSV exports:
-//   • Hero card — 5 Simpro-stage count tiles + total loaded + action buttons.
-//   • Stage tab-strip (In Progress / Pending / Complete / Invoiced / Archived).
-//   • Searchable browse table of staged jobs.
+//   • Slim header — title + one-line summary + action buttons (Template / Upload
+//     CSV / New job / Confirm import). Sits under the Jobs-hub masthead.
+//   • Register card — a cream toolbar band (stage tab-strip = the per-stage
+//     counts + search) above a slim 7-column browse table of staged jobs.
+//   • Per-row expander — job detail strip + crew + an inline scheduling Gantt.
 //   • Upload new CSV  → parse (pure) → preview + plan → persist to simpro_jobs.
 //   • Confirm import  → promote staged jobs into projects / service_jobs.
 //
@@ -25,8 +27,10 @@ import {
   CalendarRange,
   GripVertical,
   Plus,
+  Pencil,
   ZoomIn,
   ZoomOut,
+  ArrowDownWideNarrow,
 } from 'lucide-react';
 
 import { useAppStore } from '../../store';
@@ -61,10 +65,12 @@ import {
   importStagedJobs,
   confirmImport,
   createSimproJob,
+  updateSimproJob,
   scheduleSimproJob,
   unscheduleSimproJob,
   type StagedJob,
   type CreateSimproJobInput,
+  type UpdateSimproJobInput,
 } from '../../lib/api/simproJobs';
 import {
   listCrewForSimproJobs,
@@ -107,7 +113,15 @@ const CATEGORY_LABEL: Record<SimproCategory, string> = {
 
 // The browse-table column count — kept in one place so loading/empty colSpans
 // and the expander's full-width <td> all stay in sync with the header array.
-const COLUMN_COUNT = 10; // Type, Job, Description, Customer, Site, Suburb, Phone, Due, Stage, Actions
+// Slimmed from 10 → 7: the Stage column is dropped (the active tab already pins
+// the stage), Suburb is folded under Site, and Phone moves into the expander.
+const COLUMN_COUNT = 7; // Type, Job, Description, Customer, Site, Due, Actions
+
+// Browse-table fetch cap. A single stage can hold 1,000+ imported jobs; rendering
+// them all is an unreadable "long receipt". We fetch at most this many (most-recent
+// first) and nudge the user to search to narrow. Stage totals stay accurate (they
+// come from stageCounts(), not this list).
+const BROWSE_LIMIT = 100;
 
 /** A deterministic warm-ish tint from a user id, for crew avatar backgrounds. */
 function avatarTint(id: string): string {
@@ -138,6 +152,10 @@ export default function SimproJobsTab() {
   const [total, setTotal] = useState(0);
   const [activeStage, setActiveStage] = useState<SimproStage>('in_progress');
   const [search, setSearch] = useState('');
+  // Sort order for the browse list. "date" = newest first; imported jobs have no
+  // created-date in the Sim-Pro export, so the sequential job number (externalRef)
+  // IS the creation-order signal — highest number = newest. "az" = by customer.
+  const [sortMode, setSortMode] = useState<'date' | 'az'>('date');
   const [jobs, setJobs] = useState<StagedJob[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -145,6 +163,8 @@ export default function SimproJobsTab() {
   const [importOpen, setImportOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  // The staged job currently open in the Edit modal (null = closed).
+  const [editingJob, setEditingJob] = useState<StagedJob | null>(null);
 
   // Visible width of the table's scroll viewport — pins the inline timeline so a
   // wide Gantt scrolls INSIDE the row instead of stretching the table/page wider.
@@ -192,7 +212,11 @@ export default function SimproJobsTab() {
   const refreshList = useCallback(async () => {
     setLoading(true);
     try {
-      const rows = await listSimproJobs({ stage: activeStage, search: search.trim() || undefined });
+      const rows = await listSimproJobs({
+        stage: activeStage,
+        search: search.trim() || undefined,
+        limit: BROWSE_LIMIT,
+      });
       setJobs(rows);
     } catch (err) {
       setToast({ message: err instanceof Error ? err.message : 'Failed to load jobs', type: 'error' });
@@ -200,6 +224,36 @@ export default function SimproJobsTab() {
       setLoading(false);
     }
   }, [activeStage, search]);
+
+  // Render order for the browse table. The fetch returns newest-imported first;
+  // we re-sort client-side (the list is capped at BROWSE_LIMIT) per the toggle.
+  //   "date" → Sim-Pro job number descending (highest = newest; NaN sinks last)
+  //   "az"   → customer name ascending (nulls last)
+  const displayJobs = useMemo(() => {
+    const copy = [...jobs];
+    if (sortMode === 'az') {
+      copy.sort((a, b) => {
+        const an = a.customerName;
+        const bn = b.customerName;
+        if (!an && !bn) return 0;
+        if (!an) return 1;
+        if (!bn) return -1;
+        return an.localeCompare(bn, undefined, { sensitivity: 'base' });
+      });
+    } else {
+      copy.sort((a, b) => {
+        const na = parseInt(a.externalRef, 10);
+        const nb = parseInt(b.externalRef, 10);
+        const aNaN = Number.isNaN(na);
+        const bNaN = Number.isNaN(nb);
+        if (aNaN && bNaN) return 0;
+        if (aNaN) return 1;
+        if (bNaN) return -1;
+        return nb - na;
+      });
+    }
+    return copy;
+  }, [jobs, sortMode]);
 
   // Crew assignments for all currently-loaded jobs (the expander reads from this
   // map; loading all of them up-front keeps expanding a row instant). Clears any
@@ -329,139 +383,130 @@ export default function SimproJobsTab() {
 
   return (
     <div className="space-y-5">
-      {/* ── Hero card ─────────────────────────────────────────────────────── */}
-      <div className={`overflow-hidden ${cardShell}`}>
-        <div className="flex flex-col gap-5 px-5 py-5 sm:px-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="leading-tight">
-              <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#6B6B6B]">
-                PP2 · SIMPRO JOB IMPORT · CASONE ELECTRICAL
-              </div>
-              <h1
-                className="m-0 text-[28px] font-medium leading-none text-[#1A1A1A] sm:text-[32px]"
-                style={{ fontFamily: FRAUNCES, letterSpacing: '-0.02em' }}
-              >
-                Simpro <span className="italic text-[#2F8F5C]">jobs.</span>
-              </h1>
-              <p className="mt-2 max-w-xl text-[13px] leading-relaxed text-[#6B6B6B]">
-                {total > 0 ? (
-                  <>
-                    {total.toLocaleString('en-AU')} job{total === 1 ? '' : 's'} across 5 stages loaded
-                    from Simpro CSV exports. Browse, search, and confirm the import into SiteProof.
-                  </>
-                ) : (
-                  <>No Simpro jobs loaded yet. Upload a Simpro CSV export to stage jobs here, then confirm them into SiteProof.</>
-                )}
-              </p>
-            </div>
-
-            {canManage && (
-              <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
-                <button type="button" onClick={downloadTemplate} className={btnGhost}>
-                  <Download className="h-4 w-4" />
-                  Download template
-                </button>
-                <button type="button" onClick={() => setImportOpen(true)} className={btnGhost}>
-                  <Upload className="h-4 w-4" />
-                  Upload new CSV
-                </button>
-                <button type="button" onClick={() => setCreateOpen(true)} className={btnGhost}>
-                  <Plus className="h-4 w-4" />
-                  New job
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirmOpen(true)}
-                  disabled={total === 0}
-                  className={btnPrimary}
-                >
-                  <CheckCircle2 className="h-4 w-4" />
-                  Confirm import
-                </button>
-              </div>
-            )}
+      {/* ── Header ────────────────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="leading-tight">
+          <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#6B6B6B]">
+            SIMPRO IMPORT · CASONE ELECTRICAL
           </div>
+          <h1
+            className="m-0 text-[28px] font-medium leading-none text-[#1A1A1A] sm:text-[32px]"
+            style={{ fontFamily: FRAUNCES, letterSpacing: '-0.02em' }}
+          >
+            Simpro <span className="italic text-[#2F8F5C]">jobs.</span>
+          </h1>
+          <p className="mt-2 max-w-xl text-[13px] leading-relaxed text-[#6B6B6B]">
+            {total > 0 ? (
+              <>
+                {total.toLocaleString('en-AU')} job{total === 1 ? '' : 's'} staged from Simpro CSV
+                exports. Browse a stage, schedule the work, then confirm into SiteProof.
+              </>
+            ) : (
+              <>No Simpro jobs loaded yet. Upload a Simpro CSV export to stage jobs here, then confirm them into SiteProof.</>
+            )}
+          </p>
+        </div>
 
-          {/* Stage count tiles + total */}
-          <div className="flex flex-wrap items-center gap-x-8 gap-y-4 border-t border-[#EFEBE0] pt-4">
+        {canManage && (
+          <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
+            <button type="button" onClick={downloadTemplate} className={btnGhost}>
+              <Download className="h-4 w-4" />
+              Template
+            </button>
+            <button type="button" onClick={() => setImportOpen(true)} className={btnGhost}>
+              <Upload className="h-4 w-4" />
+              Upload CSV
+            </button>
+            <button type="button" onClick={() => setCreateOpen(true)} className={btnGhost}>
+              <Plus className="h-4 w-4" />
+              New job
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmOpen(true)}
+              disabled={total === 0}
+              className={btnPrimary}
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              Confirm import
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ── Register: stage tabs + search toolbar, then the browse table ────── */}
+      <div className={`overflow-hidden ${cardShell}`}>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E6E1D4] bg-[#FAF8F2] px-4 py-3">
+          <div className="inline-flex flex-wrap items-center gap-1">
             {SIMPRO_STAGES.map((s) => {
+              const isActive = activeStage === s;
               const t = TONE[STAGE_TONE[s]];
               return (
-                <div key={s} className="min-w-[92px]">
-                  <div
-                    className="text-[24px] font-medium leading-none tabular-nums text-[#1A1A1A]"
-                    style={{ fontFamily: FRAUNCES }}
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setActiveStage(s)}
+                  className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-[13px] font-medium transition-colors ${
+                    isActive ? 'bg-[#1A1A1A] text-white shadow-sm' : 'text-[#6B6B6B] hover:bg-[#EFEBE0] hover:text-[#1A1A1A]'
+                  }`}
+                >
+                  {!isActive && (
+                    <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ background: t.dot }} aria-hidden />
+                  )}
+                  {STAGE_LABEL[s]}
+                  <span
+                    className={`rounded-full px-1.5 text-[11px] font-semibold tabular-nums ${
+                      isActive ? 'bg-white/20 text-white' : 'bg-[#E6E1D4] text-[#6B6B6B]'
+                    }`}
                   >
                     {counts[s].toLocaleString('en-AU')}
-                  </div>
-                  <div className="mt-1.5 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-[#6B6B6B]">
-                    <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ background: t.dot }} aria-hidden />
-                    {STAGE_LABEL[s]}
-                  </div>
-                </div>
+                  </span>
+                </button>
               );
             })}
-            <div className="ml-auto text-right">
-              <div
-                className="text-[24px] font-medium leading-none tabular-nums text-[#1A1A1A]"
-                style={{ fontFamily: FRAUNCES }}
-              >
-                {total.toLocaleString('en-AU')}
-              </div>
-              <div className="mt-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-[#A0A0A0]">
-                Total jobs loaded
-              </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Sort toggle — Newest (job number desc) | A–Z (customer) */}
+            <div
+              className="inline-flex items-center gap-0.5 rounded-full border border-[#E6E1D4] bg-white p-0.5"
+              role="group"
+              aria-label="Sort jobs"
+            >
+              <ArrowDownWideNarrow className="ml-1.5 mr-0.5 h-3.5 w-3.5 shrink-0 text-[#A0A0A0]" strokeWidth={1.5} />
+              {(['date', 'az'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setSortMode(m)}
+                  aria-pressed={sortMode === m}
+                  className={`rounded-full px-2.5 py-1 text-[12px] font-medium transition-colors ${
+                    sortMode === m ? 'bg-[#1A1A1A] text-white' : 'text-[#3A3A3A] hover:bg-[#EFEBE0]'
+                  }`}
+                >
+                  {m === 'date' ? 'Newest' : 'A–Z'}
+                </button>
+              ))}
+            </div>
+
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#A0A0A0]" />
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search job no., description, customer…"
+                className="w-72 max-w-full rounded-full border border-[#E6E1D4] bg-white py-2 pl-9 pr-3 text-sm text-[#1A1A1A] placeholder:text-[#A0A0A0] focus:border-[#D8D2C4] focus:outline-none"
+              />
             </div>
           </div>
         </div>
-      </div>
 
-      {/* ── Stage tabs + search ───────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="inline-flex flex-wrap items-center gap-1 rounded-2xl border border-[#E6E1D4] bg-[#FAF8F2] p-1">
-          {SIMPRO_STAGES.map((s) => {
-            const isActive = activeStage === s;
-            return (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setActiveStage(s)}
-                className={`flex items-center gap-2 rounded-xl px-3 py-1.5 text-sm font-medium transition-colors ${
-                  isActive ? 'bg-[#1A1A1A] text-white shadow-sm' : 'text-[#6B6B6B] hover:bg-[#F0EDE4] hover:text-[#1A1A1A]'
-                }`}
-              >
-                {STAGE_LABEL[s]}
-                <span
-                  className={`rounded-full px-1.5 text-[11px] font-semibold tabular-nums ${
-                    isActive ? 'bg-white/20 text-white' : 'bg-[#E6E1D4] text-[#6B6B6B]'
-                  }`}
-                >
-                  {counts[s].toLocaleString('en-AU')}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#A0A0A0]" />
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search job no., description, customer…"
-            className="w-72 max-w-full rounded-full border border-[#E6E1D4] bg-white py-2 pl-9 pr-3 text-sm text-[#1A1A1A] placeholder:text-[#A0A0A0] focus:border-[#D8D2C4] focus:outline-none"
-          />
-        </div>
-      </div>
-
-      {/* ── Browse table ──────────────────────────────────────────────────── */}
-      <div className={`overflow-hidden ${cardShell}`}>
         <div ref={tableWrapRef} className="overflow-x-auto">
           <table className="min-w-full text-[13px]">
-            <thead className="border-b border-[#E6E1D4] bg-[#FAF8F2]">
+            <thead className="border-b border-[#E6E1D4] bg-white">
               <tr>
-                {['Type', 'Job', 'Description', 'Customer', 'Site', 'Suburb', 'Phone', 'Due', 'Stage'].map((h) => (
+                {['Type', 'Job', 'Description', 'Customer', 'Site', 'Due'].map((h) => (
                   <th
                     key={h}
                     className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]"
@@ -490,7 +535,7 @@ export default function SimproJobsTab() {
                   </td>
                 </tr>
               ) : (
-                jobs.map((j) => {
+                displayJobs.map((j) => {
                   const cat = inferCategory(j.description);
                   const expanded = expandedId === j.id;
                   return (
@@ -510,26 +555,43 @@ export default function SimproJobsTab() {
                         <td className="max-w-[240px] truncate px-3 py-2.5 font-medium text-[#1A1A1A]" title={j.description ?? ''}>
                           {j.description ?? '—'}
                         </td>
-                        <td className="px-3 py-2.5 text-[#3A3A3A]">{j.customerName ?? '—'}</td>
-                        <td className="max-w-[180px] truncate px-3 py-2.5 text-[#6B6B6B]" title={j.siteName ?? ''}>
-                          {j.siteName ?? '—'}
+                        <td className="max-w-[180px] truncate px-3 py-2.5 text-[#3A3A3A]" title={j.customerName ?? ''}>
+                          {j.customerName ?? '—'}
                         </td>
-                        <td className="px-3 py-2.5 text-[#6B6B6B]">{j.suburb ?? '—'}</td>
-                        <td className="px-3 py-2.5 text-[#6B6B6B]">{j.telephone ?? '—'}</td>
+                        <td className="max-w-[200px] px-3 py-2.5">
+                          <div className="truncate text-[#3A3A3A]" title={j.siteName ?? ''}>
+                            {j.siteName ?? '—'}
+                          </div>
+                          {j.suburb && (
+                            <div className="truncate text-[11.5px] text-[#A0A0A0]" title={j.suburb}>
+                              {j.suburb}
+                            </div>
+                          )}
+                        </td>
                         <td className="px-3 py-2.5 font-mono text-[12px] text-[#6B6B6B]">{j.dueDate ?? '—'}</td>
                         <td className="px-3 py-2.5">
-                          <StatusPill tone={STAGE_TONE[j.stage]} className="whitespace-nowrap">{STAGE_LABEL[j.stage]}</StatusPill>
-                        </td>
-                        <td className="px-3 py-2.5 text-right">
-                          <button
-                            type="button"
-                            onClick={() => setExpandedId((id) => (id === j.id ? null : j.id))}
-                            aria-expanded={expanded}
-                            className="inline-flex items-center gap-1 rounded-full border border-[#E6E1D4] bg-white px-2.5 py-1 text-[12px] font-semibold text-[#3A3A3A] transition-colors hover:bg-[#FAF8F2]"
-                          >
-                            <CalendarRange className="h-3.5 w-3.5" />
-                            {expanded ? 'Hide' : 'View'}
-                          </button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            {canManage && (
+                              <button
+                                type="button"
+                                onClick={() => setEditingJob(j)}
+                                aria-label={`Edit job #${j.externalRef}`}
+                                className="inline-flex items-center gap-1 rounded-full border border-[#E6E1D4] bg-white px-2.5 py-1 text-[12px] font-semibold text-[#3A3A3A] transition-colors hover:bg-[#FAF8F2]"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                                Edit
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setExpandedId((id) => (id === j.id ? null : j.id))}
+                              aria-expanded={expanded}
+                              className="inline-flex items-center gap-1 rounded-full border border-[#E6E1D4] bg-white px-2.5 py-1 text-[12px] font-semibold text-[#3A3A3A] transition-colors hover:bg-[#FAF8F2]"
+                            >
+                              <CalendarRange className="h-3.5 w-3.5" />
+                              {expanded ? 'Hide' : 'View'}
+                            </button>
+                          </div>
                         </td>
                       </tr>
                       {expanded && (
@@ -557,6 +619,24 @@ export default function SimproJobsTab() {
             </tbody>
           </table>
         </div>
+
+        {/* Truncation hint — the list is capped at BROWSE_LIMIT; the tab badge
+            shows the true stage total. Nudge toward search to find a specific job. */}
+        {!loading && jobs.length >= BROWSE_LIMIT && (
+          <div className="border-t border-[#E6E1D4] bg-[#FAF8F2] px-4 py-2.5 text-center text-[12px] text-[#6B6B6B]">
+            {search.trim() ? (
+              <>Showing the first {BROWSE_LIMIT} matches — refine your search to narrow it down.</>
+            ) : (
+              <>
+                Showing the {BROWSE_LIMIT} most recent of{' '}
+                <span className="font-semibold text-[#3A3A3A]">
+                  {counts[activeStage].toLocaleString('en-AU')}
+                </span>{' '}
+                {STAGE_LABEL[activeStage].toLowerCase()} jobs — search by job no., description, or customer to narrow.
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {importOpen && (
@@ -588,6 +668,19 @@ export default function SimproJobsTab() {
           onCreated={async () => {
             setCreateOpen(false);
             setToast({ message: 'Job created', type: 'success' });
+            await afterWrite();
+          }}
+          onError={(msg) => setToast({ message: msg, type: 'error' })}
+        />
+      )}
+
+      {editingJob && (
+        <EditJobModal
+          job={editingJob}
+          onClose={() => setEditingJob(null)}
+          onSaved={async () => {
+            setEditingJob(null);
+            setToast({ message: 'Job updated', type: 'success' });
             await afterWrite();
           }}
           onError={(msg) => setToast({ message: msg, type: 'error' })}
@@ -1080,6 +1173,247 @@ function CreateJobModal({
   );
 }
 
+// ─── Edit modal — correct a staged job's fields + stage ──────────────────────
+// Mirrors CreateJobModal, pre-filled from the row. For fixing bad imported data
+// (wrong customer, description, stage, etc.) before confirming. Does not touch
+// the schedule bar (the expander owns that) or promotion state.
+
+function EditJobModal({
+  job,
+  onClose,
+  onSaved,
+  onError,
+}: {
+  job: StagedJob;
+  onClose: () => void;
+  onSaved: () => void | Promise<void>;
+  onError: (msg: string) => void;
+}) {
+  const initialCategory: SimproCategory =
+    job.category && (CREATE_CATEGORIES as string[]).includes(job.category)
+      ? (job.category as SimproCategory)
+      : 'other';
+
+  const [busy, setBusy] = useState(false);
+  const [externalRef, setExternalRef] = useState(job.externalRef);
+  const [description, setDescription] = useState(job.description ?? '');
+  const [customerName, setCustomerName] = useState(job.customerName ?? '');
+  const [siteName, setSiteName] = useState(job.siteName ?? '');
+  const [siteAddress, setSiteAddress] = useState(job.siteAddress ?? '');
+  const [suburb, setSuburb] = useState(job.suburb ?? '');
+  const [telephone, setTelephone] = useState(job.telephone ?? '');
+  const [email, setEmail] = useState(job.email ?? '');
+  const [category, setCategory] = useState<SimproCategory>(initialCategory);
+  const [stage, setStage] = useState<SimproStage>(job.stage);
+  const [dueDate, setDueDate] = useState(job.dueDate ?? '');
+
+  const refTrimmed = externalRef.trim();
+  const canSubmit = refTrimmed !== '' && !busy;
+
+  const clean = (v: string): string | null => {
+    const t = v.trim();
+    return t === '' ? null : t;
+  };
+
+  async function handleSave() {
+    if (!canSubmit) return;
+    setBusy(true);
+    try {
+      const patch: UpdateSimproJobInput = {
+        externalRef: refTrimmed,
+        description: clean(description),
+        customerName: clean(customerName),
+        telephone: clean(telephone),
+        email: clean(email),
+        siteName: clean(siteName),
+        siteAddress: clean(siteAddress),
+        suburb: clean(suburb),
+        stage,
+        dueDate: clean(dueDate),
+      };
+      // Only write category when the user actually changed it — otherwise a job
+      // whose stored category was null/unknown (default-coerced to 'other') would
+      // be silently rewritten to 'other' on an unrelated edit.
+      if (category !== initialCategory) patch.category = category;
+      await updateSimproJob(job.id, patch);
+      await onSaved();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'Failed to save job');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const fieldCls =
+    'w-full rounded-[10px] border border-[#E6E1D4] bg-white px-3 py-2 text-sm text-[#1A1A1A] placeholder:text-[#A0A0A0] focus:border-[#D8D2C4] focus:outline-none';
+  const labelCls = 'mb-1 block text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6B6B6B]';
+
+  return (
+    <ModalShell title={`Edit job #${job.externalRef}`} onClose={onClose}>
+      <form
+        className="space-y-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void handleSave();
+        }}
+      >
+        {job.promotedAt && (
+          <div className="rounded-[10px] border border-[#EAD9B0] bg-[#FBF4E2] px-3 py-2 text-[12px] leading-relaxed text-[#9A6B12]">
+            This job has already been imported into SiteProof. Edits here update the staging
+            record only — they won't change the job already on the board.
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label className={labelCls}>
+              Job no. <span className="text-[#C44545]">*</span>
+            </label>
+            <input
+              type="text"
+              value={externalRef}
+              onChange={(e) => setExternalRef(e.target.value)}
+              placeholder="e.g. 10482"
+              required
+              className={fieldCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Customer</label>
+            <input
+              type="text"
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+              placeholder="Customer name"
+              className={fieldCls}
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className={labelCls}>Description</label>
+          <input
+            type="text"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="What's the job?"
+            className={fieldCls}
+          />
+        </div>
+
+        <div>
+          <label className={labelCls}>Site</label>
+          <input
+            type="text"
+            value={siteName}
+            onChange={(e) => setSiteName(e.target.value)}
+            placeholder="Site name"
+            className={fieldCls}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label className={labelCls}>Site address</label>
+            <input
+              type="text"
+              value={siteAddress}
+              onChange={(e) => setSiteAddress(e.target.value)}
+              placeholder="Street address"
+              className={fieldCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Suburb</label>
+            <input
+              type="text"
+              value={suburb}
+              onChange={(e) => setSuburb(e.target.value)}
+              placeholder="Suburb"
+              className={fieldCls}
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label className={labelCls}>Phone</label>
+            <input
+              type="text"
+              value={telephone}
+              onChange={(e) => setTelephone(e.target.value)}
+              placeholder="Contact phone"
+              className={fieldCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Email</label>
+            <input
+              type="text"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Contact email"
+              className={fieldCls}
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label className={labelCls}>Type</label>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value as SimproCategory)}
+              className={fieldCls}
+            >
+              {CREATE_CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {CATEGORY_LABEL[c]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={labelCls}>Due date</label>
+            <input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              className={fieldCls}
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className={labelCls}>Stage / status</label>
+          <select
+            value={stage}
+            onChange={(e) => setStage(e.target.value as SimproStage)}
+            className={fieldCls}
+          >
+            {SIMPRO_STAGES.map((s) => (
+              <option key={s} value={s}>
+                {STAGE_LABEL[s]}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-[#EFEBE0] pt-4">
+          <button type="button" onClick={onClose} className={btnGhost} disabled={busy}>
+            Cancel
+          </button>
+          <button type="submit" disabled={!canSubmit} className={btnPrimary}>
+            {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            <CheckCircle2 className="h-4 w-4" />
+            Save changes
+          </button>
+        </div>
+      </form>
+    </ModalShell>
+  );
+}
+
 // ─── Crew avatar ─────────────────────────────────────────────────────────────
 // 28px circle, deterministic tint, initials (or avatar img). Assigned = full
 // opacity + sage ring; unassigned = dimmed. Clickable only when canManage.
@@ -1141,6 +1475,19 @@ function MiniAvatars({ profiles, max = 3 }: { profiles: Profile[]; max?: number 
         </span>
       ))}
     </span>
+  );
+}
+
+// A single label/value fact in the expander's detail strip (recovers the
+// columns the slimmed browse table no longer shows inline).
+function JobFact({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="leading-tight">
+      <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#A0A0A0]">
+        {label}
+      </div>
+      <div className="text-[12.5px] font-medium text-[#3A3A3A]">{children}</div>
+    </div>
   );
 }
 
@@ -1303,6 +1650,27 @@ function JobScheduleExpander({
 
   return (
     <div className="px-4 py-3">
+      {/* ── Job detail (recovers the columns the browse table omits) ────────── */}
+      <div className="mb-3 flex flex-wrap items-start gap-x-8 gap-y-2 border-b border-[#EFEBE0] pb-3">
+        <JobFact label="Stage">
+          <StatusPill tone={STAGE_TONE[job.stage]} className="whitespace-nowrap">
+            {STAGE_LABEL[job.stage]}
+          </StatusPill>
+        </JobFact>
+        <JobFact label="Site">{job.siteName ?? '—'}</JobFact>
+        <JobFact label="Suburb">{job.suburb ?? '—'}</JobFact>
+        <JobFact label="Phone">
+          {job.telephone ? (
+            <a href={`tel:${job.telephone}`} className="text-[#246F47] hover:underline">
+              {job.telephone}
+            </a>
+          ) : (
+            '—'
+          )}
+        </JobFact>
+        <JobFact label="Due">{job.dueDate ?? '—'}</JobFact>
+      </div>
+
       {/* ── Crew on this job ────────────────────────────────────────────────── */}
       <div className="mb-2">
         <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6B6B6B]">

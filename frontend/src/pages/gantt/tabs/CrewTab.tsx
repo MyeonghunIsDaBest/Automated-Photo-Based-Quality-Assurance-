@@ -13,14 +13,15 @@ import { useAppStore } from '../../../store';
 import { listProjectMembers } from '../../../lib/api/projectMembers';
 import {
   listTimesheets, updateTimesheet, clockIn, clockOut,
-  subscribeToProjectTimesheets, type Timesheet,
+  subscribeToProjectTimesheets, setProjectWorkerRole, type Timesheet,
 } from '../../../lib/api/timesheets';
+import { listLabourRates, type LabourRate } from '../../../lib/api/labourRates';
 import {
   listCertifications, createCertification, deleteCertification,
   subscribeToProjectCertifications, certExpiryState,
   type Certification, type CertKind, type CertExpiryState,
 } from '../../../lib/api/certifications';
-import { canAdminProjects, canManageUsers } from '../../../lib/permissions';
+import { canAdminProjects, canManageUsers, canEditBudget } from '../../../lib/permissions';
 import { AddWorkerModal } from './AddWorkerModal';
 
 // Stage 5 (Workforce) — the Crew register, now folded into the Site Diary as
@@ -85,12 +86,16 @@ export function CrewTab({ project, canEdit, canDelete }: CrewTabProps) {
   // worker accounts.
   const canAddCrew = canAdminProjects(currentProfile);
   const canCreateWorker = canManageUsers(currentProfile);
+  // PP1: only budget/finance managers assign a labour-costing role (same gate as
+  // the Profit card). Rate *names* only ever reach this gate — no $ leaks here.
+  const canCost = canEditBudget(currentProfile);
   const [addOpen, setAddOpen] = useState(false);
 
   const [tab, setTab] = useState<Section>('timeclock');
   const [members, setMembers] = useState<RosterMember[]>([]);
   const [sheets, setSheets] = useState<Timesheet[]>([]);
   const [certs, setCerts] = useState<Certification[]>([]);
+  const [rateRoles, setRateRoles] = useState<string[]>([]);
   const [now, setNow] = useState(Date.now());
   const [acting, setActing] = useState<string | null>(null);
 
@@ -138,6 +143,17 @@ export function CrewTab({ project, canEdit, canDelete }: CrewTabProps) {
     });
     return () => { cancelled = true; unsub(); };
   }, [project.id]);
+
+  // Active labour-rate role names for the costing picker — names only, loaded
+  // once for managers. Workers get [] from RLS, so the picker never renders.
+  useEffect(() => {
+    if (!canCost) return;
+    let cancelled = false;
+    void listLabourRates(false)
+      .then((rs: LabourRate[]) => { if (!cancelled) setRateRoles(rs.map((r) => r.role)); })
+      .catch(() => void 0);
+    return () => { cancelled = true; };
+  }, [canCost]);
 
   const openByName = useMemo(() => {
     const m = new Map<string, Timesheet>();
@@ -207,6 +223,17 @@ export function CrewTab({ project, canEdit, canDelete }: CrewTabProps) {
       .catch((err) => setNotification({ message: err instanceof Error ? err.message : 'Could not approve hours.', type: 'error' }));
   };
 
+  // PP1: tag a worker's labour-costing role across ALL their timesheets on this
+  // project (optimistic; bulk write reconciled by the realtime UPDATE stream).
+  const onSetRole = (workerName: string, role: string | null) => {
+    const prev = sheets;
+    setSheets((p) => p.map((x) => (x.workerName === workerName ? { ...x, role } : x)));
+    void setProjectWorkerRole(project.id, workerName, role).catch((err) => {
+      setSheets(prev);
+      setNotification({ message: err instanceof Error ? err.message : 'Could not set role.', type: 'error' });
+    });
+  };
+
   const onAddCert = async (input: { workerName: string; kind: CertKind; name: string; expiryDate?: string; required: boolean }) => {
     const created = await createCertification(project.id, { ...input, createdBy: currentUser?.id ?? 'system' });
     setCerts((p) => (p.some((x) => x.id === created.id) ? p : [created, ...p]));
@@ -265,7 +292,16 @@ export function CrewTab({ project, canEdit, canDelete }: CrewTabProps) {
         <TimeClockView members={members} sheets={sheets} now={now} acting={acting} canToggle={canToggle} onClock={onClock} onSaveNote={onSaveNote} />
       )}
       {tab === 'timesheets' && (
-        <TimesheetsView sheets={sheets} members={members} now={now} canEdit={canEdit} onApprove={onApprove} />
+        <TimesheetsView
+          sheets={sheets}
+          members={members}
+          now={now}
+          canEdit={canEdit}
+          onApprove={onApprove}
+          canCost={canCost}
+          rateRoles={rateRoles}
+          onSetRole={onSetRole}
+        />
       )}
       {tab === 'certifications' && (
         <CertificationsView certs={certs} canEdit={canEdit} canDelete={canDelete} onAdd={onAddCert} onRemove={onRemoveCert} />
@@ -464,6 +500,8 @@ const TS_TONE: Record<'approved' | 'pending' | 'submitted', ToneKey> = {
 interface WeekRow {
   name: string;
   role?: string;
+  /** PP1 labour-costing role (from timesheets.role), null = uncosted. */
+  costingRole: string | null;
   days: number[];
   total: number;
   status: 'approved' | 'pending' | 'submitted';
@@ -471,13 +509,17 @@ interface WeekRow {
 }
 
 function TimesheetsView({
-  sheets, members, now, canEdit, onApprove,
+  sheets, members, now, canEdit, onApprove, canCost, rateRoles, onSetRole,
 }: {
   sheets: Timesheet[];
   members: RosterMember[];
   now: number;
   canEdit: boolean;
   onApprove: (ids: string[]) => void;
+  /** PP1: budget/finance managers may tag each worker's labour-costing role. */
+  canCost: boolean;
+  rateRoles: string[];
+  onSetRole: (workerName: string, role: string | null) => void;
 }) {
   const [week, setWeek] = useState<'this' | 'last'>('this');
 
@@ -497,11 +539,15 @@ function TimesheetsView({
       if (d < ws || d > we) continue;
       const idx = (d.getDay() + 6) % 7;
       const row = byWorker.get(s.workerName) ?? {
-        name: s.workerName, role: roleByName.get(s.workerName), days: [0, 0, 0, 0, 0, 0, 0],
+        name: s.workerName, role: roleByName.get(s.workerName), costingRole: null,
+        days: [0, 0, 0, 0, 0, 0, 0],
         total: 0, status: 'approved' as const, pendingIds: [],
       };
       row.days[idx] += s.hours;
       row.total += s.hours;
+      // First non-null costing role wins (all of a worker's rows share one role
+      // after a set, so the visible week reflects the project-wide value).
+      if (row.costingRole === null && s.role) row.costingRole = s.role;
       if (s.status !== 'approved') {
         row.pendingIds.push(s.id);
         row.status = s.status === 'submitted' && row.status !== 'pending' ? 'submitted' : 'pending';
@@ -561,7 +607,26 @@ function TimesheetsView({
                   <tr key={r.name} className="sp-fade border-b border-[#EFEBE0] transition last:border-b-0 hover:bg-[#FAF8F2]" style={{ animationDelay: `${ri * 45}ms` }}>
                     <td className="px-4 py-3">
                       <p className="font-semibold text-[#1A1A1A]">{r.name}</p>
-                      {r.role && <p className="text-[11px] capitalize text-[#6B6B6B]">{r.role.replace(/_/g, ' ')}</p>}
+                      {canCost && rateRoles.length > 0 ? (
+                        <select
+                          value={r.costingRole ?? ''}
+                          onChange={(e) => onSetRole(r.name, e.target.value || null)}
+                          aria-label={`Labour-costing role for ${r.name}`}
+                          title="Costing role — sets the rate this worker's hours cost at"
+                          className={`mt-1 rounded-md border px-2 py-1 text-[11px] capitalize focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]/30 ${
+                            r.costingRole
+                              ? 'border-[#E6E1D4] bg-white text-[#3A3A3A]'
+                              : 'border-dashed border-[#D8B25F] bg-[#FBF4E2] text-[#9A6B12]'
+                          }`}
+                        >
+                          <option value="">Set role…</option>
+                          {rateRoles.map((role) => (
+                            <option key={role} value={role}>{role}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        r.role && <p className="text-[11px] capitalize text-[#6B6B6B]">{r.role.replace(/_/g, ' ')}</p>
+                      )}
                     </td>
                     {r.days.map((h, i) => (
                       <td key={i} className="px-2 py-2 text-center">
