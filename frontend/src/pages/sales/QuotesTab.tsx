@@ -34,6 +34,8 @@ interface Props {
   onChanged: () => void;
   /** Manager-only: surface the internal cost/margin view in the quote editor. */
   canSeeCost?: boolean;
+  /** Deep-link: open this quote in the editor on mount (e.g. from a job drawer). */
+  initialQuoteId?: string | null;
 }
 
 // â”€â”€â”€ status pill tokens â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -232,7 +234,7 @@ function NewQuoteModal({
 
 const ALL_STATUSES: QuoteStatus[] = ["draft", "sent", "viewed", "accepted", "declined", "expired"];
 
-export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost = false }: Props) {
+export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost = false, initialQuoteId = null }: Props) {
   const [quotes, setQuotes]       = useState<Quote[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -244,8 +246,13 @@ export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost
   );
 
   const [showNewModal, setShowNewModal]   = useState(false);
-  const [selectedId, setSelectedId]       = useState<string | null>(null);
+  const [selectedId, setSelectedId]       = useState<string | null>(initialQuoteId);
   const [toast, setToast]                 = useState<ToastState>(null);
+
+  // Deep-link: open the requested quote when the caller changes initialQuoteId.
+  useEffect(() => {
+    if (initialQuoteId) setSelectedId(initialQuoteId);
+  }, [initialQuoteId]);
 
   const customersLoaded = useRef(false);
 

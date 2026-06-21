@@ -33,12 +33,13 @@ import {
 
 const MaterialsTab   = lazyWithRetry(() => import("./MaterialsTab"));
 const PrebuildsTab   = lazyWithRetry(() => import("./PrebuildsTab"));
+const TemplatesTab   = lazyWithRetry(() => import("./TemplatesTab"));
 const ImportTab      = lazyWithRetry(() => import("./ImportTab"));
 const SuggestionsTab = lazyWithRetry(() => import("./SuggestionsTab"));
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
-type TabKey = "materials" | "prebuilds" | "import" | "suggestions";
+type TabKey = "materials" | "prebuilds" | "templates" | "import" | "suggestions";
 
 interface CountState {
   materials: number;
@@ -124,7 +125,7 @@ export default function Catalogue() {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const rawTab = searchParams.get("tab");
-  const VALID_TABS: TabKey[] = ["materials", "prebuilds", "import", "suggestions"];
+  const VALID_TABS: TabKey[] = ["materials", "prebuilds", "templates", "import", "suggestions"];
   const activeTab: TabKey = VALID_TABS.includes(rawTab as TabKey)
     ? (rawTab as TabKey)
     : "materials";
@@ -179,6 +180,7 @@ export default function Catalogue() {
   const TABS: { key: TabKey; label: string }[] = [
     { key: "materials",   label: "Materials"   },
     { key: "prebuilds",   label: "Prebuilds"   },
+    { key: "templates",   label: "Templates"   },
     { key: "import",      label: "Import"      },
     { key: "suggestions", label: "Suggestions" },
   ];
@@ -266,6 +268,9 @@ export default function Catalogue() {
           )}
           {activeTab === "prebuilds" && (
             <PrebuildsTab onWritten={bumpCounts} />
+          )}
+          {activeTab === "templates" && (
+            <TemplatesTab onWritten={bumpCounts} />
           )}
           {activeTab === "import" && (
             <ImportTab onWritten={bumpCounts} />

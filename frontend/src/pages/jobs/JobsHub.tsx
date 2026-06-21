@@ -18,10 +18,10 @@ import { lazyWithRetry } from "../../lib/lazyWithRetry";
 import { BoardSkeleton, SkeletonCard } from "../../components/ui/skeleton";
 import { Navigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ClipboardList, FolderOpen, KanbanSquare, HelpCircle, Upload } from "lucide-react";
+import { ClipboardList, FolderOpen, KanbanSquare, HelpCircle, Upload, Receipt } from "lucide-react";
 
 import { useAppStore } from "../../store";
-import { canViewJobsBoard } from "../../lib/permissions";
+import { canViewJobsBoard, canManageSales } from "../../lib/permissions";
 import { FRAUNCES, TONE } from "../gantt/components/ledger";
 import type { BoardCard } from "../../lib/api/jobsBoard";
 import { ShortcutsModal } from "./ShortcutsModal";
@@ -33,6 +33,7 @@ import { ShortcutsModal } from "./ShortcutsModal";
 const JobsBoard     = lazyWithRetry(() => import("./JobsBoard"));
 const Projects      = lazyWithRetry(() => import("../Projects"));
 const SimproJobsTab = lazyWithRetry(() => import("./SimproJobsTab"));
+const QuotesTab     = lazyWithRetry(() => import("../sales/QuotesTab"));
 
 // ─── loading fallbacks — view-shaped skeletons, never a blank flash ──────────
 
@@ -110,15 +111,23 @@ export default function JobsHub() {
   const currentProfile = useAppStore((s) => s.currentProfile);
   const currentUser    = useAppStore((s) => s.currentUser);
 
+  // Managers (canManageSales) get a Quotes view; workers don't (costs stay hidden).
+  const canSell = canManageSales(currentProfile ?? currentUser);
+
   const [searchParams, setSearchParams] = useSearchParams();
   const rawView = searchParams.get("view");
-  const view: "board" | "projects" | "simpro" =
-    rawView === "projects" ? "projects" : rawView === "simpro" ? "simpro" : "board";
+  const quoteParam = searchParams.get("quote");
+  const view: "board" | "projects" | "simpro" | "quotes" =
+    rawView === "projects" ? "projects"
+      : rawView === "simpro" ? "simpro"
+      : rawView === "quotes" && canSell ? "quotes"
+      : "board";
 
   const [boardCards, setBoardCards] = useState<BoardCard[]>([]);
   const handleCardsChanged = useCallback((cards: BoardCard[]) => {
     setBoardCards(cards);
   }, []);
+  const noop = useCallback(() => {}, []);
 
   const [showShortcuts, setShowShortcuts] = useState(false);
 
@@ -128,7 +137,7 @@ export default function JobsHub() {
 
   const stats = deriveStats(boardCards);
 
-  const switchView = (next: "board" | "projects" | "simpro") => {
+  const switchView = (next: "board" | "projects" | "simpro" | "quotes") => {
     setSearchParams(next === "board" ? {} : { view: next }, { replace: true });
   };
 
@@ -198,7 +207,10 @@ export default function JobsHub() {
                   { key: "board",    label: "Board",        Icon: ClipboardList },
                   { key: "projects", label: "Projects",     Icon: FolderOpen    },
                   { key: "simpro",   label: "Sim-Pro Jobs", Icon: Upload        },
-                ] as const).map(({ key, label, Icon }) => {
+                  { key: "quotes",   label: "Quotes",       Icon: Receipt       },
+                ] as const)
+                  .filter((t) => t.key !== "quotes" || canSell)
+                  .map(({ key, label, Icon }) => {
                   const isActive = view === key;
                   return (
                     <button
@@ -235,6 +247,14 @@ export default function JobsHub() {
           )}
           {view === "projects" && <Projects />}
           {view === "simpro" && <SimproJobsTab />}
+          {view === "quotes" && (
+            <QuotesTab
+              canSeeCost={canSell}
+              onChanged={noop}
+              initialCustomerFilter={null}
+              initialQuoteId={quoteParam}
+            />
+          )}
         </Suspense>
 
       </div>

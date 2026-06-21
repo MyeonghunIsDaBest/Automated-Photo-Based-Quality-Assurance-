@@ -3549,3 +3549,34 @@ First step of the in-house Sim-Pro-style quoting roadmap. Built + subagent-revie
 Roadmap remaining (each signed off before the next): Step 2 one-click job templates (Take-Off/XF2) → **AI Quote Drafter layers here** → Step 3 full quote header/custom fields → Step 4 attachments + contractor work orders → Step 5 stock + supplier pricing.
 
 State: authored + reviewed clean, nothing committed (Stage-7 hold). Migrations 75–77 await Jordan's apply.
+
+---
+
+## 22 June 2026 (cont.) — Service Quoting integrated into the Jobs hub (Sim-Pro alignment)
+
+Built + subagent-reviewed clean (no CI-killers). NO migration (reuses existing columns). Nothing committed yet.
+
+- **Quotes tab in the Jobs hub:** `/jobs?view=quotes` mounts the existing `QuotesTab` (full quote builder — markup/discount/STC-VEEC/margin from Step 1). Shown in the hub view-switcher **only for `canManageSales`** (workers see the board, not costs/quoting). The `/sales` page stays as the global commercial hub.
+- **Per-job quotes in the drawer:** `ServiceJobDrawer` gains a manager-sales-only **"Quotes"** section listing the job's quotes (number · title · status · total) + a **"New quote for this job"** button → `createQuote({ serviceJobId, customerId, clientName, title })` then deep-links to `/jobs?view=quotes&quote=<id>`. Clicking an existing quote opens it the same way.
+- **Reuse, no rebuild:** `listQuotes` gained a `serviceJobId` filter; `QuotesTab` gained an optional `initialQuoteId` prop (deep-link open). `convertQuoteToJob` + Step-1 pricing all unchanged.
+- Files: `lib/api/commercial.ts`, `pages/sales/QuotesTab.tsx`, `pages/jobs/JobsHub.tsx`, `pages/jobs/ServiceJobDrawer.tsx`.
+
+Next on the quoting roadmap: **Step 2 — one-click job templates (Take-Off/XF2)**, then the **AI Quote Drafter** layers on.
+
+State: authored + reviewed clean, NOT yet committed (awaiting the user's go to push/deploy).
+
+---
+
+## 22 June 2026 (cont.) — Quoting Step 2: one-click job templates (Take-Off/XF2)
+
+Built + subagent-reviewed clean (no CI-killers). Reuses the quote-item adders + the catalogue editor pattern.
+
+- **Migration 78** (`78_quote_templates.sql`, PENDING APPLY): `quote_templates` + `quote_template_items` (kind material/prebuild/labour; material_id/prebuild_id FKs; role; qty; sort_order). Manager-only RLS via `is_manager_or_above()`. Idempotent.
+- **API `lib/api/quoteTemplates.ts`** (NEW): full CRUD + `applyTemplateToQuote(quoteId, templateId)` — drops every template line onto a quote via the EXISTING `addQuoteItemFromMaterial`/`FromPrebuild`/`Labour` adders (so markup/cost/totals are handled identically to manual entry). No cycle.
+- **QuoteEditor:** a 5th add-mode **"Apply template"** → pick a template → all its materials + prebuilds + labour drop in.
+- **Catalogue → Templates tab** (NEW `TemplatesTab.tsx`): manager editor modelled on PrebuildsTab — name/category/description + item rows that can be **material** (catalogue picker + qty), **prebuild** (select), or **labour** (role + hours); reorder/remove; activate. Save = create-or-(update + clear items + re-add). Wired into `Catalogue.tsx` (new tab, route `?tab=templates`).
+- Templates are distinct from material `prebuilds` (a template composes materials + prebuilds + labour for a whole job type — Sim-Pro's "Take-Off").
+
+Next on the roadmap: the **AI Quote Drafter** (approved AI anchor) layers on top of templates + catalogue.
+
+State: authored + reviewed clean. Being pushed with the Jobs↔Quoting integration (Part A). Migration 78 awaits Jordan's apply in Supabase (gitignored backend).

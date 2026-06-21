@@ -27,13 +27,16 @@
 //   Delete job           ✗       ✅
 
 import { useCallback, useEffect, useState } from 'react';
-import { X, Trash2, Loader2, Pencil, Check, X as XIcon } from 'lucide-react';
+import { X, Trash2, Loader2, Pencil, Check, X as XIcon, Plus } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import MotionDrawer from '../../components/ui/MotionDrawer';
 import { useAppStore } from '../../store';
 import {
   canManageServiceJobs,
   canLogServiceJobWork,
+  canManageSales,
 } from '../../lib/permissions';
+import { listQuotes, createQuote, type Quote } from '../../lib/api/commercial';
 import {
   getServiceJob,
   updateServiceJob,
@@ -91,6 +94,8 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
   const currentProfile = useAppStore((s) => s.currentProfile);
   const canManage = canManageServiceJobs(currentProfile);
   const canLog    = canLogServiceJobWork(currentProfile);
+  const canSell   = canManageSales(currentProfile);
+  const navigate  = useNavigate();
 
   // ── Remote data ────────────────────────────────────────────────────────────
   const [job,      setJob]      = useState<ServiceJob | null>(null);
@@ -129,6 +134,39 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // ── Linked quotes (manager-sales only) ─────────────────────────────────────
+  const [jobQuotes, setJobQuotes]       = useState<Quote[]>([]);
+  const [creatingQuote, setCreatingQuote] = useState(false);
+  const [quoteError, setQuoteError]     = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!jobId || !canSell) { setJobQuotes([]); return; }
+    let alive = true;
+    listQuotes({ serviceJobId: jobId })
+      .then((qs) => { if (alive) setJobQuotes(qs); })
+      .catch(() => { /* non-fatal — section just shows empty */ });
+    return () => { alive = false; };
+  }, [jobId, canSell]);
+
+  async function handleNewQuote() {
+    if (!job) return;
+    setCreatingQuote(true);
+    setQuoteError(null);
+    try {
+      const q = await createQuote({
+        serviceJobId: jobId,
+        customerId: job.customerId ?? undefined,
+        clientName: job.clientName ?? undefined,
+        title: job.title,
+      });
+      navigate(`/jobs?view=quotes&quote=${q.id}`);
+    } catch (e) {
+      setQuoteError(e instanceof Error ? e.message : 'Failed to create quote.');
+    } finally {
+      setCreatingQuote(false);
+    }
+  }
 
   // ── Detail edit state ──────────────────────────────────────────────────────
   const [editingDetails, setEditingDetails] = useState(false);
@@ -833,6 +871,52 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
                     loading={profitLoading}
                     onSetFinancials={() => setFinModalOpen(true)}
                   />
+                </section>
+              )}
+
+              {/* ── Quotes (manager-sales only) ──────────────────────── */}
+              {canSell && (
+                <section>
+                  <div className="mb-2 flex items-center justify-between">
+                    <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                      Quotes
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => void handleNewQuote()}
+                      disabled={creatingQuote}
+                      className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[12px] font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      {creatingQuote ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                      New quote for this job
+                    </button>
+                  </div>
+                  {quoteError && <p className="mb-2 text-[11px] text-red-600">{quoteError}</p>}
+                  {jobQuotes.length === 0 ? (
+                    <p className="text-[12px] text-slate-400">No quotes for this job yet.</p>
+                  ) : (
+                    <ul className="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200 bg-white">
+                      {jobQuotes.map((q) => (
+                        <li key={q.id}>
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/jobs?view=quotes&quote=${q.id}`)}
+                            className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-slate-50"
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate text-[13px] font-medium text-slate-800">
+                                {q.number ?? 'Draft'} · {q.title}
+                              </span>
+                              <span className="text-[11px] uppercase tracking-wide text-slate-400">{q.status}</span>
+                            </span>
+                            <span className="shrink-0 tabular-nums text-[13px] text-slate-700">
+                              ${q.totalIncGst.toFixed(2)}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </section>
               )}
             </>

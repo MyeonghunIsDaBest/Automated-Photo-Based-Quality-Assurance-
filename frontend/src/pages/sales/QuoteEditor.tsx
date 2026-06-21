@@ -10,7 +10,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ArrowLeft, Printer, Plus, Trash2, RefreshCw, Search, Package, Clock,
+  ArrowLeft, Printer, Plus, Trash2, RefreshCw, Search, Package, Clock, LayoutTemplate,
 } from "lucide-react";
 
 import { FRAUNCES, TONE, cardShell, btnPrimary, btnGhost } from "../gantt/components/ledger";
@@ -38,11 +38,12 @@ import {
 } from "../../lib/api/commercial";
 import { listMaterials, listPrebuilds, type Material, type Prebuild } from "../../lib/api/materials";
 import { listLabourRates, type LabourRate } from "../../lib/api/labourRates";
+import { listTemplates, applyTemplateToQuote, type QuoteTemplate } from "../../lib/api/quoteTemplates";
 
 // â”€â”€â”€ types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 type ToastState = { message: string; type: "success" | "error" | "info" } | null;
-type AddMode = "catalogue" | "prebuild" | "free" | "labour" | null;
+type AddMode = "catalogue" | "prebuild" | "free" | "labour" | "template" | null;
 
 interface Props {
   quoteId: string;
@@ -136,6 +137,11 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
   const [labourHours, setLabourHours] = useState("1");
   const [addingLabour, setAddingLabour] = useState(false);
 
+  // Job-template picker
+  const [templates, setTemplates] = useState<QuoteTemplate[]>([]);
+  const [templateId, setTemplateId] = useState("");
+  const [applyingTemplate, setApplyingTemplate] = useState(false);
+
   // Discount + solar-rebate inputs (synced from the quote; commit on blur)
   const [discountStr, setDiscountStr] = useState("0");
   const [stcCountStr, setStcCountStr] = useState("0");
@@ -214,6 +220,12 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
     if (addMode !== "labour" || labourRates.length > 0) return;
     listLabourRates(false).then(setLabourRates).catch(() => {});
   }, [addMode, labourRates.length]);
+
+  // Load active templates once when the template mode opens
+  useEffect(() => {
+    if (addMode !== "template" || templates.length > 0) return;
+    listTemplates().then(setTemplates).catch(() => {});
+  }, [addMode, templates.length]);
 
   async function handleItemUpdate(item: QuoteItem, patch: { qty?: number; unitPriceExGst?: number }) {
     setSaving(true);
@@ -346,6 +358,22 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
       setToast({ message: ex instanceof Error ? ex.message : "Failed to save rebates", type: "error" });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleApplyTemplate() {
+    if (!templateId) return;
+    setApplyingTemplate(true);
+    try {
+      await applyTemplateToQuote(quoteId, templateId);
+      setAddMode(null);
+      setTemplateId("");
+      await loadQuote();
+      onChanged();
+    } catch (ex) {
+      setToast({ message: ex instanceof Error ? ex.message : "Failed to apply template", type: "error" });
+    } finally {
+      setApplyingTemplate(false);
     }
   }
 
@@ -641,6 +669,14 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
                   <Clock className="h-4 w-4" />
                   Labour
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setAddMode("template")}
+                  className={btnGhost}
+                >
+                  <LayoutTemplate className="h-4 w-4" />
+                  Apply template
+                </button>
               </div>
             )}
 
@@ -809,6 +845,41 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
                 <p className="mt-2 text-[11px] text-[#A0A0A0]">
                   The line prefills at the role&rsquo;s rate; edit the unit price to mark it up.
                 </p>
+              </div>
+            )}
+
+            {/* Apply-template picker */}
+            {addMode === "template" && (
+              <div className="rounded-[10px] border border-[#E6E1D4] bg-[#FAF8F2] p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-[#6B6B6B]">Apply a job template</p>
+                  <button type="button" onClick={() => { setAddMode(null); setTemplateId(""); }} className="text-xs text-[#A0A0A0] hover:text-[#C44545]">Cancel</button>
+                </div>
+                <div className="flex gap-2">
+                  <select
+                    autoFocus
+                    value={templateId}
+                    onChange={(e) => setTemplateId(e.target.value)}
+                    className="flex-1 rounded-md border border-[#E6E1D4] bg-white px-3 py-2 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
+                  >
+                    <option value="">Select a template...</option>
+                    {templates.map((t) => (
+                      <option key={t.id} value={t.id}>{t.category ? `${t.category} · ${t.name}` : t.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => void handleApplyTemplate()}
+                    disabled={!templateId || applyingTemplate}
+                    className={btnPrimary}
+                  >
+                    {applyingTemplate ? "Applying..." : "Apply"}
+                  </button>
+                </div>
+                {templates.length === 0 && (
+                  <p className="mt-2 text-[11px] text-[#A0A0A0]">No templates yet — create them in Catalogue → Templates.</p>
+                )}
+                <p className="mt-2 text-[11px] text-[#A0A0A0]">Drops all the template&rsquo;s materials, bundles, and labour onto this quote.</p>
               </div>
             )}
           </div>

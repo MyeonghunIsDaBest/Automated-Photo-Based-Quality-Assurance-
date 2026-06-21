@@ -612,11 +612,13 @@ function materialSell(material: { sellPrice: number | null; costPrice: number | 
 export async function listQuotes(filters?: {
   status?: QuoteStatus;
   customerId?: string;
+  serviceJobId?: string;
 }): Promise<Quote[]> {
   if (!supabaseConfigured()) return [];
   let q = supabase.from('quotes').select('*');
   if (filters?.status) q = q.eq('status', filters.status);
   if (filters?.customerId) q = q.eq('customer_id', filters.customerId);
+  if (filters?.serviceJobId) q = q.eq('service_job_id', filters.serviceJobId);
   const { data, error } = await q.order('created_at', { ascending: false });
   if (error) throw error;
   return (data ?? []).map((r) => rowToQuote(r as QuoteRow));
