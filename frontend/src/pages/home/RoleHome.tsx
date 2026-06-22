@@ -104,7 +104,6 @@ export default function RoleHome() {
 
   const n = memberships.length;
   const fullName = (currentUser?.fullName ?? '').trim();
-  const firstName = fullName.split(' ')[0] || 'there';
   const initials = (fullName || deck.roleLabel)
     .split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
   const accountSub = isLoading ? 'loading…' : deck.eyebrowSuffix(n);
