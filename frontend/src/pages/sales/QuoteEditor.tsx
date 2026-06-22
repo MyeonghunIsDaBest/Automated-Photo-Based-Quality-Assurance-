@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft, Printer, Plus, Trash2, RefreshCw, Search, Package, Clock, LayoutTemplate,
+  ChevronUp, ChevronDown,
 } from "lucide-react";
 
 import { FRAUNCES, TONE, cardShell, btnPrimary, btnGhost } from "../gantt/components/ledger";
@@ -31,11 +32,13 @@ import {
   convertQuoteToJob,
   setQuoteDiscount,
   setQuoteRebates,
+  deleteQuote,
   getCommercialSettings,
   type Quote,
   type QuoteItem,
   type CommercialSettings,
 } from "../../lib/api/commercial";
+import { listCustomers, type Customer } from "../../lib/api/customers";
 import { listMaterials, listPrebuilds, type Material, type Prebuild } from "../../lib/api/materials";
 import { listLabourRates, type LabourRate } from "../../lib/api/labourRates";
 import { listTemplates, applyTemplateToQuote, type QuoteTemplate } from "../../lib/api/quoteTemplates";
@@ -95,6 +98,30 @@ function NumCell({
   );
 }
 
+/** Inline-editable text cell (line-item description); commits on blur if changed. */
+function TextCell({
+  value,
+  onCommit,
+  disabled,
+}: {
+  value: string;
+  onCommit: (v: string) => void;
+  disabled: boolean;
+}) {
+  const [local, setLocal] = useState(value);
+  useEffect(() => { setLocal(value); }, [value]);
+  return (
+    <input
+      type="text"
+      value={local}
+      disabled={disabled}
+      onChange={(e) => setLocal(e.target.value)}
+      onBlur={() => { const t = local.trim(); if (t && t !== value) onCommit(t); }}
+      className="w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-sm text-[#1A1A1A] focus:border-[#E6E1D4] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] disabled:opacity-60"
+    />
+  );
+}
+
 // â”€â”€â”€ component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = false }: Props) {
@@ -148,6 +175,19 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
   const [stcPriceStr, setStcPriceStr] = useState("0");
   const [veecStr, setVeecStr] = useState("0");
 
+  // Header / client edit (synced from the quote; commit on blur)
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [titleDraft, setTitleDraft] = useState("");
+  const [validUntilDraft, setValidUntilDraft] = useState("");
+  const [clientMode, setClientMode] = useState<"customer" | "freetext">("freetext");
+  const [customerIdDraft, setCustomerIdDraft] = useState("");
+  const [clientNameDraft, setClientNameDraft] = useState("");
+  const [clientEmailDraft, setClientEmailDraft] = useState("");
+
+  // Delete-quote confirm
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
   const loadQuote = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -177,7 +217,16 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
     setStcCountStr(String(quote.stcCount ?? 0));
     setStcPriceStr(String(quote.stcUnitPriceExGst || settings?.stcUnitPrice || 0));
     setVeecStr(String(quote.veecRebateExGst || 0));
+    setTitleDraft(quote.title);
+    setValidUntilDraft((quote.validUntil ?? "").slice(0, 10));
+    setClientMode(quote.customerId ? "customer" : "freetext");
+    setCustomerIdDraft(quote.customerId ?? "");
+    setClientNameDraft(quote.clientName ?? "");
+    setClientEmailDraft(quote.clientEmail ?? "");
   }, [quote, settings]);
+
+  // Load customers once (for the client picker)
+  useEffect(() => { listCustomers().then(setCustomers).catch(() => {}); }, []);
 
   // Debounced notes save
   useEffect(() => {
@@ -227,7 +276,7 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
     listTemplates().then(setTemplates).catch(() => {});
   }, [addMode, templates.length]);
 
-  async function handleItemUpdate(item: QuoteItem, patch: { qty?: number; unitPriceExGst?: number }) {
+  async function handleItemUpdate(item: QuoteItem, patch: { qty?: number; unitPriceExGst?: number; description?: string }) {
     setSaving(true);
     try {
       await updateQuoteItem(item.id, quoteId, patch);
@@ -356,6 +405,81 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
       onChanged();
     } catch (ex) {
       setToast({ message: ex instanceof Error ? ex.message : "Failed to save rebates", type: "error" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function commitTitle() {
+    if (!quote) return;
+    const t = titleDraft.trim();
+    if (!t || t === quote.title) return;
+    setSaving(true);
+    try { await updateQuote(quoteId, { title: t }); await loadQuote(); onChanged(); }
+    catch (ex) { setToast({ message: ex instanceof Error ? ex.message : "Failed to save title", type: "error" }); }
+    finally { setSaving(false); }
+  }
+
+  async function commitValidUntil() {
+    if (!quote) return;
+    const v = validUntilDraft.trim() || null;
+    if ((v ?? "") === (quote.validUntil ?? "").slice(0, 10)) return;
+    setSaving(true);
+    try { await updateQuote(quoteId, { validUntil: v }); await loadQuote(); onChanged(); }
+    catch (ex) { setToast({ message: ex instanceof Error ? ex.message : "Failed to save validity", type: "error" }); }
+    finally { setSaving(false); }
+  }
+
+  async function commitClient() {
+    if (!quote) return;
+    setSaving(true);
+    try {
+      if (clientMode === "customer") {
+        await updateQuote(quoteId, { customerId: customerIdDraft || null, clientName: null, clientEmail: null });
+      } else {
+        await updateQuote(quoteId, {
+          customerId: null,
+          clientName: clientNameDraft.trim() || null,
+          clientEmail: clientEmailDraft.trim() || null,
+        });
+      }
+      await loadQuote();
+      onChanged();
+    } catch (ex) {
+      setToast({ message: ex instanceof Error ? ex.message : "Failed to save client", type: "error" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      await deleteQuote(quoteId);
+      onChanged();
+      onClose();
+    } catch (ex) {
+      setToast({ message: ex instanceof Error ? ex.message : "Failed to delete quote", type: "error" });
+      setDeleting(false);
+    }
+  }
+
+  // Reorder a line item: recompute 0..n-1 positions for the swapped order.
+  async function moveItem(item: QuoteItem, dir: -1 | 1) {
+    const ordered = [...items];
+    const idx = ordered.findIndex((i) => i.id === item.id);
+    const next = idx + dir;
+    if (idx < 0 || next < 0 || next >= ordered.length) return;
+    [ordered[idx], ordered[next]] = [ordered[next], ordered[idx]];
+    setSaving(true);
+    try {
+      for (let i = 0; i < ordered.length; i++) {
+        if (ordered[i].sortOrder !== i) await updateQuoteItem(ordered[i].id, quoteId, { sortOrder: i });
+      }
+      await loadQuote();
+      onChanged();
+    } catch (ex) {
+      setToast({ message: ex instanceof Error ? ex.message : "Failed to reorder", type: "error" });
     } finally {
       setSaving(false);
     }
@@ -518,8 +642,21 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
             <p className="text-xs text-[#6B6B6B]">
               Created {new Date(quote.createdAt).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" })}
             </p>
+            {/* Valid until — editable on screen (unlocked); always printed as text */}
+            {!isLocked && (
+              <div className="mt-1 flex items-center justify-end gap-1.5 text-xs text-[#6B6B6B] print:hidden">
+                <span>Valid until</span>
+                <input
+                  type="date"
+                  value={validUntilDraft}
+                  onChange={(e) => setValidUntilDraft(e.target.value)}
+                  onBlur={() => void commitValidUntil()}
+                  className="rounded border border-[#E6E1D4] bg-white px-2 py-0.5 text-xs focus:border-[#2F8F5C] focus:outline-none"
+                />
+              </div>
+            )}
             {quote.validUntil && (
-              <p className="text-xs text-[#6B6B6B]">
+              <p className={`text-xs text-[#6B6B6B] ${isLocked ? "" : "hidden print:block"}`}>
                 Valid until {new Date(quote.validUntil).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" })}
               </p>
             )}
@@ -540,14 +677,90 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
           </div>
         </div>
 
-        {/* Customer / client block */}
+        {/* Title + client block */}
         <div className="mb-8 border-t border-[#EFEBE0] pt-6">
+          {/* Title */}
+          <div className="mb-4">
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#A0A0A0]">Title</p>
+            {isLocked ? (
+              <p className="text-base font-semibold text-[#1A1A1A]">{quote.title}</p>
+            ) : (
+              <input
+                value={titleDraft}
+                onChange={(e) => setTitleDraft(e.target.value)}
+                onBlur={() => void commitTitle()}
+                placeholder="Quote title"
+                className="w-full max-w-md rounded-md border border-[#E6E1D4] bg-white px-3 py-1.5 text-base font-semibold text-[#1A1A1A] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] print:border-0 print:px-0"
+              />
+            )}
+          </div>
+
+          {/* Quote for */}
           <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#A0A0A0]">Quote for</p>
-          <p className="text-base font-semibold text-[#1A1A1A]">
-            {quote.clientName ?? (quote.customerId ? "(customer linked)" : "â€”")}
-          </p>
-          {quote.clientEmail && (
-            <p className="text-sm text-[#6B6B6B]">{quote.clientEmail}</p>
+          {isLocked ? (
+            <>
+              <p className="text-base font-semibold text-[#1A1A1A]">
+                {quote.clientName ?? (quote.customerId ? (customers.find((c) => c.id === quote.customerId)?.name ?? "(customer)") : "—")}
+              </p>
+              {quote.clientEmail && <p className="text-sm text-[#6B6B6B]">{quote.clientEmail}</p>}
+            </>
+          ) : (
+            <>
+              <div className="print:hidden">
+                <div className="mb-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setClientMode("customer")}
+                    className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${clientMode === "customer" ? "border-[#1A1A1A] bg-[#1A1A1A] text-white" : "border-[#E6E1D4] text-[#6B6B6B] hover:border-[#D8D2C4]"}`}
+                  >
+                    Existing customer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setClientMode("freetext")}
+                    className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${clientMode === "freetext" ? "border-[#1A1A1A] bg-[#1A1A1A] text-white" : "border-[#E6E1D4] text-[#6B6B6B] hover:border-[#D8D2C4]"}`}
+                  >
+                    One-off client
+                  </button>
+                </div>
+                {clientMode === "customer" ? (
+                  <select
+                    value={customerIdDraft}
+                    onChange={(e) => setCustomerIdDraft(e.target.value)}
+                    onBlur={() => void commitClient()}
+                    className="w-full max-w-md rounded-md border border-[#E6E1D4] bg-white px-3 py-2 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
+                  >
+                    <option value="">No customer (unassigned)</option>
+                    {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    <input
+                      value={clientNameDraft}
+                      onChange={(e) => setClientNameDraft(e.target.value)}
+                      onBlur={() => void commitClient()}
+                      placeholder="Client name or company"
+                      className="min-w-[160px] flex-1 rounded-md border border-[#E6E1D4] bg-white px-3 py-2 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
+                    />
+                    <input
+                      type="email"
+                      value={clientEmailDraft}
+                      onChange={(e) => setClientEmailDraft(e.target.value)}
+                      onBlur={() => void commitClient()}
+                      placeholder="Email (optional)"
+                      className="min-w-[160px] flex-1 rounded-md border border-[#E6E1D4] bg-white px-3 py-2 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
+                    />
+                  </div>
+                )}
+              </div>
+              {/* Print-only client display (the editor above is screen-only) */}
+              <div className="hidden print:block">
+                <p className="text-base font-semibold text-[#1A1A1A]">
+                  {quote.clientName ?? (quote.customerId ? (customers.find((c) => c.id === quote.customerId)?.name ?? "") : "—")}
+                </p>
+                {quote.clientEmail && <p className="text-sm text-[#6B6B6B]">{quote.clientEmail}</p>}
+              </div>
+            </>
           )}
         </div>
 
@@ -574,12 +787,20 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
                   </td>
                 </tr>
               )}
-              {items.map((item) => {
+              {items.map((item, idx) => {
                 const lt = lineTotal({ qty: item.qty, unitPriceExGst: item.unitPriceExGst });
                 return (
                   <tr key={item.id} className="border-b border-[#EFEBE0] hover:bg-[#FAF8F2]">
                     <td className="px-3 py-2.5 text-[#1A1A1A]">
-                      {item.description}
+                      {isLocked ? (
+                        <span>{item.description}</span>
+                      ) : (
+                        <TextCell
+                          value={item.description}
+                          disabled={saving}
+                          onCommit={(v) => void handleItemUpdate(item, { description: v })}
+                        />
+                      )}
                       {item.kind !== "material" && (
                         <span className="ml-2 rounded-full bg-[#EFEBE0] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#6B6B6B] print:hidden">
                           {item.kind === "labour" ? "Labour" : "Custom"}
@@ -614,15 +835,37 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
                     </td>
                     {!isLocked && (
                       <td className="px-3 py-2.5 print:hidden">
-                        <button
-                          type="button"
-                          disabled={saving}
-                          onClick={() => void handleRemoveItem(item)}
-                          className="text-[#C0BAB0] hover:text-[#C44545] disabled:opacity-40"
-                          aria-label="Remove line"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          <div className="flex flex-col">
+                            <button
+                              type="button"
+                              disabled={saving || idx === 0}
+                              onClick={() => void moveItem(item, -1)}
+                              className="text-[#C0BAB0] hover:text-[#6B6B6B] disabled:opacity-30"
+                              aria-label="Move up"
+                            >
+                              <ChevronUp className="h-3 w-3" />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={saving || idx === items.length - 1}
+                              onClick={() => void moveItem(item, 1)}
+                              className="text-[#C0BAB0] hover:text-[#6B6B6B] disabled:opacity-30"
+                              aria-label="Move down"
+                            >
+                              <ChevronDown className="h-3 w-3" />
+                            </button>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={saving}
+                            onClick={() => void handleRemoveItem(item)}
+                            className="text-[#C0BAB0] hover:text-[#C44545] disabled:opacity-40"
+                            aria-label="Remove line"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
                       </td>
                     )}
                   </tr>
@@ -659,7 +902,7 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
                   className={btnGhost}
                 >
                   <Plus className="h-4 w-4" />
-                  Free line
+                  Custom line
                 </button>
                 <button
                   type="button"
@@ -713,8 +956,12 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
                     ))}
                   </ul>
                 )}
-                {catalogueSearch.length > 0 && catalogueResults.length === 0 && (
-                  <p className="mt-2 text-xs text-[#A0A0A0]">No materials match.</p>
+                {catalogueResults.length === 0 && (
+                  <p className="mt-2 text-xs text-[#A0A0A0]">
+                    {catalogueSearch.trim()
+                      ? "No materials match — add it in Catalogue → Materials, or use Custom line for a one-off."
+                      : "No materials in the catalogue yet — add them in Catalogue → Materials (or Import), or use Custom line for a one-off."}
+                  </p>
                 )}
               </div>
             )}
@@ -746,19 +993,23 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
                     {addingPb ? "Adding..." : "Add bundle"}
                   </button>
                 </div>
+                {prebuilds.length === 0 && (
+                  <p className="mt-2 text-[11px] text-[#A0A0A0]">No prebuilds yet — create them in Catalogue → Prebuilds.</p>
+                )}
               </div>
             )}
 
-            {/* Free line form */}
+            {/* Custom (free-text) line form */}
             {addMode === "free" && (
               <form
                 onSubmit={(e) => void handleAddFree(e)}
                 className="rounded-[10px] border border-[#E6E1D4] bg-[#FAF8F2] p-4"
               >
                 <div className="mb-3 flex items-center justify-between">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-[#6B6B6B]">Free line item</p>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-[#6B6B6B]">Custom line</p>
                   <button type="button" onClick={() => setAddMode(null)} className="text-xs text-[#A0A0A0] hover:text-[#C44545]">Cancel</button>
                 </div>
+                <p className="mb-3 text-[11px] text-[#A0A0A0]">A one-off item you type in yourself — e.g. a callout fee or a part that isn&rsquo;t in the catalogue.</p>
                 <div className="flex flex-wrap gap-2">
                   <input
                     autoFocus
@@ -1057,6 +1308,38 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
           >
             {quote.status}
           </span>
+
+          {/* Delete (with confirm) */}
+          {confirmDelete ? (
+            <span className="inline-flex items-center gap-2">
+              <span className="text-xs text-[#C44545]">Delete this quote?</span>
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(false)}
+                disabled={deleting}
+                className="rounded-full border border-[#E6E1D4] bg-white px-3 py-1 text-[12px] font-medium text-[#6B6B6B] hover:bg-[#FAF8F2] disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDelete()}
+                disabled={deleting}
+                className="inline-flex items-center gap-1.5 rounded-full bg-[#C44545] px-3 py-1 text-[12px] font-semibold text-white hover:bg-[#A53A3A] disabled:opacity-50"
+              >
+                {deleting ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                Delete
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(true)}
+              className="text-[12px] text-[#A0A0A0] hover:text-[#C44545]"
+            >
+              Delete quote
+            </button>
+          )}
 
           <div className="ml-auto flex flex-wrap gap-2">
             {quote.status === "draft" && (

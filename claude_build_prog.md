@@ -3580,3 +3580,24 @@ Built + subagent-reviewed clean (no CI-killers). Reuses the quote-item adders + 
 Next on the roadmap: the **AI Quote Drafter** (approved AI anchor) layers on top of templates + catalogue.
 
 State: authored + reviewed clean. Being pushed with the Jobs↔Quoting integration (Part A). Migration 78 awaits Jordan's apply in Supabase (gitignored backend).
+
+---
+
+## 22 June 2026 (cont.) — Quote editor completeness + clearer empty states (live feedback)
+
+From live-usage feedback. Built + subagent-reviewed clean (no CI-killers). No new migration (uses existing columns). 
+
+- **"Free line" → "Custom line"** + a plain-English hint ("a one-off item you type in yourself — e.g. a callout fee or a non-catalogue part").
+- **Clearer empty states:** catalogue search now says "No materials in the catalogue yet — add them in Catalogue → Materials (or Import), or use Custom line"; prebuild picker says "No prebuilds yet — create them in Catalogue → Prebuilds". (Templates already had its hint.) These were empty because no catalogue data has been entered — not a bug.
+- **Quote editor now fully editable** (all gated `!isLocked`):
+  - **Title** — editable inline (was not shown at all).
+  - **Client / customer** — editable "Quote for" block: Existing-customer/One-off toggle → customer select OR one-off **name + email** (delivers the one-off email ask); resolves + shows the real customer name (fixes "(customer linked)").
+  - **Valid until** — date input in the header.
+  - **Delete quote** — button + confirm in the status bar (new `deleteQuote` API).
+  - **Line items** — edit description inline (new `TextCell`) + up/down **reorder** (re-sequences sort_order).
+- Print/PDF: title + client + valid-until show; the editors are screen-only; cost/margin stay hidden.
+- Files: `QuoteEditor.tsx` (bulk), `commercial.ts` (deleteQuote). Reuses updateQuote/updateQuoteItem/listCustomers + the NumCell pattern.
+
+Note: catalogue/prebuilds/templates still need the office to enter data (Catalogue → Materials/Import/Prebuilds/Templates) + migration 78 applied for templates. "Custom line" unblocks ad-hoc quoting immediately.
+
+State: authored + reviewed clean; pushing to main for the user to test.

@@ -950,6 +950,13 @@ export async function setQuoteRebates(
   if (error) throw error;
 }
 
+/** Permanently delete a quote (cascades to quote_items via FK). */
+export async function deleteQuote(id: string): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { error } = await supabase.from('quotes').delete().eq('id', id);
+  if (error) throw error;
+}
+
 // ---------------------------------------------------------------------------
 // Quotes — status actions
 // ---------------------------------------------------------------------------
