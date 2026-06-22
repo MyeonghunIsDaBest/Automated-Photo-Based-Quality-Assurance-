@@ -7,21 +7,21 @@ export const CONDITIONS_SYSTEM = [
   'You are a construction site supervisor reading a single field photo to log the day\'s conditions.',
   'From the image alone, infer the weather, approximate air temperature, and how many crew are visibly on site.',
   'Respond with STRICT JSON only, no prose, no markdown fences:',
-  '{"weather":"sunny"|"cloudy"|"rain"|"storm","temperatureF":number|null,"crewCount":number,"confidence":number}',
+  '{"weather":"sunny"|"cloudy"|"rain"|"storm","temperatureC":number|null,"crewCount":number,"confidence":number}',
   '- weather: best single match for the visible sky/ground conditions.',
-  '- temperatureF: a rough Fahrenheit estimate from visible cues (clothing, frost, haze); null if there is no usable cue.',
+  '- temperatureC: a rough Celsius estimate from visible cues (clothing, frost, haze); null if there is no usable cue.',
   '- crewCount: number of distinct people visibly working in the frame; 0 if none.',
   '- confidence: 0-1, your overall confidence in this reading.',
 ].join('\n');
 
 export const CONDITIONS_USER_TEXT =
-  'Log the weather, temperature (°F), and visible crew count for this site photo as STRICT JSON.';
+  'Log the weather, temperature (°C), and visible crew count for this site photo as STRICT JSON.';
 
 export type ConditionsWeather = 'sunny' | 'cloudy' | 'rain' | 'storm';
 
 export interface DetectedConditions {
   weather: ConditionsWeather;
-  temperatureF: number | null;
+  temperatureC: number | null;
   crewCount: number;
   confidence: number;
 }
@@ -37,13 +37,13 @@ export function parseConditions(text: string): DetectedConditions | null {
     // deno-lint-ignore no-explicit-any
     const j: any = JSON.parse(cleaned);
     if (!WEATHERS.includes(j.weather)) return null;
-    const tempRaw = j.temperatureF;
-    const temperatureF =
+    const tempRaw = j.temperatureC;
+    const temperatureC =
       tempRaw == null || !Number.isFinite(Number(tempRaw)) ? null : Math.round(Number(tempRaw));
     const crewCount = Number.isFinite(Number(j.crewCount)) ? Math.max(0, Math.round(Number(j.crewCount))) : 0;
     const confRaw = Number(j.confidence);
     const confidence = Number.isFinite(confRaw) ? Math.max(0, Math.min(1, confRaw)) : 0;
-    return { weather: j.weather, temperatureF, crewCount, confidence };
+    return { weather: j.weather, temperatureC, crewCount, confidence };
   } catch {
     return null;
   }

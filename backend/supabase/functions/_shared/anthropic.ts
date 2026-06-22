@@ -23,25 +23,34 @@ import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY') ?? '';
 // @ts-expect-error Deno globals.
 const DEFAULT_MODEL = Deno.env.get('ANTHROPIC_DEFAULT_MODEL') ?? 'claude-haiku-4-5';
-// @ts-expect-error Deno globals.
-const DAILY_CALL_CAP = Number(Deno.env.get('ANTHROPIC_DAILY_CALL_CAP') ?? 50);
-// @ts-expect-error Deno globals.
-const DAILY_TOKEN_CAP = Number(Deno.env.get('ANTHROPIC_DAILY_TOKEN_CAP') ?? 200_000);
+// Numeric env coercion. `Number('') === 0` and `Number(undefined) === NaN`, so
+// a blank ("") or malformed value would otherwise silently collapse a cap to 0
+// — which fails CLOSED (blocks every attributed call once a counter row exists)
+// and looks intermittent. `positive` additionally rejects <= 0 for values where
+// 0 is nonsensical (the caps + ceilings + timeout).
+function numEnv(key: string, fallback: number, positive = false): number {
+  // @ts-expect-error Deno globals.
+  const raw = Deno.env.get(key) as string | undefined;
+  if (raw == null || raw.trim() === '') return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return fallback;
+  if (positive && n <= 0) return fallback;
+  return n;
+}
+
+const DAILY_CALL_CAP = numEnv('ANTHROPIC_DAILY_CALL_CAP', 50, true);
+const DAILY_TOKEN_CAP = numEnv('ANTHROPIC_DAILY_TOKEN_CAP', 200_000, true);
 // Per-user daily caps — sit BELOW the global caps so a single user can't drain
 // the shared budget (abuse / runaway-cost guard, migration 35). Enforced only
 // when a caller supplies a userId; otherwise behaviour is unchanged (global
 // caps only). Fail-open on a counter read miss, same as the global path.
-// @ts-expect-error Deno globals.
-const USER_DAILY_CALL_CAP = Number(Deno.env.get('ANTHROPIC_USER_DAILY_CALL_CAP') ?? 30);
-// @ts-expect-error Deno globals.
-const USER_DAILY_TOKEN_CAP = Number(Deno.env.get('ANTHROPIC_USER_DAILY_TOKEN_CAP') ?? 120_000);
-// @ts-expect-error Deno globals.
-const MAX_TOKENS_CEILING = Number(Deno.env.get('ANTHROPIC_MAX_TOKENS') ?? 1024);
+const USER_DAILY_CALL_CAP = numEnv('ANTHROPIC_USER_DAILY_CALL_CAP', 30, true);
+const USER_DAILY_TOKEN_CAP = numEnv('ANTHROPIC_USER_DAILY_TOKEN_CAP', 120_000, true);
+const MAX_TOKENS_CEILING = numEnv('ANTHROPIC_MAX_TOKENS', 1024, true);
 // Vision-specific ceiling. Vision returns small JSON (~150–250 output
 // tokens); the lower cap keeps an accidentally-verbose response cheap.
 // Falls back to the general ceiling so existing deployments aren't broken.
-// @ts-expect-error Deno globals.
-const VISION_MAX_TOKENS = Number(Deno.env.get('ANTHROPIC_VISION_MAX_TOKENS') ?? MAX_TOKENS_CEILING);
+const VISION_MAX_TOKENS = numEnv('ANTHROPIC_VISION_MAX_TOKENS', MAX_TOKENS_CEILING, true);
 // @ts-expect-error Deno globals.
 const DISABLED = (Deno.env.get('ANTHROPIC_DISABLED') ?? 'false').toLowerCase() === 'true';
 
@@ -60,10 +69,10 @@ const APPROX_CENTS_PER_TOKEN = 0.0003; // ≈$3 per million tokens blended (Haik
 // can't pin an Edge invocation indefinitely. Retries cover transient 429/5xx
 // + network blips with exponential backoff; the upload path treats a final
 // failure as a soft error (analyze-photo writes a failureResult, never throws).
-// @ts-expect-error Deno globals.
-const REQUEST_TIMEOUT_MS = Number(Deno.env.get('ANTHROPIC_TIMEOUT_MS') ?? 60_000);
-// @ts-expect-error Deno globals.
-const MAX_RETRIES = Number(Deno.env.get('ANTHROPIC_MAX_RETRIES') ?? 2);
+const REQUEST_TIMEOUT_MS = numEnv('ANTHROPIC_TIMEOUT_MS', 60_000, true);
+// MAX_RETRIES: 0 is a legitimate value (disable retries), so no positive guard —
+// only the empty/NaN fallback applies.
+const MAX_RETRIES = numEnv('ANTHROPIC_MAX_RETRIES', 2);
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 // Exponential backoff with jitter, capped at 8s.
@@ -496,6 +505,12 @@ export interface AnthropicVisionInput {
   /** Calling user's id, for per-user daily caps + attributed usage metering.
    *  Omit / null in cron or service contexts → global-only caps (unchanged). */
   userId?: string | null;
+  /** When true, do NOT enforce the per-user daily cap for this call — but STILL
+   *  attribute usage to `userId` for metering. For the automatic photo→analyze
+   *  path: a field worker legitimately uploads many photos a day, and the
+   *  per-user cap (default 30) would silently mark their analyses failed. The
+   *  global cap (default 50) still guards runaway shared cost. */
+  skipUserCap?: boolean;
 }
 
 export async function callAnthropicVision(
@@ -503,8 +518,10 @@ export async function callAnthropicVision(
   input: AnthropicVisionInput,
 ): Promise<AnthropicCallResult> {
   // 1+2+3. Same kill-switch + missing-key + global + per-user cap gate as
-  // callAnthropic (shared helper — single source of truth).
-  const gate = await checkAnthropicGate(supabase, input.userId);
+  // callAnthropic (shared helper — single source of truth). When skipUserCap is
+  // set the per-user CAP is bypassed (gate on global only) but usage is still
+  // metered per-user below.
+  const gate = await checkAnthropicGate(supabase, input.skipUserCap ? null : input.userId);
   if (gate) return gate;
 
   // 3. Build the request. Image content block first, then text. Anthropic

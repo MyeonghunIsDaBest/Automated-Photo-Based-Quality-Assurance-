@@ -4,7 +4,7 @@ export interface SnapshotEntry {
   date: string;                                       // YYYY-MM-DD
   description: string;
   weather?: 'sunny' | 'cloudy' | 'rain' | 'storm';
-  temperatureF?: number;
+  temperatureC?: number;
   personnel: Array<{ hours: number }>;
 }
 
@@ -22,7 +22,7 @@ function totalHours(personnel: SnapshotEntry['personnel']): number {
 function conditionsBadge(e: SnapshotEntry): string {
   const parts: string[] = [];
   if (e.weather) parts.push(e.weather);
-  if (typeof e.temperatureF === 'number') parts.push(`${e.temperatureF}°F`);
+  if (typeof e.temperatureC === 'number') parts.push(`${e.temperatureC}°C`);
   return parts.length ? parts.join(' ') : '—';
 }
 

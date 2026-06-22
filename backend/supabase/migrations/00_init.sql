@@ -1,4 +1,3 @@
--- ─────────────────────────────────────────────────────────────────────────────
 -- 00_init.sql — single consolidated schema for the SiteProof QA app.
 --
 -- WHAT THIS DOES (in order):

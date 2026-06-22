@@ -102,8 +102,12 @@ async function callClaudeVision(
     phaseHint?: ConstructionPhase | null;
     model: string;
     /** Photo uploader — attributes the vision call's cost to the user whose
-     *  upload triggered it, for the per-user daily cap (migration 35). */
+     *  upload triggered it (per-user usage metering, migration 35). */
     userId?: string | null;
+    /** Skip the per-user daily cap for this call while still metering per-user.
+     *  The photo path is bursty + legitimate (a worker may upload 30+ photos a
+     *  day); the global cap still guards shared cost. See F4. */
+    skipUserCap?: boolean;
   },
 ): Promise<AnalysisResult> {
   // 1. Media type from extension.
@@ -138,6 +142,7 @@ async function callClaudeVision(
     mediaType:   media.mediaType,
     model:       args.model,
     userId:      args.userId,
+    skipUserCap: args.skipUserCap,
   });
   if (!call.ok) {
     return failureResult(args.model, `${call.reason}${call.detail ? `: ${call.detail}` : ''}`);
@@ -286,6 +291,9 @@ serve(async (req: Request) => {
       phaseHint:   resolvedPhaseHint,
       model:       resolvedModel,
       userId:      photoRow.uploaded_by ?? null,
+      // Meter the call against the uploader, but don't let the per-user cap
+      // silently fail a heavy uploader's photos — the global cap still applies.
+      skipUserCap: true,
     });
   }
 

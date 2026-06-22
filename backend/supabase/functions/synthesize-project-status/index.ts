@@ -24,7 +24,7 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 
 import { callAnthropic } from '../_shared/anthropic.ts';
-import { getUserId } from '../_shared/auth.ts';
+import { getUserId, isProjectMember } from '../_shared/auth.ts';
 import { logAction } from '../_shared/auditLog.ts';
 import { CORS_HEADERS, handleCorsPreflight } from '../_shared/cors.ts';
 import { SYNTHESIS_SYSTEM, parseProjectStatus } from '../_shared/synthesisPrompt.ts';
@@ -69,6 +69,15 @@ serve(async (req: Request) => {
     return json({ error: 'invalid_json' }, 400);
   }
   if (!body.projectId || !UUID_RE.test(body.projectId)) return json({ error: 'projectId_invalid' }, 400);
+
+  // AuthZ: caller must be a member of (or manager over) this project. The
+  // service-role client below is RLS-exempt, so without this gate any
+  // authenticated user could read another project's confirmed analyses — even
+  // the cached snapshot, with no Claude call — and burn AI budget against it.
+  // Same predicate the RLS policies use; mirrors complete-phase.
+  if (!(await isProjectMember(req, body.projectId))) {
+    return json({ error: 'forbidden' }, 403);
+  }
 
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },

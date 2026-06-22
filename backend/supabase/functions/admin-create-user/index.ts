@@ -59,7 +59,8 @@ const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
 // Mirrors the Postgres `security_group` enum (00_init.sql + Phase A's
-// 01_security_group_expand.sql, which adds stakeholder + supplier).
+// 01_security_group_expand.sql, which adds stakeholder + supplier; and
+// 59_maintenance.sql, which adds customer).
 const SECURITY_GROUPS = [
   'company_admin',
   'administrator',
@@ -68,16 +69,17 @@ const SECURITY_GROUPS = [
   'worker',
   'stakeholder',
   'supplier',
+  'customer',
 ] as const;
 type SecurityGroup = typeof SECURITY_GROUPS[number];
 
-// Stakeholder / supplier accounts get linked to their org-wide directory
-// record so the UI can render company name + contact details. The CHECK
-// constraint on profiles enforces at most one of these is set; the
+// Stakeholder / supplier / customer accounts get linked to their org-wide
+// directory record so the UI can render company name + contact details. The
+// CHECK constraint on profiles enforces at most one of these is set; the
 // function rejects mismatches (e.g. linkTo.type='stakeholder' but
 // securityGroup='worker').
 interface LinkToPayload {
-  type: 'stakeholder' | 'supplier';
+  type: 'stakeholder' | 'supplier' | 'customer';
   id: string;
 }
 
@@ -215,10 +217,10 @@ serve(async (req: Request) => {
     return json(403, { error: 'Project managers can only create non-admin accounts.' });
   }
 
-  // ── 3a. Validate linkTo payload (stakeholder/supplier accounts only) ─
+  // ── 3a. Validate linkTo payload (stakeholder/supplier/customer only) ──
   const linkTo = body.linkTo ?? null;
   if (linkTo) {
-    if (linkTo.type !== 'stakeholder' && linkTo.type !== 'supplier') {
+    if (linkTo.type !== 'stakeholder' && linkTo.type !== 'supplier' && linkTo.type !== 'customer') {
       return json(400, { error: `Invalid linkTo.type: ${linkTo.type}` });
     }
     if (typeof linkTo.id !== 'string' || linkTo.id.length === 0) {
@@ -232,7 +234,10 @@ serve(async (req: Request) => {
       });
     }
     // Confirm the directory row exists.
-    const tableName = linkTo.type === 'stakeholder' ? 'stakeholders' : 'suppliers';
+    const tableName =
+      linkTo.type === 'stakeholder' ? 'stakeholders' :
+      linkTo.type === 'supplier'    ? 'suppliers'    :
+                                      'customers';
     const { data: linkRow, error: linkErr } = await serviceClient
       .from(tableName)
       .select('id')
@@ -246,7 +251,7 @@ serve(async (req: Request) => {
         error: `${linkTo.type} record ${linkTo.id} not found.`,
       });
     }
-  } else if (requestedGroup === 'stakeholder' || requestedGroup === 'supplier') {
+  } else if (requestedGroup === 'stakeholder' || requestedGroup === 'supplier' || requestedGroup === 'customer') {
     return json(400, {
       error: `linkTo is required when securityGroup is ${requestedGroup}.`,
     });
@@ -293,14 +298,27 @@ serve(async (req: Request) => {
     profilePatch.emergency_contact_email = body.emergencyContactEmail;
   if (body.emergencyContactMobile !== undefined)
     profilePatch.emergency_contact_mobile = body.emergencyContactMobile;
-  // Phase A: stakeholder/supplier linkage.
+  // Phase A: stakeholder/supplier/customer linkage.
+  // Each branch sets its own FK and explicitly nulls the other two as a
+  // defensive measure: it keeps each branch self-contained and
+  // unconditionally satisfies the profiles_single_business_link_chk
+  // constraint (num_nonnulls(stakeholder_id, supplier_id, customer_id) <= 1)
+  // regardless of prior row state (note: handle_new_user() never writes
+  // these FK columns, so they are always NULL on a fresh row).
   if (linkTo) {
     if (linkTo.type === 'stakeholder') {
       profilePatch.stakeholder_id = linkTo.id;
-      profilePatch.supplier_id = null;
-    } else {
-      profilePatch.supplier_id = linkTo.id;
+      profilePatch.supplier_id    = null;
+      profilePatch.customer_id    = null;
+    } else if (linkTo.type === 'supplier') {
+      profilePatch.supplier_id    = linkTo.id;
       profilePatch.stakeholder_id = null;
+      profilePatch.customer_id    = null;
+    } else {
+      // customer
+      profilePatch.customer_id    = linkTo.id;
+      profilePatch.stakeholder_id = null;
+      profilePatch.supplier_id    = null;
     }
   }
 

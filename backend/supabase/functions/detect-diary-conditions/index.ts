@@ -4,7 +4,7 @@
 //   POST /functions/v1/detect-diary-conditions
 //   { projectId: uuid, imageBase64: string, mediaType: 'image/jpeg'|'image/png'|'image/webp' }
 //
-// Looks at one site photo and infers { weather, temperatureF, crewCount,
+// Looks at one site photo and infers { weather, temperatureC, crewCount,
 // confidence } via the shared callAnthropicVision helper (kill-switch / caps /
 // usage live there). GATED behind project_config.ai_auto_detect_enabled — when
 // off, returns { skipped: true } and burns NO Claude vision call. Accepts
@@ -22,7 +22,7 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 
 import { callAnthropicVision } from '../_shared/anthropic.ts';
-import { getUserId } from '../_shared/auth.ts';
+import { getUserId, isProjectMember } from '../_shared/auth.ts';
 import { logAction } from '../_shared/auditLog.ts';
 import { CORS_HEADERS, handleCorsPreflight } from '../_shared/cors.ts';
 import { CONDITIONS_SYSTEM, CONDITIONS_USER_TEXT, parseConditions } from '../_shared/conditionsPrompt.ts';
@@ -70,6 +70,14 @@ serve(async (req: Request) => {
     return json({ error: 'mediaType_invalid' }, 400);
   }
 
+  // AuthZ: caller must belong to (or manage) this project before we read its
+  // config or burn a vision call against it. The service-role client below is
+  // RLS-exempt; the ai_auto_detect_enabled flag alone only limits opted-in
+  // projects, not who may invoke. Mirrors complete-phase.
+  if (!(await isProjectMember(req, body.projectId))) {
+    return json({ error: 'forbidden' }, 403);
+  }
+
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
@@ -114,7 +122,7 @@ serve(async (req: Request) => {
     action: 'diary_conditions_detected',
     entityType: 'project_config',
     entityId: body.projectId,
-    notes: `weather=${conditions.weather}; tempF=${conditions.temperatureF}; crew=${conditions.crewCount}; conf=${conditions.confidence}; model=${result.model}`,
+    notes: `weather=${conditions.weather}; tempC=${conditions.temperatureC}; crew=${conditions.crewCount}; conf=${conditions.confidence}; model=${result.model}`,
   });
 
   return json({ ...conditions, skipped: false, modelUsed: result.model }, 200);

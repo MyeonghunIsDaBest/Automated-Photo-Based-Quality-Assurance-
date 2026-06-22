@@ -188,7 +188,7 @@ serve(async (req: Request) => {
 
   const { data: rows } = await supabase
     .from('diary_entries')
-    .select('date, description, weather, temperature_f, personnel')
+    .select('date, description, weather, temperature_c, personnel')
     .eq('project_id', v.projectId)
     .gte('date', sinceIso)
     .order('date', { ascending: false })
@@ -198,7 +198,7 @@ serve(async (req: Request) => {
     date: r.date,
     description: r.description ?? '',
     weather: r.weather ?? undefined,
-    temperatureF: r.temperature_f ?? undefined,
+    temperatureC: r.temperature_c ?? undefined,
     personnel: Array.isArray(r.personnel) ? r.personnel : [],
   }));
 
@@ -255,6 +255,7 @@ serve(async (req: Request) => {
         let outputTokens = 0;
         let model = '';
         let buffer = '';
+        let errored = false;
 
         const sse = (obj: unknown) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
 
@@ -297,6 +298,7 @@ serve(async (req: Request) => {
             }
           }
         } catch (e) {
+          errored = true;
           sse({ type: 'error', detail: e instanceof Error ? e.message : String(e) });
         }
 
@@ -317,11 +319,16 @@ serve(async (req: Request) => {
         // use, so a streamed turn's cost_cents matches a JSON turn's (no
         // per-path drift between the blended APPROX rate and real model prices).
         const costCents = pricingCents(resolvedModel, inputTokens, outputTokens);
-        // Per-user attribution (bumps global + per-user counters) so streaming
-        // Sparky turns count against the per-user daily cap too. Bundled with the
-        // audit write under one keepAlive so both complete post-close.
+        // Only METER (charge a call against the per-user + global caps) when the
+        // turn actually produced output. A mid-stream upstream error before any
+        // tokens (caught above → error SSE) must not burn a call for nothing —
+        // matching the non-streaming path, which meters only on success. The
+        // audit row is still written either way so the turn is traceable.
+        const metered = !errored && outputTokens > 0;
         keepAlive(Promise.allSettled([
-          supabase.rpc('record_ai_call_for_user', { p_user_id: userId, p_tokens: totalTokens, p_cost_cents: costCents }),
+          ...(metered
+            ? [supabase.rpc('record_ai_call_for_user', { p_user_id: userId, p_tokens: totalTokens, p_cost_cents: costCents })]
+            : []),
           logAction({
             supabase,
             projectId: v.projectId,
@@ -333,7 +340,7 @@ serve(async (req: Request) => {
               `turns=${turnCount}; ` +
               `had_draft=${draftText !== null}; ` +
               `tokens_in=${inputTokens}; tokens_out=${outputTokens}; ` +
-              `streamed=true; ` +
+              `streamed=true; metered=${metered}; ` +
               `model=${resolvedModel}`,
           }),
         ]));

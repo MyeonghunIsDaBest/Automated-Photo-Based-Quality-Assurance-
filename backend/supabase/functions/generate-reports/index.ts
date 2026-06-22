@@ -146,6 +146,32 @@ async function lastScheduledOverallProgress(
   return typeof prior === 'number' ? prior : null;
 }
 
+// Baseline for an on-demand DAILY report. The cron sweep only ever emits
+// weekly/monthly (the report_cadence enum has no 'daily'), so there is never a
+// `cron-%` daily row to compare against — which made the "Last 24 hours" delta
+// permanently 0. Instead compare to the most recent prior on-demand daily
+// snapshot; if none exists yet, fall back to the latest weekly cron baseline.
+async function dailyBaselineProgress(
+  sb: ReturnType<typeof createClient>,
+  projectId: string,
+  beforeDateFrom: string,
+): Promise<number | null> {
+  const { data } = await sb
+    .from('project_reports')
+    .select('summary')
+    .eq('project_id', projectId)
+    .eq('report_type', 'daily')
+    .eq('status', 'ready')
+    .like('generation_run_id', 'ondemand-%')
+    .lt('date_from', beforeDateFrom)
+    .order('date_from', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const prior = (data as { summary?: { overallProgress?: number } } | null)?.summary?.overallProgress;
+  if (typeof prior === 'number') return prior;
+  return await lastScheduledOverallProgress(sb, projectId, 'weekly');
+}
+
 // Cheap summary aggregations from existing tables. Counts + an overall-progress
 // snapshot. No Storage rendering — that lives in a follow-up (PDF generator).
 async function buildSummary(
@@ -240,54 +266,92 @@ serve(async (req: Request) => {
     try {
       // "Refresh latest": an on-demand report is the CURRENT rolling snapshot,
       // not a growing history, so we keep at most one on-demand row per
-      // (project, type). The delta compares to the last SCHEDULED (cron) report
-      // — the stable periodic baseline — not to a day-old rolling row.
-      const prior = await lastScheduledOverallProgress(sb, body.projectId, rt);
+      // (project, type). For weekly/monthly the delta compares to the last
+      // SCHEDULED (cron) report; daily has no cron series, so it compares to the
+      // prior on-demand daily snapshot (falling back to the latest weekly cron).
+      const prior = rt === 'daily'
+        ? await dailyBaselineProgress(sb, body.projectId, win.dateFrom)
+        : await lastScheduledOverallProgress(sb, body.projectId, rt);
       const summary = await buildSummary(sb, body.projectId, win.dateFrom, win.dateTo, prior);
 
-      // Drop any previous on-demand row(s) for this (project, type) so the list
-      // shows only the freshest snapshot. Scoped to ondemand-* run ids, so the
-      // scheduled (cron) history is never touched.
+      const newRow = {
+        project_id: body.projectId,
+        report_type: rt,
+        date_from: win.dateFrom,
+        date_to: win.dateTo,
+        status: 'ready' as const,
+        summary,
+        generated_at: new Date().toISOString(),
+        generation_run_id: runId,
+        failure_reason: null,
+      };
+
+      // Insert FIRST, delete the prior snapshot AFTER — so a non-duplicate write
+      // failure can never leave the user with no report at all (the old
+      // delete-then-insert lost the prior snapshot on any insert error).
+      let report: unknown;
+      const { data: insertData, error } = await sb
+        .from('project_reports')
+        .insert(newRow)
+        .select('*')
+        .single();
+
+      if (!error) {
+        report = insertData;
+      } else {
+        const isDuplicate = error.code === '23505' || /duplicate/i.test(error.message);
+        if (!isDuplicate) {
+          // Real write failure — nothing deleted yet, so the prior snapshot is intact.
+          return jsonError(500, `report write failed: ${error.message}`);
+        }
+        // A row already occupies (project, type, date_from): either our own
+        // earlier on-demand row at this window (→ refresh it in place) or a
+        // SCHEDULED (cron) row (→ return it ONLY if it's a usable 'ready'
+        // report; never pass off a stale 'failed' row as a fresh success).
+        const { data: existing } = await sb
+          .from('project_reports')
+          .select('*')
+          .eq('project_id', body.projectId)
+          .eq('report_type', rt)
+          .eq('date_from', win.dateFrom)
+          .maybeSingle();
+        const ex = existing as { generation_run_id?: string | null; status?: string } | null;
+        if (ex && typeof ex.generation_run_id === 'string' && ex.generation_run_id.startsWith('ondemand-')) {
+          const { data: refreshed, error: updErr } = await sb
+            .from('project_reports')
+            .update({
+              date_to: win.dateTo,
+              status: 'ready',
+              summary,
+              generated_at: newRow.generated_at,
+              generation_run_id: runId,
+              failure_reason: null,
+            })
+            .eq('project_id', body.projectId)
+            .eq('report_type', rt)
+            .eq('date_from', win.dateFrom)
+            .select('*')
+            .single();
+          if (updErr) return jsonError(500, `report refresh failed: ${updErr.message}`);
+          report = refreshed;
+        } else if (ex && ex.status === 'ready') {
+          report = ex; // window already covered by a scheduled report
+        } else {
+          return jsonError(409, 'a failed scheduled report occupies this window; retry later');
+        }
+      }
+
+      // Replacement is safely written — now drop any OTHER on-demand rows for
+      // this (project, type) so the list shows only the freshest snapshot.
+      // Scoped to ondemand-* and excludes the row we just wrote/refreshed.
       await sb
         .from('project_reports')
         .delete()
         .eq('project_id', body.projectId)
         .eq('report_type', rt)
-        .like('generation_run_id', 'ondemand-%');
+        .like('generation_run_id', 'ondemand-%')
+        .neq('date_from', win.dateFrom);
 
-      const { data, error } = await sb
-        .from('project_reports')
-        .insert({
-          project_id: body.projectId,
-          report_type: rt,
-          date_from: win.dateFrom,
-          date_to: win.dateTo,
-          status: 'ready',
-          summary,
-          generated_at: new Date().toISOString(),
-          generation_run_id: runId,
-          failure_reason: null,
-        })
-        .select('*')
-        .single();
-      if (error) {
-        // If the rolling window lands exactly on an existing SCHEDULED report's
-        // (project, type, date_from), the unique index rejects the insert — that
-        // cron row already covers this window, so return it rather than clobber
-        // cron history.
-        const isDuplicate = error.code === '23505' || /duplicate/i.test(error.message);
-        if (isDuplicate) {
-          const { data: existing } = await sb
-            .from('project_reports')
-            .select('*')
-            .eq('project_id', body.projectId)
-            .eq('report_type', rt)
-            .eq('date_from', win.dateFrom)
-            .maybeSingle();
-          if (existing) return jsonOk({ ok: true, onDemand: true, report: existing });
-        }
-        return jsonError(500, `report write failed: ${error.message}`);
-      }
       await logAction({
         supabase: sb,
         projectId: body.projectId,
@@ -297,7 +361,7 @@ serve(async (req: Request) => {
         entityId: body.projectId,
         newValue: { report_type: rt, date_from: win.dateFrom, date_to: win.dateTo, on_demand: true, summary },
       });
-      return jsonOk({ ok: true, onDemand: true, report: data });
+      return jsonOk({ ok: true, onDemand: true, report });
     } catch (e) {
       const reason = e instanceof Error ? e.message : String(e);
       // Record the failure so on-demand errors are visible in project_reports
@@ -321,6 +385,16 @@ serve(async (req: Request) => {
   }
 
   // ── Cron path (cadence sweep over every configured project) ───────────────
+  // Service-role ONLY. verify_jwt defaults to true, so the PUBLIC anon key
+  // (shipped in the frontend bundle) is itself a valid JWT — without this gate a
+  // browser could POST {} and trigger an all-projects sweep, reading back the
+  // full project_id list in the response (now browser-readable via CORS_HEADERS).
+  // The scheduler invokes with the service-role key (see header curl example).
+  const bearer = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
+  if (!SERVICE_ROLE_KEY || bearer !== SERVICE_ROLE_KEY) {
+    return jsonError(403, 'forbidden: the cadence sweep is service-role only');
+  }
+
   const runId = `cron-${isoDate(today)}-${today.getUTCHours().toString().padStart(2, '0')}`;
 
   const { data: configs, error: cfgErr } = await sb
