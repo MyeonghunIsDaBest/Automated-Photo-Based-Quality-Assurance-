@@ -18,12 +18,12 @@ import { Toaster } from "../../components/ui/Toaster";
 
 import {
   listQuotes,
-  createQuote,
   type Quote,
   type QuoteStatus,
 } from "../../lib/api/commercial";
 import { listCustomers, type Customer } from "../../lib/api/customers";
 import QuoteEditor from "./QuoteEditor";
+import NewQuoteWizard from "./NewQuoteWizard";
 
 // â”€â”€â”€ types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -88,147 +88,6 @@ function SkeletonRow() {
   );
 }
 
-// â”€â”€â”€ new-quote modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-function NewQuoteModal({
-  customers,
-  onConfirm,
-  onClose,
-}: {
-  customers: Customer[];
-  onConfirm: (title: string, customerId: string | null, clientName: string | null) => Promise<void>;
-  onClose: () => void;
-}) {
-  const [title, setTitle]           = useState("");
-  const [whoMode, setWhoMode]       = useState<"customer" | "freetext">("customer");
-  const [customerId, setCustomerId] = useState("");
-  const [clientName, setClientName] = useState("");
-  const [saving, setSaving]         = useState(false);
-  const [err, setErr]               = useState<string | null>(null);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setErr(null);
-    if (!title.trim()) { setErr("A title is required."); return; }
-    if (whoMode === "freetext" && !clientName.trim()) { setErr("Enter a client name."); return; }
-    setSaving(true);
-    try {
-      await onConfirm(
-        title.trim(),
-        whoMode === "customer" ? (customerId || null) : null,
-        whoMode === "freetext" ? (clientName.trim() || null) : null,
-      );
-    } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : "Failed to create quote.");
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#1A1A1A]/50 p-4">
-      <div className="flex w-full max-w-md flex-col overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_8px_28px_rgba(20,20,20,0.12)]">
-        <div className="flex items-center justify-between border-b border-[#E6E1D4] px-6 py-4">
-          <div>
-            <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-[#6B6B6B]">
-              Sales &middot; Quotes
-            </p>
-            <h2 className="mt-1 text-lg font-medium text-[#1A1A1A]">New quote</h2>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-            className="rounded-md p-2 text-[#A0A0A0] hover:bg-[#F0EDE4] hover:text-[#3A3A3A]"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4 px-6 py-5">
-          <div>
-            <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">
-              Title <span className="text-[#C44545]">*</span>
-            </label>
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              disabled={saving}
-              placeholder="e.g. Panel upgrade â€” Smith Street"
-              className="w-full rounded-md border border-[#E6E1D4] px-3 py-2 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] disabled:opacity-50"
-            />
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">
-              Who is this for?
-            </label>
-            <div className="mb-2 flex gap-2">
-              <button
-                type="button"
-                onClick={() => setWhoMode("customer")}
-                disabled={saving}
-                className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                  whoMode === "customer"
-                    ? "border-[#1A1A1A] bg-[#1A1A1A] text-white"
-                    : "border-[#E6E1D4] text-[#6B6B6B] hover:border-[#D8D2C4]"
-                }`}
-              >
-                Existing customer
-              </button>
-              <button
-                type="button"
-                onClick={() => setWhoMode("freetext")}
-                disabled={saving}
-                className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                  whoMode === "freetext"
-                    ? "border-[#1A1A1A] bg-[#1A1A1A] text-white"
-                    : "border-[#E6E1D4] text-[#6B6B6B] hover:border-[#D8D2C4]"
-                }`}
-              >
-                One-off client
-              </button>
-            </div>
-            {whoMode === "customer" ? (
-              <select
-                value={customerId}
-                onChange={(e) => setCustomerId(e.target.value)}
-                disabled={saving}
-                className="w-full rounded-md border border-[#E6E1D4] px-3 py-2 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] disabled:opacity-50"
-              >
-                <option value="">No customer (unassigned)</option>
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            ) : (
-              <input
-                value={clientName}
-                onChange={(e) => setClientName(e.target.value)}
-                disabled={saving}
-                placeholder="Client name or company"
-                className="w-full rounded-md border border-[#E6E1D4] px-3 py-2 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] disabled:opacity-50"
-              />
-            )}
-          </div>
-
-          {err && (
-            <p className="rounded-md border border-[#F0BFBF] bg-[#FBE5E5] px-3 py-2 text-xs text-[#C44545]">
-              {err}
-            </p>
-          )}
-
-          <div className="flex items-center justify-end gap-2 border-t border-[#E6E1D4] pt-4">
-            <button type="button" onClick={onClose} disabled={saving} className={btnGhost}>
-              Cancel
-            </button>
-            <button type="submit" disabled={saving} className={btnPrimary}>
-              {saving ? "Creating..." : "Create quote"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
 
 // â”€â”€â”€ component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -288,17 +147,12 @@ export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost
     ? (customers.find((c) => c.id === customerFilter)?.name ?? customerFilter)
     : null;
 
-  async function handleCreate(
-    title: string,
-    customerId: string | null,
-    clientName: string | null,
-  ) {
-    const q = await createQuote({ title, customerId, clientName });
+  function handleQuoteCreated(quoteId: string, openEditor: boolean) {
     setShowNewModal(false);
     setToast({ message: "Quote created", type: "success" });
     void fetchQuotes();
     onChanged();
-    setSelectedId(q.id);
+    if (openEditor) setSelectedId(quoteId);
   }
 
   function handleEditorClose() {
@@ -475,10 +329,10 @@ export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost
 
       {/* â”€â”€ New Quote Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {showNewModal && (
-        <NewQuoteModal
+        <NewQuoteWizard
           customers={customers}
-          onConfirm={handleCreate}
-          onClose={() => setShowNewModal(false)}
+          onCancel={() => setShowNewModal(false)}
+          onCreated={handleQuoteCreated}
         />
       )}
 

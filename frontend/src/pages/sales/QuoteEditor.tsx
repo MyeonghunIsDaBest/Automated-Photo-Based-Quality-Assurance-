@@ -753,6 +753,16 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
             )}
           </div>
 
+          {/* Quote meta — read-only summary of the wizard's header fields */}
+          <div className="mb-4 flex flex-wrap gap-x-5 gap-y-1 text-xs text-[#6B6B6B] print:hidden">
+            <span>Type: <span className="font-medium capitalize text-[#3A3A3A]">{quote.quoteType}</span></span>
+            {quote.costCentre && <span>Cost centre: <span className="font-medium text-[#3A3A3A]">{quote.costCentre}</span></span>}
+            {quote.stage && <span>Stage: <span className="font-medium text-[#3A3A3A]">{quote.stage}</span></span>}
+            {quote.orderNumber && <span>Order #: <span className="font-medium text-[#3A3A3A]">{quote.orderNumber}</span></span>}
+            {quote.dueDate && <span>Due: <span className="font-medium text-[#3A3A3A]">{quote.dueDate}</span></span>}
+            {quote.appliedVoucherCode && <span>Voucher: <span className="font-medium text-[#246F47]">{quote.appliedVoucherCode}</span></span>}
+          </div>
+
           {/* Quote for */}
           <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#A0A0A0]">Quote for</p>
           {isLocked ? (

@@ -3667,3 +3667,20 @@ Live-feedback fixes. Frontend-only, no migration. Subagent-reviewed clean (CI ga
 Ships together with the 22 Jun catalogue edit/archive/delete + roles rework (still staged from that session).
 
 State: implemented + reviewed clean; staged for the user's go-ahead to push to main → Vercel.
+
+---
+
+## 23 June 2026 — Quote rework Phase 1 Part 1: Simpro-style New-Quote wizard + vouchers
+
+Kickoff of the Simpro replication (post-tour). Replaces the tiny NewQuoteModal with a 3-tab creation wizard mirroring Simpro's New Service Quote. Subagent-reviewed clean (CI gate = typecheck + vitest + build; fixed one unused-state CI-killer).
+
+- **Migration 79** (`79_quote_header_and_vouchers.sql`, force-added, **Jordan applies**): `quotes` += quote_type(service|project)/stage/cost_centre/order_number/due_date/description/salesperson_id/project_manager_id/technician_ids[]/tags[]/pricing_tier/labour_overhead/fee_pct/material_markup_pct/discount_pct/custom_fields jsonb/applied_voucher_code; NEW `discount_vouchers` (code/label/percent/expiry/max_uses/used_count) + manager RLS.
+- **commercial.ts**: `QuoteHeaderInput` + `quoteHeaderToRow()`; Create/UpdateQuoteInput extend it; create/update carry the new columns; `rowToQuote`+QuoteRow+Quote extended; `recomputeQuoteTotals` derives `discount_ex_gst` from `discount_pct` when set (absolute-discount path untouched; money.ts unchanged → commercialMoney.test.ts needs no change).
+- **vouchers.ts** (NEW): listVouchers / createVoucher (gen "SVC5-AB12") / getVoucherByCode (validate active/expiry/uses) / applyVoucherToQuote (sets discount_pct + applied_voucher_code, bumps used_count, recompute). One-way import of recomputeQuoteTotals (no cycle).
+- **profiles.ts**: `listProfilesByRole(groups)` for the Salesperson/PM (manager-tier) + Technician (internal) pickers.
+- **NewQuoteWizard.tsx** (NEW): Main/Optional/Custom-Fields tabs, Service/Project, Cancel/Finish/Next, summary strip; voucher generate+apply control; Site cascades on customer; prefills markup/STC/VEEC from settings. Mounted in QuotesTab (old NewQuoteModal removed). Finish→list, Next→QuoteEditor.
+- **QuoteEditor.tsx**: read-only meta row (type/cost-centre/stage/order#/due/voucher).
+
+**TIMING:** the frontend writes the mig-79 columns, so quote creation breaks until Jordan applies migration 79 in Supabase. Flag prominently. Next free migration = 80.
+
+Deferred to Parts 2+: live map, tax-code engine, full customer_contacts table, pricing-tier price engine, Project↔Gantt binding, the AI Quote Drafter (still parked).

@@ -69,6 +69,24 @@ interface QuoteRow {
   viewed_at: string | null;
   decided_at: string | null;
   converted_job_id: string | null;
+  // Phase-1 quote-header fields (migration 79)
+  quote_type: string;
+  stage: string | null;
+  cost_centre: string | null;
+  order_number: string | null;
+  due_date: string | null;
+  description: string | null;
+  salesperson_id: string | null;
+  project_manager_id: string | null;
+  technician_ids: string[];
+  tags: string[];
+  pricing_tier: string | null;
+  labour_overhead: number | null;
+  fee_pct: number;
+  material_markup_pct: number | null;
+  discount_pct: number;
+  custom_fields: Record<string, unknown>;
+  applied_voucher_code: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -215,6 +233,24 @@ export interface Quote {
   viewedAt: string | null;
   decidedAt: string | null;
   convertedJobId: string | null;
+  // Phase-1 quote-header fields (migration 79)
+  quoteType: 'service' | 'project';
+  stage: string | null;
+  costCentre: string | null;
+  orderNumber: string | null;
+  dueDate: string | null;
+  description: string | null;
+  salespersonId: string | null;
+  projectManagerId: string | null;
+  technicianIds: string[];
+  tags: string[];
+  pricingTier: string | null;
+  labourOverhead: number | null;
+  feePct: number;
+  materialMarkupPct: number | null;
+  discountPct: number;
+  customFields: Record<string, unknown>;
+  appliedVoucherCode: string | null;
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;
@@ -312,7 +348,27 @@ export interface VariationItem {
 // Input types
 // ---------------------------------------------------------------------------
 
-export interface CreateQuoteInput {
+/** Phase-1 quote-header fields (migration 79). Shared by create + update. */
+export interface QuoteHeaderInput {
+  quoteType?: 'service' | 'project';
+  stage?: string | null;
+  costCentre?: string | null;
+  orderNumber?: string | null;
+  dueDate?: string | null;
+  description?: string | null;
+  salespersonId?: string | null;
+  projectManagerId?: string | null;
+  technicianIds?: string[];
+  tags?: string[];
+  pricingTier?: string | null;
+  labourOverhead?: number | null;
+  feePct?: number;
+  materialMarkupPct?: number | null;
+  discountPct?: number;
+  customFields?: Record<string, unknown>;
+}
+
+export interface CreateQuoteInput extends QuoteHeaderInput {
   title: string;
   customerId?: string | null;
   clientName?: string | null;
@@ -323,7 +379,7 @@ export interface CreateQuoteInput {
   validUntil?: string | null;
 }
 
-export interface UpdateQuoteInput {
+export interface UpdateQuoteInput extends QuoteHeaderInput {
   title?: string;
   customerId?: string | null;
   clientName?: string | null;
@@ -332,6 +388,30 @@ export interface UpdateQuoteInput {
   serviceJobId?: string | null;
   notes?: string | null;
   validUntil?: string | null;
+}
+
+// Maps QuoteHeaderInput camelCase keys to their snake_case DB columns; only
+// keys present in the input are emitted (so create defaults / update patches
+// stay sparse).
+function quoteHeaderToRow(input: QuoteHeaderInput): Record<string, unknown> {
+  const row: Record<string, unknown> = {};
+  if (input.quoteType !== undefined) row.quote_type = input.quoteType;
+  if (input.stage !== undefined) row.stage = input.stage;
+  if (input.costCentre !== undefined) row.cost_centre = input.costCentre;
+  if (input.orderNumber !== undefined) row.order_number = input.orderNumber;
+  if (input.dueDate !== undefined) row.due_date = input.dueDate;
+  if (input.description !== undefined) row.description = input.description;
+  if (input.salespersonId !== undefined) row.salesperson_id = input.salespersonId;
+  if (input.projectManagerId !== undefined) row.project_manager_id = input.projectManagerId;
+  if (input.technicianIds !== undefined) row.technician_ids = input.technicianIds;
+  if (input.tags !== undefined) row.tags = input.tags;
+  if (input.pricingTier !== undefined) row.pricing_tier = input.pricingTier;
+  if (input.labourOverhead !== undefined) row.labour_overhead = input.labourOverhead;
+  if (input.feePct !== undefined) row.fee_pct = input.feePct;
+  if (input.materialMarkupPct !== undefined) row.material_markup_pct = input.materialMarkupPct;
+  if (input.discountPct !== undefined) row.discount_pct = input.discountPct;
+  if (input.customFields !== undefined) row.custom_fields = input.customFields;
+  return row;
 }
 
 export interface CreateInvoiceInput {
@@ -425,6 +505,23 @@ function rowToQuote(r: QuoteRow, items?: QuoteItem[]): Quote {
     viewedAt: r.viewed_at,
     decidedAt: r.decided_at,
     convertedJobId: r.converted_job_id,
+    quoteType: (r.quote_type as 'service' | 'project') ?? 'service',
+    stage: r.stage ?? null,
+    costCentre: r.cost_centre ?? null,
+    orderNumber: r.order_number ?? null,
+    dueDate: r.due_date ?? null,
+    description: r.description ?? null,
+    salespersonId: r.salesperson_id ?? null,
+    projectManagerId: r.project_manager_id ?? null,
+    technicianIds: r.technician_ids ?? [],
+    tags: r.tags ?? [],
+    pricingTier: r.pricing_tier ?? null,
+    labourOverhead: r.labour_overhead == null ? null : Number(r.labour_overhead),
+    feePct: Number(r.fee_pct ?? 0),
+    materialMarkupPct: r.material_markup_pct == null ? null : Number(r.material_markup_pct),
+    discountPct: Number(r.discount_pct ?? 0),
+    customFields: (r.custom_fields ?? {}) as Record<string, unknown>,
+    appliedVoucherCode: r.applied_voucher_code ?? null,
     createdBy: r.created_by,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -658,6 +755,7 @@ export async function createQuote(input: CreateQuoteInput): Promise<Quote> {
       service_job_id: input.serviceJobId ?? null,
       notes: input.notes ?? null,
       valid_until: input.validUntil ?? null,
+      ...quoteHeaderToRow(input),
       created_by: uid,
     })
     .select('*')
@@ -677,6 +775,7 @@ export async function updateQuote(id: string, patch: UpdateQuoteInput): Promise<
   if (patch.serviceJobId !== undefined) update.service_job_id = patch.serviceJobId;
   if (patch.notes !== undefined) update.notes = patch.notes;
   if (patch.validUntil !== undefined) update.valid_until = patch.validUntil;
+  Object.assign(update, quoteHeaderToRow(patch));
   const { data, error } = await supabase
     .from('quotes')
     .update(update)
@@ -898,7 +997,7 @@ export async function recomputeQuoteTotals(quoteId: string): Promise<void> {
   if (!supabaseConfigured()) throw NOT_CONFIGURED;
   const [itemsResult, quoteResult, gstRate] = await Promise.all([
     supabase.from('quote_items').select('qty,unit_price_ex_gst').eq('quote_id', quoteId),
-    supabase.from('quotes').select('discount_ex_gst').eq('id', quoteId).maybeSingle(),
+    supabase.from('quotes').select('discount_ex_gst,discount_pct').eq('id', quoteId).maybeSingle(),
     fetchGstRate(),
   ]);
   if (itemsResult.error) throw itemsResult.error;
@@ -907,7 +1006,17 @@ export async function recomputeQuoteTotals(quoteId: string): Promise<void> {
     qty: Number(r.qty),
     unitPriceExGst: Number(r.unit_price_ex_gst),
   }));
-  const discountExGst = Number((quoteResult.data as { discount_ex_gst?: number } | null)?.discount_ex_gst ?? 0);
+  const q = quoteResult.data as { discount_ex_gst?: number; discount_pct?: number } | null;
+  const discountPct = Number(q?.discount_pct ?? 0);
+  // A percentage discount (Simpro-style / voucher) wins when set: derive an
+  // absolute ex-GST discount from the live line subtotal and persist it, so reads
+  // (quoteFinancials / quoteCostMargin, which use discount_ex_gst) stay correct
+  // as items change. With pct = 0 the absolute discount_ex_gst path is untouched.
+  let discountExGst = Number(q?.discount_ex_gst ?? 0);
+  if (discountPct > 0) {
+    const subtotal = lines.reduce((s, l) => s + l.qty * l.unitPriceExGst, 0);
+    discountExGst = round2(subtotal * (discountPct / 100));
+  }
   const fin = quoteFinancials(lines, gstRate, { discountExGst });
   const { error } = await supabase
     .from('quotes')
@@ -915,6 +1024,7 @@ export async function recomputeQuoteTotals(quoteId: string): Promise<void> {
       subtotal_ex_gst: fin.subtotalExGst,
       gst_amount: fin.gstAmount,
       total_inc_gst: fin.totalIncGst,
+      ...(discountPct > 0 && { discount_ex_gst: discountExGst }),
     })
     .eq('id', quoteId);
   if (error) throw error;

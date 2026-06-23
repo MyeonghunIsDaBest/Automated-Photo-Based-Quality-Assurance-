@@ -72,6 +72,20 @@ export async function listProfiles(): Promise<Profile[]> {
   return (data ?? []).map((r) => rowToProfile(r as Parameters<typeof rowToProfile>[0]));
 }
 
+/** Active profiles in the given security groups, sorted by name. Powers the
+ *  quote Salesperson / Project Manager / Technician pickers. */
+export async function listProfilesByRole(groups: SecurityGroup[]): Promise<Profile[]> {
+  if (!supabaseConfigured() || groups.length === 0) return [];
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .in('security_group', groups)
+    .eq('is_active', true)
+    .order('first_name', { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((r) => rowToProfile(r as Parameters<typeof rowToProfile>[0]));
+}
+
 export async function getProfile(id: string): Promise<Profile | null> {
   if (!supabaseConfigured()) return null;
   const { data, error } = await supabase
