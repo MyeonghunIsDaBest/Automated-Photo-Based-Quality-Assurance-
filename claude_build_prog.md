@@ -3708,3 +3708,16 @@ In-place rework of QuoteEditor's line-item area into Simpro's Billable layout. F
 - **QuoteEditor.tsx**: replaced the single line-items table with a **6-pill Parts&Labour sub-tab strip** (Billable built; Take Off/Pre-Builds/Catalogue/Stock/One Off Items = "coming soon" stubs) + a **Parts table** (material+custom) and a **Labour table** (labour), each with **Cost · Markup% · Sell · Qty/Time · Total** via a shared `billableRow` helper. Cost+Markup columns are `canSeeCost` + `print:hidden`; Sell/Qty/Total print (customer quote unchanged). Markup% edit derives Sell = round2(cost×(1+m/100)); Sell/Cost edits recompute markup display (`handleItemMarkup` + extended `handleItemUpdate`). Tables render `hidden print:block` when a non-billable sub-tab is active so the printed quote always has the line items. Add-item controls gated to the Billable sub-tab. The manager cost/margin rollup was replaced by a **Billable Summary** (Material/Labour cost+markup from `quoteCostMargin`, Plant&Equipment $0, Sub-Total/GST/Total from `quoteFinancials`, nett margin). Reorder/delete + all existing add-modes preserved.
 
 Deferred to later parts: the other 5 sub-tabs as full screens, Call-out/Service-Fee catalogue picker, Supplier-quote attach, Plant&Equipment as a real cost class (new kind), Modify Table View, multi-select labour add. AI Quote Drafter still parked. Next migration (when needed) = 81.
+
+---
+
+## 24 June 2026 — Quote-flow fixes from boss live-testing feedback
+
+Four findings from the boss testing the new quote flow on production:
+
+1. **"quote failed"** — root cause: the create path writes the migration-79 columns, so it errored until 79 was applied (now applied → resolved). The wizard surfaces the real DB error in its toast if it recurs. No code change needed beyond confirming.
+2. **"can't find a customer"** — no customers existed + no inline create. Added an inline **"+ New customer"** form in the wizard's Customer field (`createCustomer` → merged into `allCustomers` → auto-selected). Customers no longer have to be made in the Maintenance area first.
+3. **Labour overhead preset** — added `default_labour_overhead` to `commercial_settings` (**migration 81**) + the `CommercialSettings` type/mapper/update + a "Default labour overhead ($/hr)" field in Sales → Settings; the wizard prefills it + a "Use default" toggle.
+4. **STC/VEEC "Use default"** — added "Use default" toggles (lock to the settings value, uncheck to override) on STC Value + VEEC Value + Labour Overhead, mirroring the Default Material Markup pattern.
+
+Files: `commercial.ts` (defaultLabourOverhead through the settings type/row/mapper/update), `NewQuoteWizard.tsx` (inline customer create + 3 use-default toggles + overhead prefill + allCustomers), `SettingsTab.tsx` (labour-overhead field), migration `81_default_labour_overhead.sql`. Subagent-reviewed clean. **Jordan applies migration 81.** Next free migration = 82.

@@ -44,6 +44,7 @@ interface CommercialSettingsRow {
   default_labour_markup: number;
   stc_unit_price: number;
   veec_unit_value: number;
+  default_labour_overhead: number;
 }
 
 interface QuoteRow {
@@ -208,6 +209,8 @@ export interface CommercialSettings {
   stcUnitPrice: number;
   /** Current VEEC certificate value (AUD ex-GST), prefilled into solar quotes. */
   veecUnitValue: number;
+  /** Office-wide default labour overhead (AUD/hr), prefilled into a quote's Optional tab. */
+  defaultLabourOverhead: number;
 }
 
 export interface Quote {
@@ -481,6 +484,7 @@ function rowToSettings(r: CommercialSettingsRow): CommercialSettings {
     defaultLabourMarkup: Number(r.default_labour_markup ?? 0),
     stcUnitPrice: Number(r.stc_unit_price ?? 0),
     veecUnitValue: Number(r.veec_unit_value ?? 0),
+    defaultLabourOverhead: Number(r.default_labour_overhead ?? 0),
   };
 }
 
@@ -665,6 +669,7 @@ export async function updateCommercialSettings(
   if (patch.defaultLabourMarkup !== undefined) update.default_labour_markup = patch.defaultLabourMarkup;
   if (patch.stcUnitPrice !== undefined) update.stc_unit_price = patch.stcUnitPrice;
   if (patch.veecUnitValue !== undefined) update.veec_unit_value = patch.veecUnitValue;
+  if (patch.defaultLabourOverhead !== undefined) update.default_labour_overhead = patch.defaultLabourOverhead;
   const { data, error } = await supabase
     .from('commercial_settings')
     .update(update)

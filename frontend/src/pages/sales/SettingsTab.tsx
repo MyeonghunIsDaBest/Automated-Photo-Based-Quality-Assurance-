@@ -76,6 +76,7 @@ export default function SettingsTab({ onChanged }: Props) {
   const [labourMarkupPct, setLabourMarkupPct]     = useState("0");
   const [stcPrice, setStcPrice]                   = useState("0");
   const [veecValue, setVeecValue]                 = useState("0");
+  const [labourOverhead, setLabourOverhead]       = useState("0");
 
   useEffect(() => {
     if (!isAdmin) { setLoading(false); return; }
@@ -96,6 +97,7 @@ export default function SettingsTab({ onChanged }: Props) {
           setLabourMarkupPct(String(Math.round((s.defaultLabourMarkup ?? 0) * 100)));
           setStcPrice(String(s.stcUnitPrice ?? 0));
           setVeecValue(String(s.veecUnitValue ?? 0));
+          setLabourOverhead(String(s.defaultLabourOverhead ?? 0));
         }
       })
       .catch(() => {})
@@ -120,6 +122,7 @@ export default function SettingsTab({ onChanged }: Props) {
         defaultLabourMarkup: (parseFloat(labourMarkupPct) || 0) / 100,
         stcUnitPrice: parseFloat(stcPrice) || 0,
         veecUnitValue: parseFloat(veecValue) || 0,
+        defaultLabourOverhead: parseFloat(labourOverhead) || 0,
       });
       setSettings(updated);
       setToast({ message: "Settings saved.", type: "success" });
@@ -284,6 +287,13 @@ export default function SettingsTab({ onChanged }: Props) {
               <input
                 type="number" min="0" step="any" value={veecValue}
                 onChange={(e) => setVeecValue(e.target.value)}
+                disabled={saving} className={inputCls}
+              />
+            </Field>
+            <Field label="Default labour overhead ($/hr)" hint="Pre-fills the New Quote → Optional tab so it isn't entered each time (override per quote with “Use default”).">
+              <input
+                type="number" min="0" step="any" value={labourOverhead}
+                onChange={(e) => setLabourOverhead(e.target.value)}
                 disabled={saving} className={inputCls}
               />
             </Field>

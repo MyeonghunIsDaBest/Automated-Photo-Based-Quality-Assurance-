@@ -9,7 +9,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useState } from "react";
-import { X, Loader2, Ticket } from "lucide-react";
+import { X, Loader2, Ticket, Plus } from "lucide-react";
 
 import { btnPrimary, btnGhost, FRAUNCES } from "../gantt/components/ledger";
 
@@ -21,7 +21,7 @@ import {
 import { listPropertiesForCustomer, type Property } from "../../lib/api/properties";
 import { listProfilesByRole } from "../../lib/api/profiles";
 import { createVoucher, applyVoucherToQuote, getVoucherByCode } from "../../lib/api/vouchers";
-import type { Customer } from "../../lib/api/customers";
+import { createCustomer, type Customer } from "../../lib/api/customers";
 import type { Profile, SecurityGroup } from "../../types";
 
 // ─── role groups for the people pickers ─────────────────────────────────────
@@ -94,6 +94,14 @@ export default function NewQuoteWizard({ customers, onCancel, onCreated }: Props
   const [technicianIds, setTechnicianIds] = useState<string[]>([]);
   const [description, setDescription] = useState("");
 
+  // Inline "create customer" (so a quote can be started without leaving the flow).
+  const [createdCustomers, setCreatedCustomers] = useState<Customer[]>([]);
+  const [showNewCustomer, setShowNewCustomer] = useState(false);
+  const [newCustName, setNewCustName] = useState("");
+  const [newCustEmail, setNewCustEmail] = useState("");
+  const [newCustPhone, setNewCustPhone] = useState("");
+  const [creatingCustomer, setCreatingCustomer] = useState(false);
+
   // ── Optional ──
   const [leaveDefault, setLeaveDefault] = useState(true);
   const [quoteType, setQuoteType] = useState<"service" | "project">("service");
@@ -108,6 +116,10 @@ export default function NewQuoteWizard({ customers, onCancel, onCreated }: Props
   const [veecValue, setVeecValue] = useState("");
   const [calloutFee, setCalloutFee] = useState("");
   const [costCentreName, setCostCentreName] = useState("");
+  // "Use default" toggles (prefill from settings; uncheck to override) — boss ask.
+  const [useDefaultOverhead, setUseDefaultOverhead] = useState(true);
+  const [useDefaultStc, setUseDefaultStc] = useState(true);
+  const [useDefaultVeec, setUseDefaultVeec] = useState(true);
 
   // ── voucher ──
   const [voucherCode, setVoucherCode] = useState("");
@@ -128,6 +140,7 @@ export default function NewQuoteWizard({ customers, onCancel, onCreated }: Props
         setMaterialMarkup(String(Math.round(s.defaultMaterialMarkup * 100)));
         if (s.stcUnitPrice) setStcValue(String(s.stcUnitPrice));
         if (s.veecUnitValue) setVeecValue(String(s.veecUnitValue));
+        if (s.defaultLabourOverhead) setLabourOverhead(String(s.defaultLabourOverhead));
       }
     }).catch(() => {});
     void listProfilesByRole(MANAGER_GROUPS).then(setManagers).catch(() => {});
@@ -183,10 +196,35 @@ export default function NewQuoteWizard({ customers, onCancel, onCreated }: Props
     }
   }
 
+  // Newly-created customers merged with the prop list (so they're selectable immediately).
+  const allCustomers = createdCustomers.length > 0 ? [...customers, ...createdCustomers] : customers;
+
+  async function handleCreateCustomer() {
+    const name = newCustName.trim();
+    if (!name) return;
+    setCreatingCustomer(true);
+    setErr(null);
+    try {
+      const c = await createCustomer({
+        name,
+        primaryContactEmail: newCustEmail.trim() || undefined,
+        phone: newCustPhone.trim() || undefined,
+      });
+      setCreatedCustomers((prev) => [...prev, c]);
+      setCustomerId(c.id);
+      setShowNewCustomer(false);
+      setNewCustName(""); setNewCustEmail(""); setNewCustPhone("");
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : "Failed to create customer.");
+    } finally {
+      setCreatingCustomer(false);
+    }
+  }
+
   function buildInput(): CreateQuoteInput {
     const title =
       quoteName.trim() ||
-      (customerId ? (customers.find((c) => c.id === customerId)?.name ?? "Quote") : clientName.trim()) ||
+      (customerId ? (allCustomers.find((c) => c.id === customerId)?.name ?? "Quote") : clientName.trim()) ||
       "New quote";
     const tags = tagsText.split(",").map((t) => t.trim()).filter(Boolean);
     // Optional-tab extras that don't have dedicated columns ride in custom_fields.
@@ -246,7 +284,7 @@ export default function NewQuoteWizard({ customers, onCancel, onCreated }: Props
     }
   }
 
-  const customerName = customerId ? (customers.find((c) => c.id === customerId)?.name ?? "—") : (clientName.trim() || "—");
+  const customerName = customerId ? (allCustomers.find((c) => c.id === customerId)?.name ?? "—") : (clientName.trim() || "—");
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#1A1A1A]/50 p-4">
@@ -306,13 +344,33 @@ export default function NewQuoteWizard({ customers, onCancel, onCreated }: Props
           {tab === "main" && (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label className={labelCls}>Customer <span className="text-[#C44545]">*</span></label>
-                <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} disabled={saving} className={inputCls}>
-                  <option value="">One-off / no account…</option>
-                  {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-                {!customerId && (
-                  <input value={clientName} onChange={(e) => setClientName(e.target.value)} disabled={saving} placeholder="One-off client name" className={`${inputCls} mt-2`} />
+                <div className="mb-1 flex items-center justify-between">
+                  <label className="text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">Customer <span className="text-[#C44545]">*</span></label>
+                  <button type="button" onClick={() => setShowNewCustomer((v) => !v)} disabled={saving} className="text-[11px] font-medium text-[#2F8F5C] hover:underline">
+                    {showNewCustomer ? "Cancel" : "+ New customer"}
+                  </button>
+                </div>
+                {showNewCustomer ? (
+                  <div className="space-y-2 rounded-md border border-[#E6E1D4] bg-[#FAF8F2] p-2.5">
+                    <input value={newCustName} onChange={(e) => setNewCustName(e.target.value)} disabled={creatingCustomer} placeholder="Customer / company name *" className={inputCls} />
+                    <div className="flex gap-2">
+                      <input value={newCustEmail} onChange={(e) => setNewCustEmail(e.target.value)} disabled={creatingCustomer} placeholder="Contact email" className={inputCls} />
+                      <input value={newCustPhone} onChange={(e) => setNewCustPhone(e.target.value)} disabled={creatingCustomer} placeholder="Phone" className={inputCls} />
+                    </div>
+                    <button type="button" onClick={() => void handleCreateCustomer()} disabled={creatingCustomer || !newCustName.trim()} className={btnPrimary + " w-full justify-center"}>
+                      {creatingCustomer ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Create customer
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} disabled={saving} className={inputCls}>
+                      <option value="">One-off / no account…</option>
+                      {allCustomers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                    {!customerId && (
+                      <input value={clientName} onChange={(e) => setClientName(e.target.value)} disabled={saving} placeholder="One-off client name" className={`${inputCls} mt-2`} />
+                    )}
+                  </>
                 )}
               </div>
               <div>
@@ -422,7 +480,13 @@ export default function NewQuoteWizard({ customers, onCancel, onCreated }: Props
                 </div>
                 <div className={leaveDefault ? "opacity-50" : ""}>
                   <label className={labelCls}>Labour Overhead ($/hr)</label>
-                  <input value={labourOverhead} onChange={(e) => setLabourOverhead(e.target.value)} disabled={saving || leaveDefault} inputMode="decimal" className={inputCls} />
+                  <div className="flex items-center gap-2">
+                    <label className="flex items-center gap-1 text-xs text-[#6B6B6B]">
+                      <input type="checkbox" checked={useDefaultOverhead} onChange={(e) => setUseDefaultOverhead(e.target.checked)} disabled={saving || leaveDefault} className="h-3.5 w-3.5" />
+                      Use default
+                    </label>
+                    <input value={labourOverhead} onChange={(e) => setLabourOverhead(e.target.value)} disabled={saving || leaveDefault || useDefaultOverhead} inputMode="decimal" className={inputCls} />
+                  </div>
                 </div>
                 <div className={leaveDefault ? "opacity-50" : ""}>
                   <label className={labelCls}>Default Material Markup (%)</label>
@@ -444,11 +508,23 @@ export default function NewQuoteWizard({ customers, onCancel, onCreated }: Props
                 </div>
                 <div>
                   <label className={labelCls}>STC Value ($)</label>
-                  <input value={stcValue} onChange={(e) => setStcValue(e.target.value)} disabled={saving} inputMode="decimal" className={inputCls} />
+                  <div className="flex items-center gap-2">
+                    <label className="flex items-center gap-1 text-xs text-[#6B6B6B]">
+                      <input type="checkbox" checked={useDefaultStc} onChange={(e) => setUseDefaultStc(e.target.checked)} disabled={saving} className="h-3.5 w-3.5" />
+                      Use default
+                    </label>
+                    <input value={stcValue} onChange={(e) => setStcValue(e.target.value)} disabled={saving || useDefaultStc} inputMode="decimal" className={inputCls} />
+                  </div>
                 </div>
                 <div>
                   <label className={labelCls}>VEEC Value ($)</label>
-                  <input value={veecValue} onChange={(e) => setVeecValue(e.target.value)} disabled={saving} inputMode="decimal" className={inputCls} />
+                  <div className="flex items-center gap-2">
+                    <label className="flex items-center gap-1 text-xs text-[#6B6B6B]">
+                      <input type="checkbox" checked={useDefaultVeec} onChange={(e) => setUseDefaultVeec(e.target.checked)} disabled={saving} className="h-3.5 w-3.5" />
+                      Use default
+                    </label>
+                    <input value={veecValue} onChange={(e) => setVeecValue(e.target.value)} disabled={saving || useDefaultVeec} inputMode="decimal" className={inputCls} />
+                  </div>
                 </div>
                 <div>
                   <label className={labelCls}>Call out / Service Fee ($)</label>
