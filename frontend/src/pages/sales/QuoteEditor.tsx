@@ -42,11 +42,18 @@ import { listCustomers, type Customer } from "../../lib/api/customers";
 import { listMaterials, listPrebuilds, type Material, type Prebuild } from "../../lib/api/materials";
 import { listLabourRates, formatRole, type LabourRate } from "../../lib/api/labourRates";
 import { listTemplates, applyTemplateToQuote, type QuoteTemplate } from "../../lib/api/quoteTemplates";
+import { listScripts, type QuoteScript } from "../../lib/api/quoteScripts";
+import { listProfilesByRole } from "../../lib/api/profiles";
+import type { Profile, SecurityGroup } from "../../types";
 
 // â”€â”€â”€ types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 type ToastState = { message: string; type: "success" | "error" | "info" } | null;
 type AddMode = "catalogue" | "prebuild" | "free" | "labour" | "template" | null;
+
+// Internal staff eligible to be assigned as technicians on a quote.
+const INTERNAL_GROUPS: SecurityGroup[] = ["company_admin", "construction_mgr", "project_manager", "worker", "dev"];
+const fullName = (p: Profile) => `${p.firstName} ${p.lastName}`.trim() || p.email;
 
 interface Props {
   quoteId: string;
@@ -138,6 +145,17 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
   // from clobbering in-flight notes when item ops trigger a refetch.
   const notesDirtyRef               = useRef(false);
 
+  // Customer-facing Description (debounced auto-save, mirror of notes) + the
+  // "Insert script" scope-of-works templates.
+  const [descDraft, setDescDraft]   = useState("");
+  const descDebRef                  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const descDirtyRef                = useRef(false);
+  const [scripts, setScripts]       = useState<QuoteScript[]>([]);
+
+  // Technicians assigned to the quote (commit on toggle) + the staff to pick from.
+  const [technicianIdsDraft, setTechnicianIdsDraft] = useState<string[]>([]);
+  const [staff, setStaff]           = useState<Profile[]>([]);
+
   const [addMode, setAddMode]       = useState<AddMode>(null);
 
   // Catalogue search
@@ -199,9 +217,12 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
       if (!q) { setError("Quote not found."); return; }
       setQuote(q);
       setSettings(s);
-      // Only sync notes from server when the textarea is not dirty (no unsaved user edits)
+      // Only sync notes/description from server when not dirty (no unsaved edits)
       if (!notesDirtyRef.current) {
         setNotes(q.notes ?? "");
+      }
+      if (!descDirtyRef.current) {
+        setDescDraft(q.description ?? "");
       }
     } catch (ex) {
       setError(ex instanceof Error ? ex.message : "Failed to load quote");
@@ -226,10 +247,14 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
     setCustomerIdDraft(quote.customerId ?? "");
     setClientNameDraft(quote.clientName ?? "");
     setClientEmailDraft(quote.clientEmail ?? "");
+    setTechnicianIdsDraft(quote.technicianIds ?? []);
   }, [quote, settings]);
 
   // Load customers once (for the client picker)
   useEffect(() => { listCustomers().then(setCustomers).catch(() => {}); }, []);
+  // Load scope-of-works scripts + assignable staff once.
+  useEffect(() => { listScripts().then(setScripts).catch(() => {}); }, []);
+  useEffect(() => { listProfilesByRole(INTERNAL_GROUPS).then(setStaff).catch(() => {}); }, []);
 
   // Debounced notes save
   useEffect(() => {
@@ -246,6 +271,51 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
     }, 700);
     return () => { if (notesDebRef.current) clearTimeout(notesDebRef.current); };
   }, [notes, quote, quoteId, loadQuote, onChanged]);
+
+  // Debounced description save (customer-facing scope of works)
+  useEffect(() => {
+    if (!quote || descDraft === (quote.description ?? "")) return;
+    descDirtyRef.current = true;
+    if (descDebRef.current) clearTimeout(descDebRef.current);
+    descDebRef.current = setTimeout(async () => {
+      try {
+        await updateQuote(quoteId, { description: descDraft || null });
+        descDirtyRef.current = false;
+        void loadQuote();
+        onChanged();
+      } catch { /* silent */ }
+    }, 700);
+    return () => { if (descDebRef.current) clearTimeout(descDebRef.current); };
+  }, [descDraft, quote, quoteId, loadQuote, onChanged]);
+
+  // Insert a scope-of-works script into the Description (append; the debounce saves it).
+  function insertScript(body: string) {
+    setDescDraft((prev) => (prev.trim() ? prev.replace(/\s*$/, "") + "\n\n" + body : body));
+  }
+
+  // Toggle a technician on the quote and persist immediately.
+  async function toggleTechnician(id: string) {
+    if (!quote) return;
+    const next = technicianIdsDraft.includes(id)
+      ? technicianIdsDraft.filter((t) => t !== id)
+      : [...technicianIdsDraft, id];
+    setTechnicianIdsDraft(next);
+    setSaving(true);
+    try {
+      await updateQuote(quoteId, { technicianIds: next });
+      await loadQuote();
+      onChanged();
+    } catch (ex) {
+      setToast({ message: ex instanceof Error ? ex.message : "Failed to save technicians", type: "error" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // Scripts available for this quote's type (type-specific + 'any').
+  const availableScripts = quote
+    ? scripts.filter((s) => s.quoteType === "any" || s.quoteType === quote.quoteType)
+    : [];
 
   // Debounced catalogue search
   useEffect(() => {
@@ -832,6 +902,67 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
           )}
         </div>
 
+        {/* Description (customer-facing scope of works) + Insert script */}
+        <div className="mb-6">
+          <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+            <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#A0A0A0]">Description</label>
+            {!isLocked && availableScripts.length > 0 && (
+              <select
+                value=""
+                onChange={(e) => { const s = availableScripts.find((x) => x.id === e.target.value); if (s) insertScript(s.body); }}
+                className="rounded-md border border-[#E6E1D4] bg-white px-2 py-1 text-xs text-[#3A3A3A] focus:border-[#2F8F5C] focus:outline-none print:hidden"
+              >
+                <option value="">Insert script…</option>
+                {availableScripts.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            )}
+          </div>
+          {isLocked ? (
+            <p className="whitespace-pre-wrap text-sm text-[#3A3A3A]">{quote.description || "—"}</p>
+          ) : (
+            <>
+              <textarea
+                value={descDraft}
+                onChange={(e) => setDescDraft(e.target.value)}
+                rows={6}
+                placeholder="Scope of works / description shown to the customer. Use “Insert script” for a template."
+                className="w-full rounded-md border border-[#E6E1D4] px-3 py-2 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] print:hidden"
+              />
+              <div className="hidden whitespace-pre-wrap text-sm text-[#3A3A3A] print:block">{descDraft}</div>
+            </>
+          )}
+        </div>
+
+        {/* Technicians (internal — screen only) */}
+        <div className="mb-6 print:hidden">
+          <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.14em] text-[#A0A0A0]">Technicians</label>
+          {isLocked ? (
+            <p className="text-sm text-[#3A3A3A]">
+              {technicianIdsDraft.length === 0
+                ? "—"
+                : technicianIdsDraft.map((id) => { const p = staff.find((x) => x.id === id); return p ? fullName(p) : null; }).filter(Boolean).join(", ")}
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {staff.length === 0 && <span className="text-xs text-[#A0A0A0]">No staff to assign.</span>}
+              {staff.map((p) => {
+                const on = technicianIdsDraft.includes(p.id);
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => void toggleTechnician(p.id)}
+                    disabled={saving}
+                    className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${on ? "border-[#2F8F5C] bg-[#E5F2EA] text-[#246F47]" : "border-[#E6E1D4] bg-white text-[#6B6B6B] hover:border-[#D8D2C4]"}`}
+                  >
+                    {fullName(p)}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
         {/* â”€â”€ Line items table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         <div className="mb-6 overflow-x-auto">
           <table className="min-w-full text-sm">
@@ -1354,16 +1485,16 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
         )}
 
         {/* ── Notes textarea ─────────────────────────────────────────────── */}
-        <div className="mb-8">
+        <div className="mb-8 print:hidden">
           <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.14em] text-[#A0A0A0]">
-            Customer-visible notes
+            Private notes (not visible to the customer)
           </label>
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={3}
             disabled={isLocked}
-            placeholder="Add any notes for the customer â€” these will appear on the printed quote."
+            placeholder="Internal notes for your team — never shown to the customer or printed."
             className="w-full rounded-md border border-[#E6E1D4] px-3 py-2 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] disabled:opacity-50 print:border-0 print:px-0"
           />
         </div>

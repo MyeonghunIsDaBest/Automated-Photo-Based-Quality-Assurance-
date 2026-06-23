@@ -3684,3 +3684,16 @@ Kickoff of the Simpro replication (post-tour). Replaces the tiny NewQuoteModal w
 **TIMING:** the frontend writes the mig-79 columns, so quote creation breaks until Jordan applies migration 79 in Supabase. Flag prominently. Next free migration = 80.
 
 Deferred to Parts 2+: live map, tax-code engine, full customer_contacts table, pricing-tier price engine, Project↔Gantt binding, the AI Quote Drafter (still parked).
+
+---
+
+## 23 June 2026 — Quote rework Phase 1 Part 2: Scope-of-Works scripts + Description/Notes + Technicians
+
+Enhances the quote detail (QuoteEditor) toward Simpro's Details→Summary. Subagent-reviewed clean (CI gate = typecheck+vitest+build; one duplicate-placeholder caught + removed).
+
+- **Migration 80** (`80_quote_scripts.sql`, force-added, **Jordan applies**): `quote_scripts` (name/quote_type any|service|project/body/sort_order/is_active) + touch trigger + manager RLS; idempotent dollar-quoted seeds = the verbatim Casone **Project — Main Scope of Works** SOW + a concise **Service — Scope of Works**.
+- **quoteScripts.ts** (NEW): list/create/update/setActive/delete.
+- **QuoteEditor.tsx**: customer-facing **Description** (debounced 700ms auto-save, mirrors notes; prints) + **Insert script** dropdown filtered by quote.quoteType (`availableScripts`); **Notes relabelled "Private — not visible to the customer" + `print:hidden`**; **Technicians** chip editor (commit-on-toggle via updateQuote{technicianIds}, names from listProfilesByRole(INTERNAL_GROUPS)). description/technicianIds already accepted by updateQuote (Part 1) — no API change.
+- **QuoteScriptsSettings.tsx** (NEW) embedded in SettingsTab below LabourRatesSettings — manager list/add/edit/delete of scripts (so SOW text is editable without a deploy).
+
+TIMING: quote detail Insert-script needs migration 80 applied; editor degrades gracefully (empty script list) until then, but apply 80 to get the seeded templates. Next free migration = 81. Deferred to later parts: full Simpro tabbed detail (Schedule/Customer Assets/Contractor/Attachments/Retention/Activity/Lock/granular costs), rich-text, script merge-fields. AI Quote Drafter still parked.

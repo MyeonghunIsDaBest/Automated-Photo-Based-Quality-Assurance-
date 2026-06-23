@@ -19,6 +19,7 @@ import {
   type CommercialSettings,
 } from "../../lib/api/commercial";
 import LabourRatesSettings from "./LabourRatesSettings";
+import QuoteScriptsSettings from "./QuoteScriptsSettings";
 
 // â”€â”€â”€ types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -304,6 +305,9 @@ export default function SettingsTab({ onChanged }: Props) {
     {/* Labour Rates — same admin gate as the tab; LabourRatesSettings has no
         internal role check because its host (this tab) is already admin-only. */}
     <LabourRatesSettings />
+
+    {/* Quote scripts — same admin gate as the tab (host is already admin-only). */}
+    <QuoteScriptsSettings />
     </>
   );
 }
