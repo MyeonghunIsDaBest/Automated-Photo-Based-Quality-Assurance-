@@ -3697,3 +3697,14 @@ Enhances the quote detail (QuoteEditor) toward Simpro's Details→Summary. Subag
 - **QuoteScriptsSettings.tsx** (NEW) embedded in SettingsTab below LabourRatesSettings — manager list/add/edit/delete of scripts (so SOW text is editable without a deploy).
 
 TIMING: quote detail Insert-script needs migration 80 applied; editor degrades gracefully (empty script list) until then, but apply 80 to get the seeded templates. Next free migration = 81. Deferred to later parts: full Simpro tabbed detail (Schedule/Customer Assets/Contractor/Attachments/Retention/Activity/Lock/granular costs), rich-text, script merge-fields. AI Quote Drafter still parked.
+
+---
+
+## 23 June 2026 — Quote rework Phase 1 Part 3: Parts & Labour → Billable tab
+
+In-place rework of QuoteEditor's line-item area into Simpro's Billable layout. Frontend-only, NO migration. Subagent-reviewed clean (JSX tag-balance verified; no unused symbols; types sound).
+
+- **commercial.ts**: `UpdateItemInput` += `costPriceExGst?: number|null` + patched in `updateQuoteItem` → per-line Cost is now editable (drives the Markup% column). Doesn't touch totals.
+- **QuoteEditor.tsx**: replaced the single line-items table with a **6-pill Parts&Labour sub-tab strip** (Billable built; Take Off/Pre-Builds/Catalogue/Stock/One Off Items = "coming soon" stubs) + a **Parts table** (material+custom) and a **Labour table** (labour), each with **Cost · Markup% · Sell · Qty/Time · Total** via a shared `billableRow` helper. Cost+Markup columns are `canSeeCost` + `print:hidden`; Sell/Qty/Total print (customer quote unchanged). Markup% edit derives Sell = round2(cost×(1+m/100)); Sell/Cost edits recompute markup display (`handleItemMarkup` + extended `handleItemUpdate`). Tables render `hidden print:block` when a non-billable sub-tab is active so the printed quote always has the line items. Add-item controls gated to the Billable sub-tab. The manager cost/margin rollup was replaced by a **Billable Summary** (Material/Labour cost+markup from `quoteCostMargin`, Plant&Equipment $0, Sub-Total/GST/Total from `quoteFinancials`, nett margin). Reorder/delete + all existing add-modes preserved.
+
+Deferred to later parts: the other 5 sub-tabs as full screens, Call-out/Service-Fee catalogue picker, Supplier-quote attach, Plant&Equipment as a real cost class (new kind), Modify Table View, multi-select labour add. AI Quote Drafter still parked. Next migration (when needed) = 81.

@@ -50,6 +50,16 @@ import type { Profile, SecurityGroup } from "../../types";
 
 type ToastState = { message: string; type: "success" | "error" | "info" } | null;
 type AddMode = "catalogue" | "prebuild" | "free" | "labour" | "template" | null;
+// Parts & Labour sub-tabs (Simpro). Only "billable" is built; the rest are stubs.
+type BillableTab = "billable" | "takeoff" | "prebuilds" | "catalogue" | "stock" | "oneoff";
+const BILLABLE_TABS: { key: BillableTab; label: string }[] = [
+  { key: "billable", label: "Billable" },
+  { key: "takeoff", label: "Take Off" },
+  { key: "prebuilds", label: "Pre-Builds" },
+  { key: "catalogue", label: "Catalogue" },
+  { key: "stock", label: "Stock" },
+  { key: "oneoff", label: "One Off Items" },
+];
 
 // Internal staff eligible to be assigned as technicians on a quote.
 const INTERNAL_GROUPS: SecurityGroup[] = ["company_admin", "construction_mgr", "project_manager", "worker", "dev"];
@@ -157,6 +167,7 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
   const [staff, setStaff]           = useState<Profile[]>([]);
 
   const [addMode, setAddMode]       = useState<AddMode>(null);
+  const [billableTab, setBillableTab] = useState<BillableTab>("billable");
 
   // Catalogue search
   const [catalogueSearch, setCatalogueSearch] = useState("");
@@ -349,7 +360,10 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
     listTemplates().then(setTemplates).catch(() => {});
   }, [addMode, templates.length]);
 
-  async function handleItemUpdate(item: QuoteItem, patch: { qty?: number; unitPriceExGst?: number; description?: string }) {
+  async function handleItemUpdate(
+    item: QuoteItem,
+    patch: { qty?: number; unitPriceExGst?: number; costPriceExGst?: number | null; description?: string },
+  ) {
     setSaving(true);
     try {
       await updateQuoteItem(item.id, quoteId, patch);
@@ -360,6 +374,15 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
     } finally {
       setSaving(false);
     }
+  }
+
+  // Markup% edit → derive Sell from Cost (Sell = Cost × (1 + markup/100)).
+  // Needs a positive cost; otherwise the markup cell is read-only ("—").
+  async function handleItemMarkup(item: QuoteItem, markupPct: number) {
+    const cost = item.costPriceExGst ?? 0;
+    if (cost <= 0) return;
+    const sell = Math.round(cost * (1 + markupPct / 100) * 100) / 100;
+    await handleItemUpdate(item, { unitPriceExGst: sell });
   }
 
   async function handleRemoveItem(item: QuoteItem) {
@@ -666,6 +689,80 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
           ? TONE.amber
           : TONE.sage;
 
+  // ── Billable (Parts & Labour) derived data ──
+  const partsItems = items.filter((it) => it.kind === "material" || it.kind === "custom");
+  const labourItems = items.filter((it) => it.kind === "labour");
+  const partsSell = partsItems.reduce((s, it) => s + lineTotal({ qty: it.qty, unitPriceExGst: it.unitPriceExGst }), 0);
+  const labourSell = labourItems.reduce((s, it) => s + lineTotal({ qty: it.qty, unitPriceExGst: it.unitPriceExGst }), 0);
+  const estHours = labourItems.reduce((s, it) => s + it.qty, 0);
+  // Empty-state colspan: Description + Sell + Qty + Total (4) + Cost+Markup (mgr) + Actions (unlocked).
+  const billableCols = 4 + (canSeeCost ? 2 : 0) + (!isLocked ? 1 : 0);
+
+  // One row for either the Parts or Labour table (same columns). Cost + Markup%
+  // are manager-only (canSeeCost) and never printed; Sell/Qty/Total always show.
+  const billableRow = (item: QuoteItem, idx: number, count: number) => {
+    const lt = lineTotal({ qty: item.qty, unitPriceExGst: item.unitPriceExGst });
+    const cost = item.costPriceExGst;
+    const markupPct = cost && cost > 0 ? Math.round(((item.unitPriceExGst - cost) / cost) * 1000) / 10 : null;
+    return (
+      <tr key={item.id} className="border-b border-[#EFEBE0] hover:bg-[#FAF8F2]">
+        <td className="px-3 py-2.5 text-[#1A1A1A]">
+          {isLocked ? (
+            <span>{item.description}</span>
+          ) : (
+            <TextCell value={item.description} disabled={saving} onCommit={(v) => void handleItemUpdate(item, { description: v })} />
+          )}
+        </td>
+        {canSeeCost && (
+          <td className="px-3 py-2.5 text-right print:hidden">
+            {isLocked ? (
+              <span className="tabular-nums">{cost == null ? "—" : fmtMoney(cost)}</span>
+            ) : (
+              <NumCell value={cost ?? 0} disabled={saving} onCommit={(v) => void handleItemUpdate(item, { costPriceExGst: v })} />
+            )}
+          </td>
+        )}
+        {canSeeCost && (
+          <td className="px-3 py-2.5 text-right print:hidden">
+            {markupPct === null ? (
+              <span className="text-[#C0BAB0]">—</span>
+            ) : isLocked ? (
+              <span className="tabular-nums">{markupPct.toFixed(1)}%</span>
+            ) : (
+              <NumCell value={markupPct} disabled={saving} onCommit={(v) => void handleItemMarkup(item, v)} />
+            )}
+          </td>
+        )}
+        <td className="px-3 py-2.5 text-right">
+          {isLocked ? (
+            <span className="tabular-nums">{fmtMoney(item.unitPriceExGst)}</span>
+          ) : (
+            <NumCell value={item.unitPriceExGst} disabled={saving} onCommit={(v) => void handleItemUpdate(item, { unitPriceExGst: v })} />
+          )}
+        </td>
+        <td className="px-3 py-2.5 text-right">
+          {isLocked ? (
+            <span className="tabular-nums">{item.qty}</span>
+          ) : (
+            <NumCell value={item.qty} disabled={saving} onCommit={(v) => void handleItemUpdate(item, { qty: v })} />
+          )}
+        </td>
+        <td className="px-3 py-2.5 text-right tabular-nums font-medium text-[#1A1A1A]">{fmtMoney(lt)}</td>
+        {!isLocked && (
+          <td className="px-3 py-2.5 print:hidden">
+            <div className="flex items-center gap-1.5">
+              <div className="flex flex-col">
+                <button type="button" disabled={saving || idx === 0} onClick={() => void moveItem(item, -1)} className="text-[#C0BAB0] hover:text-[#6B6B6B] disabled:opacity-30" aria-label="Move up"><ChevronUp className="h-3 w-3" /></button>
+                <button type="button" disabled={saving || idx === count - 1} onClick={() => void moveItem(item, 1)} className="text-[#C0BAB0] hover:text-[#6B6B6B] disabled:opacity-30" aria-label="Move down"><ChevronDown className="h-3 w-3" /></button>
+              </div>
+              <button type="button" disabled={saving} onClick={() => void handleRemoveItem(item)} className="text-[#C0BAB0] hover:text-[#C44545] disabled:opacity-40" aria-label="Remove line"><Trash2 className="h-4 w-4" /></button>
+            </div>
+          </td>
+        )}
+      </tr>
+    );
+  };
+
   return (
     <>
       {/* â”€â”€ Back bar (screen only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
@@ -964,118 +1061,95 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
         </div>
 
         {/* â”€â”€ Line items table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-        <div className="mb-6 overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="border-b border-[#E6E1D4] bg-[#FAF8F2]">
-                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Description</th>
-                <th className="w-20 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Qty</th>
-                <th className="w-16 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Unit</th>
-                <th className="w-28 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Unit price</th>
-                <th className="w-28 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Line total</th>
-                {!isLocked && (
-                  <th className="w-10 px-3 py-2 print:hidden" aria-label="Actions" />
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {items.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-3 py-10 text-center text-xs text-[#A0A0A0]">
-                    No line items yet. Add one below.
-                  </td>
+        {/* Parts & Labour sub-tab strip (screen-only). Only Billable is built. */}
+        <div className="mb-3 flex flex-wrap gap-1 border-b border-[#E6E1D4] print:hidden">
+          {BILLABLE_TABS.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setBillableTab(t.key)}
+              className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+                billableTab === t.key ? "border-[#1A1A1A] text-[#1A1A1A]" : "border-transparent text-[#6B6B6B] hover:text-[#1A1A1A]"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {billableTab !== "billable" && (
+          <div className="mb-6 rounded-[10px] border border-dashed border-[#D8D2C4] bg-[#FAF8F2] px-4 py-8 text-center text-sm text-[#A0A0A0] print:hidden">
+            {BILLABLE_TABS.find((t) => t.key === billableTab)?.label} — coming soon. Add parts &amp; labour from the{" "}
+            <button type="button" className="font-medium text-[#2F8F5C] underline" onClick={() => setBillableTab("billable")}>Billable</button> tab for now.
+          </div>
+        )}
+
+        {/* Parts + Labour tables. Always rendered for print; hidden on screen when another sub-tab is active. */}
+        <div className={billableTab === "billable" ? "" : "hidden print:block"}>
+          {/* Parts */}
+          <div className="mb-6 overflow-x-auto">
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6B6B6B]">Parts</p>
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b border-[#E6E1D4] bg-[#FAF8F2]">
+                  <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Description</th>
+                  {canSeeCost && <th className="w-24 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B] print:hidden">Cost</th>}
+                  {canSeeCost && <th className="w-20 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B] print:hidden">Markup</th>}
+                  <th className="w-28 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Sell</th>
+                  <th className="w-20 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Qty</th>
+                  <th className="w-28 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Total</th>
+                  {!isLocked && <th className="w-10 px-3 py-2 print:hidden" aria-label="Actions" />}
                 </tr>
-              )}
-              {items.map((item, idx) => {
-                const lt = lineTotal({ qty: item.qty, unitPriceExGst: item.unitPriceExGst });
-                return (
-                  <tr key={item.id} className="border-b border-[#EFEBE0] hover:bg-[#FAF8F2]">
-                    <td className="px-3 py-2.5 text-[#1A1A1A]">
-                      {isLocked ? (
-                        <span>{item.description}</span>
-                      ) : (
-                        <TextCell
-                          value={item.description}
-                          disabled={saving}
-                          onCommit={(v) => void handleItemUpdate(item, { description: v })}
-                        />
-                      )}
-                      {item.kind !== "material" && (
-                        <span className="ml-2 rounded-full bg-[#EFEBE0] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#6B6B6B] print:hidden">
-                          {item.kind === "labour" ? "Labour" : "Custom"}
-                        </span>
-                      )}
+              </thead>
+              <tbody>
+                {partsItems.length === 0 && (
+                  <tr>
+                    <td colSpan={billableCols} className="px-3 py-6 text-center text-xs text-[#A0A0A0]">
+                      No parts yet. Use &ldquo;Add a part&rdquo; below.
                     </td>
-                    <td className="px-3 py-2.5 text-right">
-                      {isLocked ? (
-                        <span className="tabular-nums">{item.qty}</span>
-                      ) : (
-                        <NumCell
-                          value={item.qty}
-                          disabled={saving}
-                          onCommit={(v) => void handleItemUpdate(item, { qty: v })}
-                        />
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5 text-[#6B6B6B]">{item.unit}</td>
-                    <td className="px-3 py-2.5 text-right">
-                      {isLocked ? (
-                        <span className="tabular-nums">{fmtMoney(item.unitPriceExGst)}</span>
-                      ) : (
-                        <NumCell
-                          value={item.unitPriceExGst}
-                          disabled={saving}
-                          onCommit={(v) => void handleItemUpdate(item, { unitPriceExGst: v })}
-                        />
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5 text-right tabular-nums font-medium text-[#1A1A1A]">
-                      {fmtMoney(lt)}
-                    </td>
-                    {!isLocked && (
-                      <td className="px-3 py-2.5 print:hidden">
-                        <div className="flex items-center gap-1.5">
-                          <div className="flex flex-col">
-                            <button
-                              type="button"
-                              disabled={saving || idx === 0}
-                              onClick={() => void moveItem(item, -1)}
-                              className="text-[#C0BAB0] hover:text-[#6B6B6B] disabled:opacity-30"
-                              aria-label="Move up"
-                            >
-                              <ChevronUp className="h-3 w-3" />
-                            </button>
-                            <button
-                              type="button"
-                              disabled={saving || idx === items.length - 1}
-                              onClick={() => void moveItem(item, 1)}
-                              className="text-[#C0BAB0] hover:text-[#6B6B6B] disabled:opacity-30"
-                              aria-label="Move down"
-                            >
-                              <ChevronDown className="h-3 w-3" />
-                            </button>
-                          </div>
-                          <button
-                            type="button"
-                            disabled={saving}
-                            onClick={() => void handleRemoveItem(item)}
-                            className="text-[#C0BAB0] hover:text-[#C44545] disabled:opacity-40"
-                            aria-label="Remove line"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </td>
-                    )}
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                )}
+                {partsItems.map((item, i) => billableRow(item, i, partsItems.length))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Labour */}
+          <div className="mb-6 overflow-x-auto">
+            <div className="mb-1 flex items-center justify-between">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6B6B6B]">Labour</p>
+              <p className="text-[11px] text-[#A0A0A0] print:hidden">
+                Estimated time: <span className="font-semibold tabular-nums text-[#3A3A3A]">{estHours.toFixed(2)} hrs</span>
+              </p>
+            </div>
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b border-[#E6E1D4] bg-[#FAF8F2]">
+                  <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Labour type</th>
+                  {canSeeCost && <th className="w-24 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B] print:hidden">Cost rate</th>}
+                  {canSeeCost && <th className="w-20 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B] print:hidden">Markup</th>}
+                  <th className="w-28 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Sell</th>
+                  <th className="w-20 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Time</th>
+                  <th className="w-28 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Total</th>
+                  {!isLocked && <th className="w-10 px-3 py-2 print:hidden" aria-label="Actions" />}
+                </tr>
+              </thead>
+              <tbody>
+                {labourItems.length === 0 && (
+                  <tr>
+                    <td colSpan={billableCols} className="px-3 py-6 text-center text-xs text-[#A0A0A0]">
+                      No labour yet. Add it from the labour picker below.
+                    </td>
+                  </tr>
+                )}
+                {labourItems.map((item, i) => billableRow(item, i, labourItems.length))}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {/* â”€â”€ Add row controls â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-        {!isLocked && (
+        {!isLocked && billableTab === "billable" && (
           <div className="mb-8 print:hidden">
             {addMode === null && (
               <div className="flex flex-wrap gap-2">
@@ -1435,37 +1509,29 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
         {/* â”€â”€ Notes textarea â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         {/* ── Manager-only cost / margin (screen only; never printed) ───────── */}
         {canSeeCost && margin && (
-          <div className="mb-8 flex justify-end print:hidden">
-            <div className="w-full max-w-xs rounded-[10px] border border-dashed border-[#D8D2C4] bg-[#FAF8F2] p-3">
-              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#A0A0A0]">
-                Internal — not shown to customer
-              </p>
+          <div className="mb-8 print:hidden">
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#A0A0A0]">
+              Billable summary — internal, not shown to customer
+            </p>
+            <div className="grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-[1fr_1fr_auto]">
+              {/* Costs */}
               <div className="space-y-1 text-[13px]">
-                <div className="flex items-center justify-between text-[#6B6B6B]">
-                  <span>Sell (ex GST){margin.discountExGst > 0 ? " · after disc." : ""}</span>
-                  <span className="tabular-nums">{fmtMoney(margin.sellExGst)}</span>
-                </div>
-                <div className="flex items-center justify-between text-[#6B6B6B]">
-                  <span>Materials cost</span>
-                  <span className="tabular-nums">{fmtMoney(margin.materialsCost)}</span>
-                </div>
-                <div className="flex items-center justify-between border-t border-[#E6E1D4] pt-1.5 font-medium text-[#1A1A1A]">
-                  <span>Gross profit</span>
-                  <span className="tabular-nums">{fmtMoney(margin.profit.gross)}</span>
-                </div>
-                <div className="flex items-center justify-between text-[#6B6B6B]">
-                  <span>Gross margin</span>
-                  <span className="tabular-nums">{margin.grossMarginPct === null ? "—" : `${margin.grossMarginPct.toFixed(1)}%`}</span>
-                </div>
-                <div className="flex items-center justify-between text-[#6B6B6B]">
-                  <span>Labour cost</span>
-                  <span className="tabular-nums">{fmtMoney(margin.labourCost + margin.otherCost)}</span>
-                </div>
-                <div className="flex items-center justify-between border-t border-[#E6E1D4] pt-1.5 font-medium text-[#1A1A1A]">
-                  <span>Nett profit</span>
-                  <span className="tabular-nums">{fmtMoney(margin.profit.net)}</span>
-                </div>
-                <div className="flex items-center justify-between pt-0.5">
+                <div className="flex items-center justify-between text-[#6B6B6B]"><span>Material cost</span><span className="tabular-nums">{fmtMoney(margin.materialsCost + margin.otherCost)}</span></div>
+                <div className="flex items-center justify-between text-[#6B6B6B]"><span>Labour cost</span><span className="tabular-nums">{fmtMoney(margin.labourCost)}</span></div>
+                <div className="flex items-center justify-between text-[#A0A0A0]"><span>Plant &amp; equipment cost</span><span className="tabular-nums">{fmtMoney(0)}</span></div>
+              </div>
+              {/* Markups (markup $ = sell − cost) */}
+              <div className="space-y-1 text-[13px]">
+                <div className="flex items-center justify-between text-[#6B6B6B]"><span>Material markup</span><span className="tabular-nums">{fmtMoney(partsSell - (margin.materialsCost + margin.otherCost))}</span></div>
+                <div className="flex items-center justify-between text-[#6B6B6B]"><span>Labour markup</span><span className="tabular-nums">{fmtMoney(labourSell - margin.labourCost)}</span></div>
+                <div className="flex items-center justify-between text-[#A0A0A0]"><span>Plant &amp; equipment markup</span><span className="tabular-nums">{fmtMoney(0)}</span></div>
+              </div>
+              {/* Sub-total / GST / Total + nett margin */}
+              <div className="min-w-[200px] space-y-1 rounded-[10px] border border-dashed border-[#D8D2C4] bg-[#FAF8F2] p-3 text-[13px]">
+                <div className="flex items-center justify-between text-[#6B6B6B]"><span>Sub-total (ex GST)</span><span className="tabular-nums">{fmtMoney(fin.netSubtotalExGst)}</span></div>
+                <div className="flex items-center justify-between text-[#6B6B6B]"><span>GST</span><span className="tabular-nums">{fmtMoney(fin.gstAmount)}</span></div>
+                <div className="flex items-center justify-between border-t border-[#E6E1D4] pt-1.5 font-semibold text-[#1A1A1A]"><span>Total</span><span className="tabular-nums">{fmtMoney(fin.totalIncGst)}</span></div>
+                <div className="flex items-center justify-between pt-1">
                   <span className="text-[#6B6B6B]">Nett margin</span>
                   <span
                     className="rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums"
@@ -1475,12 +1541,12 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
                   </span>
                 </div>
               </div>
-              {margin.uncostedLabourLines > 0 && (
-                <p className="mt-2 text-[11px] text-[#C8841E]">
-                  {margin.uncostedLabourLines} labour line{margin.uncostedLabourLines > 1 ? "s" : ""} uncosted — margin may be overstated.
-                </p>
-              )}
             </div>
+            {margin.uncostedLabourLines > 0 && (
+              <p className="mt-2 text-[11px] text-[#C8841E]">
+                {margin.uncostedLabourLines} labour line{margin.uncostedLabourLines > 1 ? "s" : ""} uncosted — markup may be overstated.
+              </p>
+            )}
           </div>
         )}
 

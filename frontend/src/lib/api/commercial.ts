@@ -457,6 +457,9 @@ export interface UpdateItemInput {
   qty?: number;
   unit?: string;
   unitPriceExGst?: number;
+  /** Editable per-line ex-GST cost (drives the Markup% column on the Billable
+   *  tab). Doesn't affect customer totals — only sell does. */
+  costPriceExGst?: number | null;
   sortOrder?: number;
 }
 
@@ -969,6 +972,7 @@ export async function updateQuoteItem(
   if (patch.qty !== undefined) update.qty = patch.qty;
   if (patch.unit !== undefined) update.unit = patch.unit;
   if (patch.unitPriceExGst !== undefined) update.unit_price_ex_gst = patch.unitPriceExGst;
+  if (patch.costPriceExGst !== undefined) update.cost_price_ex_gst = patch.costPriceExGst;
   if (patch.sortOrder !== undefined) update.sort_order = patch.sortOrder;
   const { data, error } = await supabase
     .from('quote_items')
