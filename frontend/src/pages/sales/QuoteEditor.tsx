@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft, Printer, Plus, Trash2, RefreshCw, Search, Package, Clock, LayoutTemplate,
-  ChevronUp, ChevronDown,
+  ChevronUp, ChevronDown, Lock, RotateCcw,
 } from "lucide-react";
 
 import { FRAUNCES, TONE, cardShell, btnPrimary, btnGhost } from "../gantt/components/ledger";
@@ -40,7 +40,7 @@ import {
 } from "../../lib/api/commercial";
 import { listCustomers, type Customer } from "../../lib/api/customers";
 import { listMaterials, listPrebuilds, type Material, type Prebuild } from "../../lib/api/materials";
-import { listLabourRates, type LabourRate } from "../../lib/api/labourRates";
+import { listLabourRates, formatRole, type LabourRate } from "../../lib/api/labourRates";
 import { listTemplates, applyTemplateToQuote, type QuoteTemplate } from "../../lib/api/quoteTemplates";
 
 // â”€â”€â”€ types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -187,6 +187,9 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
   // Delete-quote confirm
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // Reopen-locked-quote confirm (accepted/declined/expired → back to draft)
+  const [confirmReopen, setConfirmReopen] = useState(false);
 
   const loadQuote = useCallback(async () => {
     setLoading(true);
@@ -501,7 +504,7 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
     }
   }
 
-  async function handleStatusAction(action: "send" | "accept" | "decline" | "convertJob") {
+  async function handleStatusAction(action: "send" | "accept" | "decline" | "convertJob" | "reopen") {
     if (!quote) return;
     setSaving(true);
     try {
@@ -514,6 +517,12 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
       } else if (action === "decline") {
         await setQuoteStatus(quoteId, "declined");
         setToast({ message: "Quote declined.", type: "info" });
+      } else if (action === "reopen") {
+        // Unlock a locked quote so it can be edited again. Reuses setQuoteStatus
+        // — there's no backward-transition guard, so this just returns it to draft.
+        setConfirmReopen(false);
+        await setQuoteStatus(quoteId, "draft");
+        setToast({ message: "Quote reopened — it's back to Draft and fully editable.", type: "success" });
       } else if (action === "convertJob") {
         const job = await convertQuoteToJob(quoteId);
         setToast({ message: `Job "${job.title}" created â€” find it on the Jobs board.`, type: "success" });
@@ -595,7 +604,13 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
           <ArrowLeft className="h-4 w-4" />
           All quotes
         </button>
-        <span className="text-xs text-[#A0A0A0]">{saving ? "Saving..." : "All changes auto-saved"}</span>
+        <span className="text-xs text-[#A0A0A0]">
+          {saving
+            ? "Saving…"
+            : isLocked
+              ? "Locked — read only"
+              : "Tap any field to edit · changes save automatically"}
+        </span>
         <button
           type="button"
           onClick={() => {
@@ -613,6 +628,49 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
       </div>
 
       {/* â”€â”€ Paper sheet â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* Locked banner (screen only) — explains the read-only state + offers Reopen */}
+      {isLocked && (
+        <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[12px] border border-[#EAD9B0] bg-[#F9EFD9] px-4 py-3 print:hidden">
+          <Lock className="h-4 w-4 shrink-0 text-[#C8841E]" />
+          <p className="text-sm text-[#8A6A1E]">
+            This quote is <strong className="font-semibold capitalize">{quote.status}</strong> and locked for editing.
+          </p>
+          {confirmReopen ? (
+            <span className="ml-auto inline-flex flex-wrap items-center gap-2">
+              <span className="text-xs text-[#8A6A1E]">
+                Reopen to Draft so you can edit?{quote.convertedJobId ? " (the job already created won't change)" : ""}
+              </span>
+              <button
+                type="button"
+                onClick={() => setConfirmReopen(false)}
+                disabled={saving}
+                className="rounded-full border border-[#E6E1D4] bg-white px-3 py-1 text-[12px] font-medium text-[#6B6B6B] hover:bg-white/70 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleStatusAction("reopen")}
+                disabled={saving}
+                className="inline-flex items-center gap-1.5 rounded-full bg-[#1A1A1A] px-3 py-1 text-[12px] font-semibold text-white hover:bg-black disabled:opacity-50"
+              >
+                {saving ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                Reopen
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmReopen(true)}
+              className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-[#C8841E] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#C8841E] transition-colors hover:bg-[#C8841E] hover:text-white"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              Reopen for editing
+            </button>
+          )}
+        </div>
+      )}
+
       <div
         id="quote-print-sheet"
         className="print-sheet rounded-[14px] border border-[#E6E1D4] bg-white p-8 shadow-[0_2px_12px_rgba(20,20,20,0.07)] sm:p-10"
@@ -1068,7 +1126,7 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
                     <option value="">Select a role...</option>
                     {labourRates.map((r) => (
                       <option key={r.id} value={r.role}>
-                        {r.role}{r.loadedRate != null ? ` - ${fmtMoney(r.loadedRate)}/hr` : " - no rate set"}
+                        {formatRole(r.role)}{r.loadedRate != null ? ` - ${fmtMoney(r.loadedRate)}/hr` : " - no rate set"}
                       </option>
                     ))}
                   </select>

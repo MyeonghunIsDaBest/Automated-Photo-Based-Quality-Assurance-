@@ -12,26 +12,28 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useState } from "react";
-import { Plus, ChevronUp, ChevronDown, Trash2, RefreshCw, Loader2 } from "lucide-react";
+import { Plus, ChevronUp, ChevronDown, Trash2, RefreshCw, Loader2, Archive, ArchiveRestore } from "lucide-react";
 
-import { TONE, cardShell, btnPrimary, btnGhost } from "../gantt/components/ledger";
+import { cardShell, btnPrimary, btnGhost } from "../gantt/components/ledger";
 import { SkeletonLine } from "../../components/ui/skeleton";
 import { Toaster } from "../../components/ui/Toaster";
 
 import { listMaterials, listPrebuilds, type Material, type Prebuild } from "../../lib/api/materials";
-import { listLabourRates, type LabourRate } from "../../lib/api/labourRates";
+import { listLabourRates, formatRole, type LabourRate } from "../../lib/api/labourRates";
 import {
   listTemplates,
   getTemplateWithItems,
   createTemplate,
   updateTemplate,
   setTemplateActive,
+  deleteTemplate,
   addTemplateItem,
   removeTemplateItem,
   type QuoteTemplate,
   type QuoteTemplateWithItems,
   type QuoteTemplateItemKind,
 } from "../../lib/api/quoteTemplates";
+import ConfirmDeleteDialog from "./ConfirmDeleteDialog";
 
 type ToastState = { message: string; type: "success" | "error" | "info" } | null;
 
@@ -59,6 +61,14 @@ function nextTempKey() {
 
 const inputCls =
   "w-full rounded-[8px] border border-[#E6E1D4] bg-white px-3 py-1.5 text-sm text-[#1A1A1A] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]";
+
+// Colour-code the item kind so a template's mix of materials / prebuilds /
+// labour reads at a glance.
+const KIND_BADGE: Record<QuoteTemplateItemKind, string> = {
+  material: "border-[#CBD8E6] bg-[#EEF3F8] text-[#3D6488]",
+  prebuild: "border-[#EAD9B0] bg-[#F9EFD9] text-[#C8841E]",
+  labour:   "border-[#B8DFC7] bg-[#E5F2EA] text-[#246F47]",
+};
 
 // ─── material picker (search dropdown) ─────────────────────────────────────────
 
@@ -133,6 +143,10 @@ export default function TemplatesTab({ onWritten }: Props) {
   const [eItems, setEItems] = useState<LocalItem[]>([]);
   const [busy, setBusy]     = useState(false);
   const [editErr, setEditErr] = useState<string | null>(null);
+
+  // Permanent-delete confirm (distinct from the reversible archive/deactivate).
+  const [confirmDelete, setConfirmDelete] = useState<QuoteTemplate | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const [toast, setToast] = useState<ToastState>(null);
 
@@ -279,11 +293,31 @@ export default function TemplatesTab({ onWritten }: Props) {
   async function handleToggleActive(tpl: QuoteTemplate) {
     try {
       await setTemplateActive(tpl.id, !tpl.isActive);
-      setToast({ message: tpl.isActive ? `"${tpl.name}" deactivated` : `"${tpl.name}" reactivated`, type: "success" });
+      setToast({
+        message: tpl.isActive ? `"${tpl.name}" archived — restore anytime` : `"${tpl.name}" restored`,
+        type: "success",
+      });
       void fetchAll();
       onWritten();
     } catch (err) {
       setToast({ message: err instanceof Error ? err.message : "Failed", type: "error" });
+    }
+  }
+
+  async function handleDelete() {
+    if (!confirmDelete) return;
+    setDeleting(true);
+    try {
+      await deleteTemplate(confirmDelete.id);
+      setToast({ message: `"${confirmDelete.name}" deleted`, type: "success" });
+      if (selected?.id === confirmDelete.id) { setEditorOpen(false); setSelected(null); }
+      setConfirmDelete(null);
+      void fetchAll();
+      onWritten();
+    } catch (err) {
+      setToast({ message: err instanceof Error ? err.message : "Delete failed", type: "error" });
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -335,20 +369,32 @@ export default function TemplatesTab({ onWritten }: Props) {
                 {tpl.category && <p className="text-xs text-[#6B6B6B]">{tpl.category}</p>}
               </button>
               <span
-                className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase"
-                style={{
-                  background: tpl.isActive ? TONE.sage.bg : "#F0EDE4",
-                  color: tpl.isActive ? TONE.sage.fg : "#8A8378",
-                }}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                  tpl.isActive
+                    ? "border-[#B8DFC7] bg-[#E5F2EA] text-[#246F47]"
+                    : "border-[#E6E1D4] bg-[#F0EDE4] text-[#8A8378]"
+                }`}
               >
-                {tpl.isActive ? "Active" : "Inactive"}
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: tpl.isActive ? "#2F8F5C" : "#B6AE9F" }} />
+                {tpl.isActive ? "Active" : "Archived"}
               </span>
               <button
                 type="button"
                 onClick={() => void handleToggleActive(tpl)}
-                className="text-[11px] text-[#A0A0A0] hover:text-[#1A1A1A]"
+                title={tpl.isActive ? "Archive (can be restored)" : "Restore"}
+                aria-label={tpl.isActive ? "Archive template" : "Restore template"}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[#E6E1D4] bg-white text-[#6B6B6B] transition-colors hover:bg-[#FAF8F2] hover:text-[#1A1A1A]"
               >
-                {tpl.isActive ? "Deactivate" : "Reactivate"}
+                {tpl.isActive ? <Archive className="h-3.5 w-3.5" /> : <ArchiveRestore className="h-3.5 w-3.5" />}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(tpl)}
+                title="Delete permanently"
+                aria-label="Delete template"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[#E6E1D4] bg-white text-[#C0BAB0] transition-colors hover:border-[#F0BFBF] hover:bg-[#FBE5E5] hover:text-[#C44545]"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
               </button>
             </div>
           ))}
@@ -416,7 +462,7 @@ export default function TemplatesTab({ onWritten }: Props) {
                     </div>
 
                     <div className="flex-1 space-y-1.5">
-                      <span className="inline-block rounded-full bg-[#EFEBE0] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#6B6B6B]">
+                      <span className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${KIND_BADGE[item.kind]}`}>
                         {item.kind}
                       </span>
                       {item.kind === "material" && (
@@ -443,7 +489,7 @@ export default function TemplatesTab({ onWritten }: Props) {
                         <div className="flex items-center gap-2">
                           <select value={item.role} onChange={(e) => patchItem(item.tempKey, { role: e.target.value })} className={`${inputCls} flex-1`} disabled={busy}>
                             <option value="">Select a role...</option>
-                            {labourRates.map((r) => <option key={r.id} value={r.role}>{r.role}</option>)}
+                            {labourRates.map((r) => <option key={r.id} value={r.role}>{formatRole(r.role)}</option>)}
                           </select>
                           <input type="number" step="0.25" min="0" value={item.qty} onChange={(e) => patchItem(item.tempKey, { qty: Number(e.target.value) })} className="w-16 rounded-[8px] border border-[#E6E1D4] bg-white px-2 py-1.5 text-right text-sm" disabled={busy} />
                           <span className="w-8 text-xs text-[#A0A0A0]">hr</span>
@@ -462,15 +508,41 @@ export default function TemplatesTab({ onWritten }: Props) {
 
           {/* Footer */}
           <div className="flex items-center gap-2 border-t border-[#E6E1D4] px-4 py-3">
-            <button type="button" onClick={() => { setEditorOpen(false); setSelected(null); }} disabled={busy} className={btnGhost}>
+            {!isNew && selected && (
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(selected)}
+                disabled={busy}
+                className="inline-flex items-center gap-1.5 rounded-full border border-[#E6E1D4] bg-white px-3 py-2 text-[13px] font-semibold text-[#6B6B6B] transition-colors hover:border-[#F0BFBF] hover:bg-[#FBE5E5] hover:text-[#C44545] disabled:opacity-50"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Delete
+              </button>
+            )}
+            <button type="button" onClick={() => { setEditorOpen(false); setSelected(null); }} disabled={busy} className={btnGhost + " ml-auto"}>
               Cancel
             </button>
-            <button type="button" onClick={() => void handleSave()} disabled={busy} className={btnPrimary + " ml-auto"}>
+            <button type="button" onClick={() => void handleSave()} disabled={busy} className={btnPrimary}>
               {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
               Save
             </button>
           </div>
         </div>
+      )}
+
+      {confirmDelete && (
+        <ConfirmDeleteDialog
+          name={confirmDelete.name}
+          noun="template"
+          busy={deleting}
+          onCancel={() => setConfirmDelete(null)}
+          onConfirm={() => void handleDelete()}
+          onArchiveInstead={
+            confirmDelete.isActive
+              ? () => { const tpl = confirmDelete; setConfirmDelete(null); void handleToggleActive(tpl); }
+              : undefined
+          }
+        />
       )}
 
       {toast && <Toaster message={toast.message} type={toast.type} onClose={() => setToast(null)} />}

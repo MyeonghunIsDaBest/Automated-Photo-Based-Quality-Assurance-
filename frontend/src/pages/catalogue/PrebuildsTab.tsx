@@ -17,10 +17,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  Plus, ChevronUp, ChevronDown, Trash2, RefreshCw, Loader2,
+  Plus, ChevronUp, ChevronDown, Trash2, RefreshCw, Loader2, Archive, ArchiveRestore,
 } from "lucide-react";
 
-import { TONE, cardShell, btnPrimary, btnGhost, FRAUNCES } from "../gantt/components/ledger";
+import { cardShell, btnPrimary, btnGhost, FRAUNCES } from "../gantt/components/ledger";
 import { SkeletonLine } from "../../components/ui/skeleton";
 import { Toaster } from "../../components/ui/Toaster";
 
@@ -30,6 +30,7 @@ import {
   createPrebuild,
   updatePrebuild,
   setPrebuildActive,
+  deletePrebuild,
   addPrebuildItem,
   updatePrebuildItem,
   removePrebuildItem,
@@ -39,6 +40,7 @@ import {
   type PrebuildItem,
   type Material,
 } from "../../lib/api/materials";
+import ConfirmDeleteDialog from "./ConfirmDeleteDialog";
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -141,6 +143,10 @@ export default function PrebuildsTab({ onWritten }: Props) {
   const [eItems, setEItems]         = useState<LocalItem[]>([]);
   const [busy, setBusy]             = useState(false);
   const [editErr, setEditErr]       = useState<string | null>(null);
+
+  // Permanent-delete confirm (distinct from the reversible archive/deactivate).
+  const [confirmDelete, setConfirmDelete] = useState<Prebuild | null>(null);
+  const [deleting, setDeleting]     = useState(false);
 
   const [toast, setToast]           = useState<ToastState>(null);
 
@@ -321,13 +327,33 @@ export default function PrebuildsTab({ onWritten }: Props) {
     try {
       await setPrebuildActive(pb.id, !pb.isActive);
       setToast({
-        message: pb.isActive ? `"${pb.name}" deactivated` : `"${pb.name}" reactivated`,
+        message: pb.isActive
+          ? `"${pb.name}" archived — restore anytime`
+          : `"${pb.name}" restored`,
         type: "success",
       });
       void fetchAll();
       onWritten();
     } catch (err) {
       setToast({ message: err instanceof Error ? err.message : "Failed", type: "error" });
+    }
+  }
+
+  async function handleDelete() {
+    if (!confirmDelete) return;
+    setDeleting(true);
+    try {
+      await deletePrebuild(confirmDelete.id);
+      setToast({ message: `"${confirmDelete.name}" deleted`, type: "success" });
+      // If the deleted prebuild was open in the editor, close it.
+      if (selected?.id === confirmDelete.id) { setEditorOpen(false); setSelected(null); }
+      setConfirmDelete(null);
+      void fetchAll();
+      onWritten();
+    } catch (err) {
+      setToast({ message: err instanceof Error ? err.message : "Delete failed", type: "error" });
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -389,28 +415,39 @@ export default function PrebuildsTab({ onWritten }: Props) {
                 </button>
                 {pb.itemsCount !== undefined && (
                   <span
-                    className="flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-xs font-semibold tabular-nums"
-                    style={{ background: TONE.ink.bg, color: TONE.ink.fg }}
+                    className="flex h-6 min-w-6 items-center justify-center rounded-full bg-[#EFEBE0] px-1.5 text-xs font-semibold tabular-nums text-[#6B6B6B]"
                     title={`${pb.itemsCount} item${pb.itemsCount !== 1 ? "s" : ""}`}
                   >
                     {pb.itemsCount}
                   </span>
                 )}
                 <span
-                  className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase"
-                  style={{
-                    background: pb.isActive ? TONE.sage.bg : "#F0EDE4",
-                    color: pb.isActive ? TONE.sage.fg : "#8A8378",
-                  }}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                    pb.isActive
+                      ? "border-[#B8DFC7] bg-[#E5F2EA] text-[#246F47]"
+                      : "border-[#E6E1D4] bg-[#F0EDE4] text-[#8A8378]"
+                  }`}
                 >
-                  {pb.isActive ? "Active" : "Inactive"}
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: pb.isActive ? "#2F8F5C" : "#B6AE9F" }} />
+                  {pb.isActive ? "Active" : "Archived"}
                 </span>
                 <button
                   type="button"
                   onClick={() => void handleToggleActive(pb)}
-                  className="text-[11px] text-[#A0A0A0] hover:text-[#1A1A1A]"
+                  title={pb.isActive ? "Archive (can be restored)" : "Restore"}
+                  aria-label={pb.isActive ? "Archive prebuild" : "Restore prebuild"}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[#E6E1D4] bg-white text-[#6B6B6B] transition-colors hover:bg-[#FAF8F2] hover:text-[#1A1A1A]"
                 >
-                  {pb.isActive ? "Deactivate" : "Reactivate"}
+                  {pb.isActive ? <Archive className="h-3.5 w-3.5" /> : <ArchiveRestore className="h-3.5 w-3.5" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(pb)}
+                  title="Delete permanently"
+                  aria-label="Delete prebuild"
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[#E6E1D4] bg-white text-[#C0BAB0] transition-colors hover:border-[#F0BFBF] hover:bg-[#FBE5E5] hover:text-[#C44545]"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
                 </button>
               </div>
             ))}
@@ -593,6 +630,21 @@ export default function PrebuildsTab({ onWritten }: Props) {
             </button>
           </div>
         </div>
+      )}
+
+      {confirmDelete && (
+        <ConfirmDeleteDialog
+          name={confirmDelete.name}
+          noun="prebuild"
+          busy={deleting}
+          onCancel={() => setConfirmDelete(null)}
+          onConfirm={() => void handleDelete()}
+          onArchiveInstead={
+            confirmDelete.isActive
+              ? () => { const pb = confirmDelete; setConfirmDelete(null); void handleToggleActive(pb); }
+              : undefined
+          }
+        />
       )}
 
       {toast && (

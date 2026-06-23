@@ -22,14 +22,15 @@ import { listQuotes, listInvoices, isOverdue } from "../../lib/api/commercial";
 
 // â”€â”€â”€ lazy sub-tabs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-const QuotesTab     = lazyWithRetry(() => import("./QuotesTab"));
-const InvoicesTab   = lazyWithRetry(() => import("./InvoicesTab"));
-const VariationsTab = lazyWithRetry(() => import("./VariationsTab"));
-const SettingsTab   = lazyWithRetry(() => import("./SettingsTab"));
+const QuotesTab        = lazyWithRetry(() => import("./QuotesTab"));
+const InvoicesTab      = lazyWithRetry(() => import("./InvoicesTab"));
+const VariationsTab    = lazyWithRetry(() => import("./VariationsTab"));
+const SettingsTab      = lazyWithRetry(() => import("./SettingsTab"));
+const CatalogueSection = lazyWithRetry(() => import("./CatalogueSection"));
 
 // â”€â”€â”€ types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-type TabKey = "quotes" | "invoices" | "variations" | "settings";
+type TabKey = "quotes" | "invoices" | "variations" | "catalogue" | "settings";
 
 interface HeaderCounts {
   openQuotes: number;
@@ -117,7 +118,7 @@ export default function Sales() {
   const rawTab        = searchParams.get("tab");
   const customerParam = searchParams.get("customer");
 
-  const VALID_TABS: TabKey[] = ["quotes", "invoices", "variations", "settings"];
+  const VALID_TABS: TabKey[] = ["quotes", "invoices", "variations", "catalogue", "settings"];
   const activeTab: TabKey = VALID_TABS.includes(rawTab as TabKey)
     ? (rawTab as TabKey)
     : "quotes";
@@ -188,6 +189,7 @@ export default function Sales() {
     { key: "quotes",     label: "Quotes"     },
     { key: "invoices",   label: "Invoices"   },
     { key: "variations", label: "Variations" },
+    { key: "catalogue",  label: "Catalogue"  },
     { key: "settings",   label: "Settings"   },
   ];
 
@@ -289,6 +291,9 @@ export default function Sales() {
             <VariationsTab
               onChanged={refreshCounts}
             />
+          )}
+          {activeTab === "catalogue" && (
+            <CatalogueSection onChanged={refreshCounts} />
           )}
           {activeTab === "settings" && (
             <SettingsTab

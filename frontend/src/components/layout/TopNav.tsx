@@ -9,12 +9,11 @@ import {
   LayoutDashboard, FolderOpen, MessageSquare,
   Bell, Settings, LogOut, Building2,
   Menu, X, Shield, MessageCircle, TrendingUp, FileCheck, HardHat,
-  ShieldCheck, ChevronDown, Check, Crown, Wrench, ClipboardList, Package, ReceiptText,
+  ShieldCheck, ChevronDown, Check, Crown, Wrench, ClipboardList, ReceiptText,
 } from 'lucide-react';
 import {
   canSeeAdminDashboard,
   canManageMaintenance,
-  canManageCatalogue,
   canManageSales,
   canViewJobsBoard,
   isFieldRole,
@@ -64,8 +63,8 @@ const CORE_NAV_TAIL: NavItem[] = [
 ];
 
 const OVERFLOW_NAV: NavItem[] = [
+  // Catalogue now lives under Sales (Service Quotes) as a tab — /sales?tab=catalogue.
   { label: 'Sales',        icon: ReceiptText,   path: '/sales',       gate: canManageSales },
-  { label: 'Catalogue',    icon: Package,       path: '/catalogue',   gate: canManageCatalogue },
   { label: 'Safety',       icon: HardHat,       path: '/safety' },
   { label: 'Admin',        icon: ShieldCheck,   path: '/admin',       gate: canSeeAdminDashboard },
 ];

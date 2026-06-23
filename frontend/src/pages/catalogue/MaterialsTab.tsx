@@ -15,9 +15,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Plus, RefreshCw, ToggleLeft, ToggleRight, Search } from "lucide-react";
+import { Plus, RefreshCw, ToggleLeft, ToggleRight, Search, Archive, ArchiveRestore, Trash2 } from "lucide-react";
 
-import { TONE, cardShell, btnPrimary, btnGhost } from "../gantt/components/ledger";
+import { cardShell, btnPrimary, btnGhost } from "../gantt/components/ledger";
 import { SkeletonLine } from "../../components/ui/skeleton";
 import { Toaster } from "../../components/ui/Toaster";
 
@@ -25,12 +25,14 @@ import {
   listMaterials,
   listTags,
   setMaterialActive,
+  deleteMaterial,
   type Material,
   type MaterialTag,
 } from "../../lib/api/materials";
 import { canManageCatalogue } from "../../lib/permissions";
 import { useAppStore } from "../../store";
 import MaterialFormModal, { type MaterialFormInitial } from "./MaterialFormModal";
+import ConfirmDeleteDialog from "./ConfirmDeleteDialog";
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -80,6 +82,10 @@ export default function MaterialsTab({ onWritten }: Props) {
   const [modal, setModal]                 = useState<MaterialFormInitial | null>(null);
   const [showModal, setShowModal]         = useState(false);
   const [toast, setToast]                 = useState<ToastState>(null);
+
+  // Permanent-delete confirm (distinct from the reversible archive/deactivate).
+  const [confirmDelete, setConfirmDelete] = useState<Material | null>(null);
+  const [deleting, setDeleting]           = useState(false);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -147,8 +153,8 @@ export default function MaterialsTab({ onWritten }: Props) {
       await setMaterialActive(m.id, !m.isActive);
       setToast({
         message: m.isActive
-          ? `"${m.name}" deactivated`
-          : `"${m.name}" reactivated`,
+          ? `"${m.name}" archived — hidden from pickers, restore anytime`
+          : `"${m.name}" restored`,
         type: "success",
       });
       void fetchMaterials();
@@ -158,6 +164,27 @@ export default function MaterialsTab({ onWritten }: Props) {
         message: err instanceof Error ? err.message : "Failed to update",
         type: "error",
       });
+    }
+  }
+
+  async function handleDelete() {
+    if (!confirmDelete) return;
+    setDeleting(true);
+    try {
+      await deleteMaterial(confirmDelete.id);
+      setToast({ message: `"${confirmDelete.name}" deleted`, type: "success" });
+      setConfirmDelete(null);
+      void fetchMaterials();
+      onWritten();
+    } catch (err) {
+      // FK-protected (used by a prebuild) or other failure — keep the dialog
+      // open so the message is visible next to the action that caused it.
+      setToast({
+        message: err instanceof Error ? err.message : "Delete failed",
+        type: "error",
+      });
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -269,15 +296,16 @@ export default function MaterialsTab({ onWritten }: Props) {
                 <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Sell</th>
               )}
               <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Status</th>
+              <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading &&
-              [1, 2, 3, 4, 5].map((i) => <SkeletonRow key={i} colCount={showPrices ? 7 : 5} />)}
+              [1, 2, 3, 4, 5].map((i) => <SkeletonRow key={i} colCount={showPrices ? 8 : 6} />)}
 
             {!loading && materials.length === 0 && !error && (
               <tr>
-                <td colSpan={showPrices ? 7 : 5} className="px-4 py-12 text-center text-[#A0A0A0]">
+                <td colSpan={showPrices ? 8 : 6} className="px-4 py-12 text-center text-[#A0A0A0]">
                   <p className="text-sm font-medium">No materials found</p>
                   <p className="mt-1 text-xs">
                     {search || activeTag
@@ -332,23 +360,42 @@ export default function MaterialsTab({ onWritten }: Props) {
                     </td>
                   )}
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                        m.isActive
+                          ? "border-[#B8DFC7] bg-[#E5F2EA] text-[#246F47]"
+                          : "border-[#E6E1D4] bg-[#F0EDE4] text-[#8A8378]"
+                      }`}
+                    >
                       <span
-                        className="inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
-                        style={{
-                          background: m.isActive ? TONE.sage.bg : "#F0EDE4",
-                          color: m.isActive ? TONE.sage.fg : "#8A8378",
-                        }}
-                      >
-                        {m.isActive ? "Active" : "Inactive"}
-                      </span>
+                        className="h-1.5 w-1.5 rounded-full"
+                        style={{ background: m.isActive ? "#2F8F5C" : "#B6AE9F" }}
+                      />
+                      {m.isActive ? "Active" : "Archived"}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-end gap-1">
+                      {/* Archive / Restore — reversible. Keeps the item out of
+                          pickers but it can always be brought back. */}
                       <button
                         type="button"
                         onClick={() => void handleToggleActive(m)}
-                        className="text-[11px] text-[#A0A0A0] hover:text-[#1A1A1A] transition-colors"
-                        title={m.isActive ? "Deactivate" : "Reactivate"}
+                        title={m.isActive ? "Archive (hide from pickers — can be restored)" : "Restore"}
+                        aria-label={m.isActive ? "Archive material" : "Restore material"}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[#E6E1D4] bg-white text-[#6B6B6B] transition-colors hover:bg-[#FAF8F2] hover:text-[#1A1A1A]"
                       >
-                        {m.isActive ? "Deactivate" : "Reactivate"}
+                        {m.isActive ? <Archive className="h-3.5 w-3.5" /> : <ArchiveRestore className="h-3.5 w-3.5" />}
+                      </button>
+                      {/* Permanent delete — guarded by a confirm + an FK check. */}
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDelete(m)}
+                        title="Delete permanently"
+                        aria-label="Delete material"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[#E6E1D4] bg-white text-[#C0BAB0] transition-colors hover:border-[#F0BFBF] hover:bg-[#FBE5E5] hover:text-[#C44545]"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
                   </td>
@@ -364,6 +411,22 @@ export default function MaterialsTab({ onWritten }: Props) {
           initial={modal ?? undefined}
           onSaved={handleSaved}
           onClose={() => { setShowModal(false); setModal(null); }}
+        />
+      )}
+
+      {/* Permanent-delete confirm */}
+      {confirmDelete && (
+        <ConfirmDeleteDialog
+          name={confirmDelete.name}
+          noun="material"
+          busy={deleting}
+          onCancel={() => setConfirmDelete(null)}
+          onConfirm={() => void handleDelete()}
+          onArchiveInstead={
+            confirmDelete.isActive
+              ? () => { const m = confirmDelete; setConfirmDelete(null); void handleToggleActive(m); }
+              : undefined
+          }
         />
       )}
 

@@ -387,6 +387,25 @@ export async function setMaterialActive(id: string, active: boolean): Promise<vo
   if (error) throw error;
 }
 
+/**
+ * Permanently delete a material. Distinct from setMaterialActive(false), which
+ * only archives it (reversible). A material referenced by a prebuild item is
+ * protected by an ON DELETE RESTRICT foreign key — Postgres raises 23503; we
+ * translate that into a friendly message pointing the user at deactivate.
+ */
+export async function deleteMaterial(id: string): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { error } = await supabase.from('materials').delete().eq('id', id);
+  if (error) {
+    if ((error as { code?: string }).code === '23503') {
+      throw new Error(
+        "This material is used by a prebuild, so it can't be deleted. Remove it from the prebuild first, or deactivate the material instead.",
+      );
+    }
+    throw error;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Prebuilds — read
 // ---------------------------------------------------------------------------
@@ -465,6 +484,18 @@ export async function setPrebuildActive(id: string, active: boolean): Promise<vo
     .from('prebuilds')
     .update({ is_active: active })
     .eq('id', id);
+  if (error) throw error;
+}
+
+/**
+ * Permanently delete a prebuild. Its prebuild_items cascade away (ON DELETE
+ * CASCADE); any quote template that referenced it has that reference nulled
+ * (ON DELETE SET NULL), so deletion never fails on a foreign key here.
+ * Distinct from setPrebuildActive(false) (reversible archive).
+ */
+export async function deletePrebuild(id: string): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { error } = await supabase.from('prebuilds').delete().eq('id', id);
   if (error) throw error;
 }
 
@@ -586,6 +617,40 @@ export async function dismissCandidate(id: string): Promise<void> {
     .update({ status: 'dismissed' })
     .eq('id', id);
   if (error) throw error;
+}
+
+export interface UpdateCandidateInput {
+  /** Edit the mined text (cleanup before approving). raw_text is UNIQUE — a
+   *  collision with another candidate raises 23505, surfaced to the caller. */
+  rawText?: string;
+  /** Move between pending / approved / dismissed (e.g. restore a dismissed row
+   *  back to pending). */
+  status?: CandidateStatus;
+}
+
+/** Edit a candidate's text and/or status. Used by the Suggestions inbox to
+ *  clean up mined text before approving and to restore dismissed rows. */
+export async function updateCandidate(
+  id: string,
+  patch: UpdateCandidateInput,
+): Promise<MaterialCandidate> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { data, error } = await supabase
+    .from('material_candidates')
+    .update({
+      ...(patch.rawText !== undefined && { raw_text: patch.rawText }),
+      ...(patch.status !== undefined && { status: patch.status }),
+    })
+    .eq('id', id)
+    .select('*')
+    .single();
+  if (error) {
+    if ((error as { code?: string }).code === '23505') {
+      throw new Error('Another suggestion already has that exact text.');
+    }
+    throw error;
+  }
+  return rowToCandidate(data as MaterialCandidateRow);
 }
 
 // ---------------------------------------------------------------------------

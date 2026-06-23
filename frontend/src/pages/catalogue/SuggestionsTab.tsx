@@ -21,7 +21,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { format } from "date-fns";
-import { RefreshCw, CheckSquare, Square, Loader2, X } from "lucide-react";
+import { RefreshCw, CheckSquare, Square, Loader2, X, Pencil, Check, RotateCcw } from "lucide-react";
 
 import { TONE, cardShell, btnPrimary, btnGhost } from "../gantt/components/ledger";
 import { SkeletonLine } from "../../components/ui/skeleton";
@@ -31,6 +31,7 @@ import {
   listCandidates,
   approveCandidate,
   dismissCandidate,
+  updateCandidate,
   type Material,
   type MaterialCandidate,
   type CandidateStatus,
@@ -70,6 +71,14 @@ export default function SuggestionsTab({ onWritten }: Props) {
   // row-level busy (dismissing)
   const [dismissingIds, setDismissingIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy]           = useState(false);
+
+  // inline raw-text edit (clean up mined text before approving)
+  const [editingId, setEditingId]   = useState<string | null>(null);
+  const [editText, setEditText]     = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  // restore dismissed → pending
+  const [restoringId, setRestoringId] = useState<string | null>(null);
 
   const [toast, setToast] = useState<ToastState>(null);
 
@@ -161,6 +170,47 @@ export default function SuggestionsTab({ onWritten }: Props) {
     } catch (err) {
       setToast({ message: err instanceof Error ? err.message : "Approval failed", type: "error" });
       setApproving(null);
+    }
+  }
+
+  function startEdit(c: MaterialCandidate) {
+    setEditingId(c.id);
+    setEditText(c.rawText);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditText("");
+  }
+
+  async function saveEdit(c: MaterialCandidate) {
+    const text = editText.trim();
+    if (!text || text === c.rawText) { cancelEdit(); return; }
+    setSavingEdit(true);
+    try {
+      await updateCandidate(c.id, { rawText: text });
+      setToast({ message: "Suggestion updated", type: "success" });
+      cancelEdit();
+      void fetchCandidates();
+      onWritten();
+    } catch (err) {
+      setToast({ message: err instanceof Error ? err.message : "Update failed", type: "error" });
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  async function handleRestore(c: MaterialCandidate) {
+    setRestoringId(c.id);
+    try {
+      await updateCandidate(c.id, { status: "pending" });
+      setToast({ message: "Suggestion restored to pending", type: "success" });
+      void fetchCandidates();
+      onWritten();
+    } catch (err) {
+      setToast({ message: err instanceof Error ? err.message : "Restore failed", type: "error" });
+    } finally {
+      setRestoringId(null);
     }
   }
 
@@ -332,7 +382,58 @@ export default function SuggestionsTab({ onWritten }: Props) {
                         </button>
                       </td>
                     )}
-                    <td className="px-4 py-3 font-medium text-[#1A1A1A]">{c.rawText}</td>
+                    <td className="px-4 py-3">
+                      {editingId === c.id ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            autoFocus
+                            value={editText}
+                            onChange={(e) => setEditText(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") void saveEdit(c);
+                              if (e.key === "Escape") cancelEdit();
+                            }}
+                            disabled={savingEdit}
+                            className="min-w-[200px] flex-1 rounded-md border border-[#E6E1D4] bg-white px-2.5 py-1.5 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => void saveEdit(c)}
+                            disabled={savingEdit}
+                            title="Save"
+                            aria-label="Save text"
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-[#2F8F5C] text-white transition-colors hover:bg-[#246F47] disabled:opacity-50"
+                          >
+                            {savingEdit ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={cancelEdit}
+                            disabled={savingEdit}
+                            title="Cancel"
+                            aria-label="Cancel edit"
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[#E6E1D4] bg-white text-[#6B6B6B] transition-colors hover:bg-[#FAF8F2]"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-[#1A1A1A]">{c.rawText}</span>
+                          {isPending && (
+                            <button
+                              type="button"
+                              onClick={() => startEdit(c)}
+                              title="Edit text before approving"
+                              aria-label="Edit suggestion text"
+                              className="text-[#C0BAB0] transition-colors hover:text-[#2F8F5C]"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-center">
                       <span
                         className="inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-xs font-semibold tabular-nums"
@@ -348,15 +449,29 @@ export default function SuggestionsTab({ onWritten }: Props) {
                     </td>
                     {!isPending && (
                       <td className="px-4 py-3">
-                        <span
-                          className="inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
-                          style={{
-                            background: c.status === "approved" ? TONE.sage.bg : "#F0EDE4",
-                            color: c.status === "approved" ? TONE.sage.fg : "#8A8378",
-                          }}
-                        >
-                          {c.status}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+                            style={{
+                              background: c.status === "approved" ? TONE.sage.bg : "#F0EDE4",
+                              color: c.status === "approved" ? TONE.sage.fg : "#8A8378",
+                            }}
+                          >
+                            {c.status}
+                          </span>
+                          {c.status === "dismissed" && (
+                            <button
+                              type="button"
+                              onClick={() => void handleRestore(c)}
+                              disabled={restoringId === c.id}
+                              title="Restore to pending"
+                              className="inline-flex items-center gap-1 rounded-full border border-[#E6E1D4] bg-white px-2.5 py-0.5 text-[11px] font-medium text-[#6B6B6B] transition-colors hover:bg-[#FAF8F2] hover:text-[#1A1A1A] disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {restoringId === c.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+                              Restore
+                            </button>
+                          )}
+                        </div>
                       </td>
                     )}
                     {isPending && (

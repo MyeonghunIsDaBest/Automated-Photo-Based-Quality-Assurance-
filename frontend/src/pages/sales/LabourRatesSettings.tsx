@@ -15,6 +15,7 @@ import {
   createLabourRate,
   updateLabourRate,
   setLabourRateActive,
+  formatRole,
   type LabourRate,
 } from "../../lib/api/labourRates";
 
@@ -55,7 +56,7 @@ function RateRow({ rate, isFirst, isLast, saving, onBlur, onToggle, onUp, onDown
 
   return (
     <tr className={rate.isActive ? "" : "opacity-50"}>
-      <td className="py-2 pr-3 text-[13px] text-[#3A3A3A]">{rate.role}</td>
+      <td className="py-2 pr-3 text-[13px] text-[#3A3A3A]">{formatRole(rate.role)}</td>
       <td className="py-2 pr-3 w-36">
         <input
           type="number" min="0" step="any" value={val}

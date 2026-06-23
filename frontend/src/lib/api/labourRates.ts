@@ -56,6 +56,14 @@ export interface LabourRate {
   updatedAt: string;
 }
 
+/** Title-case a labour role for DISPLAY only ("electrician" → "Electrician",
+ *  "solar installer" → "Solar Installer"). The stored value is never changed —
+ *  role matching for pricing stays exact — so this is purely cosmetic and safe
+ *  to apply at every render site. */
+export function formatRole(role: string): string {
+  return role.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 // ---------------------------------------------------------------------------
 // Input types
 // ---------------------------------------------------------------------------

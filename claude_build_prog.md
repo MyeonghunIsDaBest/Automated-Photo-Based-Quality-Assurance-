@@ -3601,3 +3601,69 @@ From live-usage feedback. Built + subagent-reviewed clean (no CI-killers). No ne
 Note: catalogue/prebuilds/templates still need the office to enter data (Catalogue → Materials/Import/Prebuilds/Templates) + migration 78 applied for templates. "Custom line" unblocks ad-hoc quoting immediately.
 
 State: authored + reviewed clean; pushing to main for the user to test.
+
+---
+
+## 22 June 2026 (cont.) — CI hotfix: green build for live testing (a18ebd3)
+
+Jordan reported GitHub Actions "All jobs have failed" (run #28, commit 029abb5) and asked to make CI green so he stops getting failure emails. The 5 tsc errors were **pre-existing, not from the quoting work** — a half-finished `/home` refactor + a test-import gap had been swept into git by an earlier broad `git add frontend/`, so CI has been red since c23803b (the quoting deploys still went out — Vercel deploys independently of the ci.yml gate).
+
+Fixes (committed as exactly 4 files — staged by path, nothing else swept in):
+- **Deleted `WhyPanel.tsx` + `ActionTile.tsx`** (`pages/home/components/`) — orphaned components from the old `/home` design; nothing imports them, and they referenced types the current `roleHomeConfig` no longer exports (`PillarSpec`/`ActionTileSpec`/`AccentTone`, whose shapes diverged — re-aliasing wouldn't have worked). Clears 3 of the 5 errors.
+- **Removed unused `firstName`** local in `RoleHome.tsx` (`noUnusedLocals`).
+- **Force-added `_shared/resizeImage.logic.ts`** — a pure-logic backend file `resizeImage.test.ts` imports; `backend/` is gitignored so CI couldn't resolve it. Its three sibling test-logic files (`decideAction`/`visionPrompt`/`parseVisionResponse`) were already tracked the same way — this one was simply missed.
+- Node 20 deprecation is a non-blocking warning; left as-is (a green build stops the failure emails regardless).
+
+State: pushed to `main` as `a18ebd3`; CI re-running. Couldn't watch the run from here (no `gh`, sandbox has no network) — confirm green on GitHub. Lesson logged to memory: stage by explicit path, never `git add <dir>`.
+
+---
+
+## 22 June 2026 (cont.) — Catalogue bootstrap: starter materials + prebuilds + job templates
+
+Mig 78 applied (Jordan: "Done") — templates feature fully live. Catalogue was empty (production-honest, no auto-seed), so prepared real data for Jordan to load himself (reviewable, he owns the prices). Two repo-root working files (uncommitted; no app code changed):
+
+- **`casone-catalogue-starter.csv`** — 42 real solar+electrical materials in the importer's 7-col format (`sku,name,unit,cost_price,sell_price,tags,description`, tags pipe-sep). Prices are AU 2026 market ESTIMATES — flagged for Jordan to overwrite with real buy/sell before importing. Loads via Catalogue → Import (preview/plan/confirm).
+- **`casone-catalogue-prebuilds-templates.sql`** — run in Supabase AFTER the CSV import. 4 prebuild bundles (GPO/downlight/smoke/switch points) + 3 quote templates (6.6kW Solar Install, Switchboard Upgrade, EV Charger 7kW). Idempotent (name-guarded `if not exists`), robust (materials matched by SKU via join → renamed SKUs skip gracefully). Labour lines use seeded roles (electrician/apprentice/foreman); they price from `labour_rates.loaded_rate` which is null until Jordan sets it (lines come in at $0 till then — honest, not faked). Verify-counts query at the end.
+
+Schema confirmed before writing: materials/prebuilds/prebuild_items (mig 64), quote_templates/quote_template_items kind material|prebuild|labour (mig 78), labour_rates seeded roles (mig 73). `applyTemplateToQuote` expands prebuild lines once (qty ignored) → templates built from explicit material lines + labour, prebuilds kept standalone for the editor's prebuild picker.
+
+State: files delivered; Jordan to (1) edit prices + import CSV, (2) set labour rates, (3) run the seed SQL, (4) test Apply template. Next + LAST quoting piece per Jordan: the AI Quote Drafter.
+
+---
+
+## 22 June 2026 (cont.) — Catalogue tabs: edit/archive/delete + roles + UI polish
+
+From Jordan's live-usage feedback on the Catalogue nav (all tabs except Import). Frontend-only; no migration. Subagent-reviewed clean for CI (CI gate = typecheck + vitest + build; no eslint step).
+
+- **API (`lib/api/materials.ts`):** added `deleteMaterial(id)` (FK-aware — translates Postgres 23503 into "used by a prebuild, deactivate instead"), `deletePrebuild(id)` (items cascade, template refs null), and `updateCandidate(id, {rawText|status})` + `UpdateCandidateInput` (23505 → friendly dup message).
+- **Roles capitalised (display-only):** `formatRole()` added to `lib/api/labourRates.ts` (title-cases, never mutates stored value → role matching unaffected). Applied in QuoteEditor labour <option>, TemplatesTab labour dropdown, LabourRatesSettings role cell.
+- **Materials tab:** clear Active/Archived pill (border + colour + dot); new **Actions** column splitting the ambiguous "Deactivate" into **Archive** (reversible) + **Delete** (permanent, confirm). colSpans 7/5 → 8/6.
+- **Prebuilds + Templates tabs:** same Active/Archived pill + Archive/Delete row actions; Templates editor got colour-coded kind badges (`KIND_BADGE`) + a footer Delete; archive toasts reworded ("archived — restore anytime").
+- **Suggestions tab:** inline **edit** of mined `raw_text` for pending rows (Pencil → input → save/cancel) + **Restore** (dismissed → pending). No column-count change.
+- **New shared `pages/catalogue/ConfirmDeleteDialog.tsx`** — red permanent-delete confirm with an optional "Archive instead" path; used by all three tabs (Materials refactored to it). Removed now-unused `TONE`/`Loader2` imports from the tabs that dropped them.
+
+Known data note (flagged to Jordan): the 4 seeded prebuilds show 0 items — the prebuild seed SQL ran before the materials import so the SKU join matched nothing; fix = add items in the editor or a backfill SQL.
+
+State: implemented + reviewed clean; staged for Jordan's go-ahead to push to main → Vercel.
+
+---
+
+## 23 June 2026 — Quote editability (Reopen) + fold Catalogue under Sales
+
+Live-feedback fixes. Frontend-only, no migration. Subagent-reviewed clean (CI gate = typecheck + vitest + build; no eslint).
+
+**Quotes — "can't modify regardless of credentials" root-caused + fixed.** `QuoteEditor.tsx:567` `isLocked = status in (accepted|declined|expired)` made the editor read-only for everyone with no unlock. Added:
+- `confirmReopen` state + a `"reopen"` case in `handleStatusAction` → `setQuoteStatus(id, 'draft')` (no new API; no backward-transition guard existed). 
+- A locked banner (print:hidden, amber) explaining the status + an inline **Reopen for editing** button (confirm warns if already converted to a job).
+- Back-bar status text now signals editability: "Tap any field to edit · changes save automatically" / "Locked — read only".
+
+**Catalogue folded under Sales (Service Quotes).** `/sales` and `/catalogue` were sibling top-level tabs gated by the same roles (`canManageSales` ≡ `canManageCatalogue`), so:
+- NEW `pages/sales/CatalogueSection.tsx` — the catalogue's 5 sub-tabs (Materials/Prebuilds/Templates/Import/Suggestions) + inline counts, sub-tab driven by `?cat=` (coexists with Sales `?tab=`).
+- `Sales.tsx` — added a **Catalogue** tab (TabKey/VALID_TABS/TABS + render branch).
+- `TopNav.tsx` — removed the standalone Catalogue nav item (+ now-unused `Package`/`canManageCatalogue` imports). `canManageCatalogue` still exported (MaterialsTab et al. use it).
+- `App.tsx` — `/catalogue` → `<Navigate to="/sales?tab=catalogue" replace />`; removed the `Catalogue` lazy import.
+- Retired (git rm) `pages/catalogue/Catalogue.tsx` (the standalone shell; body now in CatalogueSection). The 5 tab components are unchanged + unmoved (still in pages/catalogue/).
+
+Ships together with the 22 Jun catalogue edit/archive/delete + roles rework (still staged from that session).
+
+State: implemented + reviewed clean; staged for the user's go-ahead to push to main → Vercel.
