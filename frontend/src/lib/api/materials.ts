@@ -58,6 +58,11 @@ interface MaterialRow {
   cost_price: number | null;
   sell_price: number | null;
   tags: string[];
+  category: string | null;
+  subcategory: string | null;
+  is_favourite: boolean;
+  is_stock_item: boolean;
+  stock_on_hand: number;
   supplier_id: string | null;
   is_active: boolean;
   source: string;
@@ -71,6 +76,8 @@ interface PrebuildRow {
   name: string;
   description: string | null;
   category: string | null;
+  subcategory: string | null;
+  is_favourite: boolean;
   is_active: boolean;
   created_by: string | null;
   created_at: string;
@@ -114,6 +121,16 @@ export interface Material {
   costPrice: number | null;
   sellPrice: number | null;
   tags: string[];
+  /** Simpro "Group" — top-level catalogue grouping (free text). */
+  category: string | null;
+  /** Simpro "Subgroup" — second-level grouping within a category (free text). */
+  subcategory: string | null;
+  /** Starred for the Catalogue tab's Favourites group / filter (org-wide). */
+  isFavourite: boolean;
+  /** Held in stock — surfaced on the quote's Stock tab (Simpro). */
+  isStockItem: boolean;
+  /** Quantity currently on hand (single-location v1). */
+  stockOnHand: number;
   supplierId: string | null;
   isActive: boolean;
   source: 'manual' | 'csv' | 'mined';
@@ -126,13 +143,24 @@ export interface Prebuild {
   id: string;
   name: string;
   description: string | null;
+  /** Simpro "Group" — top-level prebuild grouping (free text). */
   category: string | null;
+  /** Simpro "Subgroup" — second-level grouping within a category (free text). */
+  subcategory: string | null;
+  /** Starred for the Pre-Builds tab's Favourites group / filter (org-wide). */
+  isFavourite: boolean;
   isActive: boolean;
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;
   /** Item count — only present when fetched via listPrebuilds (embed count). */
   itemsCount?: number;
+}
+
+/** A prebuild plus its rolled-up Material Cost + Sell Price (from listPrebuildsPriced). */
+export interface PrebuildPriced extends Prebuild {
+  materialCost: number;
+  sellPrice: number;
 }
 
 export interface PrebuildItem {
@@ -177,6 +205,11 @@ export interface CreateMaterialInput {
   costPrice?: number | null;
   sellPrice?: number | null;
   tags?: string[];
+  category?: string | null;
+  subcategory?: string | null;
+  isFavourite?: boolean;
+  isStockItem?: boolean;
+  stockOnHand?: number;
   supplierId?: string | null;
   source?: 'manual' | 'csv' | 'mined';
 }
@@ -189,6 +222,11 @@ export interface UpdateMaterialInput {
   costPrice?: number | null;
   sellPrice?: number | null;
   tags?: string[];
+  category?: string | null;
+  subcategory?: string | null;
+  isFavourite?: boolean;
+  isStockItem?: boolean;
+  stockOnHand?: number;
   supplierId?: string | null;
 }
 
@@ -196,12 +234,16 @@ export interface CreatePrebuildInput {
   name: string;
   description?: string | null;
   category?: string | null;
+  subcategory?: string | null;
+  isFavourite?: boolean;
 }
 
 export interface UpdatePrebuildInput {
   name?: string;
   description?: string | null;
   category?: string | null;
+  subcategory?: string | null;
+  isFavourite?: boolean;
 }
 
 export interface CreatePrebuildItemInput {
@@ -230,6 +272,11 @@ function rowToMaterial(r: MaterialRow): Material {
     costPrice: r.cost_price,
     sellPrice: r.sell_price,
     tags: r.tags,
+    category: r.category ?? null,
+    subcategory: r.subcategory ?? null,
+    isFavourite: r.is_favourite ?? false,
+    isStockItem: r.is_stock_item ?? false,
+    stockOnHand: r.stock_on_hand != null ? Number(r.stock_on_hand) : 0,
     supplierId: r.supplier_id,
     isActive: r.is_active,
     source: r.source as 'manual' | 'csv' | 'mined',
@@ -246,6 +293,8 @@ function rowToPrebuild(r: PrebuildRow & { prebuild_items?: Array<{ count: number
     name: r.name,
     description: r.description,
     category: r.category,
+    subcategory: r.subcategory ?? null,
+    isFavourite: r.is_favourite ?? false,
     isActive: r.is_active,
     createdBy: r.created_by,
     createdAt: r.created_at,
@@ -344,6 +393,11 @@ export async function createMaterial(input: CreateMaterialInput): Promise<Materi
       cost_price: input.costPrice ?? null,
       sell_price: input.sellPrice ?? null,
       tags: input.tags ?? [],
+      category: input.category ?? null,
+      subcategory: input.subcategory ?? null,
+      is_favourite: input.isFavourite ?? false,
+      is_stock_item: input.isStockItem ?? false,
+      stock_on_hand: input.stockOnHand ?? 0,
       supplier_id: input.supplierId ?? null,
       source: input.source ?? 'manual',
       created_by: uid,
@@ -369,6 +423,11 @@ export async function updateMaterial(
       ...(patch.costPrice !== undefined && { cost_price: patch.costPrice }),
       ...(patch.sellPrice !== undefined && { sell_price: patch.sellPrice }),
       ...(patch.tags !== undefined && { tags: patch.tags }),
+      ...(patch.category !== undefined && { category: patch.category }),
+      ...(patch.subcategory !== undefined && { subcategory: patch.subcategory }),
+      ...(patch.isFavourite !== undefined && { is_favourite: patch.isFavourite }),
+      ...(patch.isStockItem !== undefined && { is_stock_item: patch.isStockItem }),
+      ...(patch.stockOnHand !== undefined && { stock_on_hand: patch.stockOnHand }),
       ...(patch.supplierId !== undefined && { supplier_id: patch.supplierId }),
     })
     .eq('id', id)
@@ -438,6 +497,54 @@ export async function getPrebuildWithItems(id: string): Promise<PrebuildWithItem
   };
 }
 
+/**
+ * List prebuilds with their rolled-up Material Cost + Sell Price, in one embedded
+ * query (no per-prebuild fetch). Sell mirrors the `materialSell` rule used at
+ * add-time: a material's catalogue sell price if set, else cost × (1 + markup).
+ * `materialMarkup` is passed in by the caller (the office-wide default material
+ * markup from commercial settings) to avoid a materials.ts -> commercial.ts cycle.
+ */
+export async function listPrebuildsPriced(
+  materialMarkup: number,
+  includeInactive = false,
+): Promise<PrebuildPriced[]> {
+  if (!supabaseConfigured()) return [];
+  let q = supabase
+    .from('prebuilds')
+    .select('*, prebuild_items(qty, materials(cost_price, sell_price))');
+  if (!includeInactive) q = q.eq('is_active', true);
+  const { data, error } = await q.order('name', { ascending: true });
+  if (error) throw error;
+
+  type PricedRow = PrebuildRow & {
+    prebuild_items?: Array<{
+      qty: number;
+      materials: { cost_price: number | null; sell_price: number | null } | null;
+    }>;
+  };
+
+  return (data ?? []).map((raw) => {
+    const r = raw as PricedRow;
+    const items = r.prebuild_items ?? [];
+    let materialCost = 0;
+    let sellPrice = 0;
+    for (const it of items) {
+      const qty = Number(it.qty) || 0;
+      const cost = it.materials?.cost_price ?? null;
+      const sell = it.materials?.sell_price ?? null;
+      materialCost += qty * (cost ?? 0);
+      const unitSell = sell != null ? sell : cost != null ? cost * (1 + materialMarkup) : 0;
+      sellPrice += qty * unitSell;
+    }
+    return {
+      ...rowToPrebuild(r as PrebuildRow),
+      itemsCount: items.length,
+      materialCost: Math.round(materialCost * 100) / 100,
+      sellPrice: Math.round(sellPrice * 100) / 100,
+    };
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Prebuilds — write
 // ---------------------------------------------------------------------------
@@ -451,6 +558,8 @@ export async function createPrebuild(input: CreatePrebuildInput): Promise<Prebui
       name: input.name,
       description: input.description ?? null,
       category: input.category ?? null,
+      subcategory: input.subcategory ?? null,
+      is_favourite: input.isFavourite ?? false,
       created_by: uid,
     })
     .select('*')
@@ -470,6 +579,8 @@ export async function updatePrebuild(
       ...(patch.name !== undefined && { name: patch.name }),
       ...(patch.description !== undefined && { description: patch.description }),
       ...(patch.category !== undefined && { category: patch.category }),
+      ...(patch.subcategory !== undefined && { subcategory: patch.subcategory }),
+      ...(patch.isFavourite !== undefined && { is_favourite: patch.isFavourite }),
     })
     .eq('id', id)
     .select('*')

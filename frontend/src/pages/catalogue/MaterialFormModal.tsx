@@ -58,6 +58,11 @@ export interface MaterialFormInitial {
   costPrice?: number | null;
   sellPrice?: number | null;
   tags?: string[];
+  category?: string | null;
+  subcategory?: string | null;
+  isFavourite?: boolean;
+  isStockItem?: boolean;
+  stockOnHand?: number;
   description?: string | null;
   supplierId?: string | null;
 }
@@ -67,6 +72,9 @@ interface Props {
   /** Source tag to use when creating a new material. Defaults to "manual".
    *  Pass "mined" from the approval flow so the record is tagged correctly. */
   source?: 'manual' | 'csv' | 'mined';
+  /** Existing distinct Groups / Subgroups for the editor datalists. */
+  groupOptions?: string[];
+  subgroupOptions?: string[];
   onSaved: (m: Material) => void;
   onClose: () => void;
 }
@@ -93,13 +101,18 @@ function FieldLabel({
 
 // ─── component ───────────────────────────────────────────────────────────────
 
-export default function MaterialFormModal({ initial, source = 'manual', onSaved, onClose }: Props) {
+export default function MaterialFormModal({ initial, source = 'manual', groupOptions = [], subgroupOptions = [], onSaved, onClose }: Props) {
   const isEdit = Boolean(initial?.id);
 
   // form state
   const [name, setName]             = useState(initial?.name ?? "");
   const [sku, setSku]               = useState(initial?.sku ?? "");
   const [unit, setUnit]             = useState(initial?.unit ?? "ea");
+  const [category, setCategory]     = useState(initial?.category ?? "");
+  const [subcategory, setSubcategory] = useState(initial?.subcategory ?? "");
+  const [isFavourite, setIsFavourite] = useState(initial?.isFavourite ?? false);
+  const [isStockItem, setIsStockItem] = useState(initial?.isStockItem ?? false);
+  const [stockOnHand, setStockOnHand] = useState(initial?.stockOnHand != null ? String(initial.stockOnHand) : "0");
   const [costStr, setCostStr]       = useState(
     initial?.costPrice != null ? String(initial.costPrice) : "",
   );
@@ -194,6 +207,11 @@ export default function MaterialFormModal({ initial, source = 'manual', onSaved,
         costPrice,
         sellPrice,
         tags: selectedTags,
+        category: category.trim() || null,
+        subcategory: subcategory.trim() || null,
+        isFavourite,
+        isStockItem,
+        stockOnHand: isStockItem ? (parseFloat(stockOnHand) || 0) : 0,
         description: description.trim() || null,
         supplierId: supplierId || null,
         source,
@@ -329,6 +347,81 @@ export default function MaterialFormModal({ initial, source = 'manual', onSaved,
                 disabled={busy}
               />
             </div>
+          </div>
+
+          {/* Group + Subgroup — the Catalogue tab tree */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <FieldLabel>Group</FieldLabel>
+              <input
+                type="text"
+                list="material-group-options"
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                placeholder="e.g. Solar, Electrical"
+                className="w-full rounded-[8px] border border-[#E6E1D4] bg-white px-3 py-2 text-sm text-[#1A1A1A] placeholder:text-[#C0BAB0] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
+                disabled={busy}
+              />
+              <datalist id="material-group-options">
+                {groupOptions.map((c) => <option key={c} value={c} />)}
+              </datalist>
+            </div>
+            <div>
+              <FieldLabel>Subgroup</FieldLabel>
+              <input
+                type="text"
+                list="material-subgroup-options"
+                value={subcategory}
+                onChange={(e) => setSubcategory(e.target.value)}
+                placeholder="e.g. Panel, Cable"
+                className="w-full rounded-[8px] border border-[#E6E1D4] bg-white px-3 py-2 text-sm text-[#1A1A1A] placeholder:text-[#C0BAB0] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
+                disabled={busy}
+              />
+              <datalist id="material-subgroup-options">
+                {subgroupOptions.map((c) => <option key={c} value={c} />)}
+              </datalist>
+            </div>
+          </div>
+
+          {/* Favourite */}
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-[#3A3A3A]">
+            <input
+              type="checkbox"
+              checked={isFavourite}
+              onChange={(e) => setIsFavourite(e.target.checked)}
+              className="h-4 w-4 accent-[#2F8F5C]"
+              disabled={busy}
+            />
+            Mark as a favourite (shows in the quote's Favourites group)
+          </label>
+
+          {/* Stock */}
+          <div className="rounded-[8px] border border-[#E6E1D4] bg-[#FAF8F2] p-3">
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-[#3A3A3A]">
+              <input
+                type="checkbox"
+                checked={isStockItem}
+                onChange={(e) => setIsStockItem(e.target.checked)}
+                className="h-4 w-4 accent-[#2F8F5C]"
+                disabled={busy}
+              />
+              Held in stock (shows on the quote&rsquo;s Stock tab)
+            </label>
+            {isStockItem && (
+              <div className="mt-3 max-w-[160px]">
+                <FieldLabel hint="on hand">Quantity</FieldLabel>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={stockOnHand}
+                  onChange={(e) => setStockOnHand(e.target.value)}
+                  placeholder="0"
+                  className="w-full rounded-[8px] border border-[#E6E1D4] bg-white px-3 py-2 text-right text-sm tabular-nums text-[#1A1A1A] placeholder:text-[#C0BAB0] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
+                  disabled={busy}
+                />
+              </div>
+            )}
           </div>
 
           {/* Tags */}

@@ -865,11 +865,17 @@ export async function addQuoteItemFromMaterial(
 export async function addQuoteItemFromPrebuild(
   quoteId: string,
   prebuildId: string,
+  qtyMultiplier = 1,
 ): Promise<QuoteItem[]> {
   if (!supabaseConfigured()) throw NOT_CONFIGURED;
   const prebuild = await getPrebuildWithItems(prebuildId);
   if (!prebuild) throw new Error("Prebuild not found: " + prebuildId);
   if (prebuild.items.length === 0) return [];
+
+  // How many of this prebuild to add (Simpro's per-part qty box). Each material
+  // line's qty is scaled by it; clamp to a sane integer ≥ 1. Default 1 keeps the
+  // existing callers (Billable "From prebuild", applyTemplateToQuote) unchanged.
+  const mult = Number.isFinite(qtyMultiplier) && qtyMultiplier >= 1 ? Math.floor(qtyMultiplier) : 1;
 
   // Fetch all materials for the prebuild items in parallel
   const materialResults = await Promise.all(
@@ -885,7 +891,7 @@ export async function addQuoteItemFromPrebuild(
       prebuild_id: prebuildId,
       kind: 'material',
       description: mat ? mat.name : item.materialId,
-      qty: item.qty,
+      qty: item.qty * mult,
       unit: mat ? mat.unit : 'ea',
       unit_price_ex_gst: mat ? materialSell(mat, materialMarkup) : 0,
       cost_price_ex_gst: mat ? (mat.costPrice ?? null) : null,

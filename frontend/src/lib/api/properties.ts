@@ -76,6 +76,18 @@ export async function listAllProperties(): Promise<Property[]> {
   return (data ?? []).map((r) => rowToProperty(r as PropertyRow));
 }
 
+/** Returns a single property by id, or null when missing / not configured. */
+export async function getProperty(id: string): Promise<Property | null> {
+  if (!supabaseConfigured()) return null;
+  const { data, error } = await supabase
+    .from('properties')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? rowToProperty(data as PropertyRow) : null;
+}
+
 /** Returns all properties for a customer (active + inactive). */
 export async function listPropertiesForCustomer(customerId: string): Promise<Property[]> {
   if (!supabaseConfigured()) return [];

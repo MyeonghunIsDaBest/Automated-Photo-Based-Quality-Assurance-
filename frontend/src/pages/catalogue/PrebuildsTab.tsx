@@ -140,6 +140,8 @@ export default function PrebuildsTab({ onWritten }: Props) {
   const [eName, setEName]           = useState("");
   const [eDesc, setEDesc]           = useState("");
   const [eCat, setECat]             = useState("");
+  const [eSub, setESub]             = useState("");
+  const [eFav, setEFav]             = useState(false);
   const [eItems, setEItems]         = useState<LocalItem[]>([]);
   const [busy, setBusy]             = useState(false);
   const [editErr, setEditErr]       = useState<string | null>(null);
@@ -149,6 +151,11 @@ export default function PrebuildsTab({ onWritten }: Props) {
   const [deleting, setDeleting]     = useState(false);
 
   const [toast, setToast]           = useState<ToastState>(null);
+
+  // Distinct existing Groups (category) + Subgroups (subcategory) for the editor
+  // datalists — pick an existing one or type a new value, so the tree stays tidy.
+  const catOptions = Array.from(new Set(prebuilds.map((p) => p.category).filter((c): c is string => !!c && !!c.trim()))).sort();
+  const subOptions = Array.from(new Set(prebuilds.map((p) => p.subcategory).filter((c): c is string => !!c && !!c.trim()))).sort();
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -172,7 +179,7 @@ export default function PrebuildsTab({ onWritten }: Props) {
   function openNew() {
     setSelected(null);
     setIsNew(true);
-    setEName(""); setEDesc(""); setECat(""); setEItems([]);
+    setEName(""); setEDesc(""); setECat(""); setESub(""); setEFav(false); setEItems([]);
     setEditErr(null);
     setEditorOpen(true);
   }
@@ -187,6 +194,8 @@ export default function PrebuildsTab({ onWritten }: Props) {
       setEName(full.name);
       setEDesc(full.description ?? "");
       setECat(full.category ?? "");
+      setESub(full.subcategory ?? "");
+      setEFav(full.isFavourite);
       // Build local items with material data
       const localItems: LocalItem[] = full.items.map((item: PrebuildItem) => {
         const mat = allMaterials.find((m) => m.id === item.materialId);
@@ -270,6 +279,8 @@ export default function PrebuildsTab({ onWritten }: Props) {
           name: eName.trim(),
           description: eDesc.trim() || null,
           category: eCat.trim() || null,
+          subcategory: eSub.trim() || null,
+          isFavourite: eFav,
         });
         // Add items
         for (let i = 0; i < eItems.length; i++) {
@@ -287,6 +298,8 @@ export default function PrebuildsTab({ onWritten }: Props) {
           name: eName.trim(),
           description: eDesc.trim() || null,
           category: eCat.trim() || null,
+          subcategory: eSub.trim() || null,
+          isFavourite: eFav,
         });
         // Reconcile items: remove deleted, add new, update sort+qty for existing
         const existingIds = new Set(selected.items.map((i) => i.id));
@@ -484,20 +497,55 @@ export default function PrebuildsTab({ onWritten }: Props) {
               />
             </div>
 
-            {/* Category */}
-            <div>
-              <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">
-                Category
-              </label>
+            {/* Group (category) + Subgroup (subcategory) — the Pre-Builds tab tree */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">
+                  Group
+                </label>
+                <input
+                  type="text"
+                  list="prebuild-group-options"
+                  value={eCat}
+                  onChange={(e) => setECat(e.target.value)}
+                  placeholder="e.g. Solar, Switchboard"
+                  className="w-full rounded-[8px] border border-[#E6E1D4] bg-white px-3 py-2 text-sm text-[#1A1A1A] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
+                  disabled={busy}
+                />
+                <datalist id="prebuild-group-options">
+                  {catOptions.map((c) => <option key={c} value={c} />)}
+                </datalist>
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">
+                  Subgroup
+                </label>
+                <input
+                  type="text"
+                  list="prebuild-subgroup-options"
+                  value={eSub}
+                  onChange={(e) => setESub(e.target.value)}
+                  placeholder="e.g. PV System, Power"
+                  className="w-full rounded-[8px] border border-[#E6E1D4] bg-white px-3 py-2 text-sm text-[#1A1A1A] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
+                  disabled={busy}
+                />
+                <datalist id="prebuild-subgroup-options">
+                  {subOptions.map((c) => <option key={c} value={c} />)}
+                </datalist>
+              </div>
+            </div>
+
+            {/* Favourite */}
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-[#3A3A3A]">
               <input
-                type="text"
-                value={eCat}
-                onChange={(e) => setECat(e.target.value)}
-                placeholder="e.g. Lighting, Switchboard"
-                className="w-full rounded-[8px] border border-[#E6E1D4] bg-white px-3 py-2 text-sm text-[#1A1A1A] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
+                type="checkbox"
+                checked={eFav}
+                onChange={(e) => setEFav(e.target.checked)}
+                className="h-4 w-4 accent-[#2F8F5C]"
                 disabled={busy}
               />
-            </div>
+              Mark as a favourite (shows in the quote's Favourites group)
+            </label>
 
             {/* Description */}
             <div>

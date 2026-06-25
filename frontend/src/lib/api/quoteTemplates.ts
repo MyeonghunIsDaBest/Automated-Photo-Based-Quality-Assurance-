@@ -256,24 +256,39 @@ export async function removeTemplateItem(id: string): Promise<void> {
  * Drop every line of a template onto a quote. Materials/prebuilds/labour each go
  * through their existing adder, so markup, cost snapshots, and totals are handled
  * identically to manual entry. Returns the count of lines added.
+ *
+ * `qtyMultiplier` (default 1) scales the whole take-off — material and labour line
+ * qtys are multiplied by it, and a prebuild is added that many times (the prebuild
+ * adder ignores qty). Take Off's "Add ×N" passes the per-part quantity here; the
+ * legacy "Apply a job template" caller omits it and gets a single application.
  */
-export async function applyTemplateToQuote(quoteId: string, templateId: string): Promise<number> {
+export async function applyTemplateToQuote(
+  quoteId: string,
+  templateId: string,
+  qtyMultiplier = 1,
+): Promise<number> {
   if (!supabaseConfigured()) throw NOT_CONFIGURED;
   const tpl = await getTemplateWithItems(templateId);
   if (!tpl) throw new Error('Template not found: ' + templateId);
+
+  // Guard against 0 / negative / NaN multipliers — a take-off is always added at
+  // least once.
+  const mult = Number.isFinite(qtyMultiplier) && qtyMultiplier >= 1 ? Math.floor(qtyMultiplier) : 1;
 
   let added = 0;
   // Sequential (not parallel): each adder recomputes the quote totals, and we want
   // a stable sort_order matching the template order.
   for (const item of tpl.items) {
     if (item.kind === 'material' && item.materialId) {
-      await addQuoteItemFromMaterial(quoteId, item.materialId, item.qty || 1);
+      await addQuoteItemFromMaterial(quoteId, item.materialId, (item.qty || 1) * mult);
       added += 1;
     } else if (item.kind === 'prebuild' && item.prebuildId) {
-      const rows = await addQuoteItemFromPrebuild(quoteId, item.prebuildId);
-      added += rows.length;
+      for (let i = 0; i < mult; i += 1) {
+        const rows = await addQuoteItemFromPrebuild(quoteId, item.prebuildId);
+        added += rows.length;
+      }
     } else if (item.kind === 'labour' && item.role) {
-      await addQuoteItemLabour(quoteId, item.role, item.qty || 0);
+      await addQuoteItemLabour(quoteId, item.role, (item.qty || 0) * mult);
       added += 1;
     }
   }

@@ -44,12 +44,26 @@ import { listLabourRates, formatRole, type LabourRate } from "../../lib/api/labo
 import { listTemplates, applyTemplateToQuote, type QuoteTemplate } from "../../lib/api/quoteTemplates";
 import { listScripts, type QuoteScript } from "../../lib/api/quoteScripts";
 import { listProfilesByRole } from "../../lib/api/profiles";
+import QuoteTakeOff from "./QuoteTakeOff";
+import QuotePreBuilds from "./QuotePreBuilds";
+import QuoteCatalogue from "./QuoteCatalogue";
+import QuoteStock from "./QuoteStock";
+import QuoteOneOff from "./QuoteOneOff";
+import QuoteSchedule from "./QuoteSchedule";
 import type { Profile, SecurityGroup } from "../../types";
 
 // â”€â”€â”€ types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 type ToastState = { message: string; type: "success" | "error" | "info" } | null;
 type AddMode = "catalogue" | "prebuild" | "free" | "labour" | "template" | null;
+// Top-level Simpro quote tabs (Details / Parts & Labour / Schedule / Customer Assets).
+type QuoteTab = "details" | "parts" | "schedule" | "assets";
+const QUOTE_TABS: { key: QuoteTab; label: string }[] = [
+  { key: "details", label: "Details" },
+  { key: "parts", label: "Parts & Labour" },
+  { key: "schedule", label: "Schedule" },
+  { key: "assets", label: "Customer Assets" },
+];
 // Parts & Labour sub-tabs (Simpro). Only "billable" is built; the rest are stubs.
 type BillableTab = "billable" | "takeoff" | "prebuilds" | "catalogue" | "stock" | "oneoff";
 const BILLABLE_TABS: { key: BillableTab; label: string }[] = [
@@ -167,6 +181,7 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
   const [staff, setStaff]           = useState<Profile[]>([]);
 
   const [addMode, setAddMode]       = useState<AddMode>(null);
+  const [quoteTab, setQuoteTab] = useState<QuoteTab>("details");
   const [billableTab, setBillableTab] = useState<BillableTab>("billable");
 
   // Catalogue search
@@ -999,8 +1014,24 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
           )}
         </div>
 
+        {/* ── Top-level tabs (Details / Parts & Labour / Schedule / Customer Assets) ── */}
+        <div className="mb-5 flex flex-wrap gap-1 border-b border-[#E6E1D4] print:hidden">
+          {QUOTE_TABS.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setQuoteTab(t.key)}
+              className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
+                quoteTab === t.key ? "border-[#2F8F5C] text-[#1A1A1A]" : "border-transparent text-[#6B6B6B] hover:text-[#1A1A1A]"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
         {/* Description (customer-facing scope of works) + Insert script */}
-        <div className="mb-6">
+        <div className={`mb-6 ${quoteTab === "details" ? "" : "hidden print:block"}`}>
           <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
             <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#A0A0A0]">Description</label>
             {!isLocked && availableScripts.length > 0 && (
@@ -1031,7 +1062,7 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
         </div>
 
         {/* Technicians (internal — screen only) */}
-        <div className="mb-6 print:hidden">
+        <div className={`mb-6 print:hidden ${quoteTab === "details" ? "" : "hidden"}`}>
           <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.14em] text-[#A0A0A0]">Technicians</label>
           {isLocked ? (
             <p className="text-sm text-[#3A3A3A]">
@@ -1061,6 +1092,8 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
         </div>
 
         {/* â”€â”€ Line items table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        {/* ── Parts & Labour top-tab body (prints regardless of active tab) ── */}
+        <div className={quoteTab === "parts" ? "" : "hidden print:block"}>
         {/* Parts & Labour sub-tab strip (screen-only). Only Billable is built. */}
         <div className="mb-3 flex flex-wrap gap-1 border-b border-[#E6E1D4] print:hidden">
           {BILLABLE_TABS.map((t) => (
@@ -1077,11 +1110,59 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
           ))}
         </div>
 
-        {billableTab !== "billable" && (
-          <div className="mb-6 rounded-[10px] border border-dashed border-[#D8D2C4] bg-[#FAF8F2] px-4 py-8 text-center text-sm text-[#A0A0A0] print:hidden">
-            {BILLABLE_TABS.find((t) => t.key === billableTab)?.label} — coming soon. Add parts &amp; labour from the{" "}
-            <button type="button" className="font-medium text-[#2F8F5C] underline" onClick={() => setBillableTab("billable")}>Billable</button> tab for now.
-          </div>
+        {/* Take Off — a browsable, searchable library of pre-built take-off bundles. */}
+        {billableTab === "takeoff" && (
+          <QuoteTakeOff
+            quoteId={quoteId}
+            canSeeCost={!!canSeeCost}
+            isLocked={isLocked}
+            onAdded={() => { void loadQuote(); onChanged(); }}
+            onToast={(message, type) => setToast({ message, type })}
+          />
+        )}
+
+        {/* Pre-Builds — Group → Subgroup → parts browse-and-add over the prebuild library. */}
+        {billableTab === "prebuilds" && (
+          <QuotePreBuilds
+            quoteId={quoteId}
+            canSeeCost={!!canSeeCost}
+            isLocked={isLocked}
+            onAdded={() => { void loadQuote(); onChanged(); }}
+            onToast={(message, type) => setToast({ message, type })}
+          />
+        )}
+
+        {/* Catalogue — Group → Subgroup → materials browse-and-add over the catalogue. */}
+        {billableTab === "catalogue" && (
+          <QuoteCatalogue
+            quoteId={quoteId}
+            canSeeCost={!!canSeeCost}
+            isLocked={isLocked}
+            onAdded={() => { void loadQuote(); onChanged(); }}
+            onToast={(message, type) => setToast({ message, type })}
+          />
+        )}
+
+        {/* Stock — stocked materials with on-hand, browse-and-add (Group → Subgroup). */}
+        {billableTab === "stock" && (
+          <QuoteStock
+            quoteId={quoteId}
+            canSeeCost={!!canSeeCost}
+            isLocked={isLocked}
+            onAdded={() => { void loadQuote(); onChanged(); }}
+            onToast={(message, type) => setToast({ message, type })}
+          />
+        )}
+
+        {/* One Off Items — ad-hoc custom line, optionally saved to the catalogue. */}
+        {billableTab === "oneoff" && (
+          <QuoteOneOff
+            quoteId={quoteId}
+            canSeeCost={!!canSeeCost}
+            isLocked={isLocked}
+            onAdded={() => { void loadQuote(); onChanged(); }}
+            onToast={(message, type) => setToast({ message, type })}
+          />
         )}
 
         {/* Parts + Labour tables. Always rendered for print; hidden on screen when another sub-tab is active. */}
@@ -1550,8 +1631,28 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
           </div>
         )}
 
-        {/* ── Notes textarea ─────────────────────────────────────────────── */}
-        <div className="mb-8 print:hidden">
+        </div>{/* end Parts & Labour top-tab body */}
+
+        {/* ── Schedule top-tab body ── */}
+        {quoteTab === "schedule" && (
+          <QuoteSchedule
+            quoteId={quoteId}
+            propertyId={quote.propertyId}
+            canSeeCost={!!canSeeCost}
+            isLocked={isLocked}
+            onToast={(message, type) => setToast({ message, type })}
+          />
+        )}
+
+        {/* ── Customer Assets top-tab body ── */}
+        {quoteTab === "assets" && (
+          <div className="mb-8 rounded-[10px] border border-dashed border-[#D8D2C4] bg-[#FAF8F2] px-4 py-10 text-center text-sm text-[#A0A0A0] print:hidden">
+            Customer Assets — coming soon.
+          </div>
+        )}
+
+        {/* ── Notes textarea (Details tab) ─────────────────────────────────── */}
+        <div className={`mb-8 print:hidden ${quoteTab === "details" ? "" : "hidden"}`}>
           <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.14em] text-[#A0A0A0]">
             Private notes (not visible to the customer)
           </label>

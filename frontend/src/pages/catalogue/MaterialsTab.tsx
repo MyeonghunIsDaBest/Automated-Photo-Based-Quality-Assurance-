@@ -142,6 +142,11 @@ export default function MaterialsTab({ onWritten }: Props) {
       costPrice: m.costPrice,
       sellPrice: m.sellPrice,
       tags: m.tags,
+      category: m.category,
+      subcategory: m.subcategory,
+      isFavourite: m.isFavourite,
+      isStockItem: m.isStockItem,
+      stockOnHand: m.stockOnHand,
       description: m.description,
       supplierId: m.supplierId,
     });
@@ -409,6 +414,8 @@ export default function MaterialsTab({ onWritten }: Props) {
       {showModal && (
         <MaterialFormModal
           initial={modal ?? undefined}
+          groupOptions={Array.from(new Set(materials.map((m) => m.category).filter((c): c is string => !!c && !!c.trim()))).sort()}
+          subgroupOptions={Array.from(new Set(materials.map((m) => m.subcategory).filter((c): c is string => !!c && !!c.trim()))).sort()}
           onSaved={handleSaved}
           onClose={() => { setShowModal(false); setModal(null); }}
         />

@@ -3721,3 +3721,86 @@ Four findings from the boss testing the new quote flow on production:
 4. **STC/VEEC "Use default"** — added "Use default" toggles (lock to the settings value, uncheck to override) on STC Value + VEEC Value + Labour Overhead, mirroring the Default Material Markup pattern.
 
 Files: `commercial.ts` (defaultLabourOverhead through the settings type/row/mapper/update), `NewQuoteWizard.tsx` (inline customer create + 3 use-default toggles + overhead prefill + allCustomers), `SettingsTab.tsx` (labour-overhead field), migration `81_default_labour_overhead.sql`. Subagent-reviewed clean. **Jordan applies migration 81.** Next free migration = 82.
+
+---
+
+## 24 June 2026 — Quote rework Phase 1 Part 4: Parts & Labour → Take Off tab
+
+Built the **Take Off** sub-tab (2nd of the 6 Parts&Labour pills; previously a "coming soon" stub). Take Off = a browsable, searchable library of pre-built take-off bundles added to a quote by quantity. **A Take-Off Group = a `quote_templates.category`; each part = a template** in that category (reuses migration 78 / Catalogue → Templates — no new schema, NO migration). Subagent CI-killer review came back clean (types/imports/props verified; both `applyTemplateToQuote` callers valid; no test snapshots touched).
+
+- **quoteTemplates.ts**: `applyTemplateToQuote(quoteId, templateId, qtyMultiplier = 1)` — material/labour line qtys ×mult; a prebuild item added `mult` times. Multiplier floored & clamped ≥1 (NaN/0/neg → 1). Default 1 keeps the legacy "Apply a job template" caller (`handleApplyTemplate`, 2 args) unchanged.
+- **QuoteTakeOff.tsx** (NEW, self-contained): loads `listTemplates()` + groups by `category` ("Other" last); **search box** filters parts by name/category across *all* groups and auto-expands matches (the boss's "stop going back and forth" ask); expandable **group** headers (count badge) → **part rows** (name, qty input default 1, **Add** button). Each part has a chevron that lazily `getTemplateWithItems()` (cached) and shows the inner material/labour/prebuild lines with **Sell** each + a per-unit rolled-up Sell — **Cost shown only when `canSeeCost`**. Prebuild lines show name + "priced on add" (recursive prebuild costing deferred). Pricing refs (`listMaterials`/`listPrebuilds`/`ratesMap`/`getCommercialSettings` markups) loaded once on mount; material sell = sellPrice ?? cost×(1+materialMarkup), labour sell = rate×(1+labourMarkup) — mirrors commercial.ts. Whole panel is **screen-only / `print:hidden`**; locked quotes render read-only (no qty/Add).
+- **QuoteEditor.tsx**: import `QuoteTakeOff`; render `<QuoteTakeOff quoteId canSeeCost={!!canSeeCost} isLocked onAdded={loadQuote+onChanged} onToast={setToast}/>` for `billableTab === "takeoff"`; narrowed the coming-soon stub to the remaining 4 pills. Billable print tables unchanged.
+
+Deferred: eager per-row Cost/Sell columns (shown on expand instead), Simpro sub-groups (3rd level), Save Search/Advanced, bulk "tick-many-then-add-once", full recursive prebuild costing. Remaining sub-tabs (Pre-Builds/Catalogue/Stock/One Off Items) + Simpro Schedule/Customer Assets still later. AI Quote Drafter still parked. No migration — next free still = 82.
+
+---
+
+## 24 June 2026 — Quote rework Phase 1 Part 5: Parts & Labour → Pre-Builds tab
+
+Built the **Pre-Builds** sub-tab (3rd of the 6 pills; previously a "coming soon" stub). Pre-Builds = a two-level **Group → Subgroup → parts** library over our `prebuilds` (mig 64), each part shown with rolled-up **Material Cost + Sell Price**, plus **Favourites** + search + qty/Add. Subagent CI-killer review came back clean (no required-field breakage from the new Prebuild fields; all callers/imports valid; no import cycle; no tests affected).
+
+- **Migration 82** (`82_prebuild_groups.sql`, force-added, **Jordan applies**): `prebuilds` += `subcategory text` (the Subgroup level; `category` = Group) + `is_favourite boolean not null default false`. Additive + idempotent; existing manager RLS covers them. **Next free migration = 83.**
+- **materials.ts**: `Prebuild` += `subcategory: string|null` + `isFavourite: boolean` (row/type/mapper); `CreatePrebuildInput`/`UpdatePrebuildInput` += both (+ patched in create/update). NEW `listPrebuildsPriced(materialMarkup, includeInactive=false)` → `PrebuildPriced extends Prebuild { materialCost; sellPrice }` via one embedded query `prebuilds.select('*, prebuild_items(qty, materials(cost_price, sell_price)))'` rolled up client-side (sell = `sellPrice ?? cost×(1+markup)`, mirrors `materialSell`). Markup passed in by caller → no materials→commercial import cycle.
+- **commercial.ts**: `addQuoteItemFromPrebuild(quoteId, prebuildId, qtyMultiplier = 1)` — each material line's qty ×mult (clamped integer ≥1). Default 1 keeps the Billable "From prebuild" picker + `applyTemplateToQuote`'s prebuild loop unchanged.
+- **QuotePreBuilds.tsx** (NEW, mirrors QuoteTakeOff skin/props): Simpro-style **breadcrumb drill-down** (Pre-Builds / Group / Subgroup) — root shows Groups (+ a Favourites shortcut row when any starred); group view shows its Subgroups + a Parts table for prebuilds with no subgroup; subgroup view shows its Parts. Parts table = Name · Material Cost (`canSeeCost` only) · Sell Price · ★ favourite toggle · qty + Add. **Search** flattens to a filtered parts table across all groups; **"Favourites only"** checkbox flattens to starred. ★ toggle calls `updatePrebuild({isFavourite})` + local state. Add → `addQuoteItemFromPrebuild(quoteId, id, qty)` → onAdded + toast. Whole panel `print:hidden`; locked quotes read-only (no qty/Add/★).
+- **QuoteEditor.tsx**: import + render `<QuotePreBuilds>` for `billableTab === "prebuilds"`; narrowed coming-soon stub to the last 3 pills (catalogue/stock/oneoff).
+- **PrebuildsTab.tsx** (Catalogue → Pre-Builds editor): added **Group** (was "Category") + **Subgroup** inputs (both with `<datalist>` of existing distinct values so the office reuses the tree) + a **Favourite** checkbox; persisted via the extended inputs + `eSub`/`eFav` state through openNew/openEdit/handleSave.
+
+Deferred: inline CREATE GROUP/SUBGROUP/PRE-BUILD on the quote tab (management stays in Catalogue), per-user favourites (org-wide flag for now), Save Search/Advanced, Image + Part No. columns, >2-level nesting, fractional add-qty. Remaining sub-tabs (Catalogue/Stock/One Off Items) + Simpro Schedule/Customer Assets still later. AI Quote Drafter still parked. **Jordan applies migration 82.**
+
+---
+
+## 24 June 2026 — Quote rework Phase 1 Part 6: Parts & Labour → Catalogue tab
+
+Built the **Catalogue** sub-tab (4th of the 6 pills; previously a "coming soon" stub). Catalogue = the same two-level **Group → Subgroup → parts** browse-and-add as Pre-Builds, but over **materials** (each carries its own cost/sell — no rollup). Subagent CI-killer review clean (no Material-literal breakage; shared create/update input still assignable; no import cycle; no tests affected).
+
+- **Migration 83** (`83_material_groups.sql`, force-added, **Jordan applies**): `materials` += `category` (Group) + `subcategory` (Subgroup) + `is_favourite boolean not null default false`. Additive + idempotent; existing manager RLS covers them. No tags→category backfill (Simpro groups are curated, not the tag taxonomy; materials show under "Other" until categorised). **Next free migration = 84.**
+- **materials.ts**: `Material`/`MaterialRow` += category/subcategory/isFavourite (+ `rowToMaterial` mapping); `CreateMaterialInput`/`UpdateMaterialInput` += the 3 (+ patched in createMaterial insert + updateMaterial conditional-spread). NO new list fn, NO commercial change (`addQuoteItemFromMaterial(quoteId, materialId, qty)` already qty-aware; sell display computed in-component as `sellPrice ?? cost×(1+markup)`).
+- **QuoteCatalogue.tsx** (NEW, sibling of QuotePreBuilds): loads `listMaterials()` + markup → maps to rows (`materialCost`, `sell`, sku·unit meta). Breadcrumb drill-down Catalogue / Group / Subgroup; root=Groups (+ Favourites shortcut); group=Subgroups + direct Parts; subgroup=Parts. Parts table = Name(+meta) · Material Cost (canSeeCost) · Sell · ★ · qty + Add. Search flattens by name/sku/group; "Favourites only" filter; ★ → `updateMaterial({isFavourite})` + local state; Add → `addQuoteItemFromMaterial(quoteId, id, qty)`. `print:hidden`; read-only when locked. (Deliberate near-duplicate of QuotePreBuilds; shared `GroupedItemBrowser` extraction deferred until Stock's shape is known.)
+- **QuoteEditor.tsx**: import + render `<QuoteCatalogue>` for `billableTab === "catalogue"`; narrowed coming-soon stub to the last 2 pills (stock/oneoff).
+- **MaterialFormModal.tsx** + **MaterialsTab.tsx**: material editor gained **Group** + **Subgroup** inputs (datalists of existing distinct values, passed as `groupOptions`/`subgroupOptions` props derived from MaterialsTab's `materials`) + a **Favourite** checkbox; `MaterialFormInitial` + the create/update `input` + `openEdit` all carry the 3 fields.
+
+Deferred: group-level admin from Simpro's Options menu (Set Group Markup / Group Suppliers / Edit/Delete Group) + inline create-on-quote; optional tags→Group/Subgroup backfill; per-user favourites; Save Search/Advanced; Image/Part-No columns; pagination (fine at ~42 items); shared GroupedItemBrowser. Remaining sub-tabs (Stock, One Off Items) + Simpro Schedule/Customer Assets still later. AI Quote Drafter still parked. **Jordan applies migration 83.**
+
+---
+
+## 25 June 2026 — Quote rework Phase 1 Parts 7 & 8: Stock + One Off Items (Parts & Labour COMPLETE)
+
+Built the final two sub-tabs — **Stock** and **One Off Items** — so all 6 Parts & Labour pills are now real (Billable, Take Off, Pre-Builds, Catalogue, Stock, One Off Items). No Simpro screenshots for these two yet → built to an inferred design (flagged to boss). Subagent CI-killer review clean (no Material-literal breakage; shared create/update input still assignable; removed stub left nothing dangling; no import cycle; no tests affected).
+
+- **Migration 84** (`84_material_stock.sql`, force-added, **Jordan applies**): `materials` += `is_stock_item boolean not null default false` + `stock_on_hand numeric(12,2) not null default 0`. Lightweight single-location v1 (full inventory deferred). Additive + idempotent; manager RLS covers them. **Next free migration = 85.**
+- **materials.ts**: `Material`/`MaterialRow` += isStockItem/stockOnHand (+ rowToMaterial mapping); `CreateMaterialInput`/`UpdateMaterialInput` += both (+ patched in create insert + update conditional-spread). No commercial change.
+- **QuoteStock.tsx** (NEW, mirrors QuoteCatalogue): filters to `m.isStockItem`, adds an **On Hand** column (red when ≤0), same Group→Subgroup breadcrumb + search + favourites + qty/Add (`addQuoteItemFromMaterial`). Empty state points to Catalogue → Materials "Held in stock".
+- **QuoteOneOff.tsx** (NEW, a form not a browser): description + qty + unit + sell (+ cost when canSeeCost) → `addQuoteItemFree` (kind 'custom'); **"Also save to catalogue"** checkbox → `createMaterial` (non-fatal if the catalogue save fails after the line is added). Read-only message when locked; `print:hidden`.
+- **QuoteEditor.tsx**: import + render `<QuoteStock>` / `<QuoteOneOff>` for the `stock`/`oneoff` pills; **removed the "coming soon" stub entirely** (all 6 tabs now built).
+- **MaterialFormModal.tsx** + **MaterialsTab.tsx**: material editor gained a **"Held in stock"** checkbox + a conditional **on-hand quantity** field; `MaterialFormInitial` + the create/update `input` + `openEdit` carry both fields.
+
+**Parts & Labour screen is now a complete match for Simpro's 6 tabs.** Deferred: full multi-location inventory (Stock is single-number on-hand); confirming Stock/One-Off against Jordan's real Simpro screens; shared GroupedItemBrowser extraction (now 3 near-dup browsers: PreBuilds/Catalogue/Stock — worth extracting next). Next Simpro screens: Schedule, Customer Assets. AI Quote Drafter still parked. **Jordan applies migration 84.** Parts 4–8 all staged, un-pushed (held per finalization-for-payraise).
+
+---
+
+## 25 June 2026 — Quotes register restyled to match Sim-Pro Jobs (UI consistency)
+
+Boss feedback: the Jobs → Quotes list rows were too small / inconsistent with the rest of the UI. Restyled `frontend/src/pages/sales/QuotesTab.tsx` (single file, frontend-only, NO migration/API change) to mirror the `SimproJobsTab` layout. Subagent CI-killer review clean.
+
+- **Slim section header** (like Sim-Pro Jobs): eyebrow "SERVICE QUOTES · CASONE ELECTRICAL" + Fraunces "Quotes." title + a one-line summary ("{n} quotes · ${pipeline} in the pipeline…") + the **New quote** button moved up to the header's right.
+- **Cream toolbar band** (`bg-[#FAF8F2]`): status filter as **count-badge pill chips** (All + per-status, mirroring Sim-Pro's stage chips with dot + count badge) on the left; the customer-filter chip + a new **search box** (number/title/customer, client-side) on the right.
+- **Roomier table**: `text-[13px]`, white header band, `divide-y divide-[#EFEBE0]` body, **taller rows (`py-4`, up from `py-3`)**, shared `StatusPill` for the Status column (replacing the bespoke inline pill).
+- **Data**: switched from server-side status filtering to fetching customer-scoped quotes once + filtering status/search client-side, so the chips can show accurate per-status counts (fine at quote volumes). `listQuotes` no longer passed a status.
+
+Used in both mounts (Sales → Quotes and Jobs → Quotes), consistent with how SimproJobsTab renders its own section header under the hub masthead. Staged with the Parts 4–8 work; un-pushed (held per finalization-for-payraise).
+
+---
+
+## 25 June 2026 — Quote rework Phase 1 Part 9: the Schedule tab + 4 top-level tabs
+
+Built Simpro's quote **Schedule** tab and, with it, the **4 top-level quote tabs (Details / Parts & Labour / Schedule / Customer Assets)** the editor never had. Subagent CI-killer review clean (JSX tag balance verified 76/76; types/imports/props sound; no tests affected).
+
+- **Migration 85** (`85_quote_schedule_resources.sql`, force-added, **Jordan applies**): `quote_schedule_resources` (quote_id, resource_type employee|contractor|plant, profile_id, resource_label, role, hours, scheduled_date, start_time, finish_time, sort_order, …) + touch trigger + manager RLS + quote_id index. **Next free migration = 86.**
+- **quoteSchedule.ts** (NEW): `ScheduleResource` + list/add/update/remove.
+- **properties.ts**: added `getProperty(id)` (for the site panel).
+- **QuoteSchedule.tsx** (NEW): left **Available Resources** rail — Employees (`listProfilesByRole(INTERNAL_GROUPS)`, each with their scheduled hours + a ＋Schedule button); Contractors + Plant show an honest "not set up yet — coming soon" (no data model). Right **Scheduled Resources** table — Employee · Date · Hours · Start · Finish · Role · Cost (Role+Cost manager-only); inline-editable (optimistic local + persist on change/blur); **Cost = hours × ratesMap[role]** (uncosted "—" without a role); **Est time = Σ hours**, Act time 0.00 (deferred). **Job site** panel: property address + "Open in Maps" external link (embedded map deferred — no map lib, no coords). `print:hidden`; read-only when locked. Standalone planning view — does NOT feed the quote total (Billable Labour stays the costed source).
+- **QuoteEditor.tsx**: added `QuoteTab`/`QUOTE_TABS`/`quoteTab` + a top-tab strip; reflowed the body using the `hidden print:block` pattern so **print still emits the whole quote** — Description (Details, prints), Technicians + Notes (Details, screen-only), the whole billable area + totals + manager summary wrapped as the **Parts & Labour** body (prints), `<QuoteSchedule>` for Schedule, a Customer-Assets coming-soon stub. Letterhead/title/client stay always-visible above the tabs; status bar stays below.
+
+Deferred: Contractors + Plant resource models; embedded job-site **map** (no lib/coords — address link only); **Help me decide**; **Act time** (needs time entries); Schedule↔Billable labour sync; per-person rates; Gantt-drag scheduling. **Customer Assets** tab = next part. AI Quote Drafter still parked. Parts 4–9 + the Quotes-list restyle all staged, un-pushed (held per finalization-for-payraise). **Jordan applies migration 85.**
