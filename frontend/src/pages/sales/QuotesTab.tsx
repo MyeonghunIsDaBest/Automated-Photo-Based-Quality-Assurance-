@@ -25,6 +25,7 @@ import {
   type QuoteStatus,
 } from "../../lib/api/commercial";
 import { listCustomers, type Customer } from "../../lib/api/customers";
+import { QUOTE_STATUS_TONE } from "./quoteStatus";
 import QuoteEditor from "./QuoteEditor";
 import NewQuoteWizard from "./NewQuoteWizard";
 
@@ -43,14 +44,9 @@ interface Props {
 
 // ─── status tokens ─────────────────────────────────────────────────────────────
 
-const STATUS_TONE: Record<QuoteStatus, keyof typeof TONE> = {
-  draft:    "ink",
-  sent:     "slate",
-  viewed:   "amber",
-  accepted: "sage",
-  declined: "red",
-  expired:  "orange",
-};
+// Status → tone comes from the shared map (./quoteStatus) so the register, the
+// editor, and the wizard all colour status identically.
+const STATUS_TONE = QUOTE_STATUS_TONE;
 
 const STATUS_LABELS: Record<QuoteStatus, string> = {
   draft:    "Draft",

@@ -3817,3 +3817,18 @@ Built the **Customer Assets** tab — the 4th and last top-level quote tab. With
 - **QuoteEditor.tsx**: import + render `<QuoteCustomerAssets quoteId customerId={quote.customerId} isLocked onToast />` for `quoteTab === "assets"` (replaced the coming-soon stub).
 
 **Quote top-tabs now COMPLETE** (Details / Parts & Labour [6 sub-tabs] / Schedule / Customer Assets). Deferred: asset photos/attachments, test-and-tag/service history, asset → job carry-over, global asset register view. Pushed to main (Vercel auto-deploys). **Jordan applies migration 86.** AI Quote Drafter still parked.
+
+---
+
+## 25 June 2026 — Quotes design-consistency pass (frontend-design)
+
+A style-only cohesion sweep so the whole Quotes surface reads as one product against the ledger design system. No behaviour/logic/data changes. Subagent CI-killer review clean (style-only; no tsc/vitest/build breakage; no tests touch these files).
+
+- **ledger.tsx**: added a canonical `inputField` token (full-width field — warm hairline at rest, sage border + ring on focus, shared disabled treatment) so every form shares one focus style.
+- **quoteStatus.ts** (NEW): single source of truth `QUOTE_STATUS_TONE: Record<QuoteStatus, ToneKey>` + `quoteStatusTone()` — kept in the sales domain so the generic ledger kit stays free of quote knowledge.
+- **QuotesTab.tsx**: status pills now use the shared `QUOTE_STATUS_TONE` (removed the local copy).
+- **QuoteEditor.tsx**: status tone derives from the shared helper (dropped the inline map); locked banner + reopen aligned to `TONE.amber` (border `#EAD9B0`→`#D69A2E`, text `#8A6A1E`→`#C8841E`); client-mode toggle inactive state → btnGhost colours (`text-[#3A3A3A]` + `hover:bg-[#FAF8F2]`); top-tab inactive hover added (`hover:border-[#E6E1D4]`); secondary icon grays `#C0BAB0`→`#A0A0A0` (faint token). Kept the paper-sheet's deeper shadow (intentional document elevation).
+- **NewQuoteWizard.tsx**: `inputCls` now points at the shared `inputField`; tab active underline ink→sage (`border-[#2F8F5C]`) + inactive hover; summary status dot `#E0A93B`→`#D69A2E` (amber.dot); header bumped to `text-[22px]` with tightened tracking.
+- **Verified (no edits needed)**: the six Parts & Labour panels + Schedule + Customer Assets already use the canonical sage focus + ledger palette + btn styles; responsive grids + focus rings + empty/loading/locked states meet the a11y/responsive floor.
+
+Pushed to main (Vercel auto-deploys). No migration. AI Quote Drafter still parked.

@@ -11,7 +11,7 @@
 import { useEffect, useState } from "react";
 import { X, Loader2, Ticket, Plus } from "lucide-react";
 
-import { btnPrimary, btnGhost, FRAUNCES } from "../gantt/components/ledger";
+import { btnPrimary, btnGhost, FRAUNCES, inputField } from "../gantt/components/ledger";
 
 import {
   createQuote,
@@ -53,8 +53,9 @@ const CUSTOM_FIELDS: { key: string; label: string; type: "text" | "number" | "da
 type TabKey = "main" | "optional" | "custom";
 
 const labelCls = "mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]";
-const inputCls =
-  "w-full rounded-md border border-[#E6E1D4] bg-white px-3 py-2 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] disabled:opacity-50";
+// Shared canonical field (./gantt/components/ledger) so the wizard's inputs match
+// the editor + the rest of the site.
+const inputCls = inputField;
 
 const num = (s: string): number | null => {
   const t = s.trim();
@@ -292,7 +293,7 @@ export default function NewQuoteWizard({ customers, onCancel, onCreated }: Props
 
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#E6E1D4] px-6 py-4">
-          <h2 className="text-lg font-medium text-[#1A1A1A]" style={{ fontFamily: FRAUNCES }}>
+          <h2 className="text-[22px] font-medium text-[#1A1A1A]" style={{ fontFamily: FRAUNCES, letterSpacing: "-0.01em" }}>
             New {quoteType === "project" ? "Project" : "Service"} Quote
           </h2>
           <div className="flex items-center gap-2">
@@ -317,7 +318,7 @@ export default function NewQuoteWizard({ customers, onCancel, onCreated }: Props
               type="button"
               onClick={() => setTab(k)}
               className={`-mb-px border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
-                tab === k ? "border-[#1A1A1A] text-[#1A1A1A]" : "border-transparent text-[#6B6B6B] hover:text-[#1A1A1A]"
+                tab === k ? "border-[#2F8F5C] text-[#1A1A1A]" : "border-transparent text-[#6B6B6B] hover:border-[#E6E1D4] hover:text-[#1A1A1A]"
               }`}
             >
               {label}
@@ -330,7 +331,7 @@ export default function NewQuoteWizard({ customers, onCancel, onCreated }: Props
           <span className="text-[#6B6B6B]">Customer: <span className="font-medium text-[#1A1A1A]">{customerName}</span></span>
           <span className="text-[#6B6B6B]">Quote Total: <span className="font-medium text-[#1A1A1A]">$0.00</span></span>
           <span className="flex items-center gap-1.5 text-[#6B6B6B]">
-            Status: <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#E0A93B]" /> <span className="font-medium text-[#1A1A1A]">To Be Completed</span>
+            Status: <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#D69A2E]" /> <span className="font-medium text-[#1A1A1A]">To Be Completed</span>
           </span>
         </div>
 

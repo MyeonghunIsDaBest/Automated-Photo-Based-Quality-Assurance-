@@ -47,6 +47,13 @@ export const btnGhost =
 export const cardShell =
   'rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_1px_2px_rgba(20,20,20,0.04)]';
 
+/** Canonical full-width form field — warm hairline at rest, sage border + ring on
+ *  focus. Use for text/email/number/date/select/textarea inputs so every form on
+ *  the site shares one focus treatment. (Dense table-cell inputs keep their own
+ *  width but reuse the same focus classes.) */
+export const inputField =
+  'w-full rounded-md border border-[#E6E1D4] bg-white px-3 py-2 text-sm text-[#1A1A1A] placeholder:text-[#C0BAB0] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] disabled:cursor-not-allowed disabled:bg-[#FAF8F2] disabled:text-[#6B6B6B]';
+
 // ─── Header ───────────────────────────────────────────────────────────────
 // Echoes the Site Diary DayHeader: a bordered tile (dark kicker strip + glyph)
 // alongside an eyebrow / Fraunces title / meta line, with right-aligned actions.

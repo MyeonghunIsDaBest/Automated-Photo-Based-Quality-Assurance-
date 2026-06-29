@@ -51,6 +51,7 @@ import QuoteStock from "./QuoteStock";
 import QuoteOneOff from "./QuoteOneOff";
 import QuoteSchedule from "./QuoteSchedule";
 import QuoteCustomerAssets from "./QuoteCustomerAssets";
+import { quoteStatusTone } from "./quoteStatus";
 import type { Profile, SecurityGroup } from "../../types";
 
 // â”€â”€â”€ types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -677,10 +678,7 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
   }
 
   const items = quote.items ?? [];
-  const statusTone = {
-    draft: TONE.ink, sent: TONE.slate, viewed: TONE.amber,
-    accepted: TONE.sage, declined: TONE.red, expired: TONE.orange,
-  }[quote.status] ?? TONE.ink;
+  const statusTone = TONE[quoteStatusTone(quote.status)];
 
   const isLocked = quote.status === "accepted" || quote.status === "declined" || quote.status === "expired";
 
@@ -741,7 +739,7 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
         {canSeeCost && (
           <td className="px-3 py-2.5 text-right print:hidden">
             {markupPct === null ? (
-              <span className="text-[#C0BAB0]">—</span>
+              <span className="text-[#A0A0A0]">—</span>
             ) : isLocked ? (
               <span className="tabular-nums">{markupPct.toFixed(1)}%</span>
             ) : (
@@ -768,10 +766,10 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
           <td className="px-3 py-2.5 print:hidden">
             <div className="flex items-center gap-1.5">
               <div className="flex flex-col">
-                <button type="button" disabled={saving || idx === 0} onClick={() => void moveItem(item, -1)} className="text-[#C0BAB0] hover:text-[#6B6B6B] disabled:opacity-30" aria-label="Move up"><ChevronUp className="h-3 w-3" /></button>
-                <button type="button" disabled={saving || idx === count - 1} onClick={() => void moveItem(item, 1)} className="text-[#C0BAB0] hover:text-[#6B6B6B] disabled:opacity-30" aria-label="Move down"><ChevronDown className="h-3 w-3" /></button>
+                <button type="button" disabled={saving || idx === 0} onClick={() => void moveItem(item, -1)} className="text-[#A0A0A0] hover:text-[#6B6B6B] disabled:opacity-30" aria-label="Move up"><ChevronUp className="h-3 w-3" /></button>
+                <button type="button" disabled={saving || idx === count - 1} onClick={() => void moveItem(item, 1)} className="text-[#A0A0A0] hover:text-[#6B6B6B] disabled:opacity-30" aria-label="Move down"><ChevronDown className="h-3 w-3" /></button>
               </div>
-              <button type="button" disabled={saving} onClick={() => void handleRemoveItem(item)} className="text-[#C0BAB0] hover:text-[#C44545] disabled:opacity-40" aria-label="Remove line"><Trash2 className="h-4 w-4" /></button>
+              <button type="button" disabled={saving} onClick={() => void handleRemoveItem(item)} className="text-[#A0A0A0] hover:text-[#C44545] disabled:opacity-40" aria-label="Remove line"><Trash2 className="h-4 w-4" /></button>
             </div>
           </td>
         )}
@@ -813,14 +811,14 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
       {/* â”€â”€ Paper sheet â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {/* Locked banner (screen only) — explains the read-only state + offers Reopen */}
       {isLocked && (
-        <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[12px] border border-[#EAD9B0] bg-[#F9EFD9] px-4 py-3 print:hidden">
+        <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[12px] border border-[#D69A2E] bg-[#F9EFD9] px-4 py-3 print:hidden">
           <Lock className="h-4 w-4 shrink-0 text-[#C8841E]" />
-          <p className="text-sm text-[#8A6A1E]">
+          <p className="text-sm text-[#C8841E]">
             This quote is <strong className="font-semibold capitalize">{quote.status}</strong> and locked for editing.
           </p>
           {confirmReopen ? (
             <span className="ml-auto inline-flex flex-wrap items-center gap-2">
-              <span className="text-xs text-[#8A6A1E]">
+              <span className="text-xs text-[#C8841E]">
                 Reopen to Draft so you can edit?{quote.convertedJobId ? " (the job already created won't change)" : ""}
               </span>
               <button
@@ -962,14 +960,14 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
                   <button
                     type="button"
                     onClick={() => setClientMode("customer")}
-                    className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${clientMode === "customer" ? "border-[#1A1A1A] bg-[#1A1A1A] text-white" : "border-[#E6E1D4] text-[#6B6B6B] hover:border-[#D8D2C4]"}`}
+                    className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${clientMode === "customer" ? "border-[#1A1A1A] bg-[#1A1A1A] text-white" : "border-[#E6E1D4] bg-white text-[#3A3A3A] hover:bg-[#FAF8F2]"}`}
                   >
                     Existing customer
                   </button>
                   <button
                     type="button"
                     onClick={() => setClientMode("freetext")}
-                    className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${clientMode === "freetext" ? "border-[#1A1A1A] bg-[#1A1A1A] text-white" : "border-[#E6E1D4] text-[#6B6B6B] hover:border-[#D8D2C4]"}`}
+                    className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${clientMode === "freetext" ? "border-[#1A1A1A] bg-[#1A1A1A] text-white" : "border-[#E6E1D4] bg-white text-[#3A3A3A] hover:bg-[#FAF8F2]"}`}
                   >
                     One-off client
                   </button>
@@ -1023,7 +1021,7 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
               type="button"
               onClick={() => setQuoteTab(t.key)}
               className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
-                quoteTab === t.key ? "border-[#2F8F5C] text-[#1A1A1A]" : "border-transparent text-[#6B6B6B] hover:text-[#1A1A1A]"
+                quoteTab === t.key ? "border-[#2F8F5C] text-[#1A1A1A]" : "border-transparent text-[#6B6B6B] hover:border-[#E6E1D4] hover:text-[#1A1A1A]"
               }`}
             >
               {t.label}
