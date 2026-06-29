@@ -50,6 +50,7 @@ import QuoteCatalogue from "./QuoteCatalogue";
 import QuoteStock from "./QuoteStock";
 import QuoteOneOff from "./QuoteOneOff";
 import QuoteSchedule from "./QuoteSchedule";
+import QuoteCustomerAssets from "./QuoteCustomerAssets";
 import type { Profile, SecurityGroup } from "../../types";
 
 // â”€â”€â”€ types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1646,8 +1647,13 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
 
         {/* ── Customer Assets top-tab body ── */}
         {quoteTab === "assets" && (
-          <div className="mb-8 rounded-[10px] border border-dashed border-[#D8D2C4] bg-[#FAF8F2] px-4 py-10 text-center text-sm text-[#A0A0A0] print:hidden">
-            Customer Assets — coming soon.
+          <div className="mb-8">
+            <QuoteCustomerAssets
+              quoteId={quoteId}
+              customerId={quote.customerId}
+              isLocked={isLocked}
+              onToast={(message, type) => setToast({ message, type })}
+            />
           </div>
         )}
 
