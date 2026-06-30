@@ -15,12 +15,16 @@ import { LedgerHeader } from "../gantt/components/ledger";
 import MyVanView from "./MyVanView";
 import StockOverview from "./StockOverview";
 import LocationsManager from "./LocationsManager";
+import RestockDashboard from "./RestockDashboard";
+import StockSettingsView from "./StockSettingsView";
 
-type ManagerTab = "overview" | "locations";
+type ManagerTab = "overview" | "locations" | "restock" | "settings";
 
 const MGR_TABS: { key: ManagerTab; label: string }[] = [
   { key: "overview", label: "Overview" },
   { key: "locations", label: "Locations" },
+  { key: "restock", label: "Restock" },
+  { key: "settings", label: "Settings" },
 ];
 
 export default function StockHub() {
@@ -59,7 +63,10 @@ export default function StockHub() {
                 </button>
               ))}
             </div>
-            {tab === "overview" ? <StockOverview /> : <LocationsManager />}
+            {tab === "overview" && <StockOverview />}
+            {tab === "locations" && <LocationsManager />}
+            {tab === "restock" && <RestockDashboard />}
+            {tab === "settings" && <StockSettingsView />}
           </>
         )}
       </div>

@@ -3851,3 +3851,18 @@ The big one. Real inventory replacing the single `materials.stock_on_hand` figur
 - **Design**: built on the ledger system throughout (cardShell / StatusPill / inputField / btnPrimary·Ghost / FRAUNCES / MetaChip / MotionDrawer) so Stock reads as one product with Quotes + Sim-Pro Jobs (the frontend-design refurnishing task).
 
 Deferred to later phases: P2 minimums + low-stock + auto-draft restock + alerts + factory→van transfers (migration 88); P3 purchase orders (job + restock) + receiving + supplier invoices; P4 job-cost integration + reports + CSV/scan stock-take. The deprecated `materials.stock_on_hand` column stays (read 0) until a cleanup migration. **Jordan applies migration 87.**
+
+---
+
+## 30 June 2026 — Stock & Inventory: Phase 2 (minimums, auto-restock, transfers)
+
+Builds on Phase 1. Subagent CI-killer review clean (no circular import stock↔purchasing; all types/imports sound). **Migration 88 — Jordan applies.**
+
+- **Migration 88** (`88_stock_reorder.sql`, force-added): `stock_reorder_rules` (per-item min/target/preferred-supplier/enabled), `stock_settings` (singleton — nominated `stock_controller_id` + `auto_send`), `purchase_orders` (+ `purchase_order_seq` for PO numbers; kind restock|job; status suggested→received; destination/job refs) + `purchase_order_items`, and a `notify_user()` SECURITY DEFINER RPC (manager-guarded) to alert another user (bypasses notifications' self-only RLS). Manager RLS throughout. **Next free migration = 89.**
+- **purchasing.ts** (NEW API): reorder-rules list/upsert; stock settings get/update; PO list (supplier + item-count embeds)/getWithItems/create/updateStatus; `getLowStock()` (company total < min, with qty-to-target); `draftRestocks()` — groups shortfalls by preferred wholesaler, skips items already on an open restock PO, creates 'suggested' restock POs to the factory, and alerts the stock controller via `notifyUser`; `notifyUser` wraps the RPC.
+- **stock.ts**: `transferStock(from,to,material,qty)` — paired transfer_out/transfer_in movements so both tallies update.
+- **UI** (two new manager tabs in StockHub → now Overview / Locations / **Restock** / **Settings**):
+  - **RestockDashboard** — low-stock table (on hand vs min + order qty + wholesaler), one-tap **Generate restock orders** (`draftRestocks` + toast), the drafted restock POs (number/supplier/items/status), and a **Transfer stock** modal (from→to location + item + qty).
+  - **StockSettingsView** — nominate the stock controller + auto-send toggle; per-item **Min / Target / Preferred wholesaler / Auto-reorder** editor.
+
+Phase 3 next: supplier_invoices (mig 89) + PO review/send (to wholesaler) / receive (→ factory) + on-the-job POs + invoice matching. Phase 4: job-cost integration + reports + CSV/scan stock-take. **Jordan applies migration 88.**

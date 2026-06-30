@@ -366,6 +366,26 @@ export async function recordStocktake(
   if (error) throw error;
 }
 
+/** Move stock between two locations (e.g. factory → van) as a paired out/in
+ *  movement, so both running tallies update. Manager action. */
+export async function transferStock(
+  fromLocationId: string,
+  toLocationId: string,
+  materialId: string,
+  qty: number,
+  unitCost?: number | null,
+): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const n = Math.abs(qty);
+  if (n <= 0 || fromLocationId === toLocationId) return;
+  const uid = (await supabase.auth.getUser()).data.user?.id ?? null;
+  const { error } = await supabase.from('stock_movements').insert([
+    { material_id: materialId, location_id: fromLocationId, qty_delta: -n, reason: 'transfer_out', counterpart_location_id: toLocationId, unit_cost: unitCost ?? null, created_by: uid },
+    { material_id: materialId, location_id: toLocationId, qty_delta: n, reason: 'transfer_in', counterpart_location_id: fromLocationId, unit_cost: unitCost ?? null, created_by: uid },
+  ]);
+  if (error) throw error;
+}
+
 // ---------------------------------------------------------------------------
 // Job materials cost (derived from usage movements)
 // ---------------------------------------------------------------------------
