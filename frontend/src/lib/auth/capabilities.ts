@@ -91,6 +91,10 @@ export interface Capabilities {
 
   // TradeDesk P2 — quotes, invoices, variations
   manageSales: boolean;
+
+  // Stock & inventory
+  viewStock: boolean;    // see the Stock section (workers see their own van; managers see all)
+  manageStock: boolean;  // manage locations, stock-take, adjustments, settings
 }
 
 const ALL_OFF: Capabilities = {
@@ -147,6 +151,8 @@ const ALL_OFF: Capabilities = {
   logServiceJobWork: false,
   manageCatalogue: false,
   manageSales: false,
+  viewStock: false,
+  manageStock: false,
 };
 
 // Hidden developer superuser — EVERY flag on. Built from ALL_OFF's keys so new
@@ -158,6 +164,8 @@ const DEV_ALL: Capabilities = Object.fromEntries(
 export const CAPABILITIES_BY_GROUP: Record<SecurityGroup, Capabilities> = {
   company_admin: {
     ...ALL_OFF,
+    viewStock: true,
+    manageStock: true,
     editFinance: true,
     viewPortfolioRollup: true,
     manageMaintenance: true,
@@ -210,6 +218,8 @@ export const CAPABILITIES_BY_GROUP: Record<SecurityGroup, Capabilities> = {
   },
   administrator: {
     ...ALL_OFF,
+    viewStock: true,
+    manageStock: true,
     viewPortfolioRollup: true,
     manageMaintenance: true,
     viewJobsBoard: true,
@@ -245,6 +255,8 @@ export const CAPABILITIES_BY_GROUP: Record<SecurityGroup, Capabilities> = {
   },
   construction_mgr: {
     ...ALL_OFF,
+    viewStock: true,
+    manageStock: true,
     viewPortfolioRollup: true,
     manageMaintenance: true,
     viewJobsBoard: true,
@@ -289,6 +301,8 @@ export const CAPABILITIES_BY_GROUP: Record<SecurityGroup, Capabilities> = {
   },
   project_manager: {
     ...ALL_OFF,
+    viewStock: true,
+    manageStock: true,
     editFinance: true,
     manageMaintenance: true,
     viewJobsBoard: true,
@@ -334,6 +348,7 @@ export const CAPABILITIES_BY_GROUP: Record<SecurityGroup, Capabilities> = {
   },
   worker: {
     ...ALL_OFF,
+    viewStock: true,
     viewJobsBoard: true,
     logServiceJobWork: true,
     viewDashboard: true,

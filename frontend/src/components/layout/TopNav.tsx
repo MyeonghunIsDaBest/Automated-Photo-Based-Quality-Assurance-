@@ -9,13 +9,14 @@ import {
   LayoutDashboard, FolderOpen, MessageSquare,
   Bell, Settings, LogOut, Building2,
   Menu, X, Shield, MessageCircle, TrendingUp, FileCheck, HardHat,
-  ShieldCheck, ChevronDown, Check, Crown, Wrench, ClipboardList, ReceiptText,
+  ShieldCheck, ChevronDown, Check, Crown, Wrench, ClipboardList, ReceiptText, Package,
 } from 'lucide-react';
 import {
   canSeeAdminDashboard,
   canManageMaintenance,
   canManageSales,
   canViewJobsBoard,
+  canViewStock,
   isFieldRole,
   SECURITY_GROUP_LABELS,
 } from '../../lib/permissions';
@@ -58,6 +59,7 @@ type NavItem = {
 // items (Safety, Admin) into a "More ▾" pill below xl.
 const CORE_NAV_TAIL: NavItem[] = [
   { label: 'Jobs',      icon: ClipboardList, path: '/jobs',      gate: canViewJobsBoard },
+  { label: 'Stock',     icon: Package,       path: '/stock',     gate: canViewStock },
   { label: 'Customers', icon: Wrench,        path: '/customers', gate: canManageMaintenance },
   { label: 'Messages',  icon: MessageSquare, path: '/messages' },
 ];

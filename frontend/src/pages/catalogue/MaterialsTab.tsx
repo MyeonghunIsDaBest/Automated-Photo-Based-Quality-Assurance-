@@ -146,7 +146,6 @@ export default function MaterialsTab({ onWritten }: Props) {
       subcategory: m.subcategory,
       isFavourite: m.isFavourite,
       isStockItem: m.isStockItem,
-      stockOnHand: m.stockOnHand,
       description: m.description,
       supplierId: m.supplierId,
     });

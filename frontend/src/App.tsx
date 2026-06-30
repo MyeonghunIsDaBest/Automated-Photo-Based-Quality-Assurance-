@@ -49,6 +49,7 @@ const JobsHub            = lazyWithRetry(() => import('./pages/jobs/JobsHub'));
 // Swap the import path to either to fall back. Route element below is unchanged.
 const CustomerPortal     = lazyWithRetry(() => import('./pages/customer/CustomerDashboard'));
 const Sales              = lazyWithRetry(() => import('./pages/sales/Sales'));
+const Stock              = lazyWithRetry(() => import('./pages/stock/StockHub'));
 
 // Route-chunk fallback: a page-shaped skeleton (masthead band + content
 // blocks) instead of a spinner â€” navigation keeps a stable, on-palette layout
@@ -144,6 +145,7 @@ function AppRoutes() {
                 {/* Catalogue folded into Sales (Service Quotes) as a tab. Redirect preserves old links. */}
                 <Route path="catalogue" element={<Navigate to="/sales?tab=catalogue" replace />} />
                 <Route path="sales" element={<ErrorBoundary label="Sales"><Sales /></ErrorBoundary>} />
+                <Route path="stock" element={<ErrorBoundary label="Stock"><Stock /></ErrorBoundary>} />
                 {/* Review queue is now a Gantt tab; redirect preserves any
                     old bookmarks + the Dashboard's Pending Review tile path. */}
                 <Route path="review-queue" element={<Navigate to="/gantt?tab=review" replace />} />

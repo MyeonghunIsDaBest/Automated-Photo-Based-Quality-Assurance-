@@ -3832,3 +3832,22 @@ A style-only cohesion sweep so the whole Quotes surface reads as one product aga
 - **Verified (no edits needed)**: the six Parts & Labour panels + Schedule + Customer Assets already use the canonical sage focus + ledger palette + btn styles; responsive grids + focus rings + empty/loading/locked states meet the a11y/responsive floor.
 
 Pushed to main (Vercel auto-deploys). No migration. AI Quote Drafter still parked.
+
+---
+
+## 30 June 2026 — Stock & Inventory: Phase 1 (multi-location stock control)
+
+The big one. Real inventory replacing the single `materials.stock_on_hand` figure. Built backend-first; CI-killer review clean (only the capability-matrix snapshot needed regenerating — done via single-fork vitest). Decisions locked with the boss: one driver per van · recording usage requires a job + is costed to it · below-minimum auto-drafts a restock + alerts one person (Phase 2) · separate Stock section reusing `materials` as the item master.
+
+- **Migration 87** (`87_stock_core.sql`, force-added, **Jordan applies**): `stock_locations` (factory + vans, `assigned_worker_id`), `stock_levels` (per-location running tally, unique location+item), `stock_movements` (immutable ledger: usage/receipt/transfer/adjustment/stocktake + `unit_cost` snapshot + service/simpro job refs). `apply_stock_movement()` AFTER-INSERT trigger upserts the tally. `is_my_van()` helper + RLS: workers select/insert **usage** only on their own van (SECURITY DEFINER trigger so the tally still moves); managers all. One-time backfill of `materials.stock_on_hand` → factory opening stocktake. **Next free migration = 88.**
+- **stock.ts** (NEW API): locations CRUD + assign driver + `myVan()`; `listStockLevels` (material-embedded) + `getCompanyTotals` (Σ per item + per-location breakdown); `recordUsage` (job-required, qty×−1, cost snapshot), `adjustStock`, `recordStocktake` (counts→deltas); `getJobUsage` (per-job materials cost); `subscribeToStockLevels` realtime.
+- **Stock section** (NEW, `/stock`, role-gated): `viewStock` (workers + managers) / `manageStock` (managers) added to `capabilities.ts` + `permissions.ts`; lazy route in `App.tsx`; gated nav item (Package) in `TopNav.tsx`.
+  - **`StockHub`** — role switch + manager tabs (Overview / Locations) under a `LedgerHeader` masthead.
+  - **`MyVanView`** (worker, phone-first) — live van tally + low/out flags + a big **Record usage** action.
+  - **`RecordUsageDrawer`** (`MotionDrawer` bottom-sheet) — pick job (required, service + simpro) → add van items + qty → deducts live, captured at cost.
+  - **`StockOverview`** (manager) — stats (items / units / stock value / locations) + search + per-item totals with per-location breakdown chips + value.
+  - **`LocationsManager`** (manager) — factory + vans cards, **add van + assign driver**, drill-in per location, reassign driver, and a **stock-take** editor (count all stock items → deltas) to seed/correct opening stock.
+- **Reconciliation**: `QuoteStock` now shows the live company total (Σ `stock_levels`) instead of the deprecated single figure; removed the manual stock-on-hand box from `MaterialFormModal`/`MaterialsTab` (stock is owned by the Stock module; `is_stock_item` flag kept).
+- **Design**: built on the ledger system throughout (cardShell / StatusPill / inputField / btnPrimary·Ghost / FRAUNCES / MetaChip / MotionDrawer) so Stock reads as one product with Quotes + Sim-Pro Jobs (the frontend-design refurnishing task).
+
+Deferred to later phases: P2 minimums + low-stock + auto-draft restock + alerts + factory→van transfers (migration 88); P3 purchase orders (job + restock) + receiving + supplier invoices; P4 job-cost integration + reports + CSV/scan stock-take. The deprecated `materials.stock_on_hand` column stays (read 0) until a cleanup migration. **Jordan applies migration 87.**

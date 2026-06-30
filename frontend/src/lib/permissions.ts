@@ -197,6 +197,12 @@ export function canManageCatalogue(p: AdminPrincipal): boolean { return caps(p).
 /** Manager tier — access the Sales area (quotes, invoices, variations). */
 export function canManageSales(p: AdminPrincipal): boolean { return caps(p).manageSales; }
 
+/** See the Stock section — workers (their own van) + managers (everything). */
+export function canViewStock(p: AdminPrincipal): boolean { return caps(p).viewStock; }
+
+/** Manager tier — manage stock locations, stock-takes, adjustments, settings. */
+export function canManageStock(p: AdminPrincipal): boolean { return caps(p).manageStock; }
+
 // ─── Admin-dashboard gates (drive Sidebar/TopNav visibility + RequireAuth) ─
 
 export function canSeeAdminDashboard(p: AdminPrincipal): boolean {

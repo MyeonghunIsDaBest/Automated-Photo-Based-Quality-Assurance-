@@ -16,6 +16,7 @@ import { Search, X, ChevronRight, Plus, Loader2, Star, Folder } from "lucide-rea
 
 import { listMaterials, updateMaterial } from "../../lib/api/materials";
 import { addQuoteItemFromMaterial, getCommercialSettings } from "../../lib/api/commercial";
+import { getCompanyTotals } from "../../lib/api/stock";
 
 const OTHER_GROUP = "Other";
 
@@ -71,7 +72,10 @@ export default function QuoteStock({ quoteId, canSeeCost, isLocked, onAdded, onT
     (async () => {
       const settings = await getCommercialSettings().catch(() => null);
       const markup = settings ? settings.defaultMaterialMarkup : 0.25;
-      const mats = await listMaterials();
+      const [mats, totals] = await Promise.all([listMaterials(), getCompanyTotals().catch(() => [])]);
+      // On-hand now comes from the live multi-location tally (factory + vans), not
+      // the deprecated single materials.stock_on_hand figure.
+      const totalsById = new Map(totals.map((t) => [t.materialId, t.total]));
       return mats
         .filter((m) => m.isStockItem)
         .map<StockRow>((m) => {
@@ -86,7 +90,7 @@ export default function QuoteStock({ quoteId, canSeeCost, isLocked, onAdded, onT
             isFavourite: m.isFavourite,
             materialCost: cost,
             sell: Math.round(sell * 100) / 100,
-            onHand: m.stockOnHand,
+            onHand: totalsById.get(m.id) ?? 0,
             meta,
           };
         });

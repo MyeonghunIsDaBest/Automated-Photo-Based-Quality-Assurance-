@@ -62,7 +62,6 @@ export interface MaterialFormInitial {
   subcategory?: string | null;
   isFavourite?: boolean;
   isStockItem?: boolean;
-  stockOnHand?: number;
   description?: string | null;
   supplierId?: string | null;
 }
@@ -112,7 +111,6 @@ export default function MaterialFormModal({ initial, source = 'manual', groupOpt
   const [subcategory, setSubcategory] = useState(initial?.subcategory ?? "");
   const [isFavourite, setIsFavourite] = useState(initial?.isFavourite ?? false);
   const [isStockItem, setIsStockItem] = useState(initial?.isStockItem ?? false);
-  const [stockOnHand, setStockOnHand] = useState(initial?.stockOnHand != null ? String(initial.stockOnHand) : "0");
   const [costStr, setCostStr]       = useState(
     initial?.costPrice != null ? String(initial.costPrice) : "",
   );
@@ -211,7 +209,6 @@ export default function MaterialFormModal({ initial, source = 'manual', groupOpt
         subcategory: subcategory.trim() || null,
         isFavourite,
         isStockItem,
-        stockOnHand: isStockItem ? (parseFloat(stockOnHand) || 0) : 0,
         description: description.trim() || null,
         supplierId: supplierId || null,
         source,
@@ -405,22 +402,12 @@ export default function MaterialFormModal({ initial, source = 'manual', groupOpt
                 className="h-4 w-4 accent-[#2F8F5C]"
                 disabled={busy}
               />
-              Held in stock (shows on the quote&rsquo;s Stock tab)
+              Held in stock
             </label>
             {isStockItem && (
-              <div className="mt-3 max-w-[160px]">
-                <FieldLabel hint="on hand">Quantity</FieldLabel>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={stockOnHand}
-                  onChange={(e) => setStockOnHand(e.target.value)}
-                  placeholder="0"
-                  className="w-full rounded-[8px] border border-[#E6E1D4] bg-white px-3 py-2 text-right text-sm tabular-nums text-[#1A1A1A] placeholder:text-[#C0BAB0] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
-                  disabled={busy}
-                />
-              </div>
+              <p className="mt-2 text-[11px] text-[#A0A0A0]">
+                Quantities are tracked per location (factory + vans) in the Stock area — set the opening count there with a stock-take.
+              </p>
             )}
           </div>
 
