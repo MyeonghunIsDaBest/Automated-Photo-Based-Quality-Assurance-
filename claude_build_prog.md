@@ -3866,3 +3866,17 @@ Builds on Phase 1. Subagent CI-killer review clean (no circular import stock↔p
   - **StockSettingsView** — nominate the stock controller + auto-send toggle; per-item **Min / Target / Preferred wholesaler / Auto-reorder** editor.
 
 Phase 3 next: supplier_invoices (mig 89) + PO review/send (to wholesaler) / receive (→ factory) + on-the-job POs + invoice matching. Phase 4: job-cost integration + reports + CSV/scan stock-take. **Jordan applies migration 88.**
+
+---
+
+## 30 June 2026 — Stock & Inventory: Phase 3 (purchase-order lifecycle)
+
+The full PO flow on top of Phase 2's drafts. Subagent CI-killer review clean. **Migration 89 — Jordan applies.**
+
+- **Migration 89** (`89_supplier_invoices.sql`, force-added): `supplier_invoices` (po_id, supplier_id, number, invoice_date, amount, status unmatched|matched|disputed|paid, file_ref) — wholesaler invoices matched to a PO (separate from customer invoices). Manager RLS. **Next free migration = 90.**
+- **purchasing.ts**: `receivePurchaseOrder(poId, receipts)` — updates each line's received qty and, for restock POs, writes `receipt` stock movements into the factory (tops up the tally) + recomputes status (received/partial); `listSupplierInvoices`/`createSupplierInvoice`; `poOrderedTotal` (for the invoice match check).
+- **PurchaseOrderDrawer** (NEW): open any PO → line table + order total; **Send to wholesaler** (marks sent), **Receive** (per-line receive-now → into the factory), **Cancel**; a **wholesaler-invoice** match panel (record number/date/amount → ✓ matches / ⚠ differs vs the order total).
+- **OrdersView** (NEW, new **Orders** tab): lists all POs (restock + on-the-job) with status; **New order** modal (restock-to-factory or on-the-job, pick wholesaler + optional job + line items); rows open the PO drawer.
+- StockHub manager tabs now: Overview / Locations / Restock / **Orders** / Settings.
+
+Real emailing of the PO to the wholesaler is still a manual step (auto-email needs an edge function — later). Phase 4 next: feed stock usage + PO receipts into job/quote actual materials cost, stock reports, CSV/scan stock-take. **Jordan applies migration 89.**

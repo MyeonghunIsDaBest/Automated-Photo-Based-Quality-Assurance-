@@ -431,3 +431,141 @@ export async function draftRestocks(): Promise<RestockResult> {
 
   return { ordersCreated, itemsDrafted };
 }
+
+// ---------------------------------------------------------------------------
+// Receiving + supplier invoices (Phase 3)
+// ---------------------------------------------------------------------------
+
+/** Receive quantities against a PO's lines. For a restock PO with a destination,
+ *  each received qty creates a `receipt` stock movement (tops up that location).
+ *  Updates each line's qty_received + the PO status (received / partial). */
+export async function receivePurchaseOrder(
+  poId: string,
+  receipts: { itemId: string; qtyNow: number }[],
+): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const po = await getPurchaseOrderWithItems(poId);
+  if (!po) throw new Error('Purchase order not found.');
+  const uid = (await supabase.auth.getUser()).data.user?.id ?? null;
+  const receiptById = new Map(receipts.filter((r) => r.qtyNow > 0).map((r) => [r.itemId, r.qtyNow]));
+
+  const movements: Record<string, unknown>[] = [];
+  for (const item of po.items) {
+    const qtyNow = receiptById.get(item.id);
+    if (!qtyNow) continue;
+    const newReceived = item.qtyReceived + qtyNow;
+    const { error: upErr } = await supabase
+      .from('purchase_order_items')
+      .update({ qty_received: newReceived })
+      .eq('id', item.id);
+    if (upErr) throw upErr;
+    item.qtyReceived = newReceived; // keep local copy for the status calc
+    if (po.kind === 'restock' && po.destinationLocationId && item.materialId) {
+      movements.push({
+        material_id: item.materialId,
+        location_id: po.destinationLocationId,
+        qty_delta: qtyNow,
+        reason: 'receipt',
+        unit_cost: item.unitCost ?? null,
+        note: `Received on ${po.number}`,
+        created_by: uid,
+      });
+    }
+  }
+  if (movements.length > 0) {
+    const { error: mvErr } = await supabase.from('stock_movements').insert(movements);
+    if (mvErr) throw mvErr;
+  }
+  const allReceived = po.items.every((i) => i.qtyReceived >= i.qtyOrdered);
+  await updatePurchaseOrderStatus(poId, allReceived ? 'received' : 'partial');
+}
+
+interface SupplierInvoiceRow {
+  id: string;
+  po_id: string | null;
+  supplier_id: string | null;
+  number: string | null;
+  invoice_date: string | null;
+  amount: number | null;
+  status: string;
+  file_ref: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export type SupplierInvoiceStatus = 'unmatched' | 'matched' | 'disputed' | 'paid';
+
+export interface SupplierInvoice {
+  id: string;
+  poId: string | null;
+  supplierId: string | null;
+  number: string | null;
+  invoiceDate: string | null;
+  amount: number | null;
+  status: SupplierInvoiceStatus;
+  fileRef: string | null;
+  notes: string | null;
+  createdAt: string;
+}
+
+function rowToSupplierInvoice(r: SupplierInvoiceRow): SupplierInvoice {
+  return {
+    id: r.id,
+    poId: r.po_id,
+    supplierId: r.supplier_id,
+    number: r.number,
+    invoiceDate: r.invoice_date,
+    amount: r.amount != null ? Number(r.amount) : null,
+    status: (r.status as SupplierInvoiceStatus) ?? 'unmatched',
+    fileRef: r.file_ref,
+    notes: r.notes,
+    createdAt: r.created_at,
+  };
+}
+
+export async function listSupplierInvoices(poId: string): Promise<SupplierInvoice[]> {
+  if (!supabaseConfigured()) return [];
+  const { data, error } = await supabase
+    .from('supplier_invoices')
+    .select('*')
+    .eq('po_id', poId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((r) => rowToSupplierInvoice(r as SupplierInvoiceRow));
+}
+
+export interface CreateSupplierInvoiceInput {
+  poId: string | null;
+  supplierId: string | null;
+  number?: string | null;
+  invoiceDate?: string | null;
+  amount?: number | null;
+  status?: SupplierInvoiceStatus;
+  notes?: string | null;
+}
+
+export async function createSupplierInvoice(input: CreateSupplierInvoiceInput): Promise<SupplierInvoice> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const uid = (await supabase.auth.getUser()).data.user?.id ?? null;
+  const { data, error } = await supabase
+    .from('supplier_invoices')
+    .insert({
+      po_id: input.poId,
+      supplier_id: input.supplierId,
+      number: input.number ?? null,
+      invoice_date: input.invoiceDate ?? null,
+      amount: input.amount ?? null,
+      status: input.status ?? 'unmatched',
+      notes: input.notes ?? null,
+      created_by: uid,
+    })
+    .select('*')
+    .single();
+  if (error) throw error;
+  return rowToSupplierInvoice(data as SupplierInvoiceRow);
+}
+
+/** Sum of a PO's ordered lines (qty × unit cost) — for the invoice match check. */
+export function poOrderedTotal(items: PurchaseOrderItem[]): number {
+  return Math.round(items.reduce((s, i) => s + i.qtyOrdered * (i.unitCost ?? 0), 0) * 100) / 100;
+}
