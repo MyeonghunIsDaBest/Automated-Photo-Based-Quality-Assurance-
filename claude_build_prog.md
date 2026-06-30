@@ -3880,3 +3880,15 @@ The full PO flow on top of Phase 2's drafts. Subagent CI-killer review clean. **
 - StockHub manager tabs now: Overview / Locations / Restock / **Orders** / Settings.
 
 Real emailing of the PO to the wholesaler is still a manual step (auto-email needs an edge function — later). Phase 4 next: feed stock usage + PO receipts into job/quote actual materials cost, stock reports, CSV/scan stock-take. **Jordan applies migration 89.**
+
+---
+
+## 30 June 2026 — Stock & Inventory: Phase 4 (reporting) — STOCK MODULE FUNCTIONALLY COMPLETE
+
+No migration (reads existing tables). Subagent CI-killer review clean.
+
+- **stock.ts**: `listRecentMovements(limit)` — the movement audit trail, item/location-named (embeds), newest first.
+- **ReportsView** (NEW **Reports** tab): **Materials cost by job** (groups usage movements by job × unit cost → cost per job — the job-cost surfacing) + **Recent stock movements** (date / item / location / reason pill / signed qty). Stock value-on-hand already lives on the Overview tab.
+- StockHub manager tabs final set: Overview / Locations / Restock / Orders / Reports / Settings.
+
+**Stock & Inventory is now functionally complete across all 4 planned phases** (migrations 87–89). Explicitly deferred as future polish: deep wiring of stock cost into the quote/job *actuals* editor (the per-job cost is surfaced in Reports for now), CSV import + barcode/scan for bulk stock-takes, full auto-email of POs to wholesalers (needs an edge function), and per-van minimums. **Jordan applies migrations 87, 88, 89.**

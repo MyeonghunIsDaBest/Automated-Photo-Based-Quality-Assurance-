@@ -423,6 +423,60 @@ export async function getJobUsage(jobId: string, jobKind: JobKind): Promise<JobU
 }
 
 // ---------------------------------------------------------------------------
+// Movement history (reports)
+// ---------------------------------------------------------------------------
+
+export interface MovementView {
+  id: string;
+  materialId: string;
+  name: string;
+  unit: string;
+  locationId: string;
+  locationName: string;
+  qtyDelta: number;
+  reason: MovementReason;
+  serviceJobId: string | null;
+  simproJobId: string | null;
+  unitCost: number | null;
+  note: string | null;
+  createdAt: string;
+}
+
+interface MovementViewEmbed extends MovementRow {
+  materials: { name: string; unit: string } | null;
+  stock_locations: { name: string } | null;
+}
+
+/** Recent stock movements (the audit trail), newest first, item- and location-named. */
+export async function listRecentMovements(limit = 200): Promise<MovementView[]> {
+  if (!supabaseConfigured()) return [];
+  const { data, error } = await supabase
+    .from('stock_movements')
+    .select('*, materials(name, unit), stock_locations(name)')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []).map((raw) => {
+    const r = raw as MovementViewEmbed;
+    return {
+      id: r.id,
+      materialId: r.material_id,
+      name: r.materials?.name ?? '(item)',
+      unit: r.materials?.unit ?? 'ea',
+      locationId: r.location_id,
+      locationName: r.stock_locations?.name ?? '(location)',
+      qtyDelta: Number(r.qty_delta),
+      reason: (r.reason as MovementReason) ?? 'adjustment',
+      serviceJobId: r.service_job_id,
+      simproJobId: r.simpro_job_id,
+      unitCost: r.unit_cost != null ? Number(r.unit_cost) : null,
+      note: r.note,
+      createdAt: r.created_at,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Realtime — live tally (mirrors lib/api/deliveries.ts split-handler pattern)
 // ---------------------------------------------------------------------------
 

@@ -17,15 +17,17 @@ import StockOverview from "./StockOverview";
 import LocationsManager from "./LocationsManager";
 import RestockDashboard from "./RestockDashboard";
 import OrdersView from "./OrdersView";
+import ReportsView from "./ReportsView";
 import StockSettingsView from "./StockSettingsView";
 
-type ManagerTab = "overview" | "locations" | "restock" | "orders" | "settings";
+type ManagerTab = "overview" | "locations" | "restock" | "orders" | "reports" | "settings";
 
 const MGR_TABS: { key: ManagerTab; label: string }[] = [
   { key: "overview", label: "Overview" },
   { key: "locations", label: "Locations" },
   { key: "restock", label: "Restock" },
   { key: "orders", label: "Orders" },
+  { key: "reports", label: "Reports" },
   { key: "settings", label: "Settings" },
 ];
 
@@ -69,6 +71,7 @@ export default function StockHub() {
             {tab === "locations" && <LocationsManager />}
             {tab === "restock" && <RestockDashboard />}
             {tab === "orders" && <OrdersView />}
+            {tab === "reports" && <ReportsView />}
             {tab === "settings" && <StockSettingsView />}
           </>
         )}
