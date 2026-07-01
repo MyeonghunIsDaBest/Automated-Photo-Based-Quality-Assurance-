@@ -13,7 +13,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Plus, RefreshCw, X, Search } from "lucide-react";
+import { Plus, RefreshCw, X, Search, MoreVertical, Pencil, Trash2 } from "lucide-react";
 
 import { FRAUNCES, TONE, cardShell, btnPrimary, btnGhost, StatusPill } from "../gantt/components/ledger";
 import { SkeletonLine } from "../../components/ui/skeleton";
@@ -21,6 +21,7 @@ import { Toaster } from "../../components/ui/Toaster";
 
 import {
   listQuotes,
+  deleteQuote,
   type Quote,
   type QuoteStatus,
 } from "../../lib/api/commercial";
@@ -28,6 +29,7 @@ import { listCustomers, type Customer } from "../../lib/api/customers";
 import { QUOTE_STATUS_TONE } from "./quoteStatus";
 import QuoteEditor from "./QuoteEditor";
 import NewQuoteWizard from "./NewQuoteWizard";
+import ConfirmDeleteDialog from "../catalogue/ConfirmDeleteDialog";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -83,7 +85,7 @@ function fmtMoney(n: number): string {
 function SkeletonRow() {
   return (
     <tr className="border-b border-[#EFEBE0]">
-      {[120, 180, 140, 80, 70, 60].map((w, i) => (
+      {[120, 180, 140, 80, 70, 60, 24].map((w, i) => (
         <td key={i} className="px-4 py-4">
           <SkeletonLine style={{ width: w }} />
         </td>
@@ -107,6 +109,9 @@ export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost
   const [showNewModal, setShowNewModal] = useState(false);
   const [selectedId, setSelectedId]     = useState<string | null>(initialQuoteId);
   const [toast, setToast]               = useState<ToastState>(null);
+  const [menuFor, setMenuFor]           = useState<string | null>(null);   // open row action menu
+  const [confirmDelete, setConfirmDelete] = useState<Quote | null>(null);
+  const [deleting, setDeleting]         = useState(false);
 
   // Deep-link: open the requested quote when the caller changes initialQuoteId.
   useEffect(() => {
@@ -188,6 +193,24 @@ export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost
     setSelectedId(null);
     void fetchQuotes();
     onChanged();
+  }
+
+  async function handleDelete() {
+    if (!confirmDelete) return;
+    setDeleting(true);
+    try {
+      await deleteQuote(confirmDelete.id);
+      if (selectedId === confirmDelete.id) setSelectedId(null);
+      const label = confirmDelete.number ?? confirmDelete.title ?? "Quote";
+      setConfirmDelete(null);
+      await fetchQuotes();
+      onChanged();
+      setToast({ message: `${label} deleted`, type: "success" });
+    } catch (ex) {
+      setToast({ message: ex instanceof Error ? ex.message : "Failed to delete quote", type: "error" });
+    } finally {
+      setDeleting(false);
+    }
   }
 
   // If an editor is open, render it full-width instead of the register.
@@ -331,6 +354,7 @@ export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost
                 <th className="px-4 py-3 text-right text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Total inc GST</th>
                 <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Status</th>
                 <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Created</th>
+                <th className="w-10 px-2 py-3" aria-label="Actions" />
               </tr>
             </thead>
             <tbody className="divide-y divide-[#EFEBE0]">
@@ -338,7 +362,7 @@ export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost
 
               {!loading && visible.length === 0 && !error && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-16 text-center text-[#A0A0A0]">
+                  <td colSpan={7} className="px-4 py-16 text-center text-[#A0A0A0]">
                     <p className="text-sm font-medium">{total === 0 ? "No quotes yet" : "Nothing matches"}</p>
                     <p className="mt-1 text-xs">
                       {total === 0
@@ -365,6 +389,36 @@ export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost
                     </StatusPill>
                   </td>
                   <td className="px-4 py-4 text-xs text-[#6B6B6B]">{ageLabel(q.createdAt)}</td>
+                  <td className="px-2 py-4 text-right" onClick={(e) => e.stopPropagation()}>
+                    <div className="relative inline-block">
+                      <button
+                        type="button"
+                        aria-label={`Actions for ${q.number ?? q.title}`}
+                        onClick={() => setMenuFor(menuFor === q.id ? null : q.id)}
+                        className="rounded-md p-1.5 text-[#A0A0A0] transition-colors hover:bg-[#F0EDE4] hover:text-[#1A1A1A]"
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                      </button>
+                      {menuFor === q.id && (
+                        <div className="absolute right-0 z-20 mt-1 w-40 overflow-hidden rounded-lg border border-[#E6E1D4] bg-white py-1 shadow-[0_8px_28px_rgba(20,20,20,0.12)]">
+                          <button
+                            type="button"
+                            onClick={() => { setMenuFor(null); setSelectedId(q.id); }}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[#3A3A3A] hover:bg-[#FAF8F2]"
+                          >
+                            <Pencil className="h-3.5 w-3.5" /> Open / edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setMenuFor(null); setConfirmDelete(q); }}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[#C44545] hover:bg-[#FBE5E5]"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" /> Delete
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -378,6 +432,19 @@ export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost
           customers={customers}
           onCancel={() => setShowNewModal(false)}
           onCreated={handleQuoteCreated}
+        />
+      )}
+
+      {/* Click-catcher: closes an open row menu when you click elsewhere. */}
+      {menuFor && <button type="button" aria-hidden tabIndex={-1} className="fixed inset-0 z-10 cursor-default" onClick={() => setMenuFor(null)} />}
+
+      {confirmDelete && (
+        <ConfirmDeleteDialog
+          name={confirmDelete.number ?? confirmDelete.title ?? "this quote"}
+          noun="quote"
+          busy={deleting}
+          onConfirm={() => void handleDelete()}
+          onCancel={() => setConfirmDelete(null)}
         />
       )}
 

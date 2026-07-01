@@ -3892,3 +3892,11 @@ No migration (reads existing tables). Subagent CI-killer review clean.
 - StockHub manager tabs final set: Overview / Locations / Restock / Orders / Reports / Settings.
 
 **Stock & Inventory is now functionally complete across all 4 planned phases** (migrations 87–89). Explicitly deferred as future polish: deep wiring of stock cost into the quote/job *actuals* editor (the per-job cost is surfaced in Reports for now), CSV import + barcode/scan for bulk stock-takes, full auto-email of POs to wholesalers (needs an edge function), and per-van minimums. **Jordan applies migrations 87, 88, 89.**
+
+---
+
+## 1 July 2026 — Quotes register: row actions (open/edit + delete)
+
+Per-row **⋯ actions menu** on the Quotes list (`QuotesTab.tsx`): **Open / edit** and **Delete** (row-click still opens the editor to modify). Delete goes through the shared `ConfirmDeleteDialog` → `deleteQuote` → refetch + toast; the kebab uses `stopPropagation` + a full-screen click-catcher to close on outside click. Added an actions column (header + skeleton + empty-state colSpan bumped to 7). Subagent CI-killer review clean; frontend-only, no migration.
+
+Note: the New-Quote creation form was already on the ledger design system (canonical `inputField`, sage active-tab underline, on-token amber dot) from the earlier consistency pass (a35c2b2) — verified, no change needed.
