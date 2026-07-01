@@ -3913,3 +3913,15 @@ Depth/polish pass across the Stock tabs. No migration (reads existing tables). S
 - **StockOverview.tsx**: added **All / Low / Out** filter chips with counts, **sort** (name/on-hand/value), a **low-stock banner**, **CSV export**, and **row → item drawer**. (Group-by-category deferred.)
 
 Next batches: Locations (per-location history + admin + quick adjust), Restock (order-now), Orders (filters + edit lines + email/print), Reports (filters + trend chart + valuation), Settings (search/group + bulk + CSV import).
+
+---
+
+## 1 July 2026 — Stock enhancement pass (batch 2: Locations)
+
+`LocationsManager.tsx`. No migration. Subagent CI-killer review clean.
+
+- **Richer location cards** — item count · units · **value** · **last activity** date (value from company-totals × cost; last activity from recent movements).
+- **Drill-in**: **search within the location**, per-row **inline quick-adjust** (+/− with a note → `adjustStock`, live), **row → StockItemDrawer** (item's full picture), and a **per-location movement history** panel (`listMovements({locationId})`).
+- **Location admin**: an **Edit** panel to **rename** + set **rego**, and **Deactivate** a van (`updateLocation`); driver reassignment kept.
+
+Batches remaining: Restock (order-now), Orders (filters/edit lines/email-print), Reports (filters/trend/valuation), Settings (search/group/bulk/CSV), cross-cutting polish.
