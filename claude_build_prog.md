@@ -3900,3 +3900,16 @@ No migration (reads existing tables). Subagent CI-killer review clean.
 Per-row **⋯ actions menu** on the Quotes list (`QuotesTab.tsx`): **Open / edit** and **Delete** (row-click still opens the editor to modify). Delete goes through the shared `ConfirmDeleteDialog` → `deleteQuote` → refetch + toast; the kebab uses `stopPropagation` + a full-screen click-catcher to close on outside click. Added an actions column (header + skeleton + empty-state colSpan bumped to 7). Subagent CI-killer review clean; frontend-only, no migration.
 
 Note: the New-Quote creation form was already on the ledger design system (canonical `inputField`, sage active-tab underline, on-token amber dot) from the earlier consistency pass (a35c2b2) — verified, no change needed.
+
+---
+
+## 1 July 2026 — Stock enhancement pass (batch 1: foundation + Overview)
+
+Depth/polish pass across the Stock tabs. No migration (reads existing tables). Subagent CI-killer review clean.
+
+- **stock.ts**: generalised `listRecentMovements` → `listMovements({locationId, materialId, reason, startDate, endDate, limit})` (kept the old fn as a wrapper) — powers Reports filters, per-location history, and the item drawer.
+- **lib/stock/csv.ts** (NEW): `downloadCsv()` + `parseStockCountCsv()` (bulk stock-take / reorder import helper).
+- **StockItemDrawer.tsx** (NEW, shared): one item's full picture — on-hand + value, min/target + low badge, per-location breakdown, and its recent movement history. Opened by row-click on Overview (and, next, Locations).
+- **StockOverview.tsx**: added **All / Low / Out** filter chips with counts, **sort** (name/on-hand/value), a **low-stock banner**, **CSV export**, and **row → item drawer**. (Group-by-category deferred.)
+
+Next batches: Locations (per-location history + admin + quick adjust), Restock (order-now), Orders (filters + edit lines + email/print), Reports (filters + trend chart + valuation), Settings (search/group + bulk + CSV import).

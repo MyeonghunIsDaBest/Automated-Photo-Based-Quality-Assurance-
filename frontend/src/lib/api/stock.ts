@@ -447,33 +447,52 @@ interface MovementViewEmbed extends MovementRow {
   stock_locations: { name: string } | null;
 }
 
+export interface MovementFilters {
+  locationId?: string;
+  materialId?: string;
+  reason?: MovementReason;
+  startDate?: string;   // ISO date (inclusive)
+  endDate?: string;     // ISO date (inclusive — matched to end of day)
+  limit?: number;
+}
+
+/** Filtered stock movements (audit trail), newest first, item- + location-named.
+ *  Powers the Reports history filters, per-location history, and item drawer. */
+export async function listMovements(filters: MovementFilters = {}): Promise<MovementView[]> {
+  if (!supabaseConfigured()) return [];
+  let q = supabase.from('stock_movements').select('*, materials(name, unit), stock_locations(name)');
+  if (filters.locationId) q = q.eq('location_id', filters.locationId);
+  if (filters.materialId) q = q.eq('material_id', filters.materialId);
+  if (filters.reason) q = q.eq('reason', filters.reason);
+  if (filters.startDate) q = q.gte('created_at', filters.startDate);
+  if (filters.endDate) q = q.lte('created_at', `${filters.endDate}T23:59:59.999Z`);
+  const { data, error } = await q.order('created_at', { ascending: false }).limit(filters.limit ?? 200);
+  if (error) throw error;
+  return (data ?? []).map(embedToMovementView);
+}
+
 /** Recent stock movements (the audit trail), newest first, item- and location-named. */
 export async function listRecentMovements(limit = 200): Promise<MovementView[]> {
-  if (!supabaseConfigured()) return [];
-  const { data, error } = await supabase
-    .from('stock_movements')
-    .select('*, materials(name, unit), stock_locations(name)')
-    .order('created_at', { ascending: false })
-    .limit(limit);
-  if (error) throw error;
-  return (data ?? []).map((raw) => {
-    const r = raw as MovementViewEmbed;
-    return {
-      id: r.id,
-      materialId: r.material_id,
-      name: r.materials?.name ?? '(item)',
-      unit: r.materials?.unit ?? 'ea',
-      locationId: r.location_id,
-      locationName: r.stock_locations?.name ?? '(location)',
-      qtyDelta: Number(r.qty_delta),
-      reason: (r.reason as MovementReason) ?? 'adjustment',
-      serviceJobId: r.service_job_id,
-      simproJobId: r.simpro_job_id,
-      unitCost: r.unit_cost != null ? Number(r.unit_cost) : null,
-      note: r.note,
-      createdAt: r.created_at,
-    };
-  });
+  return listMovements({ limit });
+}
+
+function embedToMovementView(raw: unknown): MovementView {
+  const r = raw as MovementViewEmbed;
+  return {
+    id: r.id,
+    materialId: r.material_id,
+    name: r.materials?.name ?? '(item)',
+    unit: r.materials?.unit ?? 'ea',
+    locationId: r.location_id,
+    locationName: r.stock_locations?.name ?? '(location)',
+    qtyDelta: Number(r.qty_delta),
+    reason: (r.reason as MovementReason) ?? 'adjustment',
+    serviceJobId: r.service_job_id,
+    simproJobId: r.simpro_job_id,
+    unitCost: r.unit_cost != null ? Number(r.unit_cost) : null,
+    note: r.note,
+    createdAt: r.created_at,
+  };
 }
 
 // ---------------------------------------------------------------------------
