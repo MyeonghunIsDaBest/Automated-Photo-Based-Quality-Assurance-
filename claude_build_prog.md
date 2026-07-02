@@ -3958,3 +3958,14 @@ Remaining batches: B3 Restock (order-now/editable qty/on-order flags), B4 Orders
 - **purchasing.ts**: `listPurchaseOrders` now embeds line qty/cost → each order carries `orderedTotal` (+ itemsCount computed); NEW `addPOItem`/`updatePOItem`/`removePOItem` line-edit helpers.
 - **Orders list**: **status filter chips** with counts + tone dots, an **All kinds / Restock / Job** toggle, **search** (order number / wholesaler), and new **Total ($)** + **Expected/received** columns (✓ + date once received).
 - **PO drawer**: **draft orders are editable** — inline qty + unit-cost per line (blur-save), remove line, and an add-item row; **receive progress bar** (Σ received/ordered) once sent; the header shows the wholesaler's **accounts email**; **"Email order"** opens a pre-filled mailto (lines + total + needed-by); **Print** opens a clean print-ready PO; "Send to wholesaler" relabelled **"Mark sent"** with honest helper copy.
+
+---
+
+## 1 July 2026 — Stock enhancement restart — batch 5 (Reports)
+
+`ReportsView.tsx` rewrite + NEW `StockTrendChart.tsx`. Local full tsc clean. No migration.
+
+- **Filters** — date range (defaults to the last 30 days) + location + movement type drive the whole tab via the filtered `listMovements`.
+- **Daily movement trend chart** (recharts, per the dataviz skill): units **in** vs units **out** per day, one axis, 2px lines, hover crosshair tooltip, ledger-styled grid/legend. Palette **validated** with the skill's checker — sage `#2F8F5C` + orange `#C26A2C` pass CVD (ΔE 20.8) + contrast on white; the sage+slate alternative failed (slate reads gray) and was rejected.
+- **Stock value by category** (Σ on-hand × cost per material category, with a total) beside the **materials-cost-by-job** table; **most-used items** for the range (units + cost).
+- **CSV exports** — movement history, cost-by-job, valuation.
