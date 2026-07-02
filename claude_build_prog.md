@@ -3937,3 +3937,14 @@ Restarted the enhancement pass with a finer audit; found + closed real gaps in t
 - **suppliers.ts**: `export type { Supplier, SupplierBranch, SupplierContact }` re-export (repo-wide typecheck fix).
 
 Remaining batches: B3 Restock (order-now/editable qty/on-order flags), B4 Orders (filters/edit lines/partial-receive/email+print), B5 Reports (filters/trend chart/valuation/CSV), B6 Settings (search/bulk/CSV import), cross-cut polish + boss test checklist.
+
+---
+
+## 1 July 2026 — Stock enhancement restart — batch 3 (Restock)
+
+`RestockDashboard.tsx` + `purchasing.ts` + StockHub prop. Local full tsc clean (6GB-heap gate). No migration.
+
+- **Per-item "Order now"** — drafts a single-item restock PO to the item's preferred wholesaler (destination = factory) with an **editable order qty** (placeholder = qty-to-target); toast names the PO.
+- **"Already on order" flags** — NEW `getOnOrderMap()` (materialId → open restock PO number); flagged rows show `On order · PO-000123` instead of the order controls, and the header counts them separately. "Generate" disabled when everything's covered.
+- **Set-minimums shortcut** — header button + all-good-state link jump to the Settings tab (StockHub `onGoToSettings` prop).
+- **Polished states** — a proper "everything's above minimum" card (check icon + guidance) instead of an empty table; clearer empty-orders copy.

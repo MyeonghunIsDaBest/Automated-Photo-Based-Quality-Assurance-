@@ -366,6 +366,27 @@ export async function getLowStock(): Promise<LowStockItem[]> {
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** Which items are already on an OPEN restock PO (suggested/draft/sent/partial):
+ *  materialId → that PO's number. Drives the "already on order" flags. */
+export async function getOnOrderMap(): Promise<Map<string, string>> {
+  if (!supabaseConfigured()) return new Map();
+  const open = (await listPurchaseOrders({ kind: 'restock' }))
+    .filter((p) => ['suggested', 'draft', 'sent', 'partial'].includes(p.status));
+  if (open.length === 0) return new Map();
+  const numberById = new Map(open.map((p) => [p.id, p.number]));
+  const { data, error } = await supabase
+    .from('purchase_order_items')
+    .select('material_id, po_id')
+    .in('po_id', open.map((p) => p.id));
+  if (error) throw error;
+  const map = new Map<string, string>();
+  for (const raw of data ?? []) {
+    const r = raw as { material_id: string | null; po_id: string };
+    if (r.material_id && !map.has(r.material_id)) map.set(r.material_id, numberById.get(r.po_id) ?? 'PO');
+  }
+  return map;
+}
+
 export interface RestockResult {
   ordersCreated: number;
   itemsDrafted: number;
