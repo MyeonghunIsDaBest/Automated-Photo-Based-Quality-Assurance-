@@ -67,7 +67,7 @@ export default function StockHub() {
                 </button>
               ))}
             </div>
-            {tab === "overview" && <StockOverview />}
+            {tab === "overview" && <StockOverview onGoToRestock={() => setTab("restock")} />}
             {tab === "locations" && <LocationsManager />}
             {tab === "restock" && <RestockDashboard />}
             {tab === "orders" && <OrdersView />}

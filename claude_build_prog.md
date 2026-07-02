@@ -3925,3 +3925,15 @@ Next batches: Locations (per-location history + admin + quick adjust), Restock (
 - **Location admin**: an **Edit** panel to **rename** + set **rego**, and **Deactivate** a van (`updateLocation`); driver reassignment kept.
 
 Batches remaining: Restock (order-now), Orders (filters/edit lines/email-print), Reports (filters/trend/valuation), Settings (search/group/bulk/CSV), cross-cutting polish.
+
+---
+
+## 1 July 2026 — Stock enhancement RESTART (Fable-5 pass) — batches 1R + 2R
+
+Restarted the enhancement pass with a finer audit; found + closed real gaps in the shipped batches. **First locally-verified green typecheck** — full `tsc --noEmit` now runs reliably with `node --max-old-space-size=6144` (memory updated); it exposed a **pre-existing repo-wide error on main**: `Supplier` was never re-exported from `lib/api/suppliers.ts`, leaving RestockDashboard/OrdersView/StockSettingsView red — fixed with a one-line re-export. Subagent CI-killer review + local tsc both clean.
+
+- **Overview (1R)**: **Favourites** filter chip (materials meta map), **group-by-category** collapsible sections, low-stock banner now **jumps to the Restock tab** (StockHub prop), CSV export gained **Category + Favourite** columns.
+- **Locations (2R)**: extracted the transfer modal into a shared **`TransferStockModal`** (with `defaultFrom`); added **"Transfer from here"** in the drill-in; **Show-inactive** toggle + Inactive pill + **Reactivate** for deactivated vans; removed an unused import; fixed the stale "Phase 3" note on Restock.
+- **suppliers.ts**: `export type { Supplier, SupplierBranch, SupplierContact }` re-export (repo-wide typecheck fix).
+
+Remaining batches: B3 Restock (order-now/editable qty/on-order flags), B4 Orders (filters/edit lines/partial-receive/email+print), B5 Reports (filters/trend chart/valuation/CSV), B6 Settings (search/bulk/CSV import), cross-cut polish + boss test checklist.

@@ -1,11 +1,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // pages/stock/StockOverview.tsx — manager company-wide view: every item's total
 // on hand (Σ factory + vans) with per-location breakdown, headline stats, search,
-// Low/Out filters, sorting, per-item drill-in, and CSV export. Live.
+// All/Low/Out/Favourites filters, sorting, optional group-by-category, per-item
+// drill-in, and CSV export. Live.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useEffect, useMemo, useState } from "react";
-import { Search, X, Loader2, AlertTriangle, Download } from "lucide-react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { Search, X, Loader2, AlertTriangle, Download, ChevronDown, ChevronRight } from "lucide-react";
 
 import { cardShell, FRAUNCES, MetaChip, TONE, type ToneKey } from "../gantt/components/ledger";
 import {
@@ -13,32 +14,45 @@ import {
   type CompanyTotal, type StockLocation,
 } from "../../lib/api/stock";
 import { listReorderRules, type ReorderRule } from "../../lib/api/purchasing";
+import { listMaterials } from "../../lib/api/materials";
 import { downloadCsv } from "../../lib/stock/csv";
 import StockItemDrawer from "./StockItemDrawer";
 
-type Filter = "all" | "low" | "out";
+type Filter = "all" | "low" | "out" | "fav";
 type SortBy = "name" | "qty" | "value";
 
-const FILTER_TONE: Record<Filter, ToneKey | null> = { all: null, low: "amber", out: "red" };
+interface MatMeta { fav: boolean; category: string | null }
+
+const FILTER_TONE: Record<Filter, ToneKey | null> = { all: null, low: "amber", out: "red", fav: "sage" };
+const OTHER_GROUP = "Other";
 const fmtQty = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
 const fmtMoney = (n: number) => "$" + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
-export default function StockOverview() {
+export default function StockOverview({ onGoToRestock }: { onGoToRestock?: () => void }) {
   const [totals, setTotals] = useState<CompanyTotal[]>([]);
   const [locations, setLocations] = useState<StockLocation[]>([]);
   const [rules, setRules] = useState<Map<string, ReorderRule>>(new Map());
+  const [matMeta, setMatMeta] = useState<Map<string, MatMeta>>(new Map());
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [sortBy, setSortBy] = useState<SortBy>("name");
+  const [grouped, setGrouped] = useState(false);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     const reload = () => { void getCompanyTotals().then((t) => { if (!cancelled) setTotals(t); }).catch(() => {}); };
     setLoading(true);
-    Promise.all([getCompanyTotals(), listStockLocations(), listReorderRules()])
-      .then(([t, locs, rls]) => { if (!cancelled) { setTotals(t); setLocations(locs); setRules(new Map(rls.map((r) => [r.materialId, r]))); } })
+    Promise.all([getCompanyTotals(), listStockLocations(), listReorderRules(), listMaterials()])
+      .then(([t, locs, rls, mats]) => {
+        if (cancelled) return;
+        setTotals(t);
+        setLocations(locs);
+        setRules(new Map(rls.map((r) => [r.materialId, r])));
+        setMatMeta(new Map(mats.map((m) => [m.id, { fav: m.isFavourite, category: m.category }])));
+      })
       .catch(() => {})
       .finally(() => { if (!cancelled) setLoading(false); });
     const unsub = subscribeToStockLevels(null, reload);
@@ -47,26 +61,52 @@ export default function StockOverview() {
 
   const isLow = (t: CompanyTotal) => { const r = rules.get(t.materialId); return !!r && r.reorderEnabled && t.total < r.minQty; };
   const isOut = (t: CompanyTotal) => t.total <= 0;
+  const isFav = (t: CompanyTotal) => matMeta.get(t.materialId)?.fav ?? false;
+  const catOf = (t: CompanyTotal) => matMeta.get(t.materialId)?.category?.trim() || OTHER_GROUP;
 
   const counts = useMemo(() => ({
     all: totals.length,
     low: totals.filter(isLow).length,
     out: totals.filter(isOut).length,
+    fav: totals.filter(isFav).length,
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [totals, rules]);
+  }), [totals, rules, matMeta]);
 
   const term = search.trim().toLowerCase();
   const rows = useMemo(() => {
     let r = totals;
     if (filter === "low") r = r.filter(isLow);
     else if (filter === "out") r = r.filter(isOut);
+    else if (filter === "fav") r = r.filter(isFav);
     if (term) r = r.filter((t) => t.name.toLowerCase().includes(term) || (t.sku ?? "").toLowerCase().includes(term));
     const val = (t: CompanyTotal) => (t.costPrice != null ? t.total * t.costPrice : 0);
     return [...r].sort((a, b) =>
       sortBy === "qty" ? b.total - a.total : sortBy === "value" ? val(b) - val(a) : a.name.localeCompare(b.name),
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [totals, rules, filter, term, sortBy]);
+  }, [totals, rules, matMeta, filter, term, sortBy]);
+
+  const groupedRows = useMemo(() => {
+    if (!grouped) return [];
+    const by = new Map<string, CompanyTotal[]>();
+    for (const t of rows) {
+      const cat = catOf(t);
+      const arr = by.get(cat);
+      if (arr) arr.push(t); else by.set(cat, [t]);
+    }
+    return [...by.entries()]
+      .sort((a, b) => (a[0] === OTHER_GROUP ? 1 : b[0] === OTHER_GROUP ? -1 : a[0].localeCompare(b[0])))
+      .map(([cat, items]) => ({ cat, items }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [grouped, rows, matMeta]);
+
+  function toggleCollapsed(cat: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat); else next.add(cat);
+      return next;
+    });
+  }
 
   const unitsOnHand = totals.reduce((s, t) => s + t.total, 0);
   const stockValue = totals.reduce((s, t) => s + (t.costPrice != null ? t.total * t.costPrice : 0), 0);
@@ -75,8 +115,12 @@ export default function StockOverview() {
   function exportCsv() {
     downloadCsv(
       `stock-overview-${new Date().toISOString().slice(0, 10)}`,
-      ["Item", "SKU", "Unit", "On hand", "Value (cost)", "Below min"],
-      rows.map((t) => [t.name, t.sku ?? "", t.unit, t.total, t.costPrice != null ? (t.total * t.costPrice).toFixed(2) : "", isLow(t) ? "yes" : ""]),
+      ["Item", "SKU", "Category", "Unit", "On hand", "Value (cost)", "Below min", "Favourite"],
+      rows.map((t) => [
+        t.name, t.sku ?? "", catOf(t) === OTHER_GROUP ? "" : catOf(t), t.unit, t.total,
+        t.costPrice != null ? (t.total * t.costPrice).toFixed(2) : "",
+        isLow(t) ? "yes" : "", isFav(t) ? "yes" : "",
+      ]),
     );
   }
 
@@ -91,8 +135,27 @@ export default function StockOverview() {
     { value: `${vanCount} van${vanCount === 1 ? "" : "s"} + factory`, label: "Locations" },
   ];
   const chips: { key: Filter; label: string }[] = [
-    { key: "all", label: "All" }, { key: "low", label: "Low" }, { key: "out", label: "Out of stock" },
+    { key: "all", label: "All" }, { key: "low", label: "Low" }, { key: "out", label: "Out of stock" }, { key: "fav", label: "Favourites" },
   ];
+
+  const renderRow = (t: CompanyTotal) => {
+    const low = isLow(t), out = isOut(t);
+    return (
+      <tr key={t.materialId} onClick={() => setSelected(t.materialId)} className="cursor-pointer hover:bg-[#FAF8F2]">
+        <td className="px-4 py-2.5">
+          <span className="inline-flex items-center gap-1.5 font-medium text-[#1A1A1A]">
+            {(low || out) && <AlertTriangle className={`h-3.5 w-3.5 ${out ? "text-[#C44545]" : "text-[#C8841E]"}`} />}{t.name}
+          </span>
+          {t.sku && <span className="ml-2 text-[11px] text-[#A0A0A0]">{t.sku}</span>}
+        </td>
+        <td className={`px-4 py-2.5 text-right tabular-nums ${out ? "text-[#C44545]" : "text-[#1A1A1A]"}`}>{fmtQty(t.total)} <span className="text-[11px] text-[#A0A0A0]">{t.unit}</span></td>
+        <td className="px-4 py-2.5">
+          <div className="flex flex-wrap gap-1">{t.byLocation.filter((b) => b.qty !== 0).map((b) => <MetaChip key={b.locationId}>{b.locationName}: {fmtQty(b.qty)}</MetaChip>)}</div>
+        </td>
+        <td className="px-4 py-2.5 text-right tabular-nums text-[#6B6B6B]">{t.costPrice != null ? fmtMoney(t.total * t.costPrice) : "—"}</td>
+      </tr>
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -108,15 +171,23 @@ export default function StockOverview() {
         </div>
       </div>
 
-      {/* Low banner */}
+      {/* Low banner → jumps to Restock */}
       {counts.low > 0 && (
         <div className="flex items-center gap-2 rounded-[10px] border border-[#D69A2E] bg-[#F9EFD9] px-4 py-2.5 text-sm text-[#C8841E]">
           <AlertTriangle className="h-4 w-4 shrink-0" />
-          {counts.low} item{counts.low === 1 ? "" : "s"} below minimum — head to the <span className="font-semibold">Restock</span> tab to draft orders.
+          <span>
+            {counts.low} item{counts.low === 1 ? "" : "s"} below minimum —{" "}
+            {onGoToRestock ? (
+              <button type="button" onClick={onGoToRestock} className="font-semibold underline hover:text-[#A66A12]">open Restock</button>
+            ) : (
+              <span className="font-semibold">see the Restock tab</span>
+            )}{" "}
+            to draft orders.
+          </span>
         </div>
       )}
 
-      {/* Filters + sort + search + export */}
+      {/* Filters + group + sort + search + export */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="inline-flex flex-wrap items-center gap-1">
           {chips.map((c) => {
@@ -138,6 +209,10 @@ export default function StockOverview() {
             className="w-full rounded-md border border-[#E6E1D4] bg-white py-2 pl-9 pr-9 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]" />
           {search && <button type="button" onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-[#A0A0A0] hover:text-[#C44545]" aria-label="Clear"><X className="h-4 w-4" /></button>}
         </div>
+        <label className="flex cursor-pointer items-center gap-1.5 text-[13px] text-[#3A3A3A]">
+          <input type="checkbox" checked={grouped} onChange={(e) => setGrouped(e.target.checked)} className="h-4 w-4 accent-[#2F8F5C]" />
+          Group by category
+        </label>
         <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)} className="rounded-md border border-[#E6E1D4] bg-white px-2 py-2 text-sm text-[#3A3A3A] focus:border-[#2F8F5C] focus:outline-none">
           <option value="name">Sort: Name</option>
           <option value="qty">Sort: On hand</option>
@@ -163,22 +238,22 @@ export default function StockOverview() {
                 {totals.length === 0 ? "No stock items yet — flag materials as stocked in Catalogue → Materials, then run a stock-take." : "Nothing matches this filter/search."}
               </td></tr>
             )}
-            {rows.map((t) => {
-              const low = isLow(t), out = isOut(t);
+            {!grouped && rows.map(renderRow)}
+            {grouped && groupedRows.map((g) => {
+              const closed = collapsed.has(g.cat);
               return (
-                <tr key={t.materialId} onClick={() => setSelected(t.materialId)} className="cursor-pointer hover:bg-[#FAF8F2]">
-                  <td className="px-4 py-2.5">
-                    <span className="inline-flex items-center gap-1.5 font-medium text-[#1A1A1A]">
-                      {(low || out) && <AlertTriangle className={`h-3.5 w-3.5 ${out ? "text-[#C44545]" : "text-[#C8841E]"}`} />}{t.name}
-                    </span>
-                    {t.sku && <span className="ml-2 text-[11px] text-[#A0A0A0]">{t.sku}</span>}
-                  </td>
-                  <td className={`px-4 py-2.5 text-right tabular-nums ${out ? "text-[#C44545]" : "text-[#1A1A1A]"}`}>{fmtQty(t.total)} <span className="text-[11px] text-[#A0A0A0]">{t.unit}</span></td>
-                  <td className="px-4 py-2.5">
-                    <div className="flex flex-wrap gap-1">{t.byLocation.filter((b) => b.qty !== 0).map((b) => <MetaChip key={b.locationId}>{b.locationName}: {fmtQty(b.qty)}</MetaChip>)}</div>
-                  </td>
-                  <td className="px-4 py-2.5 text-right tabular-nums text-[#6B6B6B]">{t.costPrice != null ? fmtMoney(t.total * t.costPrice) : "—"}</td>
-                </tr>
+                <Fragment key={g.cat}>
+                  <tr className="bg-[#FAF8F2]">
+                    <td colSpan={4} className="px-3 py-1.5">
+                      <button type="button" onClick={() => toggleCollapsed(g.cat)} className="flex w-full items-center gap-1.5 text-left">
+                        {closed ? <ChevronRight className="h-3.5 w-3.5 text-[#A0A0A0]" /> : <ChevronDown className="h-3.5 w-3.5 text-[#A0A0A0]" />}
+                        <span className="text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">{g.cat}</span>
+                        <span className="rounded-full bg-[#E6E1D4] px-1.5 text-[11px] font-semibold tabular-nums text-[#6B6B6B]">{g.items.length}</span>
+                      </button>
+                    </td>
+                  </tr>
+                  {!closed && g.items.map(renderRow)}
+                </Fragment>
               );
             })}
           </tbody>

@@ -8,6 +8,10 @@ import type {
   SupplierContact,
 } from '../../types';
 
+// Re-export so consumers can `import { listSuppliers, type Supplier } from
+// './suppliers'` without also reaching into ../../types.
+export type { Supplier, SupplierBranch, SupplierContact } from '../../types';
+
 const NOT_CONFIGURED = new Error(
   'Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in frontend/.env.local.',
 );
