@@ -150,6 +150,8 @@ export interface PurchaseOrder {
   // present via embeds
   supplierName?: string | null;
   itemsCount?: number;
+  /** Σ qty_ordered × unit_cost across the order's lines (listPurchaseOrders only). */
+  orderedTotal?: number;
 }
 
 function rowToPO(r: PORow & { suppliers?: { name: string } | null; purchase_order_items?: Array<{ count: number }> }): PurchaseOrder {
@@ -211,12 +213,19 @@ function rowToPOItem(r: POItemRow): PurchaseOrderItem {
 
 export async function listPurchaseOrders(filters?: { status?: POStatus; kind?: POKind }): Promise<PurchaseOrder[]> {
   if (!supabaseConfigured()) return [];
-  let q = supabase.from('purchase_orders').select('*, suppliers(name), purchase_order_items(count)');
+  let q = supabase.from('purchase_orders').select('*, suppliers(name), purchase_order_items(qty_ordered, unit_cost)');
   if (filters?.status) q = q.eq('status', filters.status);
   if (filters?.kind) q = q.eq('kind', filters.kind);
   const { data, error } = await q.order('created_at', { ascending: false });
   if (error) throw error;
-  return (data ?? []).map((r) => rowToPO(r as PORow));
+  return (data ?? []).map((raw) => {
+    const r = raw as PORow & { purchase_order_items?: Array<{ qty_ordered: number; unit_cost: number | null }> };
+    const po = rowToPO(r as PORow);
+    const items = r.purchase_order_items ?? [];
+    po.itemsCount = items.length;
+    po.orderedTotal = Math.round(items.reduce((s, i) => s + Number(i.qty_ordered) * (i.unit_cost != null ? Number(i.unit_cost) : 0), 0) * 100) / 100;
+    return po;
+  });
 }
 
 export interface POWithItems extends PurchaseOrder {
@@ -290,6 +299,36 @@ export async function createPurchaseOrder(input: CreatePOInput): Promise<Purchas
     if (itemsErr) throw itemsErr;
   }
   return po;
+}
+
+// ── PO line editing (draft/suggested orders) ──
+
+export async function addPOItem(poId: string, line: POLineInput, sortOrder = 0): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { error } = await supabase.from('purchase_order_items').insert({
+    po_id: poId,
+    material_id: line.materialId,
+    description: line.description ?? null,
+    qty_ordered: line.qtyOrdered,
+    unit_cost: line.unitCost ?? null,
+    sort_order: sortOrder,
+  });
+  if (error) throw error;
+}
+
+export async function updatePOItem(itemId: string, patch: { qtyOrdered?: number; unitCost?: number | null }): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const update: Record<string, unknown> = {};
+  if (patch.qtyOrdered !== undefined) update.qty_ordered = patch.qtyOrdered;
+  if (patch.unitCost !== undefined) update.unit_cost = patch.unitCost;
+  const { error } = await supabase.from('purchase_order_items').update(update).eq('id', itemId);
+  if (error) throw error;
+}
+
+export async function removePOItem(itemId: string): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { error } = await supabase.from('purchase_order_items').delete().eq('id', itemId);
+  if (error) throw error;
 }
 
 export async function updatePurchaseOrderStatus(id: string, status: POStatus): Promise<void> {

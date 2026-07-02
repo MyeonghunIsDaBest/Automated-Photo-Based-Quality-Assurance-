@@ -3948,3 +3948,13 @@ Remaining batches: B3 Restock (order-now/editable qty/on-order flags), B4 Orders
 - **"Already on order" flags** — NEW `getOnOrderMap()` (materialId → open restock PO number); flagged rows show `On order · PO-000123` instead of the order controls, and the header counts them separately. "Generate" disabled when everything's covered.
 - **Set-minimums shortcut** — header button + all-good-state link jump to the Settings tab (StockHub `onGoToSettings` prop).
 - **Polished states** — a proper "everything's above minimum" card (check icon + guidance) instead of an empty table; clearer empty-orders copy.
+
+---
+
+## 1 July 2026 — Stock enhancement restart — batch 4 (Orders)
+
+`purchasing.ts` + `OrdersView.tsx` + `PurchaseOrderDrawer.tsx`. Local full tsc clean. No migration.
+
+- **purchasing.ts**: `listPurchaseOrders` now embeds line qty/cost → each order carries `orderedTotal` (+ itemsCount computed); NEW `addPOItem`/`updatePOItem`/`removePOItem` line-edit helpers.
+- **Orders list**: **status filter chips** with counts + tone dots, an **All kinds / Restock / Job** toggle, **search** (order number / wholesaler), and new **Total ($)** + **Expected/received** columns (✓ + date once received).
+- **PO drawer**: **draft orders are editable** — inline qty + unit-cost per line (blur-save), remove line, and an add-item row; **receive progress bar** (Σ received/ordered) once sent; the header shows the wholesaler's **accounts email**; **"Email order"** opens a pre-filled mailto (lines + total + needed-by); **Print** opens a clean print-ready PO; "Send to wholesaler" relabelled **"Mark sent"** with honest helper copy.
