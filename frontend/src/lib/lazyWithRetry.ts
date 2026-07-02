@@ -11,8 +11,12 @@
 import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
 
 const CHUNK_RELOAD_KEY = 'chunk-reload-attempted';
+// One phrasing per engine: Chrome ("Failed to fetch…"), Firefox ("error
+// loading…"), Safari ("Importing a module script failed"), webpack
+// ("ChunkLoadError"). Firefox was missing, so its stale-chunk failures
+// surfaced as raw TypeErrors instead of triggering the reload guard.
 const CHUNK_ERROR_RE =
-  /Failed to fetch dynamically imported module|Importing a module script failed|ChunkLoadError/i;
+  /Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed|ChunkLoadError/i;
 
 // Storage access can THROW (Firefox strict modes, partitioned iframes, private
 // mode). The guard is a nicety, not load-bearing — swallow and degrade.

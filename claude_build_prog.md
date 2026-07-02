@@ -3978,3 +3978,14 @@ Remaining batches: B3 Restock (order-now/editable qty/on-order flags), B4 Orders
 
 - **Settings**: searchable, **category-grouped** rules table with the **current on-hand** beside each item's min/target (red when below min); **bulk-set** min/target applied to everything shown (search = scope); per-group **Enable/Disable all** auto-reorder; **CSV import** of rules (`sku-or-name, min, target`, matched by SKU then name, misses reported); controller + auto-send settings unchanged.
 - **Cross-cut state**: every tab shares the ledger tokens + uniform loading/empty/error states; live tallies on the tally-driven views (Overview / Locations / My Van via `subscribeToStockLevels`); the action-driven tabs (Restock/Orders/Reports/Settings) refetch on every action — honest note: no realtime subscription on movements/POs (fine for manager workflows).
+
+---
+
+## 1 July 2026 — Stock hub first-run rework + Firefox chunk-load fix
+
+Local full tsc clean. No migration.
+
+- **Bug fix (`lib/lazyWithRetry.ts`)** — the reported `TypeError: error loading dynamically imported module … JobsBoard.tsx?t=…` is Firefox's stale-chunk message, which the reload-guard regex didn't match (only Chrome/Safari/webpack phrasings). Added it — a failed lazy route now silently retries and then hard-reloads once on every engine instead of white-screening. (Module graph itself verified sound via tsc.)
+- **Stock hub rework (frontend-design pass)**:
+  - **`StockSetupChecklist.tsx`** (NEW) — the first-run empty state is now a guided 3-step job card with LIVE done-states from real data (① flag stocked materials → link to Catalogue; ② add vans + drivers → jump to Locations; ③ run the opening stock-take) instead of dead zeros + a one-liner. Flips to the real dashboard automatically when the first count lands (realtime).
+  - **Honest failure state** — `StockOverview` now distinguishes "stock tables missing" from "genuinely empty": per-call error capture shows an amber "Stock isn't switched on yet — apply database updates 87–89, then refresh" notice instead of fake zeros. Filtered-empty copy clarified.

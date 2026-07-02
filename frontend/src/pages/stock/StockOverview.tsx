@@ -17,6 +17,7 @@ import { listReorderRules, type ReorderRule } from "../../lib/api/purchasing";
 import { listMaterials } from "../../lib/api/materials";
 import { downloadCsv } from "../../lib/stock/csv";
 import StockItemDrawer from "./StockItemDrawer";
+import StockSetupChecklist from "./StockSetupChecklist";
 
 type Filter = "all" | "low" | "out" | "fav";
 type SortBy = "name" | "qty" | "value";
@@ -28,11 +29,13 @@ const OTHER_GROUP = "Other";
 const fmtQty = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
 const fmtMoney = (n: number) => "$" + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
-export default function StockOverview({ onGoToRestock }: { onGoToRestock?: () => void }) {
+export default function StockOverview({ onGoToRestock, onGoToLocations }: { onGoToRestock?: () => void; onGoToLocations?: () => void }) {
   const [totals, setTotals] = useState<CompanyTotal[]>([]);
   const [locations, setLocations] = useState<StockLocation[]>([]);
   const [rules, setRules] = useState<Map<string, ReorderRule>>(new Map());
   const [matMeta, setMatMeta] = useState<Map<string, MatMeta>>(new Map());
+  const [stockedCount, setStockedCount] = useState(0);
+  const [dbError, setDbError] = useState(false);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
@@ -43,17 +46,26 @@ export default function StockOverview({ onGoToRestock }: { onGoToRestock?: () =>
 
   useEffect(() => {
     let cancelled = false;
-    const reload = () => { void getCompanyTotals().then((t) => { if (!cancelled) setTotals(t); }).catch(() => {}); };
+    const reload = () => { void getCompanyTotals().then((t) => { if (!cancelled) { setTotals(t); setDbError(false); } }).catch(() => {}); };
     setLoading(true);
-    Promise.all([getCompanyTotals(), listStockLocations(), listReorderRules(), listMaterials()])
+    // Per-call catches: a missing stock schema (migrations 87–89 not applied)
+    // must surface as a setup notice — not masquerade as "0 items".
+    let dbFail = false;
+    Promise.all([
+      getCompanyTotals().catch(() => { dbFail = true; return [] as CompanyTotal[]; }),
+      listStockLocations().catch(() => { dbFail = true; return [] as StockLocation[]; }),
+      listReorderRules().catch(() => []),
+      listMaterials().catch(() => []),
+    ])
       .then(([t, locs, rls, mats]) => {
         if (cancelled) return;
+        setDbError(dbFail);
         setTotals(t);
         setLocations(locs);
         setRules(new Map(rls.map((r) => [r.materialId, r])));
         setMatMeta(new Map(mats.map((m) => [m.id, { fav: m.isFavourite, category: m.category }])));
+        setStockedCount(mats.filter((m) => m.isStockItem).length);
       })
-      .catch(() => {})
       .finally(() => { if (!cancelled) setLoading(false); });
     const unsub = subscribeToStockLevels(null, reload);
     return () => { cancelled = true; unsub(); };
@@ -126,6 +138,24 @@ export default function StockOverview({ onGoToRestock }: { onGoToRestock?: () =>
 
   if (loading) {
     return <div className={`flex items-center gap-2 px-5 py-8 text-sm text-[#A0A0A0] ${cardShell}`}><Loader2 className="h-4 w-4 animate-spin" /> Loading stock…</div>;
+  }
+
+  // The stock tables couldn't be read at all — say so, don't show fake zeros.
+  if (dbError) {
+    return (
+      <div className="flex items-start gap-3 rounded-[10px] border border-[#D69A2E] bg-[#F9EFD9] px-5 py-4">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#C8841E]" />
+        <div className="text-sm text-[#C8841E]">
+          <p className="font-semibold">Stock isn&rsquo;t switched on yet.</p>
+          <p className="mt-0.5">The stock tables couldn&rsquo;t be found — apply database updates <strong>87–89</strong> in Supabase, then refresh this page.</p>
+        </div>
+      </div>
+    );
+  }
+
+  // First run: nothing counted anywhere yet → a guided setup card beats a dead dashboard.
+  if (totals.length === 0) {
+    return <StockSetupChecklist stockedCount={stockedCount} vanCount={vanCount} onGoToLocations={onGoToLocations} />;
   }
 
   const stats = [
@@ -235,7 +265,7 @@ export default function StockOverview({ onGoToRestock }: { onGoToRestock?: () =>
           <tbody className="divide-y divide-[#EFEBE0]">
             {rows.length === 0 && (
               <tr><td colSpan={4} className="px-4 py-10 text-center text-sm text-[#A0A0A0]">
-                {totals.length === 0 ? "No stock items yet — flag materials as stocked in Catalogue → Materials, then run a stock-take." : "Nothing matches this filter/search."}
+                Nothing matches this filter or search — clear them to see all {totals.length} items.
               </td></tr>
             )}
             {!grouped && rows.map(renderRow)}
