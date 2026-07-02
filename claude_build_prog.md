@@ -3969,3 +3969,12 @@ Remaining batches: B3 Restock (order-now/editable qty/on-order flags), B4 Orders
 - **Daily movement trend chart** (recharts, per the dataviz skill): units **in** vs units **out** per day, one axis, 2px lines, hover crosshair tooltip, ledger-styled grid/legend. Palette **validated** with the skill's checker — sage `#2F8F5C` + orange `#C26A2C` pass CVD (ΔE 20.8) + contrast on white; the sage+slate alternative failed (slate reads gray) and was rejected.
 - **Stock value by category** (Σ on-hand × cost per material category, with a total) beside the **materials-cost-by-job** table; **most-used items** for the range (units + cost).
 - **CSV exports** — movement history, cost-by-job, valuation.
+
+---
+
+## 1 July 2026 — Stock enhancement restart — batch 6 (Settings) + wrap-up
+
+`StockSettingsView.tsx` rewrite. Local full tsc clean. No migration. **The 6-tab enhancement pass is COMPLETE** (batches 1R+2R c553676 · 3 9cd373b · 4 e5c9358 · 5 418a4c3 · 6 this commit).
+
+- **Settings**: searchable, **category-grouped** rules table with the **current on-hand** beside each item's min/target (red when below min); **bulk-set** min/target applied to everything shown (search = scope); per-group **Enable/Disable all** auto-reorder; **CSV import** of rules (`sku-or-name, min, target`, matched by SKU then name, misses reported); controller + auto-send settings unchanged.
+- **Cross-cut state**: every tab shares the ledger tokens + uniform loading/empty/error states; live tallies on the tally-driven views (Overview / Locations / My Van via `subscribeToStockLevels`); the action-driven tabs (Restock/Orders/Reports/Settings) refetch on every action — honest note: no realtime subscription on movements/POs (fine for manager workflows).
