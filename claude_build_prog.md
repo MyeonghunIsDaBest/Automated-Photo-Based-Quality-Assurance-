@@ -3989,3 +3989,110 @@ Local full tsc clean. No migration.
 - **Stock hub rework (frontend-design pass)**:
   - **`StockSetupChecklist.tsx`** (NEW) — the first-run empty state is now a guided 3-step job card with LIVE done-states from real data (① flag stocked materials → link to Catalogue; ② add vans + drivers → jump to Locations; ③ run the opening stock-take) instead of dead zeros + a one-liner. Flips to the real dashboard automatically when the first count lands (realtime).
   - **Honest failure state** — `StockOverview` now distinguishes "stock tables missing" from "genuinely empty": per-call error capture shows an amber "Stock isn't switched on yet — apply database updates 87–89, then refresh" notice instead of fake zeros. Filtered-empty copy clarified.
+
+---
+
+## 7 July 2026 — MASTER PLAN P1: Pricing floor (fixed sell + revert-to-minimum) — mig 94
+
+Luke's top ask from the 7 Jul meeting, built + reviewed same day. UNCOMMITTED (joins the held pile; migration 94 joins 90–93 in Jordan's apply list). Full tsc clean ×2; 13-test floor suite green; 29-agent fan-out review → 12 confirmed findings deduped to 6 fixes, all applied.
+
+- **Mig 94**: `commercial_settings.min_markup_pct` (default 0.25) — floor = cost × (1 + pct), markup-on-cost per Luke's "25% on our buy price". Fixed-sell discipline: a cheaper buy never lowers a set sell.
+- **money.ts**: `minSell` / `isBelowFloor` (cent-rounded, half-cent tolerance, uncosted never flags) + NEW `pricingFloor.test.ts` with Luke's $100/$80/$50 story.
+- **`revertQuoteToMinimum`**: **materials-only** (review catch: flooring labour billed at rate would RAISE prices), batched parallel line writes + ONE totals recompute (was ~5N round trips), honest `{repriced, skipped}` (already-at-floor counts as skipped), totals recomputed even on partial failure, locked-quote guard.
+- **Settings**: "Minimum markup — the floor (%)" admin field; `updateCommercialSettings` retries without the new column pre-mig-94 (review catch: otherwise ALL settings saves broke before the migration).
+- **Amber floor flags** (manager-only): MaterialsTab sell cells, MaterialFormModal live "floor at this cost" hint, both quote pickers, editor markup cells (materials only — labour exempt).
+- **Editor action**: "Revert to minimum pricing" with two-step confirm (materials-only preview counts), **document-discount warning** (discount applies after the floor — review catch), honest result toast, reload-on-failure.
+- Dormant pricing knobs (pricing_tier/fee_pct/labour_overhead/material_markup_pct) annotated stored-not-applied; labour floor formally deferred.
+
+---
+
+## 8 July 2026 — MASTER PLAN P2: Stock-first catalogue ("filtered, not removed")
+
+Luke's catalogue rule, built across every material picker. UNCOMMITTED (held pile). No migration — pure presentation over `is_stock_item`. tsc clean; picker-regression review running.
+
+- **Quote editor**: Stock tab now sits ahead of Catalogue; quick-add search orders stocked items first and tags non-stocked results "one-off".
+- **Catalogue picker**: defaults to stocked-only with a "Show all items (+N)" toggle + helper copy pointing non-stocked needs at One-Off; groups/favourites/drill-down all recount to the active scope.
+- **Stocked-first ordering** in the Pre-Builds, Templates, Invoice, and Variations material pickers; PO drawer verified stocked-only; Take Off verified regression-free (pricing lookup is unfiltered by design).
+- **MaterialsTab (Luke's tick-off workflow)**: All / Stocked / One-off chips with live counts; bulk-select checkboxes + **"Mark held in stock (N)"** one-click bulk action.
+
+---
+
+## 8 July 2026 — MASTER PLAN P2.5: Catalogue polish & future-user ease (tasks 187–202)
+
+Built same-day on top of P2; 22-agent review of P2 returned 8 findings → 5 unique fixes, ALL applied (stale bulk selection pruned per fetch; filtered-to-empty state now speaks; skeleton column count; Promise.allSettled bulk with per-id retry; drill-down path reset on scope toggle). tsc clean. UNCOMMITTED (held pile). No migration.
+
+- **First-run setup card** in the Catalogue picker when nothing's marked stocked (points at bulk-mark + Import; one-tap "show all for now").
+- **Recently used strip** — last 8 materials added to any quote as one-tap chips (localStorage helper `lib/recentMaterials.ts`; wired into Catalogue/Stock/quick-add adds).
+- **Keyboard flow**: ↑↓ + Enter adds from search results in Catalogue + Stock pickers (highlight row); search placeholder teaches it.
+- **Sticky headers + 60vh scroll** on both pickers' part tables.
+- **Live "N on hand" chips** on stocked catalogue rows (live totals) + one-off chips with plain-language tooltips.
+- **"Add & stock"** one-click manager action on non-stocked rows.
+- **MaterialsTab**: select-all-in-view, Esc clears selection, bulk "Remove from stock list" (parity), smarter empty states.
+- **Preferences persist**: stocked-only toggle + last Parts&Labour sub-tab per browser.
+- Touch-size buttons on picker actions; aria-pressed on toggles; 60-second onboarding note in todos.md. (whats-new regenerates from commits at ship time.)
+
+---
+
+## 8 July 2026 — MASTER PLAN P3: Import pipeline (catalogue + pre-builds, ready before Luke's file lands)
+
+The import machinery Luke's costed spreadsheet will land on. UNCOMMITTED (held pile). **No migration** — all four new columns already exist on `materials`. Adversarial review (9 Jul) returned **9 findings (1 HIGH, 4 MED, 4 LOW) — ALL fixed**: partial pre-build rollback (a mid-import failure now deletes the half-built assembly instead of leaving it name-skipped-forever with missing parts); whole-assembly drop when any CSV row is invalid (no partial assemblies, no meta theft by a bad first row); the post-import re-plan no longer wipes the result panel (plan refreshes in place + “Review updated plan” button, both cards); blank core cells (unit/description/prices/tags) no longer clobber existing values on updates — slim price-update files are now safe; in-file duplicate SKUs/names divert to skips instead of sinking a 50-row insert chunk; plus configured-guard, qty-rounds-to-zero (0.004 → rejected at parse), empty-file message, and a documented multi-line-cell limitation. Re-gated: tsc clean, **30/30 parser tests green** (single-fork).
+
+- **Materials CSV grows 4 optional columns** — `category, subcategory, is_stock_item, is_favourite` on top of the 7 required. Old 7-column files still import unchanged; blank/absent optional cells NEVER clobber what's already in the catalogue on updates (conditional writes). Lenient booleans (yes/true/1/y · no/false/0/n), Excel BOM tolerated.
+- **NEW pre-builds CSV import** (`lib/catalogue/prebuildCsv.ts` + `PrebuildImportCard`): one row per part, grouped by pre-build name; items resolve **strictly by SKU**; a pre-build with ANY missing SKU is refused whole (a partial assembly would misprice every quote that uses it) with per-line "import materials first" guidance; existing names skip (case-insensitive) so re-runs are safe.
+- **ImportTab reworked into two cards**: materials (11-column template, preview now shows Group/Stock/Fav) + pre-builds (own template download, parse → SKU/duplicate check → confirm, honest result counts + first-error surfacing).
+- **Starter CSV upgraded**: `casone-catalogue-starter.csv` → 11 columns, all 42 rows categorised (Solar/Electrical trees), all marked stocked, 8 daily-driver favourites.
+- **`casone-catalogue-prebuilds-templates.sql` marked partially superseded** — pre-builds go through the UI now; the SQL remains only for quote templates (labour lines) until a template import ships (stretch, deferred).
+- **Dry-run in CI**: tests read the actual repo starter CSV from disk — parses clean, plans as 42 adds on empty, re-import plans as pure updates (idempotent, no dupes).
+- Blocked-on-Luke tail (mapping his headers → ours, importing his real catalogue + pre-builds) queued as P3.81–83.
+
+---
+
+## 9 July 2026 — MASTER PLAN P4: Job boxes (allocate → accept → accountability, migration 95)
+
+Luke's accountability flow: pack factory stock for a won job, allocate it to the scheduled tech, and NOTHING moves until the tech accepts the box at pickup — the accept is on record (who, when), and the van/factory tallies update through the same immutable movement ledger as everything else. UNCOMMITTED (held pile). **Migration 95** (Jordan applies with 90–94). Adversarial review returned **3 findings (1 MED, 2 LOW) — ALL fixed**: the RPC assignee guard was NULL-permissive for anonymous callers (now `is distinct from` + explicit revoke-from-anon/grant-to-authenticated, matching the mig 65/76 convention); the outstanding-boxes banner refreshes on the same live signal as the tallies instead of going stale; accept/decline notifications now carry the job ref so a manager's bell click lands on the job's drawer (workers still land on My Van). Review also confirmed the hard parts hold: double-accept is impossible (row lock + idempotent guard), the definer RPC legitimately bypasses the workers-can-only-log-usage rule, and worker RLS scopes boxes to the assignee with no cross-worker leak. Re-gated: tsc clean.
+
+- **Migration 95**: `stock_allocations` (pending → accepted/declined/cancelled, exactly-one-job check, dest resolves to the assignee's van at accept) + `stock_allocation_lines` (qty + cost snapshot). `accept_stock_allocation()` SECURITY DEFINER RPC — assignee-only, double-tap-safe (row lock + idempotent status guard), emits the ordinary paired transfer movements with a "Job box" note so the ledger stays the single source of truth. `decline_stock_allocation(note)` RPC. Status trigger notifies the manager who packed the box (worker→manager direction can't use the manager-guarded `notify_user`). RLS: managers all; assignee read-only — every worker write goes through the RPCs.
+- **API layer** (`stock.ts`): list boxes per job / my pending boxes / company pending count; `createAllocation` (all-or-nothing header+lines with rollback, then notifies the tech "Job box ready — accept at pickup"); accept/decline/cancel; pure `allocationShortfalls` helper. `stock_allocation` notification type.
+- **Manager UI** (job drawer, between Materials and Notes): "Job box" section — status pills, line summaries, box value, decline reasons, cancel-pending with inline confirm; "Allocate stock" modal with source picker (defaults Factory), stock search with live on-hand, qty lines with **honest shortfall flags** (allowed — the physical box is truth), assignee defaulting to the job's tech. Plus **"Materials used (from vans)"** — the job-costed usage data that's been recorded since mig 87 finally rendered (manager-only; worker RLS would show a partial picture).
+- **Worker UI** (My Van, phone-first): amber "N job boxes waiting — accept at pickup" banner (shows even with no van assigned, so the fix-your-van error can explain itself), tap → bottom-sheet with the job, pickup location, manager's note, packed lines + box value → **"Accept — load my van"** (tally rises live) or "Something's wrong" → decline with a required reason.
+- **Visibility**: Stock Overview banner counts company-wide unaccepted boxes (Luke chases from there); bell notifications deep-link to /stock. Pre-mig-95 safe: the count fails quietly to 0 without tripping the "apply 87–89" notice.
+- Simpro jobs: API + component are job-kind-agnostic (parity with the movements pattern); there's no Simpro job drawer yet to host the section — same as Materials/Photos/Notes today.
+- Capabilities audit: **no new caps needed** — visibility rides `/stock` + drawer access; enforcement is RLS + assignee-guarded RPCs. Permissions snapshot unchanged.
+
+---
+
+## 10 July 2026 — MASTER PLAN P5: Site & storage locations + "where's my conduit?" search (migration 96)
+
+Job sites and storage spots become stock locations — closing the parked "how do projects tie in" question (through STOCK, not Gantt scaffolding). UNCOMMITTED (held pile). **Migration 96** (Jordan applies with 90–95). 16-agent workflow review (3 lenses, every finding adversarially verified) returned **13 confirmed findings → 9 unique fixes, ALL applied**: the big one — the worker "my van" DB rule (`is_my_van`) never got the promised type filter, so a site row carrying a driver would have granted that worker invisible ledger rights (mig 96 now redefines it with `type='van'`, and the API refuses to put a driver on a non-van); archived sites now REACTIVATE instead of dead-ending the job-drawer shortcut; one-site-per-job enforced by partial unique indexes (+ lost-the-race retry); pre-mig-96 attempts fail with a readable "apply update 96" message; the transfer modal can no longer silently move stock from an archived source; find-an-item reports "showing 8 of N" instead of silently truncating and marks archived-location chips; the site's linked-job card handles deleted jobs; the site job picker lists open jobs only (with job numbers). Re-gated: tsc clean.
+
+- **Migration 96**: `stock_locations.type` widens to factory/van/**site**/**storage** (idempotent constraint swap); sites get optional `service_job_id`/`simpro_job_id`/`project_id` links + indexes.
+- **API**: validated type parsing (an unknown type can never masquerade as a van); `myVan()` hardened with an explicit `type='van'` filter; create/update carry the new type + job links (pre-mig-96-safe conditional writes); NEW `siteLocationForJob()` find-or-create.
+- **Locations tab**: "Add van" → **"Add location"** with a Van/Site/Storage type picker — driver only for vans, linked-job picker for sites, address search + map pin for all (the Elsternwick container gets a pin). Per-type icons + pills (truck/map-pin/warehouse) on cards and breadcrumb; sites show "Serves job" with a **View job** jump; archive/reactivate now covers sites & storage (factory never archives); van-only bits (rego, driver, delivery distances) stay van-only.
+- **"Find an item" search** (Luke's "where's my 100mm conduit?"): search by name/SKU at the top of Locations → every holding location as chips ("Factory 40 · Van 2 12 · Elsternwick 60") → click opens the item drawer.
+- **Transfer modal**: from/to pickers grouped Factory / Vans / Sites / Storage.
+- **Overview**: location stat shows the per-type breakdown ("factory · 4 vans · 2 sites").
+- **Job drawer shortcut**: "Create site location" packs the job's name + address into a new site location in one click (find-or-create — never duplicates).
+- Per-location movement history verified type-agnostic (works for sites/storage unchanged).
+
+---
+
+## 10 July 2026 — P6 backbone (design-independent): proposal terms, acceptance & footer (migration 97)
+
+The parts of the proposal rework that DON'T need Luke's SimPro designs, built now so the design-matching restyle has rails to land on. UNCOMMITTED (held pile). **Migration 97** (tiny; Jordan applies with 90–96). tsc clean.
+
+- **Migration 97**: `commercial_settings` += `quote_terms` + `proposal_footer` (both optional).
+- **Sales → Settings**: new "Quote terms & conditions" editor (multi-line) + "Proposal footer line" — set once, printed on every quote. Saves stay safe on pre-97 databases (retry-without-column, same pattern as the pricing floor).
+- **Quote print sheet**: Terms & Conditions block after the totals (hidden when blank); an **Acceptance block** with name/signature + date lines that prints only while the quote is still open (accepted/declined quotes show their stamp instead); the footer line closes the page. Print page-break safe.
+- Still waiting on Luke for the rest of P6: SimPro proposal designs + Erica's branding input → cover/section styling, cost-centre layout to the SimPro look, variation + invoice print skins, cross-browser PDF QA.
+
+---
+
+## 10 July 2026 — MASTER PLAN P7 (research phase): wholesaler invoice ingestion — design v2
+
+Research-first phase, done to the edge of the externals. No code shipped — the deliverable is `docs/WHOLESALER_INGESTION_PLAN.md`, grounded in a full audit of the existing purchasing stack and then **adversarially critiqued by a 2-lens workflow (25 findings — every one folded into v2)**.
+
+- **Code audit**: POs/receiving/supplier-invoices mapped end-to-end; five real gaps identified (header-only invoices, hand-typed entry, amount-only matching, receipts costed at guessed PO prices, job POs never reaching the ledger or job costing).
+- **v1 locked (pending Jordan+Luke sign-off): supplier-level CSV upload** matched against ALL of a supplier's open POs (one invoice ↔ many POs is routine), with allocation-based matching, a per-supplier **SKU memory that learns pack factors** (drums-vs-metres — the #1 practical matcher killer, caught by the critique), GST normalisation + storm detection, duplicate-invoice guard, credit-note stop, wrong-document heuristics, and an exceptions queue that never goes silent.
+- **Costing redesign after critique**: the "valuation adjustment movement" idea from v1 was proven unimplementable (would corrupt tallies or no-op); v2 instead re-costs receipts only when the invoice confirms before receive, routes post-receive deltas to the exceptions queue, and adds the real fix — a confirm-time "update material cost" toggle, since the catalogue master cost is what actually drives valuation AND future job costing. Job POs: recommended model = receipts stock the job's **site location** (P5 synergy) and job cost stays usage-only, making double-counting structurally impossible; SimPro-style cost-at-invoice offered to Luke as the priced alternative.
+- **Phase re-split** (the critique showed the queue + memory were hiding a monster): P7.1a lib → P7.1b manual-match UI → P7.1c memory+queue → P7.2 ledger rework (2–3 sessions, honestly).
+- Interview pack (11 questions incl. pack sizes) + sample checklist ready for Jordan to run with Luke. Roadmap doc banner updated.

@@ -14,7 +14,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { supabase, supabaseConfigured } from '../supabase';
-import { docTotals, quoteFinancials } from '../commercial/money';
+import { docTotals, quoteFinancials, minSell } from '../commercial/money';
 import { getPrebuildWithItems, getMaterialById } from './materials';
 import { createServiceJob, getServiceJob, setContractValue, setMaterialsCost } from './serviceJobs';
 import { ratesMap } from './labourRates';
@@ -45,6 +45,9 @@ interface CommercialSettingsRow {
   stc_unit_price: number;
   veec_unit_value: number;
   default_labour_overhead: number;
+  min_markup_pct: number;
+  quote_terms: string | null;
+  proposal_footer: string | null;
 }
 
 interface QuoteRow {
@@ -99,6 +102,7 @@ interface QuoteItemRow {
   material_id: string | null;
   prebuild_id: string | null;
   variation_id: string | null;
+  section_id: string | null;
   description: string;
   qty: number;
   unit: string;
@@ -106,6 +110,27 @@ interface QuoteItemRow {
   cost_price_ex_gst: number | null;
   kind: string;
   sort_order: number;
+}
+
+// ── Quote sections (cost centres, migration 90) ──
+interface QuoteSectionRow {
+  id: string;
+  quote_id: string;
+  name: string;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface QuoteSection {
+  id: string;
+  quoteId: string;
+  name: string;
+  sortOrder: number;
+  createdAt: string;
+}
+
+function rowToQuoteSection(r: QuoteSectionRow): QuoteSection {
+  return { id: r.id, quoteId: r.quote_id, name: r.name, sortOrder: r.sort_order, createdAt: r.created_at };
 }
 
 interface InvoiceRow {
@@ -137,6 +162,7 @@ interface InvoiceItemRow {
   material_id: string | null;
   prebuild_id: string | null;
   variation_id: string | null;
+  cost_centre: string | null;
   description: string;
   qty: number;
   unit: string;
@@ -160,6 +186,7 @@ interface VariationRow {
   approved_by: string | null;
   approved_at: string | null;
   customer_approved_at: string | null;
+  sent_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -184,7 +211,7 @@ interface VariationItemRow {
 
 export type QuoteStatus = 'draft' | 'sent' | 'viewed' | 'accepted' | 'declined' | 'expired';
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'voided';
-export type VariationStatus = 'draft' | 'priced' | 'approved' | 'declined';
+export type VariationStatus = 'draft' | 'priced' | 'sent' | 'approved' | 'declined';
 
 // Line kind — shared across quote/invoice/variation items (migration 75).
 //   material → from the catalogue (cost snapshotted from materials.cost_price)
@@ -211,6 +238,13 @@ export interface CommercialSettings {
   veecUnitValue: number;
   /** Office-wide default labour overhead (AUD/hr), prefilled into a quote's Optional tab. */
   defaultLabourOverhead: number;
+  /** The pricing floor: minimum markup ON COST (0.25 = sell never below cost × 1.25).
+   *  Flags below-floor sells + powers "Revert to minimum pricing"; never auto-lowers. */
+  minMarkupPct: number;
+  /** Terms & conditions printed on every quote/proposal (migration 97; blank = hidden). */
+  quoteTerms: string | null;
+  /** One footer line under the proposal (licence no. / thank-you; blank = hidden). */
+  proposalFooter: string | null;
 }
 
 export interface Quote {
@@ -266,6 +300,8 @@ export interface QuoteItem {
   materialId: string | null;
   prebuildId: string | null;
   variationId: string | null;
+  /** Cost centre this line belongs to (quote_sections); null = General. */
+  sectionId: string | null;
   description: string;
   qty: number;
   unit: string;
@@ -305,6 +341,8 @@ export interface InvoiceItem {
   materialId: string | null;
   prebuildId: string | null;
   variationId: string | null;
+  /** Cost-centre label snapshot (grouped invoice subheadings); null = General. */
+  costCentre: string | null;
   description: string;
   qty: number;
   unit: string;
@@ -328,6 +366,7 @@ export interface Variation {
   approvedBy: string | null;
   approvedAt: string | null;
   customerApprovedAt: string | null;
+  sentAt: string | null;
   createdAt: string;
   updatedAt: string;
   items?: VariationItem[];
@@ -453,6 +492,7 @@ export interface AddItemFreeInput {
   unitPriceExGst: number;
   costPriceExGst?: number | null;
   sortOrder?: number;
+  sectionId?: string | null;
 }
 
 export interface UpdateItemInput {
@@ -464,6 +504,8 @@ export interface UpdateItemInput {
    *  tab). Doesn't affect customer totals — only sell does. */
   costPriceExGst?: number | null;
   sortOrder?: number;
+  /** Move the line to another cost centre (null = General). */
+  sectionId?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -485,6 +527,9 @@ function rowToSettings(r: CommercialSettingsRow): CommercialSettings {
     stcUnitPrice: Number(r.stc_unit_price ?? 0),
     veecUnitValue: Number(r.veec_unit_value ?? 0),
     defaultLabourOverhead: Number(r.default_labour_overhead ?? 0),
+    minMarkupPct: Number(r.min_markup_pct ?? 0.25),
+    quoteTerms: r.quote_terms ?? null,
+    proposalFooter: r.proposal_footer ?? null,
   };
 }
 
@@ -544,6 +589,7 @@ function rowToQuoteItem(r: QuoteItemRow): QuoteItem {
     materialId: r.material_id,
     prebuildId: r.prebuild_id,
     variationId: r.variation_id,
+    sectionId: r.section_id ?? null,
     description: r.description,
     qty: Number(r.qty),
     unit: r.unit,
@@ -588,6 +634,7 @@ function rowToInvoiceItem(r: InvoiceItemRow): InvoiceItem {
     materialId: r.material_id,
     prebuildId: r.prebuild_id,
     variationId: r.variation_id,
+    costCentre: r.cost_centre ?? null,
     description: r.description,
     qty: Number(r.qty),
     unit: r.unit,
@@ -613,6 +660,7 @@ function rowToVariation(r: VariationRow, items?: VariationItem[]): Variation {
     approvedBy: r.approved_by,
     approvedAt: r.approved_at,
     customerApprovedAt: r.customer_approved_at,
+    sentAt: r.sent_at ?? null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -670,12 +718,24 @@ export async function updateCommercialSettings(
   if (patch.stcUnitPrice !== undefined) update.stc_unit_price = patch.stcUnitPrice;
   if (patch.veecUnitValue !== undefined) update.veec_unit_value = patch.veecUnitValue;
   if (patch.defaultLabourOverhead !== undefined) update.default_labour_overhead = patch.defaultLabourOverhead;
-  const { data, error } = await supabase
+  if (patch.minMarkupPct !== undefined) update.min_markup_pct = patch.minMarkupPct;
+  if (patch.quoteTerms !== undefined) update.quote_terms = patch.quoteTerms;
+  if (patch.proposalFooter !== undefined) update.proposal_footer = patch.proposalFooter;
+  let { data, error } = await supabase
     .from('commercial_settings')
     .update(update)
     .eq('id', 1)
     .select('*')
     .single();
+  // Pre-migration fallbacks: retry without columns the database doesn't have
+  // yet (mig 94 floor, mig 97 terms/footer) so every OTHER setting still saves.
+  const LATE_COLUMNS = ['min_markup_pct', 'quote_terms', 'proposal_footer'] as const;
+  for (const col of LATE_COLUMNS) {
+    if (error && col in update && (error.code === 'PGRST204' || new RegExp(col, 'i').test(error.message ?? ''))) {
+      delete update[col];
+      ({ data, error } = await supabase.from('commercial_settings').update(update).eq('id', 1).select('*').single());
+    }
+  }
   if (error) throw error;
   return rowToSettings(data as CommercialSettingsRow);
 }
@@ -740,6 +800,46 @@ export async function getQuote(id: string): Promise<Quote | null> {
   if (!quoteResult.data) return null;
   const items = (itemsResult.data ?? []).map((r) => rowToQuoteItem(r as QuoteItemRow));
   return rowToQuote(quoteResult.data as QuoteRow, items);
+}
+
+// ---------------------------------------------------------------------------
+// Quote sections (cost centres) — migration 90
+// ---------------------------------------------------------------------------
+
+export async function listQuoteSections(quoteId: string): Promise<QuoteSection[]> {
+  if (!supabaseConfigured()) return [];
+  const { data, error } = await supabase
+    .from('quote_sections')
+    .select('*')
+    .eq('quote_id', quoteId)
+    .order('sort_order', { ascending: true })
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((r) => rowToQuoteSection(r as QuoteSectionRow));
+}
+
+export async function createQuoteSection(quoteId: string, name: string, sortOrder = 0): Promise<QuoteSection> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { data, error } = await supabase
+    .from('quote_sections')
+    .insert({ quote_id: quoteId, name, sort_order: sortOrder })
+    .select('*')
+    .single();
+  if (error) throw error;
+  return rowToQuoteSection(data as QuoteSectionRow);
+}
+
+export async function renameQuoteSection(id: string, name: string): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { error } = await supabase.from('quote_sections').update({ name }).eq('id', id);
+  if (error) throw error;
+}
+
+/** Delete a cost centre — its lines fall back to General (section_id → null via FK). */
+export async function deleteQuoteSection(id: string): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { error } = await supabase.from('quote_sections').delete().eq('id', id);
+  if (error) throw error;
 }
 
 // ---------------------------------------------------------------------------
@@ -837,6 +937,7 @@ export async function addQuoteItemFromMaterial(
   quoteId: string,
   materialId: string,
   qty: number,
+  sectionId?: string | null,
 ): Promise<QuoteItem> {
   if (!supabaseConfigured()) throw NOT_CONFIGURED;
   const material = await getMaterialById(materialId);
@@ -854,6 +955,7 @@ export async function addQuoteItemFromMaterial(
       unit_price_ex_gst: materialSell(material, materialMarkup),
       cost_price_ex_gst: material.costPrice ?? null,
       sort_order: 0,
+      section_id: sectionId ?? null,
     })
     .select('*')
     .single();
@@ -866,6 +968,7 @@ export async function addQuoteItemFromPrebuild(
   quoteId: string,
   prebuildId: string,
   qtyMultiplier = 1,
+  sectionId?: string | null,
 ): Promise<QuoteItem[]> {
   if (!supabaseConfigured()) throw NOT_CONFIGURED;
   const prebuild = await getPrebuildWithItems(prebuildId);
@@ -896,6 +999,7 @@ export async function addQuoteItemFromPrebuild(
       unit_price_ex_gst: mat ? materialSell(mat, materialMarkup) : 0,
       cost_price_ex_gst: mat ? (mat.costPrice ?? null) : null,
       sort_order: item.sortOrder,
+      section_id: sectionId ?? null,
     };
   });
 
@@ -924,6 +1028,7 @@ export async function addQuoteItemFree(
       unit_price_ex_gst: input.unitPriceExGst,
       cost_price_ex_gst: input.costPriceExGst ?? null,
       sort_order: input.sortOrder ?? 0,
+      section_id: input.sectionId ?? null,
     })
     .select('*')
     .single();
@@ -945,6 +1050,7 @@ export async function addQuoteItemLabour(
   role: string,
   hours: number,
   sortOrder?: number,
+  sectionId?: string | null,
 ): Promise<QuoteItem> {
   if (!supabaseConfigured()) throw NOT_CONFIGURED;
   const rates = await ratesMap();
@@ -964,6 +1070,7 @@ export async function addQuoteItemLabour(
       unit_price_ex_gst: sell,
       cost_price_ex_gst: rate,
       sort_order: sortOrder ?? 0,
+      section_id: sectionId ?? null,
     })
     .select('*')
     .single();
@@ -985,6 +1092,7 @@ export async function updateQuoteItem(
   if (patch.unitPriceExGst !== undefined) update.unit_price_ex_gst = patch.unitPriceExGst;
   if (patch.costPriceExGst !== undefined) update.cost_price_ex_gst = patch.costPriceExGst;
   if (patch.sortOrder !== undefined) update.sort_order = patch.sortOrder;
+  if (patch.sectionId !== undefined) update.section_id = patch.sectionId;
   const { data, error } = await supabase
     .from('quote_items')
     .update(update)
@@ -1043,6 +1151,52 @@ export async function recomputeQuoteTotals(quoteId: string): Promise<void> {
     })
     .eq('id', quoteId);
   if (error) throw error;
+}
+
+/**
+ * Luke's "revert to minimum": reprice every costed MATERIAL line to the floor —
+ * cost × (1 + min_markup_pct) — to sharpen a quote we're unlikely to win.
+ * Materials only: labour is deliberately outside the floor (flooring a labour
+ * line billed at its loaded rate would RAISE the price, not sharpen it).
+ * Uncosted and already-at-floor lines are untouched and counted as skipped.
+ * NOTE: a document discount still applies AFTER the floor — the UI warns when
+ * one is set. Allowed on draft/sent/viewed quotes; locked quotes must reopen.
+ */
+export async function revertQuoteToMinimum(quoteId: string): Promise<{ repriced: number; skipped: number }> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const [quote, settings] = await Promise.all([getQuote(quoteId), getCommercialSettings()]);
+  if (!quote) throw new Error('Quote not found: ' + quoteId);
+  if (quote.status === 'accepted' || quote.status === 'declined' || quote.status === 'expired') {
+    throw new Error('Quote is locked — reopen it before repricing.');
+  }
+  const minMarkup = settings?.minMarkupPct ?? 0.25;
+  let skipped = 0;
+  const writes: { id: string; floor: number }[] = [];
+  for (const item of quote.items ?? []) {
+    if (item.kind !== 'material') { skipped += 1; continue; }
+    const floor = minSell(item.costPriceExGst, minMarkup);
+    if (floor === null || item.unitPriceExGst === floor) { skipped += 1; continue; }
+    writes.push({ id: item.id, floor });
+  }
+  let repriced = 0;
+  try {
+    // Direct line writes in parallel — updateQuoteItem would re-run the full
+    // totals recompute per line (~5 round trips each on a big quote).
+    const errors = await Promise.all(
+      writes.map((w) =>
+        supabase.from('quote_items').update({ unit_price_ex_gst: w.floor }).eq('id', w.id).then((r) => r.error),
+      ),
+    );
+    const failures = errors.filter((e) => e != null);
+    repriced = writes.length - failures.length;
+    if (failures.length > 0) {
+      throw new Error(`Repriced ${repriced} of ${writes.length} lines before an error — totals were recomputed; retry to finish.`);
+    }
+  } finally {
+    // Keep totals consistent with whatever actually landed, success or not.
+    await recomputeQuoteTotals(quoteId).catch(() => {});
+  }
+  return { repriced, skipped };
 }
 
 /** Set the document discount (ex-GST) and re-run totals so GST/total reflect it. */
@@ -1105,6 +1259,8 @@ export async function convertQuoteToJob(quoteId: string) {
     clientName: quote.clientName ?? undefined,
     customerId: quote.customerId ?? undefined,
     propertyId: quote.propertyId ?? undefined,
+    // A project quote produces project work — the jobs board splits on this.
+    kind: quote.quoteType === 'project' ? 'project' : undefined,
   });
 
   const { error } = await supabase
@@ -1130,6 +1286,34 @@ export async function convertQuoteToJob(quoteId: string) {
   return job;
 }
 
+/** The quote a job was converted FROM (quotes.converted_job_id back-link),
+ *  with its line items. Null when the job wasn't born from a quote. */
+export async function getQuoteForJob(serviceJobId: string): Promise<Quote | null> {
+  if (!supabaseConfigured()) return null;
+  const { data, error } = await supabase
+    .from('quotes')
+    .select('id')
+    .eq('converted_job_id', serviceJobId)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data?.id) return null;
+  return getQuote(data.id as string);
+}
+
+/** Service-job ids that have a variation SENT and awaiting the customer's
+ *  decision — the board's "upsell in flight" indicator. */
+export async function listJobIdsWithSentVariations(): Promise<Set<string>> {
+  if (!supabaseConfigured()) return new Set();
+  const { data, error } = await supabase
+    .from('variations')
+    .select('service_job_id')
+    .eq('status', 'sent')
+    .not('service_job_id', 'is', null);
+  if (error) throw error;
+  return new Set((data ?? []).map((r) => (r as { service_job_id: string }).service_job_id));
+}
+
 // ---------------------------------------------------------------------------
 // Invoices — read
 // ---------------------------------------------------------------------------
@@ -1137,11 +1321,13 @@ export async function convertQuoteToJob(quoteId: string) {
 export async function listInvoices(filters?: {
   status?: InvoiceStatus;
   customerId?: string;
+  serviceJobId?: string;
 }): Promise<Invoice[]> {
   if (!supabaseConfigured()) return [];
   let q = supabase.from('customer_invoices').select('*');
   if (filters?.status) q = q.eq('status', filters.status);
   if (filters?.customerId) q = q.eq('customer_id', filters.customerId);
+  if (filters?.serviceJobId) q = q.eq('service_job_id', filters.serviceJobId);
   const { data, error } = await q.order('created_at', { ascending: false });
   if (error) throw error;
   return (data ?? []).map((r) => rowToInvoice(r as InvoiceRow));
@@ -1207,6 +1393,10 @@ export async function createInvoiceFromQuote(quoteId: string): Promise<Invoice> 
   });
 
   if (quote.items && quote.items.length > 0) {
+    // Cost-centre labels travel to the invoice as a NAME snapshot so the
+    // invoice groups the same way the quote printed (mig 90).
+    const sections = await listQuoteSections(quoteId).catch(() => [] as QuoteSection[]);
+    const sectionName = new Map(sections.map((s) => [s.id, s.name]));
     const itemInserts = quote.items.map((item, idx) => ({
       invoice_id: invoice.id,
       material_id: item.materialId,
@@ -1219,6 +1409,7 @@ export async function createInvoiceFromQuote(quoteId: string): Promise<Invoice> 
       unit_price_ex_gst: item.unitPriceExGst,
       cost_price_ex_gst: item.costPriceExGst,
       sort_order: idx,
+      cost_centre: item.sectionId ? (sectionName.get(item.sectionId) ?? null) : null,
     }));
     const { error: itemsErr } = await supabase
       .from('customer_invoice_items')
@@ -1231,6 +1422,11 @@ export async function createInvoiceFromQuote(quoteId: string): Promise<Invoice> 
 }
 
 /** Create an invoice from a service job, appending approved-variation lines. */
+/**
+ * The boss's ONE-invoice: base scope (the originating quote's lines, grouped by
+ * their cost centres) + every ACCEPTED variation (each under its own cost-centre
+ * subheading = the variation's title). Pending/declined variations are excluded.
+ */
 export async function createInvoiceFromJob(serviceJobId: string): Promise<Invoice> {
   if (!supabaseConfigured()) throw NOT_CONFIGURED;
   const job = await getServiceJob(serviceJobId);
@@ -1244,47 +1440,83 @@ export async function createInvoiceFromJob(serviceJobId: string): Promise<Invoic
     jobRef: job.title,
   });
 
-  // Append approved variation items flagged with variation_id
+  const allItemInserts: Array<Record<string, unknown>> = [];
+  let sort = 0;
+
+  // 1) Base scope — the quote this job was converted from (quotes.converted_job_id
+  //    back-link), with each line's cost-centre name snapshot.
+  const { data: srcQuote, error: srcErr } = await supabase
+    .from('quotes')
+    .select('id')
+    .eq('converted_job_id', serviceJobId)
+    .limit(1)
+    .maybeSingle();
+  if (srcErr) throw srcErr;
+  if (srcQuote?.id) {
+    const quote = await getQuote(srcQuote.id as string);
+    if (quote?.items && quote.items.length > 0) {
+      const sections = await listQuoteSections(quote.id).catch(() => [] as QuoteSection[]);
+      const sectionName = new Map(sections.map((s) => [s.id, s.name]));
+      for (const item of quote.items) {
+        allItemInserts.push({
+          invoice_id: invoice.id,
+          material_id: item.materialId,
+          prebuild_id: item.prebuildId,
+          variation_id: item.variationId,
+          kind: item.kind,
+          description: item.description,
+          qty: item.qty,
+          unit: item.unit,
+          unit_price_ex_gst: item.unitPriceExGst,
+          cost_price_ex_gst: item.costPriceExGst,
+          sort_order: sort++,
+          cost_centre: item.sectionId ? (sectionName.get(item.sectionId) ?? null) : null,
+        });
+      }
+    }
+  }
+
+  // 2) Accepted variations — each folds in as its own cost centre (its title).
   const { data: variations, error: varErr } = await supabase
     .from('variations')
-    .select('id')
+    .select('id, title')
     .eq('service_job_id', serviceJobId)
     .eq('status', 'approved');
   if (varErr) throw varErr;
 
-  if (variations && variations.length > 0) {
-    const allItemInserts: Array<Record<string, unknown>> = [];
-    for (const v of variations) {
-      const { data: vitems, error: vitemsErr } = await supabase
-        .from('variation_items')
-        .select('*')
-        .eq('variation_id', v.id)
-        .order('sort_order', { ascending: true });
-      if (vitemsErr) throw vitemsErr;
-      (vitems ?? []).forEach((vi) => {
-        const vr = vi as VariationItemRow;
-        allItemInserts.push({
-          invoice_id: invoice.id,
-          material_id: vr.material_id,
-          prebuild_id: vr.prebuild_id,
-          variation_id: v.id,
-          kind: vr.kind,
-          description: vr.description,
-          qty: vr.qty,
-          unit: vr.unit,
-          unit_price_ex_gst: vr.unit_price_ex_gst,
-          cost_price_ex_gst: vr.cost_price_ex_gst,
-          sort_order: vr.sort_order,
-        });
+  for (const v of variations ?? []) {
+    const vrow = v as { id: string; title: string };
+    const { data: vitems, error: vitemsErr } = await supabase
+      .from('variation_items')
+      .select('*')
+      .eq('variation_id', vrow.id)
+      .order('sort_order', { ascending: true });
+    if (vitemsErr) throw vitemsErr;
+    (vitems ?? []).forEach((vi) => {
+      const vr = vi as VariationItemRow;
+      allItemInserts.push({
+        invoice_id: invoice.id,
+        material_id: vr.material_id,
+        prebuild_id: vr.prebuild_id,
+        variation_id: vrow.id,
+        kind: vr.kind,
+        description: vr.description,
+        qty: vr.qty,
+        unit: vr.unit,
+        unit_price_ex_gst: vr.unit_price_ex_gst,
+        cost_price_ex_gst: vr.cost_price_ex_gst,
+        sort_order: sort++,
+        cost_centre: `Variation — ${vrow.title}`,
       });
-    }
-    if (allItemInserts.length > 0) {
-      const { error: insertErr } = await supabase
-        .from('customer_invoice_items')
-        .insert(allItemInserts);
-      if (insertErr) throw insertErr;
-      await recomputeInvoiceTotals(invoice.id);
-    }
+    });
+  }
+
+  if (allItemInserts.length > 0) {
+    const { error: insertErr } = await supabase
+      .from('customer_invoice_items')
+      .insert(allItemInserts);
+    if (insertErr) throw insertErr;
+    await recomputeInvoiceTotals(invoice.id);
   }
 
   return (await getInvoice(invoice.id)) as Invoice;
@@ -1830,7 +2062,24 @@ export async function priceVariation(id: string): Promise<Variation> {
   return rowToVariation(data as VariationRow);
 }
 
-/** Approve a variation. Stamps approved_by + approved_at. */
+/** Mark a variation sent to the customer (quote-format PDF/email shown on site). */
+export async function sendVariation(id: string): Promise<Variation> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { data, error } = await supabase
+    .from('variations')
+    .update({ status: 'sent', sent_at: new Date().toISOString() })
+    .eq('id', id)
+    .select('*')
+    .single();
+  if (error) throw error;
+  return rowToVariation(data as VariationRow);
+}
+
+/** Accept ("approve") a variation. Stamps approved_by + approved_at, and — the
+ *  boss's fold-into-the-job — when it's linked to a service job, bumps that
+ *  job's contract_value (+subtotal ex GST) and materials_cost (+Σ qty×cost of
+ *  its material lines) so the ONE job's numbers carry the upsell immediately.
+ *  The line-level merge happens at invoicing (createInvoiceFromJob). */
 export async function approveVariation(id: string): Promise<Variation> {
   if (!supabaseConfigured()) throw NOT_CONFIGURED;
   const uid = (await supabase.auth.getUser()).data.user?.id ?? null;
@@ -1842,10 +2091,36 @@ export async function approveVariation(id: string): Promise<Variation> {
       approved_at: new Date().toISOString(),
     })
     .eq('id', id)
+    // Idempotency guard: a second accept (double-click, retry) matches no row
+    // and errors out instead of re-running the job rollup bump below.
+    .neq('status', 'approved')
     .select('*')
     .single();
   if (error) throw error;
-  return rowToVariation(data as VariationRow);
+  const variation = rowToVariation(data as VariationRow);
+
+  if (variation.serviceJobId) {
+    try {
+      const [job, full] = await Promise.all([
+        getServiceJob(variation.serviceJobId),
+        getVariation(id),
+      ]);
+      if (job) {
+        await setContractValue(variation.serviceJobId, round2((job.contractValue ?? 0) + variation.subtotalExGst));
+        const addedMaterials = (full?.items ?? [])
+          .filter((it) => it.kind === 'material' && it.costPriceExGst != null)
+          .reduce((s, it) => s + it.qty * (it.costPriceExGst as number), 0);
+        if (addedMaterials > 0) {
+          await setMaterialsCost(variation.serviceJobId, round2((job.materialsCost ?? 0) + addedMaterials));
+        }
+      }
+    } catch {
+      // Rollup bump is best-effort — the invoice merge (createInvoiceFromJob)
+      // remains the financial source of truth even if this fails.
+    }
+  }
+
+  return variation;
 }
 
 /** Decline a variation. */

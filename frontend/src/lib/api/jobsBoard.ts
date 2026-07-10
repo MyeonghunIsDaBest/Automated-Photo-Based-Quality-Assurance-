@@ -10,6 +10,7 @@
 
 import { supabase, supabaseConfigured } from '../supabase';
 import { listServiceJobs, displayJobNumber } from './serviceJobs';
+import { listJobIdsWithSentVariations } from './commercial';
 import { listAllRequests } from './maintenanceRequests';
 import { listProjects, type ProjectRow } from './projects';
 import type { SimproStage } from '../jobs/simproCsv';
@@ -54,6 +55,12 @@ export interface BoardCard {
    *  the board distinguish Complete / Invoiced / Archived, which otherwise all
    *  collapse into the single "done" column. */
   simproStage?: SimproStage | null;
+  /** Service cards only: the work register inherited from the originating quote
+   *  (mig 93). Drives the Project filter/badge; drag semantics stay 'service'. */
+  kind?: 'service' | 'project';
+  /** Service cards only: a variation is SENT and awaiting the customer's yes —
+   *  upsell money in flight. */
+  variationPending?: boolean;
 }
 
 export type DropResult =
@@ -393,11 +400,12 @@ async function fetchSimproStages(): Promise<Map<string, SimproStage>> {
 export async function fetchBoardCards(
   opts?: { includeCancelled?: boolean; includeArchived?: boolean },
 ): Promise<BoardCard[]> {
-  const [serviceJobs, maintenanceReqs, projects, simproStages] = await Promise.all([
+  const [serviceJobs, maintenanceReqs, projects, simproStages, sentVariationJobIds] = await Promise.all([
     listServiceJobs(),
     listAllRequests(),
     listProjects(),
     fetchSimproStages(),
+    listJobIdsWithSentVariations().catch(() => new Set<string>()),
   ]);
 
   // Look up a promoted card's original Sim-Pro stage by its job number.
@@ -430,6 +438,8 @@ export async function fetchBoardCards(
           archived:     isArchived,
           number,
           simproStage:  stageFor(job.externalRef),
+          kind:         job.kind,
+          variationPending: sentVariationJobIds.has(job.id),
         });
       }
       continue;
@@ -447,6 +457,8 @@ export async function fetchBoardCards(
       completedAt:  job.completedAt,
       number,
       simproStage:  stageFor(job.externalRef),
+      kind:         job.kind,
+      variationPending: sentVariationJobIds.has(job.id),
     });
   }
 

@@ -18,6 +18,9 @@ import { Search, X, ChevronRight, Plus, Loader2, Star, Folder } from "lucide-rea
 
 import { listMaterials, updateMaterial } from "../../lib/api/materials";
 import { addQuoteItemFromMaterial, getCommercialSettings } from "../../lib/api/commercial";
+import { isBelowFloor } from "../../lib/commercial/money";
+import { getCompanyTotals } from "../../lib/api/stock";
+import { getRecentMaterialIds, pushRecentMaterial } from "../../lib/recentMaterials";
 
 const OTHER_GROUP = "Other";
 
@@ -31,6 +34,8 @@ interface Props {
   onAdded: () => void;
   /** Reuse the parent's Toaster (optional). */
   onToast?: (message: string, type: "success" | "error" | "info") => void;
+  /** Cost centre new lines land in (null = General). */
+  activeSectionId?: string | null;
 }
 
 function fmtMoney(n: number): string {
@@ -44,6 +49,7 @@ interface CatRow {
   category: string | null;
   subcategory: string | null;
   isFavourite: boolean;
+  isStockItem: boolean;
   materialCost: number;
   sell: number;
   meta: string; // sku · unit
@@ -52,17 +58,35 @@ interface CatRow {
 const groupKey = (r: CatRow) => (r.category && r.category.trim() ? r.category.trim() : OTHER_GROUP);
 const subKey = (r: CatRow) => (r.subcategory && r.subcategory.trim() ? r.subcategory.trim() : null);
 
-export default function QuoteCatalogue({ quoteId, canSeeCost, isLocked, onAdded, onToast }: Props) {
+export default function QuoteCatalogue({ quoteId, canSeeCost, isLocked, onAdded, onToast, activeSectionId = null }: Props) {
   const [rows, setRows] = useState<CatRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
   const [favOnly, setFavOnly] = useState(false);
+  // Stock-first default: the everyday catalogue is what Casone keeps in stock;
+  // "Show all" reveals the rest (never deleted — one-offs live on the One Off tab).
+  const [stockedOnly, setStockedOnlyState] = useState(() => {
+    try { return localStorage.getItem("casone.catalogue.stockedOnly") !== "false"; } catch { return true; }
+  });
+  const setStockedOnly = (v: boolean | ((p: boolean) => boolean)) => {
+    setStockedOnlyState((prev) => {
+      const next = typeof v === "function" ? v(prev) : v;
+      try { localStorage.setItem("casone.catalogue.stockedOnly", String(next)); } catch { /* ok */ }
+      return next;
+    });
+  };
+  const [recentIds, setRecentIds] = useState<string[]>(() => getRecentMaterialIds());
+  const [onHandById, setOnHandById] = useState<Map<string, number>>(new Map());
+  // Keyboard nav (search results): ArrowUp/Down + Enter from the search box.
+  const [highlightIdx, setHighlightIdx] = useState(-1);
   const [path, setPath] = useState<{ group: string | null; subgroup: string | null }>({ group: null, subgroup: null });
 
   const [qtys, setQtys] = useState<Record<string, number>>({});
   const [addingId, setAddingId] = useState<string | null>(null);
+  // Pricing floor (mig 94) for the below-floor sell flags (manager-only).
+  const [minMarkup, setMinMarkup] = useState(0.25);
   const [togglingFavId, setTogglingFavId] = useState<string | null>(null);
 
   // ── Load materials, compute display sell with the office markup ─────────────
@@ -73,7 +97,11 @@ export default function QuoteCatalogue({ quoteId, canSeeCost, isLocked, onAdded,
     (async () => {
       const settings = await getCommercialSettings().catch(() => null);
       const markup = settings ? settings.defaultMaterialMarkup : 0.25;
+      setMinMarkup(settings?.minMarkupPct ?? 0.25);
       const mats = await listMaterials();
+      void getCompanyTotals()
+        .then((totals) => setOnHandById(new Map(totals.map((t) => [t.materialId, t.total]))))
+        .catch(() => {});
       return mats.map<CatRow>((m) => {
         const cost = m.costPrice ?? 0;
         const sell = m.sellPrice != null ? m.sellPrice : m.costPrice != null ? m.costPrice * (1 + markup) : 0;
@@ -84,6 +112,7 @@ export default function QuoteCatalogue({ quoteId, canSeeCost, isLocked, onAdded,
           category: m.category,
           subcategory: m.subcategory,
           isFavourite: m.isFavourite,
+          isStockItem: m.isStockItem,
           materialCost: cost,
           sell: Math.round(sell * 100) / 100,
           meta,
@@ -99,20 +128,23 @@ export default function QuoteCatalogue({ quoteId, canSeeCost, isLocked, onAdded,
   const term = search.trim().toLowerCase();
   const flatMode = term.length > 0 || favOnly;
 
+  const scoped = useMemo(() => (stockedOnly ? rows.filter((r) => r.isStockItem) : rows), [rows, stockedOnly]);
+  const hiddenCount = rows.length - scoped.length;
+
   // ── Group structure ────────────────────────────────────────────────────────
   const groups = useMemo(() => {
     const byKey = new Map<string, number>();
-    for (const r of rows) byKey.set(groupKey(r), (byKey.get(groupKey(r)) ?? 0) + 1);
+    for (const r of scoped) byKey.set(groupKey(r), (byKey.get(groupKey(r)) ?? 0) + 1);
     return [...byKey.entries()]
       .sort((a, b) => (a[0] === OTHER_GROUP ? 1 : b[0] === OTHER_GROUP ? -1 : a[0].localeCompare(b[0])))
       .map(([key, count]) => ({ key, count }));
-  }, [rows]);
+  }, [scoped]);
 
-  const favCount = useMemo(() => rows.filter((r) => r.isFavourite).length, [rows]);
+  const favCount = useMemo(() => scoped.filter((r) => r.isFavourite).length, [scoped]);
 
   const groupView = useMemo(() => {
     if (!path.group) return null;
-    const inGroup = rows.filter((r) => groupKey(r) === path.group);
+    const inGroup = scoped.filter((r) => groupKey(r) === path.group);
     const subMap = new Map<string, number>();
     const directParts: CatRow[] = [];
     for (const r of inGroup) {
@@ -122,13 +154,13 @@ export default function QuoteCatalogue({ quoteId, canSeeCost, isLocked, onAdded,
     }
     const subgroups = [...subMap.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([key, count]) => ({ key, count }));
     return { subgroups, directParts };
-  }, [rows, path.group]);
+  }, [scoped, path.group]);
 
   const visibleParts = useMemo(() => {
-    if (favOnly && term) return rows.filter((r) => r.isFavourite && r.name.toLowerCase().includes(term));
-    if (favOnly) return rows.filter((r) => r.isFavourite);
+    if (favOnly && term) return scoped.filter((r) => r.isFavourite && r.name.toLowerCase().includes(term));
+    if (favOnly) return scoped.filter((r) => r.isFavourite);
     if (term) {
-      return rows.filter(
+      return scoped.filter(
         (r) =>
           r.name.toLowerCase().includes(term) ||
           r.meta.toLowerCase().includes(term) ||
@@ -137,10 +169,10 @@ export default function QuoteCatalogue({ quoteId, canSeeCost, isLocked, onAdded,
       );
     }
     if (path.group && path.subgroup) {
-      return rows.filter((r) => groupKey(r) === path.group && subKey(r) === path.subgroup);
+      return scoped.filter((r) => groupKey(r) === path.group && subKey(r) === path.subgroup);
     }
     return [];
-  }, [rows, favOnly, term, path.group, path.subgroup]);
+  }, [scoped, favOnly, term, path.group, path.subgroup]);
 
   // ── Actions ──────────────────────────────────────────────────────────────
   async function handleAdd(r: CatRow) {
@@ -148,13 +180,28 @@ export default function QuoteCatalogue({ quoteId, canSeeCost, isLocked, onAdded,
     const qty = Math.max(1, Math.floor(qtys[r.id] ?? 1));
     setAddingId(r.id);
     try {
-      await addQuoteItemFromMaterial(quoteId, r.id, qty);
+      await addQuoteItemFromMaterial(quoteId, r.id, qty, activeSectionId);
+      pushRecentMaterial(r.id);
+      setRecentIds(getRecentMaterialIds());
       onAdded();
       onToast?.(`Added ${r.name}${qty > 1 ? ` ×${qty}` : ""}`, "success");
     } catch (ex) {
       onToast?.(ex instanceof Error ? ex.message : "Failed to add material", "error");
     } finally {
       setAddingId(null);
+    }
+  }
+
+  // One-off used often? One click puts it on the stock list AND on the quote.
+  async function handleAddAndStock(r: CatRow) {
+    if (isLocked || addingId) return;
+    try {
+      await updateMaterial(r.id, { isStockItem: true });
+      setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, isStockItem: true } : x)));
+      await handleAdd(r);
+      onToast?.(`${r.name} marked as held in stock`, "info");
+    } catch (ex) {
+      onToast?.(ex instanceof Error ? ex.message : "Failed to mark as stocked", "error");
     }
   }
 
@@ -173,10 +220,11 @@ export default function QuoteCatalogue({ quoteId, canSeeCost, isLocked, onAdded,
   }
 
   // ── Render helpers ─────────────────────────────────────────────────────────
-  function partsTable(parts: CatRow[], emptyMsg: string) {
+  function partsTable(parts: CatRow[], emptyMsg: string, highlight = -1) {
     return (
+      <div className="max-h-[60vh] overflow-y-auto">
       <table className="min-w-full text-sm">
-        <thead>
+        <thead className="sticky top-0 z-10">
           <tr className="border-b border-[#E6E1D4] bg-[#FAF8F2]">
             <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Name</th>
             {canSeeCost && <th className="w-28 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Material cost</th>}
@@ -193,16 +241,31 @@ export default function QuoteCatalogue({ quoteId, canSeeCost, isLocked, onAdded,
               </td>
             </tr>
           )}
-          {parts.map((r) => {
+          {parts.map((r, idx) => {
             const qty = qtys[r.id] ?? 1;
+            const onHand = onHandById.get(r.id);
             return (
-              <tr key={r.id} className="border-b border-[#EFEBE0] last:border-0">
+              <tr key={r.id} className={`border-b border-[#EFEBE0] last:border-0 ${idx === highlight ? "bg-[#F0EDE4]" : ""}`}>
                 <td className="px-3 py-2 text-[#1A1A1A]">
                   {r.name}
                   {r.meta && <span className="ml-2 text-[11px] text-[#A0A0A0]">{r.meta}</span>}
+                  {r.isStockItem && onHand != null && (
+                    <span
+                      className={`ml-2 rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums ${onHand > 0 ? "bg-[#E5F2EA] text-[#246F47]" : "bg-[#FBE5E5] text-[#C44545]"}`}
+                      title="Live company-wide on-hand (factory + vans)"
+                    >
+                      {Number.isInteger(onHand) ? onHand : onHand.toFixed(1)} on hand
+                    </span>
+                  )}
+                  {!r.isStockItem && (
+                    <span className="ml-2 rounded-full border border-[#E6E1D4] bg-[#FAF8F2] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#A0A0A0]" title="Not on the stock list — quoted as a one-off item">one-off</span>
+                  )}
                 </td>
                 {canSeeCost && <td className="px-3 py-2 text-right tabular-nums text-[#A0A0A0]">{fmtMoney(r.materialCost)}</td>}
-                <td className="px-3 py-2 text-right tabular-nums text-[#3A3A3A]">{fmtMoney(r.sell)}</td>
+                <td
+                  className={`px-3 py-2 text-right tabular-nums ${canSeeCost && isBelowFloor(r.sell, r.materialCost, minMarkup) ? "font-medium text-[#C8841E]" : "text-[#3A3A3A]"}`}
+                  title={canSeeCost && isBelowFloor(r.sell, r.materialCost, minMarkup) ? "Below the minimum-markup floor" : undefined}
+                >{fmtMoney(r.sell)}</td>
                 <td className="px-3 py-2 text-center">
                   <button
                     type="button"
@@ -234,11 +297,22 @@ export default function QuoteCatalogue({ quoteId, canSeeCost, isLocked, onAdded,
                         type="button"
                         onClick={() => void handleAdd(r)}
                         disabled={addingId === r.id}
-                        className="inline-flex items-center gap-1 rounded-md bg-[#2F8F5C] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#287a4e] disabled:opacity-60"
+                        className="inline-flex min-h-[36px] items-center gap-1 rounded-md bg-[#2F8F5C] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#287a4e] disabled:opacity-60"
                       >
                         {addingId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
                         Add
                       </button>
+                      {!r.isStockItem && canSeeCost && (
+                        <button
+                          type="button"
+                          onClick={() => void handleAddAndStock(r)}
+                          disabled={addingId === r.id}
+                          title="Add to the quote AND put it on the stock list"
+                          className="inline-flex min-h-[36px] items-center rounded-md border border-[#E6E1D4] bg-white px-2 py-1.5 text-[11px] font-semibold text-[#2F8F5C] hover:bg-[#FAF8F2] disabled:opacity-50"
+                        >
+                          Add &amp; stock
+                        </button>
+                      )}
                     </div>
                   </td>
                 )}
@@ -247,6 +321,7 @@ export default function QuoteCatalogue({ quoteId, canSeeCost, isLocked, onAdded,
           })}
         </tbody>
       </table>
+      </div>
     );
   }
 
@@ -281,8 +356,17 @@ export default function QuoteCatalogue({ quoteId, canSeeCost, isLocked, onAdded,
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#A0A0A0]" />
           <input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search catalogue across all groups…"
+            onChange={(e) => { setSearch(e.target.value); setHighlightIdx(-1); }}
+            onKeyDown={(e) => {
+              if (!flatMode || visibleParts.length === 0) return;
+              if (e.key === "ArrowDown") { e.preventDefault(); setHighlightIdx((i) => Math.min(i + 1, visibleParts.length - 1)); }
+              else if (e.key === "ArrowUp") { e.preventDefault(); setHighlightIdx((i) => Math.max(i - 1, 0)); }
+              else if (e.key === "Enter" && highlightIdx >= 0 && highlightIdx < visibleParts.length) {
+                e.preventDefault();
+                void handleAdd(visibleParts[highlightIdx]);
+              }
+            }}
+            placeholder="Search catalogue across all groups… (↑↓ + Enter adds)"
             className="w-full rounded-md border border-[#E6E1D4] bg-white py-2 pl-9 pr-9 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
           />
           {search && (
@@ -296,7 +380,73 @@ export default function QuoteCatalogue({ quoteId, canSeeCost, isLocked, onAdded,
           <Star className="h-4 w-4 fill-[#E0A82E] text-[#E0A82E]" /> Favourites only
           {favCount > 0 && <span className="text-[#A0A0A0]">({favCount})</span>}
         </label>
+        {/* Stock-first: filtered, not removed */}
+        <button
+          type="button"
+          onClick={() => {
+            setStockedOnly((v) => !v);
+            // The group tree changes with the scope — a group can vanish while
+            // you're inside it, stranding an empty view. Start from the top.
+            setPath({ group: null, subgroup: null });
+          }}
+          aria-pressed={!stockedOnly}
+          title="Stocked items are what Casone keeps on the shelf; everything else is quoted as a one-off"
+          className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+            stockedOnly ? "border-[#E6E1D4] bg-white text-[#6B6B6B] hover:border-[#D8D2C4]" : "border-[#2F8F5C] bg-[#E5F2EA] text-[#246F47]"
+          }`}
+        >
+          {stockedOnly ? `Show all items${hiddenCount > 0 ? ` (+${hiddenCount})` : ""}` : "Show stocked only"}
+        </button>
       </div>
+      {stockedOnly && (
+        <p className="-mt-1 mb-3 text-[11px] text-[#A0A0A0]">
+          Showing what Casone keeps in stock. Need something we don't stock? Add it as a <span className="font-medium text-[#6B6B6B]">One Off item</span> — or hit “Show all items”.
+        </p>
+      )}
+
+      {/* Recently used — the last few materials added to any quote (this browser) */}
+      {!isLocked && recentIds.length > 0 && (() => {
+        const recentRows = recentIds
+          .map((id) => rows.find((r) => r.id === id))
+          .filter((r): r is CatRow => !!r)
+          .slice(0, 8);
+        if (recentRows.length === 0) return null;
+        return (
+          <div className="mb-3">
+            <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#A0A0A0]">Recently used</p>
+            <div className="flex flex-wrap gap-1.5">
+              {recentRows.map((r) => (
+                <button
+                  key={r.id}
+                  type="button"
+                  disabled={addingId === r.id}
+                  onClick={() => void handleAdd(r)}
+                  title={`Add ${r.name} (qty ${qtys[r.id] ?? 1})`}
+                  className="inline-flex min-h-[32px] items-center gap-1 rounded-full border border-[#E6E1D4] bg-white px-2.5 py-1 text-xs font-medium text-[#3A3A3A] hover:border-[#2F8F5C] hover:text-[#1A1A1A] disabled:opacity-50"
+                >
+                  <Plus className="h-3 w-3 text-[#2F8F5C]" />
+                  {r.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* First-run: materials exist but none marked as stocked yet */}
+      {stockedOnly && rows.length > 0 && scoped.length === 0 && (
+        <div className="mb-4 rounded-[10px] border border-[#E6E1D4] bg-white px-4 py-4">
+          <p className="text-sm font-semibold text-[#1A1A1A]">Nothing marked as “held in stock” yet</p>
+          <p className="mt-1 text-[13px] leading-relaxed text-[#6B6B6B]">
+            The stock-first catalogue shows only items on Casone's stock list. Tick them in bulk in
+            <span className="font-medium"> Sales → Catalogue → Materials</span> (select rows → “Mark held in stock”), or
+            import the stock list via the <span className="font-medium">Import</span> tab.
+          </p>
+          <button type="button" onClick={() => setStockedOnly(false)} className="mt-2 rounded-full border border-[#2F8F5C] bg-[#E5F2EA] px-3 py-1 text-xs font-medium text-[#246F47]">
+            Show all {rows.length} items for now
+          </button>
+        </div>
+      )}
 
       {/* Breadcrumb (drill-down mode only) */}
       {!flatMode && (
@@ -332,7 +482,7 @@ export default function QuoteCatalogue({ quoteId, canSeeCost, isLocked, onAdded,
       {/* ── Flat results (search / favourites) ── */}
       {flatMode && (
         <div className="overflow-x-auto rounded-[10px] border border-[#E6E1D4] bg-white">
-          {partsTable(visibleParts, favOnly ? "No favourites yet — star a material to add it here." : `No catalogue items match “${search.trim()}”.`)}
+          {partsTable(visibleParts, favOnly ? "No favourites yet — star a material to add it here." : `No catalogue items match “${search.trim()}” — check “Show all items”, or add it as a One Off line.`, highlightIdx)}
         </div>
       )}
 

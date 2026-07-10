@@ -84,12 +84,14 @@ function MaterialPicker({
   const [open, setOpen] = useState(false);
   const selected = materials.find((m) => m.id === value);
   const filtered = query
-    ? materials.filter(
-        (m) =>
-          m.name.toLowerCase().includes(query.toLowerCase()) ||
-          (m.sku?.toLowerCase() ?? "").includes(query.toLowerCase()),
-      )
-    : materials.slice(0, 30);
+    ? materials
+        .filter(
+          (m) =>
+            m.name.toLowerCase().includes(query.toLowerCase()) ||
+            (m.sku?.toLowerCase() ?? "").includes(query.toLowerCase()),
+        )
+        .sort((a, b) => Number(b.isStockItem) - Number(a.isStockItem)) // stock-first
+    : [...materials].sort((a, b) => Number(b.isStockItem) - Number(a.isStockItem)).slice(0, 30);
 
   return (
     <div className="relative">

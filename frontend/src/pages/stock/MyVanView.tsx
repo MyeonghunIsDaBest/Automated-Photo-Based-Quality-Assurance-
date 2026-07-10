@@ -4,12 +4,16 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useState } from "react";
-import { PackagePlus, Loader2, Truck, AlertTriangle } from "lucide-react";
+import { PackagePlus, Loader2, Truck, AlertTriangle, Package, ChevronRight } from "lucide-react";
 
 import { Toaster } from "../../components/ui/Toaster";
 import { cardShell, btnPrimary, FRAUNCES } from "../gantt/components/ledger";
-import { myVan, listStockLevels, subscribeToStockLevels, type StockLocation, type StockLevel } from "../../lib/api/stock";
+import {
+  myVan, listStockLevels, subscribeToStockLevels, listMyPendingAllocations,
+  type StockLocation, type StockLevel, type StockAllocation,
+} from "../../lib/api/stock";
 import RecordUsageDrawer from "./RecordUsageDrawer";
+import JobBoxAcceptSheet from "./JobBoxAcceptSheet";
 
 type ToastState = { message: string; type: "success" | "error" | "info" } | null;
 
@@ -24,18 +28,29 @@ export default function MyVanView() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [toast, setToast] = useState<ToastState>(null);
 
+  // Pending job boxes (accept at pickup) — loaded even with no van assigned,
+  // so the worker still sees the box and the accept error explains the fix.
+  const [pendingBoxes, setPendingBoxes] = useState<StockAllocation[]>([]);
+  const [activeBox, setActiveBox] = useState<StockAllocation | null>(null);
+
   const refetchLevels = useCallback(async (locId: string) => {
     const rows = await listStockLevels(locId).catch(() => []);
     setLevels(rows);
   }, []);
 
+  const refetchPending = useCallback(async () => {
+    const boxes = await listMyPendingAllocations().catch(() => []);
+    setPendingBoxes(boxes);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    myVan()
-      .then(async (v) => {
+    Promise.all([myVan(), listMyPendingAllocations().catch(() => [] as StockAllocation[])])
+      .then(async ([v, boxes]) => {
         if (cancelled) return;
         setVan(v);
+        setPendingBoxes(boxes);
         if (v) await refetchLevels(v.id);
       })
       .catch(() => {})
@@ -50,6 +65,19 @@ export default function MyVanView() {
     return unsub;
   }, [van, refetchLevels]);
 
+  // A box packed while this page is open doesn't move stock (nothing to
+  // subscribe to yet), so refresh the pending banner whenever the worker
+  // comes back to the tab/app — i.e. at pickup, when it matters.
+  useEffect(() => {
+    const onFocus = () => void refetchPending();
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
+  }, [refetchPending]);
+
   if (loading) {
     return (
       <div className={`flex items-center gap-2 px-5 py-8 text-sm text-[#A0A0A0] ${cardShell}`}>
@@ -58,13 +86,62 @@ export default function MyVanView() {
     );
   }
 
+  // Banner: pending boxes, shown with or without a van.
+  const boxesBanner = pendingBoxes.length > 0 && (
+    <div className={`mb-4 overflow-hidden ${cardShell} border-[#E8D8B5]`}>
+      <div className="bg-[#F9EFD9] px-5 py-3">
+        <p className="flex items-center gap-2 text-sm font-semibold text-[#8A6B1E]">
+          <Package className="h-4 w-4" />
+          {pendingBoxes.length} job box{pendingBoxes.length === 1 ? "" : "es"} waiting — accept at pickup
+        </p>
+      </div>
+      <ul className="divide-y divide-[#EFEBE0]">
+        {pendingBoxes.map((b) => (
+          <li key={b.id}>
+            <button
+              type="button"
+              onClick={() => setActiveBox(b)}
+              className="flex min-h-14 w-full items-center gap-3 px-5 py-3 text-left hover:bg-[#FAF8F2]"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-[#1A1A1A]">{b.jobLabel}</p>
+                <p className="truncate text-[12px] text-[#6B6B6B]">
+                  {b.lines.length} item{b.lines.length === 1 ? "" : "s"} · from {b.sourceLocationName}
+                </p>
+              </div>
+              <ChevronRight className="h-4 w-4 shrink-0 text-[#A0A0A0]" />
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+
+  const acceptSheet = (
+    <JobBoxAcceptSheet
+      box={activeBox}
+      onClose={() => setActiveBox(null)}
+      onDone={(message) => {
+        setActiveBox(null);
+        setToast({ message, type: "success" });
+        void refetchPending();
+        if (van) void refetchLevels(van.id);
+      }}
+    />
+  );
+
   if (!van) {
     return (
-      <div className={`px-5 py-10 text-center ${cardShell}`}>
-        <Truck className="mx-auto mb-2 h-7 w-7 text-[#A0A0A0]" />
-        <p className="text-sm font-medium text-[#1A1A1A]">No van assigned to you yet</p>
-        <p className="mt-1 text-sm text-[#6B6B6B]">Ask your manager to assign you a van in the Stock area, then your stock shows up here.</p>
-      </div>
+      <>
+        {boxesBanner}
+        <div className={`px-5 py-10 text-center ${cardShell}`}>
+          <Truck className="mx-auto mb-2 h-7 w-7 text-[#A0A0A0]" />
+          <p className="text-sm font-medium text-[#1A1A1A]">No van assigned to you yet</p>
+          <p className="mt-1 text-sm text-[#6B6B6B]">Ask your manager to assign you a van in the Stock area, then your stock shows up here.</p>
+        </div>
+        {acceptSheet}
+        {toast && <Toaster message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+      </>
     );
   }
 
@@ -72,6 +149,8 @@ export default function MyVanView() {
 
   return (
     <>
+      {boxesBanner}
+
       {/* Van header + record action */}
       <div className={`mb-4 flex flex-wrap items-center justify-between gap-3 px-5 py-4 ${cardShell}`}>
         <div>
@@ -125,6 +204,8 @@ export default function MyVanView() {
         items={levels}
         onDone={(message) => { setToast({ message, type: "success" }); void refetchLevels(van.id); }}
       />
+
+      {acceptSheet}
 
       {toast && <Toaster message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </>

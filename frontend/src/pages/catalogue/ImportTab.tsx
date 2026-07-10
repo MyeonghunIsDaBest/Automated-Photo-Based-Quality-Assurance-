@@ -24,6 +24,7 @@ import { Toaster } from "../../components/ui/Toaster";
 
 import { parseMaterialsCsv, planImport, type CsvMaterialRow, type ImportPlan } from "../../lib/catalogue/csv";
 import { listMaterials, runImport } from "../../lib/api/materials";
+import PrebuildImportCard from "./PrebuildImportCard";
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -38,8 +39,8 @@ interface Props {
 // ─── template CSV content ─────────────────────────────────────────────────────
 
 const CSV_TEMPLATE =
-  "sku,name,unit,cost_price,sell_price,tags,description\r\n" +
-  'TPS25,"2.5mm TPS cable",m,1.10,2.20,cable|consumable,Twin and earth\r\n';
+  "sku,name,unit,cost_price,sell_price,tags,description,category,subcategory,is_stock_item,is_favourite\r\n" +
+  'TPS25,"2.5mm TPS cable",m,1.10,2.20,cable|consumable,Twin and earth,Electrical,Cables,yes,no\r\n';
 
 // ─── summary chip ─────────────────────────────────────────────────────────────
 
@@ -71,6 +72,9 @@ function SummaryChip({
 
 export default function ImportTab({ onWritten }: Props) {
   const fileRef  = useRef<HTMLInputElement>(null);
+  // Bumped on reset/new file so an in-flight re-plan can't resurrect a stage
+  // the user has already left.
+  const planSeq  = useRef(0);
 
   const [stage, setStage]       = useState<Stage>("idle");
   const [busy, setBusy]         = useState(false);
@@ -99,6 +103,7 @@ export default function ImportTab({ onWritten }: Props) {
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    planSeq.current += 1;
     const reader = new FileReader();
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
@@ -116,10 +121,12 @@ export default function ImportTab({ onWritten }: Props) {
     reader.readAsText(file);
   }
 
-  async function handlePlan() {
+  async function handlePlan(opts?: { refreshOnly?: boolean }) {
+    const seq = planSeq.current;
     setBusy(true);
     try {
       const existing = await listMaterials({ includeInactive: true });
+      if (seq !== planSeq.current) return; // user reset / picked a new file mid-flight
       const p = planImport(
         existing.map((m) => ({
           id: m.id,
@@ -131,7 +138,9 @@ export default function ImportTab({ onWritten }: Props) {
       );
       setPlan(p);
       setSkipsOpen(false);
-      setStage("plan");
+      // refreshOnly (post-confirm): update the plan in place so the result
+      // panel stays visible — the user switches over via "Review updated plan".
+      if (!opts?.refreshOnly) setStage("plan");
     } catch (err) {
       setToast({ message: err instanceof Error ? err.message : "Failed to fetch existing materials", type: "error" });
     } finally {
@@ -145,11 +154,10 @@ export default function ImportTab({ onWritten }: Props) {
     try {
       const res = await runImport(plan);
       setResult(res);
-      // Always re-plan after a confirm attempt so the next confirm reflects
-      // reality (sku-less adds would duplicate on re-run without re-planning).
-      // Fire-and-forget — it updates stage to "plan" asynchronously; we show
-      // the result panel first (stage set below) and overwrite with the fresh
-      // plan once it resolves.
+      // The pre-import plan is stale now — drop it so nobody can confirm it
+      // twice (sku-less adds would duplicate), and refresh it in place while
+      // the result panel stays on screen.
+      setPlan(null);
       setStage("result");
       onWritten();
       if (res.failed.count === 0) {
@@ -160,9 +168,7 @@ export default function ImportTab({ onWritten }: Props) {
           type: "info",
         });
       }
-      // Re-compute the plan against the now-updated database so a retry
-      // confirms against reality rather than the stale pre-import plan.
-      void handlePlan();
+      void handlePlan({ refreshOnly: true });
     } catch (err) {
       setToast({ message: err instanceof Error ? err.message : "Import failed", type: "error" });
     } finally {
@@ -171,6 +177,7 @@ export default function ImportTab({ onWritten }: Props) {
   }
 
   function handleReset() {
+    planSeq.current += 1;
     setStage("idle");
     setParseErrors([]);
     setValidRows([]);
@@ -181,6 +188,7 @@ export default function ImportTab({ onWritten }: Props) {
   }
 
   return (
+    <div className="space-y-6">
     <div className={`${cardShell} overflow-hidden`}>
       {/* Header */}
       <div className="flex items-center justify-between border-b border-[#E6E1D4] px-5 py-4">
@@ -209,7 +217,7 @@ export default function ImportTab({ onWritten }: Props) {
             <div className="text-center">
               <p className="text-sm font-medium text-[#3A3A3A]">Upload a CSV file to import materials</p>
               <p className="mt-1 text-xs text-[#A0A0A0]">
-                Must use the required 7-column format. Download the template to get started.
+                Needs the 7 core columns; group/subgroup/stock/favourite columns are optional. Download the template to see all 11.
               </p>
             </div>
             <label className={btnPrimary + " cursor-pointer"}>
@@ -253,7 +261,7 @@ export default function ImportTab({ onWritten }: Props) {
                   <table className="min-w-full text-xs">
                     <thead className="bg-[#FAF8F2] border-b border-[#E6E1D4]">
                       <tr>
-                        {["SKU", "Name", "Unit", "Cost", "Sell", "Tags", "Description"].map((h) => (
+                        {["SKU", "Name", "Unit", "Cost", "Sell", "Group", "Stock", "Fav", "Tags", "Description"].map((h) => (
                           <th key={h} className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]">
                             {h}
                           </th>
@@ -265,9 +273,12 @@ export default function ImportTab({ onWritten }: Props) {
                         <tr key={i}>
                           <td className="px-3 py-2 font-mono text-[#6B6B6B]">{row.sku ?? "—"}</td>
                           <td className="px-3 py-2 text-[#1A1A1A]">{row.name}</td>
-                          <td className="px-3 py-2">{row.unit}</td>
+                          <td className="px-3 py-2">{row.unit ?? "—"}</td>
                           <td className="px-3 py-2 tabular-nums">{row.costPrice != null ? `$${row.costPrice.toFixed(2)}` : "—"}</td>
                           <td className="px-3 py-2 tabular-nums">{row.sellPrice != null ? `$${row.sellPrice.toFixed(2)}` : "—"}</td>
+                          <td className="px-3 py-2 text-[#6B6B6B]">{row.category ? `${row.category}${row.subcategory ? ` › ${row.subcategory}` : ""}` : "—"}</td>
+                          <td className="px-3 py-2">{row.isStockItem == null ? "—" : row.isStockItem ? "✓" : "✕"}</td>
+                          <td className="px-3 py-2">{row.isFavourite == null ? "—" : row.isFavourite ? "★" : "—"}</td>
                           <td className="px-3 py-2">{row.tags.join(", ") || "—"}</td>
                           <td className="px-3 py-2 max-w-[160px] truncate text-[#6B6B6B]">{row.description ?? "—"}</td>
                         </tr>
@@ -374,24 +385,37 @@ export default function ImportTab({ onWritten }: Props) {
               <div className="rounded-[10px] border border-[#F0BFBF] bg-[#FBE5E5] px-4 py-3 space-y-1">
                 <p className="text-xs font-semibold text-[#C44545]">
                   {result.failed.count} row{result.failed.count !== 1 ? "s" : ""} failed to import.
-                  {" "}Already-imported rows will be skipped or updated on re-run — use the plan below to confirm.
+                  {" "}Already-imported rows will be skipped or updated on re-run — review the updated plan before retrying.
                 </p>
                 {result.failed.firstError && (
                   <p className="text-xs text-[#C44545]">First error: {result.failed.firstError}</p>
                 )}
               </div>
             )}
-            <button type="button" onClick={handleReset} className={btnPrimary}>
-              Import another file
-            </button>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={handleReset} className={btnPrimary}>
+                Import another file
+              </button>
+              {plan ? (
+                <button type="button" onClick={() => setStage("plan")} className={btnGhost}>
+                  Review updated plan
+                </button>
+              ) : (
+                <span className="text-xs text-[#A0A0A0]">Refreshing the plan against the catalogue…</span>
+              )}
+            </div>
           </div>
         )}
 
       </div>
+    </div>
 
-      {toast && (
-        <Toaster message={toast.message} type={toast.type} onClose={() => setToast(null)} />
-      )}
+    {/* Pre-builds import (P3) — assemblies matched to catalogue parts by SKU */}
+    <PrebuildImportCard onWritten={onWritten} onToast={setToast} />
+
+    {toast && (
+      <Toaster message={toast.message} type={toast.type} onClose={() => setToast(null)} />
+    )}
     </div>
   );
 }

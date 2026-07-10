@@ -8,7 +8,7 @@
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Plus, RefreshCw, Search, Package, Trash2, X } from "lucide-react";
+import { Plus, RefreshCw, Search, Package, Trash2, X, Printer, Send } from "lucide-react";
 
 import { FRAUNCES, TONE, cardShell, btnPrimary, btnGhost } from "../gantt/components/ledger";
 import { SkeletonLine } from "../../components/ui/skeleton";
@@ -25,6 +25,7 @@ import {
   updateVariationItem,
   removeVariationItem,
   priceVariation,
+  sendVariation,
   approveVariation,
   declineVariation,
   type Variation,
@@ -42,6 +43,10 @@ type AddMode = "catalogue" | "prebuild" | "free" | null;
 
 interface Props {
   onChanged: () => void;
+  /** Deep-link from a job ("Add variation") — opens the create modal prefilled. */
+  initialJobId?: string | null;
+  /** Called once the deep link has been used, so the parent clears the seed. */
+  onJobSeedConsumed?: () => void;
 }
 
 // â”€â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -69,6 +74,7 @@ function ageLabel(createdAt: string): string {
 const STATUS_TONE: Record<VariationStatus, keyof typeof TONE> = {
   draft:    "ink",
   priced:   "amber",
+  sent:     "slate",
   approved: "sage",
   declined: "red",
 };
@@ -76,11 +82,12 @@ const STATUS_TONE: Record<VariationStatus, keyof typeof TONE> = {
 const STATUS_LABELS: Record<VariationStatus, string> = {
   draft:    "Draft",
   priced:   "Priced",
-  approved: "Approved",
+  sent:     "Sent",
+  approved: "Accepted",
   declined: "Declined",
 };
 
-const ALL_STATUSES: VariationStatus[] = ["draft", "priced", "approved", "declined"];
+const ALL_STATUSES: VariationStatus[] = ["draft", "priced", "sent", "approved", "declined"];
 
 // â”€â”€â”€ NumCell (inline edit) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -131,17 +138,20 @@ function SkeletonRow() {
 function NewVariationModal({
   jobs,
   projects,
+  initialJob = null,
   onConfirm,
   onClose,
 }: {
   jobs: ServiceJob[];
   projects: ProjectRow[];
+  /** Prefill the job context (the on-site "Add variation" deep link). */
+  initialJob?: string | null;
   onConfirm: (title: string, contextType: "job" | "project" | "none", contextId: string | null) => Promise<void>;
   onClose: () => void;
 }) {
   const [title, setTitle] = useState("");
-  const [contextType, setContextType] = useState<"job" | "project" | "none">("none");
-  const [contextId, setContextId] = useState("");
+  const [contextType, setContextType] = useState<"job" | "project" | "none">(initialJob ? "job" : "none");
+  const [contextId, setContextId] = useState(initialJob ?? "");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -310,7 +320,8 @@ function VariationEditorPanel({
       const q = stripSearchChars(catSearch.trim());
       try {
         const mats = await listMaterials({ search: q || undefined });
-        setCatResults(mats.slice(0, 12));
+        // Stock-first ordering: stocked items surface before one-offs.
+        setCatResults([...mats].sort((a, b) => Number(b.isStockItem) - Number(a.isStockItem)).slice(0, 12));
       } catch { setCatResults([]); }
     }, 300);
     return () => { if (catDebRef.current) clearTimeout(catDebRef.current); };
@@ -385,15 +396,23 @@ function VariationEditorPanel({
     } finally { setAddingFree(false); }
   }
 
-  async function handleAction(action: "price" | "approve" | "decline") {
+  async function handleAction(action: "price" | "send" | "approve" | "decline") {
     setSaving(true);
     try {
       if (action === "price") {
         await priceVariation(variationId);
         onToast({ message: "Variation marked as priced.", type: "success" });
+      } else if (action === "send") {
+        await sendVariation(variationId);
+        onToast({ message: "Marked sent — show or email the printed variation to the customer.", type: "success" });
       } else if (action === "approve") {
         await approveVariation(variationId);
-        onToast({ message: "Approved â€” it will be added to the next invoice created from this job.", type: "success" });
+        onToast({
+          message: variation?.serviceJobId
+            ? "Accepted — folded into the job as a cost centre; it'll be on the invoice created from this job."
+            : "Accepted.",
+          type: "success",
+        });
       } else {
         await declineVariation(variationId);
         onToast({ message: "Variation declined.", type: "info" });
@@ -403,6 +422,48 @@ function VariationEditorPanel({
     } catch (ex) {
       onToast({ message: ex instanceof Error ? ex.message : "Action failed", type: "error" });
     } finally { setSaving(false); }
+  }
+
+  // Quote-format print sheet (mirrors the PO print pattern) — show/email on site.
+  function printVariation() {
+    if (!variation) return;
+    const rows = items.map((i) => `
+      <tr>
+        <td>${i.description.replace(/</g, "&lt;")}</td>
+        <td class="num">${i.qty}</td>
+        <td class="num">${fmtMoney(i.unitPriceExGst)}</td>
+        <td class="num">${fmtMoney(i.qty * i.unitPriceExGst)}</td>
+      </tr>`).join("");
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Variation — ${variation.title.replace(/</g, "&lt;")}</title>
+      <style>
+        body { font-family: Georgia, serif; color: #1A1A1A; margin: 40px; }
+        h1 { font-size: 22px; margin: 0 0 2px; } .muted { color: #6B6B6B; font-size: 13px; }
+        p.desc { margin-top: 14px; white-space: pre-wrap; font-size: 14px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 18px; font-size: 14px; }
+        th { text-align: left; border-bottom: 1px solid #999; padding: 6px 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+        td { border-bottom: 1px solid #E6E1D4; padding: 7px 8px; }
+        .num { text-align: right; font-variant-numeric: tabular-nums; }
+        tfoot td { border-bottom: none; font-weight: bold; }
+      </style></head><body>
+      <h1>Variation — ${variation.title.replace(/</g, "&lt;")}</h1>
+      <p class="muted">Casone Electrical · ${contextLabel.replace(/</g, "&lt;")} · ${new Date().toLocaleDateString()}</p>
+      ${variation.description ? `<p class="desc">${variation.description.replace(/</g, "&lt;")}</p>` : ""}
+      <table>
+        <thead><tr><th>Description</th><th class="num">Qty</th><th class="num">Unit</th><th class="num">Total</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot>
+          <tr><td colspan="3" class="num">Subtotal (ex GST)</td><td class="num">${fmtMoney(variation.subtotalExGst)}</td></tr>
+          <tr><td colspan="3" class="num">GST</td><td class="num">${fmtMoney(variation.gstAmount)}</td></tr>
+          <tr><td colspan="3" class="num">Total (inc GST)</td><td class="num">${fmtMoney(variation.totalIncGst)}</td></tr>
+        </tfoot>
+      </table>
+      </body></html>`;
+    const w = window.open("", "_blank", "width=800,height=900");
+    if (!w) { onToast({ message: "Allow pop-ups to print the variation.", type: "error" }); return; }
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    w.print();
   }
 
   const contextLabel = variation
@@ -619,6 +680,11 @@ function VariationEditorPanel({
             {STATUS_LABELS[variation.status]}
           </span>
           <div className="ml-auto flex flex-wrap gap-2">
+            {(variation.status === "priced" || variation.status === "sent") && (
+              <button type="button" onClick={printVariation} className={btnGhost}>
+                <Printer className="h-4 w-4" /> Print
+              </button>
+            )}
             {variation.status === "draft" && (
               <button type="button" disabled={saving} onClick={() => void handleAction("price")} className={btnPrimary}>
                 Mark priced
@@ -626,11 +692,21 @@ function VariationEditorPanel({
             )}
             {variation.status === "priced" && (
               <>
-                <button type="button" disabled={saving} onClick={() => void handleAction("approve")} className={btnPrimary}>
-                  Approve
+                <button type="button" disabled={saving} onClick={() => void handleAction("send")} className={btnPrimary}>
+                  <Send className="h-4 w-4" /> Send to customer
                 </button>
                 <button type="button" disabled={saving} onClick={() => void handleAction("decline")} className={btnGhost}>
                   Decline
+                </button>
+              </>
+            )}
+            {variation.status === "sent" && (
+              <>
+                <button type="button" disabled={saving} onClick={() => void handleAction("approve")} className={btnPrimary}>
+                  Mark accepted
+                </button>
+                <button type="button" disabled={saving} onClick={() => void handleAction("decline")} className={btnGhost}>
+                  Declined by customer
                 </button>
               </>
             )}
@@ -643,7 +719,7 @@ function VariationEditorPanel({
 
 // â”€â”€â”€ component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-export default function VariationsTab({ onChanged }: Props) {
+export default function VariationsTab({ onChanged, initialJobId = null, onJobSeedConsumed }: Props) {
   const [variations, setVariations] = useState<Variation[]>([]);
   const [jobs, setJobs]             = useState<ServiceJob[]>([]);
   const [projects, setProjects]     = useState<ProjectRow[]>([]);
@@ -652,6 +728,9 @@ export default function VariationsTab({ onChanged }: Props) {
   const [statusFilter, setStatusFilter] = useState<VariationStatus | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showNewModal, setShowNewModal] = useState(false);
+  // Job the create modal opens prefilled with (held locally so consuming the
+  // parent's one-shot seed doesn't blank the modal while it's open).
+  const [modalJobSeed, setModalJobSeed] = useState<string | null>(null);
   const [toast, setToast]           = useState<ToastState>(null);
   const contextLoaded               = useRef(false);
 
@@ -669,6 +748,19 @@ export default function VariationsTab({ onChanged }: Props) {
   }, [statusFilter]);
 
   useEffect(() => { void fetchVariations(); }, [fetchVariations]);
+
+  // Deep-link from a job ("Add variation"): open the create modal prefilled,
+  // then consume the seed so it can't re-trigger (tab switches, remounts).
+  useEffect(() => {
+    if (initialJobId) {
+      setModalJobSeed(initialJobId);
+      setShowNewModal(true);
+      onJobSeedConsumed?.();
+    }
+  }, [initialJobId, onJobSeedConsumed]);
+
+  // Any close path clears the prefill so a manual "New variation" starts clean.
+  useEffect(() => { if (!showNewModal) setModalJobSeed(null); }, [showNewModal]);
 
   useEffect(() => {
     if (contextLoaded.current) return;
@@ -835,6 +927,7 @@ export default function VariationsTab({ onChanged }: Props) {
         <NewVariationModal
           jobs={jobs}
           projects={projects}
+          initialJob={modalJobSeed}
           onConfirm={handleCreate}
           onClose={() => setShowNewModal(false)}
         />

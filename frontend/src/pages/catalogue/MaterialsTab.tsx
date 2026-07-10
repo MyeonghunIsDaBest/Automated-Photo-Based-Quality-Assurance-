@@ -25,10 +25,13 @@ import {
   listMaterials,
   listTags,
   setMaterialActive,
+  updateMaterial,
   deleteMaterial,
   type Material,
   type MaterialTag,
 } from "../../lib/api/materials";
+import { getCommercialSettings } from "../../lib/api/commercial";
+import { isBelowFloor } from "../../lib/commercial/money";
 import { canManageCatalogue } from "../../lib/permissions";
 import { useAppStore } from "../../store";
 import MaterialFormModal, { type MaterialFormInitial } from "./MaterialFormModal";
@@ -69,6 +72,7 @@ export default function MaterialsTab({ onWritten }: Props) {
   const currentProfile = useAppStore((s) => s.currentProfile);
   const currentUser    = useAppStore((s) => s.currentUser);
   const showPrices     = canManageCatalogue(currentProfile ?? currentUser);
+  const canManage      = showPrices;
 
   const [materials, setMaterials]         = useState<Material[]>([]);
   const [tags, setTags]                   = useState<MaterialTag[]>([]);
@@ -77,11 +81,21 @@ export default function MaterialsTab({ onWritten }: Props) {
 
   const [search, setSearch]               = useState("");
   const [activeTag, setActiveTag]         = useState<string | null>(null);
+  // Stock-first admin filters (Luke's tick-off workflow, master plan P2).
+  const [stockFilter, setStockFilter]     = useState<"all" | "stocked" | "oneoff">("all");
+  const [selected, setSelected]           = useState<Set<string>>(new Set());
+  const [bulkMarking, setBulkMarking]     = useState(false);
   const [includeInactive, setIncludeInactive] = useState(false);
 
   const [modal, setModal]                 = useState<MaterialFormInitial | null>(null);
+
+  useEffect(() => {
+    getCommercialSettings().then((cs) => { if (cs) setMinMarkup(cs.minMarkupPct ?? 0.25); }).catch(() => {});
+  }, []);
   const [showModal, setShowModal]         = useState(false);
   const [toast, setToast]                 = useState<ToastState>(null);
+  // Pricing floor (mig 94) — flags sells below cost x (1 + floor). Managers only see prices anyway.
+  const [minMarkup, setMinMarkup]         = useState(0.25);
 
   // Permanent-delete confirm (distinct from the reversible archive/deactivate).
   const [confirmDelete, setConfirmDelete] = useState<Material | null>(null);
@@ -103,6 +117,20 @@ export default function MaterialsTab({ onWritten }: Props) {
     };
   }, [search]);
 
+  const stockedCount = materials.filter((m) => m.isStockItem).length;
+  const shown =
+    stockFilter === "stocked" ? materials.filter((m) => m.isStockItem)
+    : stockFilter === "oneoff" ? materials.filter((m) => !m.isStockItem)
+    : materials;
+
+  function toggleSelected(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
   const fetchMaterials = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -117,6 +145,9 @@ export default function MaterialsTab({ onWritten }: Props) {
       ]);
       setMaterials(mats);
       setTags(tagList);
+      // Prune the bulk selection to rows that still exist — a search/tag/archive
+      // refetch must never leave invisible ids inside a pending bulk action.
+      setSelected((prev) => new Set(mats.filter((m) => prev.has(m.id)).map((m) => m.id)));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load materials");
     } finally {
@@ -127,6 +158,37 @@ export default function MaterialsTab({ onWritten }: Props) {
   useEffect(() => {
     void fetchMaterials();
   }, [fetchMaterials]);
+
+  async function handleBulkSetStocked(value: boolean) {
+    if (selected.size === 0 || bulkMarking) return;
+    setBulkMarking(true);
+    const ids = [...selected];
+    try {
+      const results = await Promise.allSettled(ids.map((id) => updateMaterial(id, { isStockItem: value })));
+      const okIds = ids.filter((_, i) => results[i].status === "fulfilled");
+      const failed = ids.length - okIds.length;
+      // Only failed ids stay selected — retry hits just what's left.
+      setSelected(new Set(ids.filter((_, i) => results[i].status === "rejected")));
+      setToast({
+        message: failed === 0
+          ? `${okIds.length} item${okIds.length === 1 ? "" : "s"} ${value ? "marked as held in stock" : "removed from the stock list"}.`
+          : `${okIds.length} of ${ids.length} updated — ${failed} failed and stay selected for retry.`,
+        type: failed === 0 ? "success" : "error",
+      });
+    } finally {
+      // Refetch regardless — partial successes must show immediately.
+      await fetchMaterials();
+      setBulkMarking(false);
+    }
+  }
+
+  // Esc clears the bulk selection (fast bail-out mid-sweep).
+  useEffect(() => {
+    if (selected.size === 0) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setSelected(new Set()); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selected.size]);
 
   function openAdd() {
     setModal(null);
@@ -216,6 +278,50 @@ export default function MaterialsTab({ onWritten }: Props) {
           />
         </div>
 
+        {/* Stock filter chips (Luke's tick-off workflow: All / Stocked / One-off) */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {([
+            { key: "all", label: `All (${materials.length})` },
+            { key: "stocked", label: `Stocked (${stockedCount})` },
+            { key: "oneoff", label: `One-off (${materials.length - stockedCount})` },
+          ] as { key: "all" | "stocked" | "oneoff"; label: string }[]).map((c) => (
+            <button
+              key={c.key}
+              type="button"
+              onClick={() => setStockFilter(c.key)}
+              className={`rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors ${
+                stockFilter === c.key
+                  ? "border-[#1A1A1A] bg-[#1A1A1A] text-white"
+                  : "border-[#E6E1D4] bg-white text-[#6B6B6B] hover:border-[#D8D2C4]"
+              }`}
+            >
+              {c.label}
+            </button>
+          ))}
+          {canManage && selected.size > 0 && (
+            <button
+              type="button"
+              onClick={() => void handleBulkSetStocked(true)}
+              disabled={bulkMarking}
+              className="ml-2 inline-flex items-center gap-1.5 rounded-full bg-[#2F8F5C] px-3 py-1 text-xs font-semibold text-white hover:bg-[#287a4e] disabled:opacity-60"
+            >
+              {bulkMarking ? <RefreshCw className="h-3 w-3 animate-spin" /> : null}
+              Mark held in stock ({selected.size})
+            </button>
+          )}
+          {canManage && selected.size > 0 && (
+            <button
+              type="button"
+              onClick={() => void handleBulkSetStocked(false)}
+              disabled={bulkMarking}
+              title="Take the selected items off the stock list — they stay in the catalogue as one-offs"
+              className="inline-flex items-center gap-1.5 rounded-full border border-[#E6E1D4] bg-white px-3 py-1 text-xs font-semibold text-[#6B6B6B] hover:border-[#D8D2C4] hover:text-[#1A1A1A] disabled:opacity-60"
+            >
+              Remove from stock list
+            </button>
+          )}
+        </div>
+
         {/* Tag filter chips */}
         <div className="flex flex-wrap gap-1.5">
           <button
@@ -289,6 +395,18 @@ export default function MaterialsTab({ onWritten }: Props) {
         <table className="min-w-full text-sm">
           <thead>
             <tr className="border-b border-[#E6E1D4] bg-[#FAF8F2]">
+              {canManage && (
+                <th className="w-8 px-3 py-2.5">
+                  <input
+                    type="checkbox"
+                    checked={shown.length > 0 && shown.every((m) => selected.has(m.id))}
+                    onChange={(e) => setSelected(e.target.checked ? new Set(shown.map((m) => m.id)) : new Set())}
+                    className="h-4 w-4 accent-[#2F8F5C]"
+                    aria-label="Select all in view"
+                    title="Select everything in the current view (Esc clears)"
+                  />
+                </th>
+              )}
               <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Name</th>
               <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">SKU</th>
               <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Unit</th>
@@ -305,29 +423,42 @@ export default function MaterialsTab({ onWritten }: Props) {
           </thead>
           <tbody>
             {loading &&
-              [1, 2, 3, 4, 5].map((i) => <SkeletonRow key={i} colCount={showPrices ? 8 : 6} />)}
+              [1, 2, 3, 4, 5].map((i) => <SkeletonRow key={i} colCount={showPrices ? 9 : 6} />)}
 
-            {!loading && materials.length === 0 && !error && (
+            {!loading && shown.length === 0 && !error && (
               <tr>
-                <td colSpan={showPrices ? 8 : 6} className="px-4 py-12 text-center text-[#A0A0A0]">
+                <td colSpan={showPrices ? 9 : 6} className="px-4 py-12 text-center text-[#A0A0A0]">
                   <p className="text-sm font-medium">No materials found</p>
                   <p className="mt-1 text-xs">
-                    {search || activeTag
-                      ? "Try adjusting filters"
-                      : "Add your first material to get started"}
+                    {stockFilter !== "all"
+                      ? `Nothing under the ${stockFilter === "stocked" ? "Stocked" : "One-off"} chip — try All, or bulk-mark items as held in stock.`
+                      : search || activeTag
+                        ? "Try adjusting filters"
+                        : "Add your first material to get started"}
                   </p>
                 </td>
               </tr>
             )}
 
             {!loading &&
-              materials.map((m) => (
+              shown.map((m) => (
                 <tr
                   key={m.id}
                   className={`border-b border-[#EFEBE0] transition-colors hover:bg-[#FAF8F2] ${
                     !m.isActive ? "opacity-50" : ""
                   }`}
                 >
+                  {canManage && (
+                    <td className="px-3 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(m.id)}
+                        onChange={() => toggleSelected(m.id)}
+                        className="h-4 w-4 accent-[#2F8F5C]"
+                        aria-label={`Select ${m.name}`}
+                      />
+                    </td>
+                  )}
                   <td className="px-4 py-3">
                     <button
                       type="button"
@@ -359,7 +490,10 @@ export default function MaterialsTab({ onWritten }: Props) {
                     </td>
                   )}
                   {showPrices && (
-                    <td className="px-4 py-3 text-right tabular-nums text-[#3A3A3A]">
+                    <td
+                      className={`px-4 py-3 text-right tabular-nums ${isBelowFloor(m.sellPrice, m.costPrice, minMarkup) ? "font-medium text-[#C8841E]" : "text-[#3A3A3A]"}`}
+                      title={isBelowFloor(m.sellPrice, m.costPrice, minMarkup) ? "Below the minimum-markup floor" : undefined}
+                    >
                       {fmt(m.sellPrice)}
                     </td>
                   )}

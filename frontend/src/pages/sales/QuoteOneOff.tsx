@@ -23,13 +23,15 @@ interface Props {
   isLocked: boolean;
   onAdded: () => void;
   onToast?: (message: string, type: "success" | "error" | "info") => void;
+  /** Cost centre new lines land in (null = General). */
+  activeSectionId?: string | null;
 }
 
 const INPUT =
   "w-full rounded-md border border-[#E6E1D4] bg-white px-3 py-2 text-sm text-[#1A1A1A] placeholder:text-[#C0BAB0] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]";
 const LABEL = "mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]";
 
-export default function QuoteOneOff({ quoteId, canSeeCost, isLocked, onAdded, onToast }: Props) {
+export default function QuoteOneOff({ quoteId, canSeeCost, isLocked, onAdded, onToast, activeSectionId = null }: Props) {
   const [desc, setDesc] = useState("");
   const [qty, setQty] = useState("1");
   const [unit, setUnit] = useState("ea");
@@ -61,6 +63,7 @@ export default function QuoteOneOff({ quoteId, canSeeCost, isLocked, onAdded, on
         unit: unit.trim() || "ea",
         unitPriceExGst: sellNum,
         costPriceExGst: costNum,
+        sectionId: activeSectionId,
       });
       if (saveToCatalogue) {
         try {

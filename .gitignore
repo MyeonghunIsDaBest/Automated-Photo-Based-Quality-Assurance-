@@ -1,8 +1,17 @@
 # Backend (excluded from this frontend-only repo)
 backend/
 
+# Supabase CLI local state (project refs, temp)
+/supabase/
+
+# Review scratch
+.claude/review_diff.txt
+
 # Internal planning / team docs
 team/
+
+# Static UI-rework prototypes / design mockups (HTML reference, not shipped code)
+design/
 
 # Root-level workspace orchestration (backend-coupled)
 /package.json
@@ -37,3 +46,12 @@ Thumbs.db
 # you want that one tracked. Everything else stays local-only.
 *.md
 # !README.md
+
+# Boss / management-facing plain-English summary — keep private (also covered
+# by *.md above; listed explicitly so it stays ignored even if .md is allowlisted).
+lazy_task.md
+
+# Self-directed feature planning — AI Help & System Assistant roadmap (private;
+# also covered by *.md above, listed explicitly so it stays ignored even if .md
+# is allowlisted).
+ai_diagnostic_roadmap.md

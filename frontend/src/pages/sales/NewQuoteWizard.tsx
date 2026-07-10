@@ -71,9 +71,11 @@ interface Props {
   onCancel: () => void;
   /** Called after the quote is created. openEditor=true when the user hit Next. */
   onCreated: (quoteId: string, openEditor: boolean) => void;
+  /** Preselects the register the user was viewing (Service / Project). */
+  initialType?: "service" | "project";
 }
 
-export default function NewQuoteWizard({ customers, onCancel, onCreated }: Props) {
+export default function NewQuoteWizard({ customers, onCancel, onCreated, initialType = "service" }: Props) {
   const [tab, setTab] = useState<TabKey>("main");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -105,7 +107,7 @@ export default function NewQuoteWizard({ customers, onCancel, onCreated }: Props
 
   // ── Optional ──
   const [leaveDefault, setLeaveDefault] = useState(true);
-  const [quoteType, setQuoteType] = useState<"service" | "project">("service");
+  const [quoteType, setQuoteType] = useState<"service" | "project">(initialType);
   const [stage, setStage] = useState("Quote");
   const [pricingTier, setPricingTier] = useState(PRICING_TIERS[0]);
   const [labourOverhead, setLabourOverhead] = useState("");
@@ -252,6 +254,10 @@ export default function NewQuoteWizard({ customers, onCancel, onCreated }: Props
       technicianIds,
       tags,
       quoteType,
+      // NOTE (P1 pricing audit): pricingTier / labourOverhead / materialMarkupPct
+      // / feePct are STORED but not yet APPLIED anywhere in pricing math — the
+      // engine reads settings-level defaults + the min_markup_pct floor instead.
+      // Do not read these without deliberately activating them (see master plan).
       ...(leaveDefault ? {} : {
         stage,
         pricingTier,
@@ -462,10 +468,21 @@ export default function NewQuoteWizard({ customers, onCancel, onCreated }: Props
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div>
                   <label className={labelCls}>Quote Type</label>
-                  <select value={quoteType} onChange={(e) => setQuoteType(e.target.value as "service" | "project")} disabled={saving} className={inputCls}>
-                    <option value="service">Service</option>
-                    <option value="project">Project</option>
-                  </select>
+                  <div className="flex gap-1 rounded-full border border-[#E6E1D4] bg-[#FAF8F2] p-0.5 text-sm">
+                    {(["service", "project"] as const).map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        disabled={saving}
+                        onClick={() => setQuoteType(t)}
+                        className={`flex-1 rounded-full px-3 py-1.5 font-medium capitalize transition-colors ${
+                          quoteType === t ? "bg-[#1A1A1A] text-white shadow-sm" : "text-[#6B6B6B] hover:text-[#1A1A1A]"
+                        }`}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div className={leaveDefault ? "opacity-50" : ""}>
                   <label className={labelCls}>Stage</label>

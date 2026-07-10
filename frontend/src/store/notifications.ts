@@ -4,7 +4,7 @@ import {
   type NotificationRow,
 } from '../lib/api/notifications';
 
-export type NotificationType = 'safety_alert' | 'task_update' | 'chat_message' | 'ai_analysis' | 'weekly_report' | 'project_added';
+export type NotificationType = 'safety_alert' | 'task_update' | 'chat_message' | 'ai_analysis' | 'weekly_report' | 'project_added' | 'stock_allocation';
 export type NotificationPriority = 'low' | 'medium' | 'high' | 'critical';
 
 export interface Notification {

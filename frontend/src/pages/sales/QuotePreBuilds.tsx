@@ -30,6 +30,8 @@ interface Props {
   onAdded: () => void;
   /** Reuse the parent's Toaster (optional). */
   onToast?: (message: string, type: "success" | "error" | "info") => void;
+  /** Cost centre new lines land in (null = General). */
+  activeSectionId?: string | null;
 }
 
 function fmtMoney(n: number): string {
@@ -39,7 +41,7 @@ function fmtMoney(n: number): string {
 const groupKey = (p: PrebuildPriced) => (p.category && p.category.trim() ? p.category.trim() : OTHER_GROUP);
 const subKey = (p: PrebuildPriced) => (p.subcategory && p.subcategory.trim() ? p.subcategory.trim() : null);
 
-export default function QuotePreBuilds({ quoteId, canSeeCost, isLocked, onAdded, onToast }: Props) {
+export default function QuotePreBuilds({ quoteId, canSeeCost, isLocked, onAdded, onToast, activeSectionId = null }: Props) {
   const [prebuilds, setPrebuilds] = useState<PrebuildPriced[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -121,7 +123,7 @@ export default function QuotePreBuilds({ quoteId, canSeeCost, isLocked, onAdded,
     const qty = Math.max(1, Math.floor(qtys[p.id] ?? 1));
     setAddingId(p.id);
     try {
-      const rows = await addQuoteItemFromPrebuild(quoteId, p.id, qty);
+      const rows = await addQuoteItemFromPrebuild(quoteId, p.id, qty, activeSectionId);
       onAdded();
       onToast?.(`Added ${p.name}${qty > 1 ? ` ×${qty}` : ""} — ${rows.length} line${rows.length === 1 ? "" : "s"}`, "success");
     } catch (ex) {

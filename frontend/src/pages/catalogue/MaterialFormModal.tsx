@@ -35,6 +35,8 @@ import {
   type MaterialTag,
 } from "../../lib/api/materials";
 import { listSuppliers } from "../../lib/api/suppliers";
+import { getCommercialSettings } from "../../lib/api/commercial";
+import { minSell, isBelowFloor } from "../../lib/commercial/money";
 import type { Supplier } from "../../types";
 
 // ─── house modal shells ───────────────────────────────────────────────────────
@@ -117,6 +119,8 @@ export default function MaterialFormModal({ initial, source = 'manual', groupOpt
   const [sellStr, setSellStr]       = useState(
     initial?.sellPrice != null ? String(initial.sellPrice) : "",
   );
+  // Pricing floor (mig 94) for the live “floor at this cost” hint under the sell input.
+  const [minMarkup, setMinMarkup] = useState(0.25);
   const [description, setDescription] = useState(initial?.description ?? "");
   const [selectedTags, setSelectedTags] = useState<string[]>(initial?.tags ?? []);
   const [supplierId, setSupplierId] = useState(initial?.supplierId ?? "");
@@ -136,6 +140,10 @@ export default function MaterialFormModal({ initial, source = 'manual', groupOpt
   const nameRef = useRef<HTMLInputElement>(null);
 
   // Load tag library + suppliers on mount
+  useEffect(() => {
+    getCommercialSettings().then((cs) => { if (cs) setMinMarkup(cs.minMarkupPct ?? 0.25); }).catch(() => {});
+  }, []);
+
   useEffect(() => {
     void listTags().then(setTagLibrary);
     void listSuppliers().then(setSuppliers);
@@ -343,6 +351,18 @@ export default function MaterialFormModal({ initial, source = 'manual', groupOpt
                 className="w-full rounded-[8px] border border-[#E6E1D4] bg-white px-3 py-2 text-sm text-[#1A1A1A] placeholder:text-[#C0BAB0] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
                 disabled={busy}
               />
+              {(() => {
+                const cost = costStr.trim() === "" ? null : Number(costStr);
+                const floor = minSell(cost, minMarkup);
+                if (floor === null) return null;
+                const sell = sellStr.trim() === "" ? null : Number(sellStr);
+                const below = isBelowFloor(sell, cost, minMarkup);
+                return (
+                  <p className={`mt-1 text-[11px] ${below ? "font-medium text-[#C8841E]" : "text-[#A0A0A0]"}`}>
+                    Floor at this cost: ${floor.toFixed(2)}{below ? " — this sell price is below the minimum markup" : ""}
+                  </p>
+                );
+              })()}
             </div>
           </div>
 

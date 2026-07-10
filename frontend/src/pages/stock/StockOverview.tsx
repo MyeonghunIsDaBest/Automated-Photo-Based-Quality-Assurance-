@@ -6,11 +6,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { Search, X, Loader2, AlertTriangle, Download, ChevronDown, ChevronRight } from "lucide-react";
+import { Search, X, Loader2, AlertTriangle, Download, ChevronDown, ChevronRight, Package } from "lucide-react";
 
 import { cardShell, FRAUNCES, MetaChip, TONE, type ToneKey } from "../gantt/components/ledger";
 import {
-  getCompanyTotals, listStockLocations, subscribeToStockLevels,
+  getCompanyTotals, listStockLocations, subscribeToStockLevels, countPendingAllocations,
   type CompanyTotal, type StockLocation,
 } from "../../lib/api/stock";
 import { listReorderRules, type ReorderRule } from "../../lib/api/purchasing";
@@ -35,6 +35,7 @@ export default function StockOverview({ onGoToRestock, onGoToLocations }: { onGo
   const [rules, setRules] = useState<Map<string, ReorderRule>>(new Map());
   const [matMeta, setMatMeta] = useState<Map<string, MatMeta>>(new Map());
   const [stockedCount, setStockedCount] = useState(0);
+  const [pendingBoxes, setPendingBoxes] = useState(0);
   const [dbError, setDbError] = useState(false);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -46,7 +47,12 @@ export default function StockOverview({ onGoToRestock, onGoToLocations }: { onGo
 
   useEffect(() => {
     let cancelled = false;
-    const reload = () => { void getCompanyTotals().then((t) => { if (!cancelled) { setTotals(t); setDbError(false); } }).catch(() => {}); };
+    const reload = () => {
+      void getCompanyTotals().then((t) => { if (!cancelled) { setTotals(t); setDbError(false); } }).catch(() => {});
+      // Accepts move stock (→ levels change → we're here), so the outstanding-
+      // boxes banner refreshes on the same signal instead of going stale.
+      void countPendingAllocations().then((n) => { if (!cancelled) setPendingBoxes(n); }).catch(() => {});
+    };
     setLoading(true);
     // Per-call catches: a missing stock schema (migrations 87–89 not applied)
     // must surface as a setup notice — not masquerade as "0 items".
@@ -56,8 +62,10 @@ export default function StockOverview({ onGoToRestock, onGoToLocations }: { onGo
       listStockLocations().catch(() => { dbFail = true; return [] as StockLocation[]; }),
       listReorderRules().catch(() => []),
       listMaterials().catch(() => []),
+      // Job boxes are migration 95 — a missing table must not trip the 87–89 notice.
+      countPendingAllocations().catch(() => 0),
     ])
-      .then(([t, locs, rls, mats]) => {
+      .then(([t, locs, rls, mats, boxes]) => {
         if (cancelled) return;
         setDbError(dbFail);
         setTotals(t);
@@ -65,6 +73,7 @@ export default function StockOverview({ onGoToRestock, onGoToLocations }: { onGo
         setRules(new Map(rls.map((r) => [r.materialId, r])));
         setMatMeta(new Map(mats.map((m) => [m.id, { fav: m.isFavourite, category: m.category }])));
         setStockedCount(mats.filter((m) => m.isStockItem).length);
+        setPendingBoxes(boxes);
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     const unsub = subscribeToStockLevels(null, reload);
@@ -123,6 +132,15 @@ export default function StockOverview({ onGoToRestock, onGoToLocations }: { onGo
   const unitsOnHand = totals.reduce((s, t) => s + t.total, 0);
   const stockValue = totals.reduce((s, t) => s + (t.costPrice != null ? t.total * t.costPrice : 0), 0);
   const vanCount = locations.filter((l) => l.type === "van").length;
+  const siteCount = locations.filter((l) => l.type === "site").length;
+  const storageCount = locations.filter((l) => l.type === "storage").length;
+  // Per-type breakdown (mig 96): only name what exists — "4 vans · 2 sites".
+  const locationBreakdown = [
+    "factory",
+    `${vanCount} van${vanCount === 1 ? "" : "s"}`,
+    ...(siteCount > 0 ? [`${siteCount} site${siteCount === 1 ? "" : "s"}`] : []),
+    ...(storageCount > 0 ? [`${storageCount} storage`] : []),
+  ].join(" · ");
 
   function exportCsv() {
     downloadCsv(
@@ -162,7 +180,7 @@ export default function StockOverview({ onGoToRestock, onGoToLocations }: { onGo
     { value: String(totals.length), label: "Items tracked" },
     { value: fmtQty(unitsOnHand), label: "Units on hand" },
     { value: fmtMoney(stockValue), label: "Stock value (cost)" },
-    { value: `${vanCount} van${vanCount === 1 ? "" : "s"} + factory`, label: "Locations" },
+    { value: String(locations.length), label: locationBreakdown },
   ];
   const chips: { key: Filter; label: string }[] = [
     { key: "all", label: "All" }, { key: "low", label: "Low" }, { key: "out", label: "Out of stock" }, { key: "fav", label: "Favourites" },
@@ -200,6 +218,17 @@ export default function StockOverview({ onGoToRestock, onGoToLocations }: { onGo
           ))}
         </div>
       </div>
+
+      {/* Outstanding job boxes — Luke chases unaccepted pickups from here */}
+      {pendingBoxes > 0 && (
+        <div className="flex items-center gap-2 rounded-[10px] border border-[#E8D8B5] bg-[#F9EFD9] px-4 py-2.5 text-sm text-[#8A6B1E]">
+          <Package className="h-4 w-4 shrink-0" />
+          <span>
+            <span className="font-semibold">{pendingBoxes} job box{pendingBoxes === 1 ? "" : "es"}</span> packed but not yet accepted —
+            techs accept at pickup from My Van; boxes live on each job&rsquo;s drawer.
+          </span>
+        </div>
+      )}
 
       {/* Low banner → jumps to Restock */}
       {counts.low > 0 && (

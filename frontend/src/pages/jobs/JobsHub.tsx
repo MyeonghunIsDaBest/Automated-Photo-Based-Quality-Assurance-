@@ -117,6 +117,9 @@ export default function JobsHub() {
   const [searchParams, setSearchParams] = useSearchParams();
   const rawView = searchParams.get("view");
   const quoteParam = searchParams.get("quote");
+  const jobParam = searchParams.get("job");
+  const rawKind = searchParams.get("kind");
+  const kindParam = rawKind === "service" || rawKind === "maintenance" || rawKind === "project" ? rawKind : null;
   const view: "board" | "projects" | "simpro" | "quotes" =
     rawView === "projects" ? "projects"
       : rawView === "simpro" ? "simpro"
@@ -243,7 +246,7 @@ export default function JobsHub() {
         {/* ── View body ─────────────────────────────────────────────────────── */}
         <Suspense fallback={view === "board" ? <BoardSkeleton /> : <ProjectsGridSkeleton />}>
           {view === "board" && (
-            <JobsBoard embedded onCardsChanged={handleCardsChanged} />
+            <JobsBoard embedded onCardsChanged={handleCardsChanged} initialJobId={jobParam} initialKind={kindParam} />
           )}
           {view === "projects" && <Projects />}
           {view === "simpro" && <SimproJobsTab />}

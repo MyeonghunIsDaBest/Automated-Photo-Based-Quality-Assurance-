@@ -11,13 +11,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft, Printer, Plus, Trash2, RefreshCw, Search, Package, Clock, LayoutTemplate,
-  ChevronUp, ChevronDown, Lock, RotateCcw,
+  ChevronUp, ChevronDown, Lock, RotateCcw, Pencil, X, ExternalLink,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 
 import { FRAUNCES, TONE, cardShell, btnPrimary, btnGhost } from "../gantt/components/ledger";
 import { SkeletonLine } from "../../components/ui/skeleton";
 import { Toaster } from "../../components/ui/Toaster";
-import { lineTotal, quoteCostMargin, quoteFinancials } from "../../lib/commercial/money";
+import { lineTotal, quoteCostMargin, quoteFinancials, minSell, isBelowFloor } from "../../lib/commercial/money";
+import { pushRecentMaterial } from "../../lib/recentMaterials";
 
 import {
   getQuote,
@@ -34,8 +36,14 @@ import {
   setQuoteRebates,
   deleteQuote,
   getCommercialSettings,
+  revertQuoteToMinimum,
+  listQuoteSections,
+  createQuoteSection,
+  renameQuoteSection,
+  deleteQuoteSection,
   type Quote,
   type QuoteItem,
+  type QuoteSection,
   type CommercialSettings,
 } from "../../lib/api/commercial";
 import { listCustomers, type Customer } from "../../lib/api/customers";
@@ -68,12 +76,14 @@ const QUOTE_TABS: { key: QuoteTab; label: string }[] = [
 ];
 // Parts & Labour sub-tabs (Simpro). Only "billable" is built; the rest are stubs.
 type BillableTab = "billable" | "takeoff" | "prebuilds" | "catalogue" | "stock" | "oneoff";
+// Stock sits ahead of Catalogue — Luke's stock-first rule: "what we keep in
+// stock" is the everyday picker; the full catalogue is one tab further.
 const BILLABLE_TABS: { key: BillableTab; label: string }[] = [
   { key: "billable", label: "Billable" },
   { key: "takeoff", label: "Take Off" },
   { key: "prebuilds", label: "Pre-Builds" },
-  { key: "catalogue", label: "Catalogue" },
   { key: "stock", label: "Stock" },
+  { key: "catalogue", label: "Catalogue" },
   { key: "oneoff", label: "One Off Items" },
 ];
 
@@ -184,7 +194,24 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
 
   const [addMode, setAddMode]       = useState<AddMode>(null);
   const [quoteTab, setQuoteTab] = useState<QuoteTab>("details");
-  const [billableTab, setBillableTab] = useState<BillableTab>("billable");
+  const [billableTab, setBillableTabState] = useState<BillableTab>(() => {
+    try {
+      const saved = localStorage.getItem("casone.quote.billableTab");
+      return saved && BILLABLE_TABS.some((t) => t.key === saved) ? (saved as BillableTab) : "billable";
+    } catch { return "billable"; }
+  });
+  const setBillableTab = (t: BillableTab) => {
+    try { localStorage.setItem("casone.quote.billableTab", t); } catch { /* ok */ }
+    setBillableTabState(t);
+  };
+
+  // Cost centres (quote sections, mig 90). null active section = "General".
+  const [sections, setSections] = useState<QuoteSection[]>([]);
+  const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
+  const [addingSection, setAddingSection] = useState(false);
+  const [newSectionName, setNewSectionName] = useState("");
+  const [renamingSectionId, setRenamingSectionId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
 
   // Catalogue search
   const [catalogueSearch, setCatalogueSearch] = useState("");
@@ -237,6 +264,31 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
   // Reopen-locked-quote confirm (accepted/declined/expired → back to draft)
   const [confirmReopen, setConfirmReopen] = useState(false);
 
+  // "Revert to minimum pricing" (mig 94 floor) — inline two-step confirm.
+  const [revertConfirm, setRevertConfirm] = useState(false);
+  const [reverting, setReverting] = useState(false);
+
+  async function handleRevertToMinimum() {
+    setReverting(true);
+    try {
+      const res = await revertQuoteToMinimum(quoteId);
+      setRevertConfirm(false);
+      await loadQuote();
+      onChanged();
+      setToast({
+        message: `${res.repriced} material line${res.repriced === 1 ? "" : "s"} repriced to the floor; ${res.skipped} line${res.skipped === 1 ? "" : "s"} unchanged (labour, uncosted, or already at floor).`,
+        type: "success",
+      });
+    } catch (ex) {
+      setToast({ message: ex instanceof Error ? ex.message : "Failed to reprice", type: "error" });
+      // Some lines may have repriced before the failure — show the real state.
+      await loadQuote();
+      onChanged();
+    } finally {
+      setReverting(false);
+    }
+  }
+
   const loadQuote = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -260,6 +312,59 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
   }, [quoteId]);
 
   useEffect(() => { void loadQuote(); }, [loadQuote]);
+
+  // Cost centres — load with the quote; reads swallow errors (pre-mig-90 DBs
+  // simply behave as an unsectioned quote).
+  const refreshSections = useCallback(async () => {
+    const s = await listQuoteSections(quoteId).catch(() => [] as QuoteSection[]);
+    setSections(s);
+    return s;
+  }, [quoteId]);
+  useEffect(() => { void refreshSections(); }, [refreshSections]);
+
+  // Guards the Enter-then-blur double fire on the add-section input (both
+  // handlers call this; without the ref two identical sections get created).
+  const addSectionBusyRef = useRef(false);
+  async function handleAddSection() {
+    const name = newSectionName.trim();
+    if (!name || addSectionBusyRef.current) return;
+    addSectionBusyRef.current = true;
+    try {
+      const created = await createQuoteSection(quoteId, name, sections.length);
+      setNewSectionName("");
+      setAddingSection(false);
+      await refreshSections();
+      setActiveSectionId(created.id); // new lines flow into the new cost centre
+    } catch (ex) {
+      setToast({ message: ex instanceof Error ? ex.message : "Failed to add cost centre", type: "error" });
+    } finally {
+      addSectionBusyRef.current = false;
+    }
+  }
+
+  async function handleRenameSection() {
+    const name = renameValue.trim();
+    if (!renamingSectionId || !name) { setRenamingSectionId(null); return; }
+    try {
+      await renameQuoteSection(renamingSectionId, name);
+      setRenamingSectionId(null);
+      await refreshSections();
+    } catch (ex) {
+      setToast({ message: ex instanceof Error ? ex.message : "Failed to rename cost centre", type: "error" });
+    }
+  }
+
+  async function handleDeleteSection(id: string) {
+    try {
+      await deleteQuoteSection(id);
+      if (activeSectionId === id) setActiveSectionId(null);
+      await refreshSections();
+      await loadQuote(); // lines fell back to General
+      setToast({ message: "Cost centre removed — its lines moved to General.", type: "success" });
+    } catch (ex) {
+      setToast({ message: ex instanceof Error ? ex.message : "Failed to remove cost centre", type: "error" });
+    }
+  }
 
   // Sync the discount/rebate inputs whenever the quote (re)loads. STC unit price
   // prefills from settings when the quote hasn't set its own yet.
@@ -353,7 +458,9 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
       const q = stripSearchChars(catalogueSearch.trim());
       try {
         const mats = await listMaterials({ search: q || undefined });
-        setCatalogueResults(mats.slice(0, 12));
+        // Stock-first ordering: what Casone keeps in stock surfaces first.
+        const ordered = [...mats].sort((a, b) => Number(b.isStockItem) - Number(a.isStockItem));
+        setCatalogueResults(ordered.slice(0, 12));
       } catch { setCatalogueResults([]); }
     }, 300);
     return () => { if (catDebRef.current) clearTimeout(catDebRef.current); };
@@ -418,7 +525,8 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
   async function handleAddFromMaterial(mat: Material) {
     setAddingMat(true);
     try {
-      await addQuoteItemFromMaterial(quoteId, mat.id, 1);
+      await addQuoteItemFromMaterial(quoteId, mat.id, 1, activeSectionId);
+      pushRecentMaterial(mat.id);
       setAddMode(null);
       setCatalogueSearch("");
       setCatalogueResults([]);
@@ -435,7 +543,7 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
     if (!prebuildId) return;
     setAddingPb(true);
     try {
-      await addQuoteItemFromPrebuild(quoteId, prebuildId);
+      await addQuoteItemFromPrebuild(quoteId, prebuildId, 1, activeSectionId);
       setAddMode(null);
       setPrebuildId("");
       await loadQuote();
@@ -456,6 +564,7 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
         qty: parseFloat(freeQty) || 1,
         unit: freeUnit,
         unitPriceExGst: parseFloat(freePrice) || 0,
+        sectionId: activeSectionId,
       });
       setAddMode(null);
       setFreeDesc(""); setFreeQty("1"); setFreeUnit("ea"); setFreePrice("0");
@@ -473,7 +582,7 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
     if (!labourRole) return;
     setAddingLabour(true);
     try {
-      await addQuoteItemLabour(quoteId, labourRole, parseFloat(labourHours) || 0);
+      await addQuoteItemLabour(quoteId, labourRole, parseFloat(labourHours) || 0, undefined, activeSectionId);
       setAddMode(null);
       setLabourRole(""); setLabourHours("1");
       await loadQuote();
@@ -579,15 +688,21 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
 
   // Reorder a line item: recompute 0..n-1 positions for the swapped order.
   async function moveItem(item: QuoteItem, dir: -1 | 1) {
-    const ordered = [...items];
-    const idx = ordered.findIndex((i) => i.id === item.id);
+    // Reorder within the item's DISPLAY group (same table + same cost centre) —
+    // swapping with a neighbour from another section would silently reshuffle
+    // sections. The swap exchanges the two lines' sort_order values.
+    const sameTable = (a: QuoteItem) => (item.kind === "labour" ? a.kind === "labour" : a.kind !== "labour");
+    const group = items.filter((a) => sameTable(a) && (a.sectionId ?? null) === (item.sectionId ?? null));
+    const idx = group.findIndex((i) => i.id === item.id);
     const next = idx + dir;
-    if (idx < 0 || next < 0 || next >= ordered.length) return;
-    [ordered[idx], ordered[next]] = [ordered[next], ordered[idx]];
+    if (idx < 0 || next < 0 || next >= group.length) return;
+    [group[idx], group[next]] = [group[next], group[idx]];
     setSaving(true);
     try {
-      for (let i = 0; i < ordered.length; i++) {
-        if (ordered[i].sortOrder !== i) await updateQuoteItem(ordered[i].id, quoteId, { sortOrder: i });
+      // Renumber the whole display group 0..n-1 — freshly added lines all share
+      // sort_order 0, so a bare swap of tied values would jump rows to the ends.
+      for (let i = 0; i < group.length; i++) {
+        if (group[i].sortOrder !== i) await updateQuoteItem(group[i].id, quoteId, { sortOrder: i });
       }
       await loadQuote();
       onChanged();
@@ -598,11 +713,25 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
     }
   }
 
+  async function moveItemToSection(item: QuoteItem, sectionId: string | null) {
+    if ((item.sectionId ?? null) === sectionId) return;
+    setSaving(true);
+    try {
+      await updateQuoteItem(item.id, quoteId, { sectionId });
+      await loadQuote();
+      onChanged();
+    } catch (ex) {
+      setToast({ message: ex instanceof Error ? ex.message : "Failed to move line", type: "error" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleApplyTemplate() {
     if (!templateId) return;
     setApplyingTemplate(true);
     try {
-      await applyTemplateToQuote(quoteId, templateId);
+      await applyTemplateToQuote(quoteId, templateId, 1, activeSectionId);
       setAddMode(null);
       setTemplateId("");
       await loadQuote();
@@ -706,6 +835,41 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
   // ── Billable (Parts & Labour) derived data ──
   const partsItems = items.filter((it) => it.kind === "material" || it.kind === "custom");
   const labourItems = items.filter((it) => it.kind === "labour");
+
+  // Cost-centre display blocks: General (null) first when it has lines, then the
+  // named sections in their order. With no sections defined, rendering falls back
+  // to the flat (ungrouped) tables.
+  const grouped = sections.length > 0;
+  const sectionBlocks: { id: string | null; name: string }[] = grouped
+    ? [
+        ...(items.some((it) => (it.sectionId ?? null) === null) ? [{ id: null as string | null, name: "General" }] : []),
+        ...sections.map((s) => ({ id: s.id as string | null, name: s.name })),
+      ]
+    : [{ id: null, name: "General" }];
+  const inSection = (list: QuoteItem[], id: string | null) => list.filter((it) => (it.sectionId ?? null) === id);
+  const sectionSell = (id: string | null) =>
+    inSection(items, id).reduce((s, it) => s + lineTotal({ qty: it.qty, unitPriceExGst: it.unitPriceExGst }), 0);
+
+  /** Rows for one table (Parts or Labour), grouped by cost centre when sections exist. */
+  const groupedRows = (list: QuoteItem[]) => {
+    if (!grouped) return list.map((item, i) => billableRow(item, i, list.length));
+    return sectionBlocks.flatMap((b) => {
+      const rows = inSection(list, b.id);
+      if (rows.length === 0) return [];
+      const subtotal = rows.reduce((s, it) => s + lineTotal({ qty: it.qty, unitPriceExGst: it.unitPriceExGst }), 0);
+      return [
+        <tr key={`hdr-${b.id ?? "general"}`} className="bg-[#FAF8F2]">
+          <td colSpan={billableCols} className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">{b.name}</td>
+        </tr>,
+        ...rows.map((item, i) => billableRow(item, i, rows.length)),
+        <tr key={`sub-${b.id ?? "general"}`}>
+          <td colSpan={billableCols} className="px-3 pb-2 pt-0.5 text-right text-[11px] text-[#6B6B6B]">
+            {b.name} subtotal: <span className="font-semibold tabular-nums text-[#3A3A3A]">{fmtMoney(subtotal)}</span>
+          </td>
+        </tr>,
+      ];
+    });
+  };
   const partsSell = partsItems.reduce((s, it) => s + lineTotal({ qty: it.qty, unitPriceExGst: it.unitPriceExGst }), 0);
   const labourSell = labourItems.reduce((s, it) => s + lineTotal({ qty: it.qty, unitPriceExGst: it.unitPriceExGst }), 0);
   const estHours = labourItems.reduce((s, it) => s + it.qty, 0);
@@ -718,6 +882,10 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
     const lt = lineTotal({ qty: item.qty, unitPriceExGst: item.unitPriceExGst });
     const cost = item.costPriceExGst;
     const markupPct = cost && cost > 0 ? Math.round(((item.unitPriceExGst - cost) / cost) * 1000) / 10 : null;
+    // Pricing floor (mig 94): tint the markup cell when a MATERIAL line sells
+    // below cost × (1 + floor). Labour is outside the floor — billed-at-rate
+    // labour (sell == cost) would otherwise flag on every normal row.
+    const belowFloor = canSeeCost && item.kind === "material" && isBelowFloor(item.unitPriceExGst, cost, settings?.minMarkupPct ?? 0.25);
     return (
       <tr key={item.id} className="border-b border-[#EFEBE0] hover:bg-[#FAF8F2]">
         <td className="px-3 py-2.5 text-[#1A1A1A]">
@@ -737,7 +905,10 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
           </td>
         )}
         {canSeeCost && (
-          <td className="px-3 py-2.5 text-right print:hidden">
+          <td
+            className={`px-3 py-2.5 text-right print:hidden ${belowFloor ? "bg-[#F9EFD9]" : ""}`}
+            title={belowFloor ? "Below the minimum-markup floor" : undefined}
+          >
             {markupPct === null ? (
               <span className="text-[#A0A0A0]">—</span>
             ) : isLocked ? (
@@ -765,6 +936,19 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
         {!isLocked && (
           <td className="px-3 py-2.5 print:hidden">
             <div className="flex items-center gap-1.5">
+              {sections.length > 0 && (
+                <select
+                  value={item.sectionId ?? ""}
+                  disabled={saving}
+                  onChange={(e) => void moveItemToSection(item, e.target.value || null)}
+                  className="max-w-[90px] rounded border border-transparent bg-transparent py-0.5 text-[10px] text-[#A0A0A0] hover:border-[#E6E1D4] hover:text-[#6B6B6B] focus:outline-none"
+                  aria-label="Move to cost centre"
+                  title="Move to cost centre"
+                >
+                  <option value="">General</option>
+                  {sections.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              )}
               <div className="flex flex-col">
                 <button type="button" disabled={saving || idx === 0} onClick={() => void moveItem(item, -1)} className="text-[#A0A0A0] hover:text-[#6B6B6B] disabled:opacity-30" aria-label="Move up"><ChevronUp className="h-3 w-3" /></button>
                 <button type="button" disabled={saving || idx === count - 1} onClick={() => void moveItem(item, 1)} className="text-[#A0A0A0] hover:text-[#6B6B6B] disabled:opacity-30" aria-label="Move down"><ChevronDown className="h-3 w-3" /></button>
@@ -936,7 +1120,33 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
 
           {/* Quote meta — read-only summary of the wizard's header fields */}
           <div className="mb-4 flex flex-wrap gap-x-5 gap-y-1 text-xs text-[#6B6B6B] print:hidden">
-            <span>Type: <span className="font-medium capitalize text-[#3A3A3A]">{quote.quoteType}</span></span>
+            <span className="flex items-center gap-1">
+              Type:
+              {isLocked ? (
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${quote.quoteType === "project" ? "bg-[#F9EFD9] text-[#C8841E]" : "border border-[#E6E1D4] bg-white text-[#6B6B6B]"}`}>
+                  {quote.quoteType}
+                </span>
+              ) : (
+                <select
+                  value={quote.quoteType}
+                  disabled={saving}
+                  onChange={async (e) => {
+                    try {
+                      await updateQuote(quoteId, { quoteType: e.target.value as "service" | "project" });
+                      await loadQuote();
+                      onChanged();
+                    } catch (ex) {
+                      setToast({ message: ex instanceof Error ? ex.message : "Failed to change type", type: "error" });
+                    }
+                  }}
+                  className="rounded border border-transparent bg-transparent py-0 text-xs font-medium capitalize text-[#3A3A3A] hover:border-[#E6E1D4] focus:outline-none"
+                  aria-label="Quote type"
+                >
+                  <option value="service">Service</option>
+                  <option value="project">Project</option>
+                </select>
+              )}
+            </span>
             {quote.costCentre && <span>Cost centre: <span className="font-medium text-[#3A3A3A]">{quote.costCentre}</span></span>}
             {quote.stage && <span>Stage: <span className="font-medium text-[#3A3A3A]">{quote.stage}</span></span>}
             {quote.orderNumber && <span>Order #: <span className="font-medium text-[#3A3A3A]">{quote.orderNumber}</span></span>}
@@ -1109,10 +1319,82 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
           ))}
         </div>
 
+        {/* ── Cost centres bar (screen-only) — pick where new lines land; manage sections ── */}
+        <div className="mb-4 flex flex-wrap items-center gap-1.5 print:hidden">
+          <span className="mr-1 text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Cost centres</span>
+          {/* General chip (implicit section) */}
+          <button
+            type="button"
+            onClick={() => setActiveSectionId(null)}
+            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+              activeSectionId === null ? "bg-[#1A1A1A] text-white shadow-sm" : "border border-[#E6E1D4] bg-white text-[#6B6B6B] hover:border-[#D8D2C4] hover:text-[#1A1A1A]"
+            }`}
+          >
+            General
+          </button>
+          {sections.map((s) => (
+            renamingSectionId === s.id ? (
+              <span key={s.id} className="inline-flex items-center gap-1">
+                <input
+                  autoFocus
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") void handleRenameSection(); if (e.key === "Escape") setRenamingSectionId(null); }}
+                  onBlur={() => void handleRenameSection()}
+                  className="w-36 rounded-full border border-[#2F8F5C] bg-white px-3 py-1 text-xs focus:outline-none"
+                />
+              </span>
+            ) : (
+              <span key={s.id} className={`inline-flex items-center gap-1 rounded-full py-1 pl-3 pr-1.5 text-xs font-medium transition-colors ${
+                activeSectionId === s.id ? "bg-[#1A1A1A] text-white shadow-sm" : "border border-[#E6E1D4] bg-white text-[#6B6B6B] hover:border-[#D8D2C4]"
+              }`}>
+                <button type="button" onClick={() => setActiveSectionId(s.id)} className="font-medium">{s.name}</button>
+                {!isLocked && (
+                  <>
+                    <button type="button" onClick={() => { setRenamingSectionId(s.id); setRenameValue(s.name); }}
+                      className={`rounded p-0.5 ${activeSectionId === s.id ? "text-white/60 hover:text-white" : "text-[#C4C0B4] hover:text-[#1A1A1A]"}`} aria-label={`Rename ${s.name}`}>
+                      <Pencil className="h-3 w-3" />
+                    </button>
+                    <button type="button" onClick={() => void handleDeleteSection(s.id)}
+                      className={`rounded p-0.5 ${activeSectionId === s.id ? "text-white/60 hover:text-white" : "text-[#C4C0B4] hover:text-[#C44545]"}`} aria-label={`Remove ${s.name}`}>
+                      <X className="h-3 w-3" />
+                    </button>
+                  </>
+                )}
+              </span>
+            )
+          ))}
+          {!isLocked && (
+            addingSection ? (
+              <input
+                autoFocus
+                value={newSectionName}
+                onChange={(e) => setNewSectionName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") void handleAddSection(); if (e.key === "Escape") { setAddingSection(false); setNewSectionName(""); } }}
+                onBlur={() => (newSectionName.trim() ? void handleAddSection() : setAddingSection(false))}
+                placeholder="e.g. Switchboards"
+                className="w-40 rounded-full border border-[#2F8F5C] bg-white px-3 py-1 text-xs focus:outline-none"
+              />
+            ) : (
+              <button type="button" onClick={() => setAddingSection(true)}
+                className="inline-flex items-center gap-1 rounded-full border border-dashed border-[#D8D2C4] bg-white px-3 py-1 text-xs font-medium text-[#2F8F5C] hover:border-[#2F8F5C]">
+                <Plus className="h-3 w-3" /> Cost centre
+              </button>
+            )
+          )}
+          {sections.length > 0 && (
+            <span className="ml-1 text-[11px] text-[#A0A0A0]">New lines go into <span className="font-semibold text-[#6B6B6B]">{sections.find((s) => s.id === activeSectionId)?.name ?? "General"}</span></span>
+          )}
+          {sections.length === 0 && quote?.quoteType === "project" && !isLocked && (
+            <span className="ml-1 text-[11px] text-[#C8841E]">Tip: project quotes present best split into cost centres — add one (e.g. Switchboards, Lighting).</span>
+          )}
+        </div>
+
         {/* Take Off — a browsable, searchable library of pre-built take-off bundles. */}
         {billableTab === "takeoff" && (
           <QuoteTakeOff
             quoteId={quoteId}
+            activeSectionId={activeSectionId}
             canSeeCost={!!canSeeCost}
             isLocked={isLocked}
             onAdded={() => { void loadQuote(); onChanged(); }}
@@ -1124,6 +1406,7 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
         {billableTab === "prebuilds" && (
           <QuotePreBuilds
             quoteId={quoteId}
+            activeSectionId={activeSectionId}
             canSeeCost={!!canSeeCost}
             isLocked={isLocked}
             onAdded={() => { void loadQuote(); onChanged(); }}
@@ -1135,6 +1418,7 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
         {billableTab === "catalogue" && (
           <QuoteCatalogue
             quoteId={quoteId}
+            activeSectionId={activeSectionId}
             canSeeCost={!!canSeeCost}
             isLocked={isLocked}
             onAdded={() => { void loadQuote(); onChanged(); }}
@@ -1146,6 +1430,7 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
         {billableTab === "stock" && (
           <QuoteStock
             quoteId={quoteId}
+            activeSectionId={activeSectionId}
             canSeeCost={!!canSeeCost}
             isLocked={isLocked}
             onAdded={() => { void loadQuote(); onChanged(); }}
@@ -1157,6 +1442,7 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
         {billableTab === "oneoff" && (
           <QuoteOneOff
             quoteId={quoteId}
+            activeSectionId={activeSectionId}
             canSeeCost={!!canSeeCost}
             isLocked={isLocked}
             onAdded={() => { void loadQuote(); onChanged(); }}
@@ -1189,7 +1475,7 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
                     </td>
                   </tr>
                 )}
-                {partsItems.map((item, i) => billableRow(item, i, partsItems.length))}
+                {groupedRows(partsItems)}
               </tbody>
             </table>
           </div>
@@ -1222,7 +1508,7 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
                     </td>
                   </tr>
                 )}
-                {labourItems.map((item, i) => billableRow(item, i, labourItems.length))}
+                {groupedRows(labourItems)}
               </tbody>
             </table>
           </div>
@@ -1300,7 +1586,12 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
                           onClick={() => void handleAddFromMaterial(mat)}
                           className="flex w-full items-center justify-between px-3 py-2.5 text-left text-sm hover:bg-[#FAF8F2] disabled:opacity-50"
                         >
-                          <span className="font-medium text-[#1A1A1A]">{mat.name}</span>
+                          <span className="font-medium text-[#1A1A1A]">
+                            {mat.name}
+                            {!mat.isStockItem && (
+                              <span className="ml-2 rounded-full border border-[#E6E1D4] bg-[#FAF8F2] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#A0A0A0]">one-off</span>
+                            )}
+                          </span>
                           <span className="ml-2 flex-shrink-0 tabular-nums text-[#6B6B6B]">
                             {mat.sellPrice != null ? fmtMoney(mat.sellPrice) : "â€”"} / {mat.unit}
                           </span>
@@ -1538,6 +1829,23 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
           </div>
         )}
 
+        {/* ── Cost centre summary (customer-facing; prints) ───────────────── */}
+        {grouped && (
+          <div className="mb-4 flex justify-end">
+            <div className="w-full max-w-xs space-y-1 border-b border-[#EFEBE0] pb-3">
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#A0A0A0]">Cost centre summary</p>
+              {sectionBlocks
+                .filter((b) => inSection(items, b.id).length > 0)
+                .map((b) => (
+                  <div key={b.id ?? "general"} className="flex items-center justify-between text-sm text-[#6B6B6B]">
+                    <span>{b.name}</span>
+                    <span className="tabular-nums">{fmtMoney(sectionSell(b.id))}</span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
+
         {/* ── Totals footer ───────────────────────────────────────────────── */}
         <div className="mb-8 flex justify-end">
           <div className="w-full max-w-xs space-y-1">
@@ -1587,6 +1895,39 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
         </div>
 
         {/* â”€â”€ Notes textarea â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        {/* ── Terms & conditions (settings-backed; customer-facing, prints) ── */}
+        {settings?.quoteTerms && (
+          <div className="mb-8 border-t border-[#EFEBE0] pt-5" style={{ breakInside: "avoid" }}>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#A0A0A0]">Terms &amp; Conditions</p>
+            <p className="whitespace-pre-wrap text-xs leading-relaxed text-[#6B6B6B]">{settings.quoteTerms}</p>
+          </div>
+        )}
+
+        {/* ── Acceptance / signature (prints while the quote is still open) ── */}
+        {quote.status !== "accepted" && quote.status !== "declined" && (
+          <div className="mb-8 hidden border-t border-[#EFEBE0] pt-5 print:block" style={{ breakInside: "avoid" }}>
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#A0A0A0]">Acceptance</p>
+            <p className="mb-6 text-xs text-[#6B6B6B]">
+              To accept this quote, sign below and return a copy to {settings?.businessName ?? "us"}.
+            </p>
+            <div className="grid grid-cols-2 gap-10">
+              <div>
+                <div className="h-10 border-b border-[#3A3A3A]" />
+                <p className="mt-1 text-[11px] text-[#6B6B6B]">Name &amp; signature</p>
+              </div>
+              <div>
+                <div className="h-10 border-b border-[#3A3A3A]" />
+                <p className="mt-1 text-[11px] text-[#6B6B6B]">Date</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Proposal footer line (settings-backed; prints) ────────────────── */}
+        {settings?.proposalFooter && (
+          <p className="hidden text-center text-[11px] text-[#A0A0A0] print:block">{settings.proposalFooter}</p>
+        )}
+
         {/* ── Manager-only cost / margin (screen only; never printed) ───────── */}
         {canSeeCost && margin && (
           <div className="mb-8 print:hidden">
@@ -1627,6 +1968,46 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
                 {margin.uncostedLabourLines} labour line{margin.uncostedLabourLines > 1 ? "s" : ""} uncosted — markup may be overstated.
               </p>
             )}
+            {/* Revert to minimum pricing — Luke's win-the-job lever. Floor = cost × (1 + min markup). */}
+            {!isLocked && (() => {
+              const floorPct = settings?.minMarkupPct ?? 0.25;
+              // Materials only — labour is outside the floor (see revertQuoteToMinimum).
+              const repriceable = items.filter((i) => i.kind === "material" && minSell(i.costPriceExGst, floorPct) !== null).length;
+              const untouched = items.length - repriceable;
+              if (items.length === 0) return null;
+              return (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {!revertConfirm ? (
+                    <>
+                      <button type="button" onClick={() => setRevertConfirm(true)} className={btnGhost}>
+                        Revert to minimum pricing
+                      </button>
+                      <span className="text-[11px] text-[#A0A0A0]">
+                        Floor: cost + {Math.round(floorPct * 100)}% on materials — sharpens the price without selling below the minimum.
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-[12px] text-[#3A3A3A]">
+                        Reprice <span className="font-semibold">{repriceable}</span> costed material line{repriceable === 1 ? "" : "s"} to cost + {Math.round(floorPct * 100)}%
+                        {untouched > 0 ? ` (${untouched} labour/uncosted line${untouched === 1 ? "" : "s"} untouched)` : ""}?
+                      </span>
+                      {quote.discountExGst > 0 && (
+                        <span className="w-full text-[11px] font-medium text-[#C8841E]">
+                          Heads up: the document discount ({fmtMoney(quote.discountExGst)}) still applies afterwards and takes the net below the floor — clear it if the floor must hold.
+                        </span>
+                      )}
+                      <button type="button" disabled={reverting || repriceable === 0} onClick={() => void handleRevertToMinimum()} className={btnPrimary}>
+                        {reverting ? <RefreshCw className="h-4 w-4 animate-spin" /> : null} Confirm
+                      </button>
+                      <button type="button" disabled={reverting} onClick={() => setRevertConfirm(false)} className={btnGhost}>
+                        Cancel
+                      </button>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -1753,9 +2134,10 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
               </button>
             )}
             {quote.status === "accepted" && quote.convertedJobId && (
-              <span className="text-xs text-[#2F8F5C]">
-                Job created â€” find it on the Jobs board.
-              </span>
+              <Link to={`/jobs?job=${quote.convertedJobId}`} className={btnGhost}>
+                <ExternalLink className="h-4 w-4" />
+                View job
+              </Link>
             )}
           </div>
 

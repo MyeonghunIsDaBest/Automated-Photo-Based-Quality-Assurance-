@@ -12,11 +12,18 @@
 export interface CsvMaterialRow {
   sku: string | null;
   name: string;
-  unit: string;
+  /** null = blank cell — inserts default to 'ea', updates keep the existing unit. */
+  unit: string | null;
   costPrice: number | null;
   sellPrice: number | null;
   tags: string[];
   description: string | null;
+  /** Optional columns (P3 import pipeline). null = not provided in the file —
+   *  inserts fall back to defaults, updates leave the existing value alone. */
+  category: string | null;
+  subcategory: string | null;
+  isStockItem: boolean | null;
+  isFavourite: boolean | null;
 }
 
 export interface ParseResult {
@@ -43,11 +50,18 @@ export interface ImportPlan {
 //   • quoted fields with embedded commas
 //   • doubled-quote escapes ("" inside a quoted field)
 //   • blank lines (skipped)
+// Known limitation: newlines INSIDE a quoted field (Excel Alt+Enter) are not
+// supported — the record splits and the fragment surfaces as a row error
+// (never silent corruption). Strip in-cell newlines before exporting.
 // ---------------------------------------------------------------------------
 
 const REQUIRED_HEADERS = ['sku', 'name', 'unit', 'cost_price', 'sell_price', 'tags', 'description'];
+// Optional columns — old 7-column files keep working unchanged.
+const OPTIONAL_HEADERS = ['category', 'subcategory', 'is_stock_item', 'is_favourite'] as const;
 
-function parseRow(line: string): string[] {
+/** Parse one CSV line (quoted fields, doubled-quote escapes). Shared with the
+ *  pre-build importer. */
+export function parseCsvLine(line: string): string[] {
   const fields: string[] = [];
   let i = 0;
   while (i <= line.length) {
@@ -97,6 +111,16 @@ function parseRow(line: string): string[] {
   return fields;
 }
 
+/** Lenient boolean for spreadsheet exports: yes/true/1/y — no/false/0/n.
+ *  Empty = not provided (null). Anything else is a row error. */
+function parseBool(raw: string): boolean | null | 'error' {
+  const t = raw.trim().toLowerCase();
+  if (t === '') return null;
+  if (['yes', 'true', '1', 'y'].includes(t)) return true;
+  if (['no', 'false', '0', 'n'].includes(t)) return false;
+  return 'error';
+}
+
 function parsePrice(raw: string): number | null | 'error' {
   const trimmed = raw.trim();
   if (trimmed === '') return null;
@@ -112,13 +136,14 @@ export function parseMaterialsCsv(text: string): ParseResult {
   const rows: CsvMaterialRow[] = [];
   const errors: string[] = [];
 
-  if (lines.length === 0) {
+  if (lines.length === 0 || lines[0].trim() === '') {
     errors.push('header: file is empty');
     return { rows, errors };
   }
 
-  // Validate header
-  const headerFields = parseRow(lines[0]).map((h) => h.trim().toLowerCase());
+  // Validate header (strip a UTF-8 BOM — Excel exports start with one)
+  const headerLine = lines[0].replace(/^﻿/, '');
+  const headerFields = parseCsvLine(headerLine).map((h) => h.trim().toLowerCase());
   for (const required of REQUIRED_HEADERS) {
     if (!headerFields.includes(required)) {
       errors.push("header: missing required column \"" + required + "\" — expected: " + REQUIRED_HEADERS.join(','));
@@ -134,7 +159,13 @@ export function parseMaterialsCsv(text: string): ParseResult {
     sell_price: headerFields.indexOf('sell_price'),
     tags: headerFields.indexOf('tags'),
     description: headerFields.indexOf('description'),
+    // Optional (−1 when the column is absent)
+    category: headerFields.indexOf('category'),
+    subcategory: headerFields.indexOf('subcategory'),
+    is_stock_item: headerFields.indexOf('is_stock_item'),
+    is_favourite: headerFields.indexOf('is_favourite'),
   };
+  void OPTIONAL_HEADERS; // documented above; indexes resolved individually
 
   // Data rows
   for (let lineNum = 1; lineNum < lines.length; lineNum++) {
@@ -142,7 +173,7 @@ export function parseMaterialsCsv(text: string): ParseResult {
     if (line === '') continue; // blank line — skip silently
 
     const rowNum = lineNum + 1; // 1-based, header is row 1
-    const fields = parseRow(lines[lineNum]);
+    const fields = parseCsvLine(lines[lineNum]);
 
     const get = (i: number): string => (fields[i] ?? '').trim();
 
@@ -170,6 +201,21 @@ export function parseMaterialsCsv(text: string): ParseResult {
     const rawTags = get(idx.tags);
     const rawDesc = get(idx.description);
 
+    const rawStock = idx.is_stock_item >= 0 ? get(idx.is_stock_item) : '';
+    const stockResult = parseBool(rawStock);
+    if (stockResult === 'error') {
+      errors.push("row " + rowNum + ": is_stock_item \"" + rawStock + "\" is not yes/no/true/false/1/0");
+      continue;
+    }
+    const rawFav = idx.is_favourite >= 0 ? get(idx.is_favourite) : '';
+    const favResult = parseBool(rawFav);
+    if (favResult === 'error') {
+      errors.push("row " + rowNum + ": is_favourite \"" + rawFav + "\" is not yes/no/true/false/1/0");
+      continue;
+    }
+    const rawCategory = idx.category >= 0 ? get(idx.category) : '';
+    const rawSubcategory = idx.subcategory >= 0 ? get(idx.subcategory) : '';
+
     const tags = rawTags === ''
       ? []
       : rawTags.split('|').map((t) => t.trim()).filter((t) => t !== '');
@@ -177,11 +223,15 @@ export function parseMaterialsCsv(text: string): ParseResult {
     rows.push({
       sku: rawSku === '' ? null : rawSku,
       name,
-      unit: get(idx.unit) || 'ea',
+      unit: get(idx.unit) || null,
       costPrice: costResult,
       sellPrice: sellResult,
       tags,
       description: rawDesc === '' ? null : rawDesc,
+      category: rawCategory === '' ? null : rawCategory,
+      subcategory: rawSubcategory === '' ? null : rawSubcategory,
+      isStockItem: stockResult,
+      isFavourite: favResult,
     });
   }
 
@@ -192,6 +242,9 @@ export function parseMaterialsCsv(text: string): ParseResult {
 // Import planner — pure, no network calls
 //
 // Resolution order per row:
+//   0. Same SKU (or, for sku-less adds, same name) seen EARLIER IN THIS FILE
+//      → skip (a duplicate sku would trip the DB unique index and sink the
+//      whole insert chunk it lands in)
 //   1. SKU present and matches existing SKU (case-sensitive) → update
 //   2. No SKU match; active-name match (case-insensitive) → skip with reason
 //   3. Neither → add
@@ -215,7 +268,20 @@ export function planImport(existing: ExistingMaterial[], rows: CsvMaterialRow[])
     }
   }
 
+  // Duplicates WITHIN the file: first occurrence wins, later ones skip.
+  const seenSkus = new Set<string>();
+  const seenAddNames = new Set<string>();
+
   for (const row of rows) {
+    // Step 0: duplicate sku earlier in this same file
+    if (row.sku !== null) {
+      if (seenSkus.has(row.sku)) {
+        skips.push({ row, reason: "sku \"" + row.sku + "\" appears earlier in this file — combine the rows into one" });
+        continue;
+      }
+      seenSkus.add(row.sku);
+    }
+
     // Step 1: exact SKU match
     if (row.sku !== null) {
       const match = bySkuMap.get(row.sku);
@@ -232,7 +298,14 @@ export function planImport(existing: ExistingMaterial[], rows: CsvMaterialRow[])
       continue;
     }
 
+    // Step 0b (sku-less adds only): duplicate name earlier in this file
+    if (row.sku === null && seenAddNames.has(row.name.toLowerCase())) {
+      skips.push({ row, reason: "name \"" + row.name + "\" appears earlier in this file — combine the rows into one" });
+      continue;
+    }
+
     // Step 3: new material
+    seenAddNames.add(row.name.toLowerCase());
     adds.push(row);
   }
 

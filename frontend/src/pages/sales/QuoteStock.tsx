@@ -16,7 +16,9 @@ import { Search, X, ChevronRight, Plus, Loader2, Star, Folder } from "lucide-rea
 
 import { listMaterials, updateMaterial } from "../../lib/api/materials";
 import { addQuoteItemFromMaterial, getCommercialSettings } from "../../lib/api/commercial";
+import { isBelowFloor } from "../../lib/commercial/money";
 import { getCompanyTotals } from "../../lib/api/stock";
+import { pushRecentMaterial } from "../../lib/recentMaterials";
 
 const OTHER_GROUP = "Other";
 
@@ -26,6 +28,8 @@ interface Props {
   isLocked: boolean;
   onAdded: () => void;
   onToast?: (message: string, type: "success" | "error" | "info") => void;
+  /** Cost centre new lines land in (null = General). */
+  activeSectionId?: string | null;
 }
 
 function fmtMoney(n: number): string {
@@ -51,7 +55,7 @@ interface StockRow {
 const groupKey = (r: StockRow) => (r.category && r.category.trim() ? r.category.trim() : OTHER_GROUP);
 const subKey = (r: StockRow) => (r.subcategory && r.subcategory.trim() ? r.subcategory.trim() : null);
 
-export default function QuoteStock({ quoteId, canSeeCost, isLocked, onAdded, onToast }: Props) {
+export default function QuoteStock({ quoteId, canSeeCost, isLocked, onAdded, onToast, activeSectionId = null }: Props) {
   const [rows, setRows] = useState<StockRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -62,7 +66,11 @@ export default function QuoteStock({ quoteId, canSeeCost, isLocked, onAdded, onT
 
   const [qtys, setQtys] = useState<Record<string, number>>({});
   const [addingId, setAddingId] = useState<string | null>(null);
+  // Pricing floor (mig 94) for the below-floor sell flags (manager-only).
+  const [minMarkup, setMinMarkup] = useState(0.25);
   const [togglingFavId, setTogglingFavId] = useState<string | null>(null);
+  // Keyboard nav (search results): ArrowUp/Down + Enter from the search box.
+  const [highlightIdx, setHighlightIdx] = useState(-1);
 
   // ── Load stocked materials, compute display sell with the office markup ──────
   useEffect(() => {
@@ -72,6 +80,7 @@ export default function QuoteStock({ quoteId, canSeeCost, isLocked, onAdded, onT
     (async () => {
       const settings = await getCommercialSettings().catch(() => null);
       const markup = settings ? settings.defaultMaterialMarkup : 0.25;
+      setMinMarkup(settings?.minMarkupPct ?? 0.25);
       const [mats, totals] = await Promise.all([listMaterials(), getCompanyTotals().catch(() => [])]);
       // On-hand now comes from the live multi-location tally (factory + vans), not
       // the deprecated single materials.stock_on_hand figure.
@@ -152,7 +161,8 @@ export default function QuoteStock({ quoteId, canSeeCost, isLocked, onAdded, onT
     const qty = Math.max(1, Math.floor(qtys[r.id] ?? 1));
     setAddingId(r.id);
     try {
-      await addQuoteItemFromMaterial(quoteId, r.id, qty);
+      await addQuoteItemFromMaterial(quoteId, r.id, qty, activeSectionId);
+      pushRecentMaterial(r.id);
       onAdded();
       onToast?.(`Added ${r.name}${qty > 1 ? ` ×${qty}` : ""}`, "success");
     } catch (ex) {
@@ -177,10 +187,11 @@ export default function QuoteStock({ quoteId, canSeeCost, isLocked, onAdded, onT
   }
 
   // ── Render helpers ─────────────────────────────────────────────────────────
-  function partsTable(parts: StockRow[], emptyMsg: string) {
+  function partsTable(parts: StockRow[], emptyMsg: string, highlight = -1) {
     return (
+      <div className="max-h-[60vh] overflow-y-auto">
       <table className="min-w-full text-sm">
-        <thead>
+        <thead className="sticky top-0 z-10">
           <tr className="border-b border-[#E6E1D4] bg-[#FAF8F2]">
             <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Name</th>
             <th className="w-24 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">On hand</th>
@@ -198,17 +209,20 @@ export default function QuoteStock({ quoteId, canSeeCost, isLocked, onAdded, onT
               </td>
             </tr>
           )}
-          {parts.map((r) => {
+          {parts.map((r, idx) => {
             const qty = qtys[r.id] ?? 1;
             return (
-              <tr key={r.id} className="border-b border-[#EFEBE0] last:border-0">
+              <tr key={r.id} className={`border-b border-[#EFEBE0] last:border-0 ${idx === highlight ? "bg-[#F0EDE4]" : ""}`}>
                 <td className="px-3 py-2 text-[#1A1A1A]">
                   {r.name}
                   {r.meta && <span className="ml-2 text-[11px] text-[#A0A0A0]">{r.meta}</span>}
                 </td>
                 <td className={`px-3 py-2 text-right tabular-nums ${r.onHand <= 0 ? "text-[#C44545]" : "text-[#3A3A3A]"}`}>{fmtQty(r.onHand)}</td>
                 {canSeeCost && <td className="px-3 py-2 text-right tabular-nums text-[#A0A0A0]">{fmtMoney(r.materialCost)}</td>}
-                <td className="px-3 py-2 text-right tabular-nums text-[#3A3A3A]">{fmtMoney(r.sell)}</td>
+                <td
+                  className={`px-3 py-2 text-right tabular-nums ${canSeeCost && isBelowFloor(r.sell, r.materialCost, minMarkup) ? "font-medium text-[#C8841E]" : "text-[#3A3A3A]"}`}
+                  title={canSeeCost && isBelowFloor(r.sell, r.materialCost, minMarkup) ? "Below the minimum-markup floor" : undefined}
+                >{fmtMoney(r.sell)}</td>
                 <td className="px-3 py-2 text-center">
                   <button
                     type="button"
@@ -240,7 +254,7 @@ export default function QuoteStock({ quoteId, canSeeCost, isLocked, onAdded, onT
                         type="button"
                         onClick={() => void handleAdd(r)}
                         disabled={addingId === r.id}
-                        className="inline-flex items-center gap-1 rounded-md bg-[#2F8F5C] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#287a4e] disabled:opacity-60"
+                        className="inline-flex min-h-[36px] items-center gap-1 rounded-md bg-[#2F8F5C] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#287a4e] disabled:opacity-60"
                       >
                         {addingId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
                         Add
@@ -253,6 +267,7 @@ export default function QuoteStock({ quoteId, canSeeCost, isLocked, onAdded, onT
           })}
         </tbody>
       </table>
+      </div>
     );
   }
 
@@ -287,7 +302,16 @@ export default function QuoteStock({ quoteId, canSeeCost, isLocked, onAdded, onT
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#A0A0A0]" />
           <input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setHighlightIdx(-1); }}
+            onKeyDown={(e) => {
+              if (!flatMode || visibleParts.length === 0) return;
+              if (e.key === "ArrowDown") { e.preventDefault(); setHighlightIdx((i) => Math.min(i + 1, visibleParts.length - 1)); }
+              else if (e.key === "ArrowUp") { e.preventDefault(); setHighlightIdx((i) => Math.max(i - 1, 0)); }
+              else if (e.key === "Enter" && highlightIdx >= 0 && highlightIdx < visibleParts.length) {
+                e.preventDefault();
+                void handleAdd(visibleParts[highlightIdx]);
+              }
+            }}
             placeholder="Search stock across all groups…"
             className="w-full rounded-md border border-[#E6E1D4] bg-white py-2 pl-9 pr-9 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
           />
@@ -338,7 +362,7 @@ export default function QuoteStock({ quoteId, canSeeCost, isLocked, onAdded, onT
       {/* ── Flat results (search / favourites) ── */}
       {flatMode && (
         <div className="overflow-x-auto rounded-[10px] border border-[#E6E1D4] bg-white">
-          {partsTable(visibleParts, favOnly ? "No favourites yet — star a stock item to add it here." : `No stock items match “${search.trim()}”.`)}
+          {partsTable(visibleParts, favOnly ? "No favourites yet — star a stock item to add it here." : `No stock items match “${search.trim()}”.`, highlightIdx)}
         </div>
       )}
 

@@ -15,7 +15,15 @@ import { supabase, supabaseConfigured } from '../supabase';
 
 const NOT_CONFIGURED = new Error('Supabase is not configured.');
 
-export type LocationType = 'factory' | 'van';
+export type LocationType = 'factory' | 'van' | 'site' | 'storage';
+
+const LOCATION_TYPES: readonly LocationType[] = ['factory', 'van', 'site', 'storage'];
+
+/** Validated type parse — an unknown value must NOT fall back to 'van'
+ *  (a site masquerading as a van would leak into worker van gating). */
+function parseLocationType(raw: string | null | undefined): LocationType {
+  return LOCATION_TYPES.includes(raw as LocationType) ? (raw as LocationType) : 'storage';
+}
 export type MovementReason = 'usage' | 'receipt' | 'transfer_out' | 'transfer_in' | 'adjustment' | 'stocktake';
 export type JobKind = 'service' | 'simpro';
 
@@ -30,6 +38,12 @@ interface StockLocationRow {
   assigned_worker_id: string | null;
   rego: string | null;
   is_active: boolean;
+  address: string | null;
+  lat: number | null;
+  lng: number | null;
+  service_job_id?: string | null;
+  simpro_job_id?: string | null;
+  project_id?: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -42,6 +56,14 @@ export interface StockLocation {
   assignedWorkerId: string | null;
   rego: string | null;
   isActive: boolean;
+  /** Base address + map pin (factory site / van home base; migration 92). */
+  address: string | null;
+  lat: number | null;
+  lng: number | null;
+  /** SITE locations may link to the job/project they serve (migration 96). */
+  serviceJobId: string | null;
+  simproJobId: string | null;
+  projectId: string | null;
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;
@@ -51,10 +73,16 @@ function rowToLocation(r: StockLocationRow): StockLocation {
   return {
     id: r.id,
     name: r.name,
-    type: (r.type as LocationType) ?? 'van',
+    type: parseLocationType(r.type),
     assignedWorkerId: r.assigned_worker_id,
     rego: r.rego,
     isActive: r.is_active,
+    address: r.address ?? null,
+    lat: r.lat != null ? Number(r.lat) : null,
+    lng: r.lng != null ? Number(r.lng) : null,
+    serviceJobId: r.service_job_id ?? null,
+    simproJobId: r.simpro_job_id ?? null,
+    projectId: r.project_id ?? null,
     createdBy: r.created_by,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -80,6 +108,8 @@ export async function myVan(): Promise<StockLocation | null> {
     .from('stock_locations')
     .select('*')
     .eq('assigned_worker_id', uid)
+    // Explicit: a SITE linked to a worker must never masquerade as their van.
+    .eq('type', 'van')
     .eq('is_active', true)
     .limit(1)
     .maybeSingle();
@@ -92,43 +122,139 @@ export interface CreateLocationInput {
   type?: LocationType;
   assignedWorkerId?: string | null;
   rego?: string | null;
+  address?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  /** Site links (migration 96) — only sent when set, so inserts keep working pre-96. */
+  serviceJobId?: string | null;
+  simproJobId?: string | null;
+  projectId?: string | null;
+}
+
+/** Readable message when a site/storage write hits a pre-mig-96 database. */
+const NEEDS_MIG_96 = 'Sites & storage need database update 96 — apply it in Supabase, then retry.';
+
+function isPre96Error(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  // 23514 = the old two-value type check; PGRST204 = the link columns missing.
+  return (error.code === '23514' && /type_check/i.test(error.message ?? ''))
+    || (error.code === 'PGRST204' && /(service_job_id|simpro_job_id|project_id)/i.test(error.message ?? ''));
 }
 
 export async function createLocation(input: CreateLocationInput): Promise<StockLocation> {
   if (!supabaseConfigured()) throw NOT_CONFIGURED;
   const uid = (await supabase.auth.getUser()).data.user?.id ?? null;
+  const type = input.type ?? 'van';
   const { data, error } = await supabase
     .from('stock_locations')
     .insert({
       name: input.name,
-      type: input.type ?? 'van',
-      assigned_worker_id: input.assignedWorkerId ?? null,
+      type,
+      // Drivers are a VAN concept — is_my_van() grants ledger rights on
+      // assigned locations, so never let a site/storage row carry one.
+      assigned_worker_id: type === 'van' ? (input.assignedWorkerId ?? null) : null,
       rego: input.rego ?? null,
+      // Only send geo columns when set — keeps inserts working pre-mig-92.
+      ...(input.address != null && { address: input.address }),
+      ...(input.lat != null && { lat: input.lat }),
+      ...(input.lng != null && { lng: input.lng }),
+      // Site links — only when set (pre-mig-96 safe).
+      ...(input.serviceJobId != null && { service_job_id: input.serviceJobId }),
+      ...(input.simproJobId != null && { simpro_job_id: input.simproJobId }),
+      ...(input.projectId != null && { project_id: input.projectId }),
       created_by: uid,
     })
     .select('*')
     .single();
-  if (error) throw error;
+  if (error) throw isPre96Error(error) ? new Error(NEEDS_MIG_96) : error;
   return rowToLocation(data as StockLocationRow);
 }
 
 export interface UpdateLocationInput {
   name?: string;
+  type?: LocationType;
   assignedWorkerId?: string | null;
   rego?: string | null;
   isActive?: boolean;
+  address?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  serviceJobId?: string | null;
+  simproJobId?: string | null;
+  projectId?: string | null;
 }
 
 export async function updateLocation(id: string, patch: UpdateLocationInput): Promise<StockLocation> {
   if (!supabaseConfigured()) throw NOT_CONFIGURED;
   const update: Record<string, unknown> = {};
   if (patch.name !== undefined) update.name = patch.name;
+  if (patch.type !== undefined) update.type = patch.type;
   if (patch.assignedWorkerId !== undefined) update.assigned_worker_id = patch.assignedWorkerId;
   if (patch.rego !== undefined) update.rego = patch.rego;
   if (patch.isActive !== undefined) update.is_active = patch.isActive;
+  if (patch.address !== undefined) update.address = patch.address;
+  if (patch.lat !== undefined) update.lat = patch.lat;
+  if (patch.lng !== undefined) update.lng = patch.lng;
+  if (patch.serviceJobId !== undefined) update.service_job_id = patch.serviceJobId;
+  if (patch.simproJobId !== undefined) update.simpro_job_id = patch.simproJobId;
+  if (patch.projectId !== undefined) update.project_id = patch.projectId;
   const { data, error } = await supabase.from('stock_locations').update(update).eq('id', id).select('*').single();
   if (error) throw error;
   return rowToLocation(data as StockLocationRow);
+}
+
+/** Find the SITE location linked to a job, or create one (manager action —
+ *  e.g. the job-drawer "Create site location" shortcut). An archived match is
+ *  REACTIVATED (its movement history stays attached) rather than duplicated
+ *  or dead-ended. Racing creates resolve via the mig-96 partial unique index:
+ *  the loser re-runs the find. */
+export async function siteLocationForJob(
+  jobId: string,
+  jobKind: JobKind,
+  defaults: { name: string; address?: string | null },
+): Promise<{ location: StockLocation; created: boolean; reactivated: boolean }> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const col = jobKind === 'service' ? 'service_job_id' : 'simpro_job_id';
+
+  const find = async (): Promise<StockLocation | null> => {
+    const { data, error } = await supabase
+      .from('stock_locations')
+      .select('*')
+      .eq(col, jobId)
+      .eq('type', 'site')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    return data ? rowToLocation(data as StockLocationRow) : null;
+  };
+
+  const existing = await find();
+  if (existing) {
+    if (!existing.isActive) {
+      const location = await updateLocation(existing.id, { isActive: true });
+      return { location, created: false, reactivated: true };
+    }
+    return { location: existing, created: false, reactivated: false };
+  }
+
+  try {
+    const location = await createLocation({
+      name: defaults.name,
+      type: 'site',
+      address: defaults.address ?? null,
+      serviceJobId: jobKind === 'service' ? jobId : null,
+      simproJobId: jobKind === 'simpro' ? jobId : null,
+    });
+    return { location, created: true, reactivated: false };
+  } catch (ex) {
+    // 23505 = another manager won the create race — theirs is the site.
+    if ((ex as { code?: string })?.code === '23505') {
+      const winner = await find();
+      if (winner) return { location: winner, created: false, reactivated: false };
+    }
+    throw ex;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -191,11 +317,11 @@ export interface CompanyTotal {
   unit: string;
   costPrice: number | null;
   total: number;
-  byLocation: { locationId: string; locationName: string; type: LocationType; qty: number }[];
+  byLocation: { locationId: string; locationName: string; type: LocationType; isActive: boolean; qty: number }[];
 }
 
 interface TotalsEmbed extends LevelEmbed {
-  stock_locations: { name: string; type: string } | null;
+  stock_locations: { name: string; type: string; is_active?: boolean } | null;
 }
 
 /** Company-wide on-hand per item (Σ across all locations) + a per-location breakdown. */
@@ -203,7 +329,7 @@ export async function getCompanyTotals(): Promise<CompanyTotal[]> {
   if (!supabaseConfigured()) return [];
   const { data, error } = await supabase
     .from('stock_levels')
-    .select('*, materials(name, sku, unit, cost_price), stock_locations(name, type)');
+    .select('*, materials(name, sku, unit, cost_price), stock_locations(name, type, is_active)');
   if (error) throw error;
   const byMaterial = new Map<string, CompanyTotal>();
   for (const raw of data ?? []) {
@@ -226,7 +352,8 @@ export async function getCompanyTotals(): Promise<CompanyTotal[]> {
     entry.byLocation.push({
       locationId: r.location_id,
       locationName: r.stock_locations?.name ?? '(location)',
-      type: (r.stock_locations?.type as LocationType) ?? 'van',
+      type: parseLocationType(r.stock_locations?.type),
+      isActive: r.stock_locations?.is_active ?? true,
       qty,
     });
   }
@@ -520,4 +647,256 @@ export function subscribeToStockLevels(
     )
     .subscribe();
   return () => { void supabase.removeChannel(channel); };
+}
+
+// ---------------------------------------------------------------------------
+// Job boxes — stock allocations (migration 95)
+//
+// A manager packs factory stock for a won job and allocates it to the
+// scheduled tech. NOTHING moves until the tech ACCEPTS at pickup — the accept
+// RPC emits the ordinary paired transfer movements (source → their van), so
+// the ledger stays immutable and "who took the box" is on record.
+// ---------------------------------------------------------------------------
+
+export type AllocationStatus = 'pending' | 'accepted' | 'declined' | 'cancelled';
+
+export interface AllocationLine {
+  id: string;
+  materialId: string;
+  name: string;
+  unit: string;
+  sku: string | null;
+  qty: number;
+  unitCost: number | null;
+}
+
+export interface StockAllocation {
+  id: string;
+  serviceJobId: string | null;
+  simproJobId: string | null;
+  /** Short label for the job the box belongs to (title / Simpro ref). */
+  jobLabel: string;
+  sourceLocationId: string;
+  sourceLocationName: string;
+  destLocationId: string | null;
+  assignedTo: string;
+  status: AllocationStatus;
+  note: string | null;
+  declineNote: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  acceptedAt: string | null;
+  lines: AllocationLine[];
+}
+
+interface AllocationLineEmbed {
+  id: string;
+  material_id: string;
+  qty: string | number;
+  unit_cost: string | number | null;
+  sort_order: number;
+  materials: { name: string; unit: string; sku: string | null } | null;
+}
+
+interface AllocationEmbed {
+  id: string;
+  service_job_id: string | null;
+  simpro_job_id: string | null;
+  source_location_id: string;
+  dest_location_id: string | null;
+  assigned_to: string;
+  status: string;
+  note: string | null;
+  decline_note: string | null;
+  created_by: string | null;
+  created_at: string;
+  accepted_at: string | null;
+  source: { name: string } | null;
+  service_jobs: { title: string } | null;
+  simpro_jobs: { external_ref: string; customer_name: string | null } | null;
+  stock_allocation_lines: AllocationLineEmbed[];
+}
+
+// Two FKs point at stock_locations, so the source embed must name its
+// constraint explicitly.
+const ALLOCATION_SELECT =
+  '*, source:stock_locations!stock_allocations_source_location_id_fkey(name), ' +
+  'service_jobs(title), simpro_jobs(external_ref, customer_name), ' +
+  'stock_allocation_lines(id, material_id, qty, unit_cost, sort_order, materials(name, unit, sku))';
+
+function embedToAllocation(raw: unknown): StockAllocation {
+  const r = raw as AllocationEmbed;
+  const jobLabel = r.service_jobs?.title
+    ?? (r.simpro_jobs ? `Simpro ${r.simpro_jobs.external_ref}${r.simpro_jobs.customer_name ? ` — ${r.simpro_jobs.customer_name}` : ''}` : '(job)');
+  return {
+    id: r.id,
+    serviceJobId: r.service_job_id,
+    simproJobId: r.simpro_job_id,
+    jobLabel,
+    sourceLocationId: r.source_location_id,
+    sourceLocationName: r.source?.name ?? '(location)',
+    destLocationId: r.dest_location_id,
+    assignedTo: r.assigned_to,
+    status: (r.status as AllocationStatus) ?? 'pending',
+    note: r.note,
+    declineNote: r.decline_note,
+    createdBy: r.created_by,
+    createdAt: r.created_at,
+    acceptedAt: r.accepted_at,
+    lines: [...(r.stock_allocation_lines ?? [])]
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map((l) => ({
+        id: l.id,
+        materialId: l.material_id,
+        name: l.materials?.name ?? '(item)',
+        unit: l.materials?.unit ?? 'ea',
+        sku: l.materials?.sku ?? null,
+        qty: Number(l.qty),
+        unitCost: l.unit_cost != null ? Number(l.unit_cost) : null,
+      })),
+  };
+}
+
+/** All job boxes for one job (manager view in the job drawer), newest first. */
+export async function listJobAllocations(jobId: string, jobKind: JobKind): Promise<StockAllocation[]> {
+  if (!supabaseConfigured()) return [];
+  const col = jobKind === 'service' ? 'service_job_id' : 'simpro_job_id';
+  const { data, error } = await supabase
+    .from('stock_allocations')
+    .select(ALLOCATION_SELECT)
+    .eq(col, jobId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map(embedToAllocation);
+}
+
+/** The signed-in worker's pending job boxes (My Van banner), oldest first. */
+export async function listMyPendingAllocations(): Promise<StockAllocation[]> {
+  if (!supabaseConfigured()) return [];
+  const uid = (await supabase.auth.getUser()).data.user?.id ?? null;
+  if (!uid) return [];
+  const { data, error } = await supabase
+    .from('stock_allocations')
+    .select(ALLOCATION_SELECT)
+    .eq('assigned_to', uid)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map(embedToAllocation);
+}
+
+/** Count of company-wide unaccepted boxes (Stock hub manager strip). */
+export async function countPendingAllocations(): Promise<number> {
+  if (!supabaseConfigured()) return 0;
+  const { count, error } = await supabase
+    .from('stock_allocations')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'pending');
+  if (error) throw error;
+  return count ?? 0;
+}
+
+export interface CreateAllocationInput {
+  jobId: string;
+  jobKind: JobKind;
+  sourceLocationId: string;
+  assignedTo: string;
+  note?: string | null;
+  lines: { materialId: string; qty: number; unitCost?: number | null }[];
+}
+
+/** Pack a job box (manager). Inserts header + lines, then notifies the
+ *  assignee. All-or-nothing: if the lines fail, the header is rolled back. */
+export async function createAllocation(input: CreateAllocationInput): Promise<string> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const uid = (await supabase.auth.getUser()).data.user?.id ?? null;
+  const lines = input.lines.filter((l) => l.qty > 0);
+  if (lines.length === 0) throw new Error('A job box needs at least one item.');
+
+  const { data, error } = await supabase
+    .from('stock_allocations')
+    .insert({
+      service_job_id: input.jobKind === 'service' ? input.jobId : null,
+      simpro_job_id: input.jobKind === 'simpro' ? input.jobId : null,
+      source_location_id: input.sourceLocationId,
+      assigned_to: input.assignedTo,
+      note: input.note ?? null,
+      created_by: uid,
+    })
+    .select('id')
+    .single();
+  if (error) throw error;
+  const allocationId = (data as { id: string }).id;
+
+  const { error: lineError } = await supabase.from('stock_allocation_lines').insert(
+    lines.map((l, i) => ({
+      allocation_id: allocationId,
+      material_id: l.materialId,
+      qty: l.qty,
+      unit_cost: l.unitCost ?? null,
+      sort_order: i,
+    })),
+  );
+  if (lineError) {
+    // Roll the header back — a lineless box would still notify + count as pending.
+    await supabase.from('stock_allocations').delete().eq('id', allocationId);
+    throw lineError;
+  }
+
+  // Tell the assignee (best-effort — the box still exists if this fails).
+  const { error: notifyError } = await supabase.rpc('notify_user', {
+    p_user: input.assignedTo,
+    p_type: 'stock_allocation',
+    p_priority: 'medium',
+    p_title: 'Job box ready',
+    p_message: 'A job box has been packed for you — accept it at pickup in My Van.',
+    p_metadata: { allocationId },
+  });
+  if (notifyError) console.warn('Job box created but the notification failed:', notifyError.message);
+
+  return allocationId;
+}
+
+/** Worker accepts at pickup — the RPC moves the stock (source → their van). */
+export async function acceptAllocation(id: string): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { error } = await supabase.rpc('accept_stock_allocation', { p_allocation: id });
+  if (error) throw error;
+}
+
+/** Worker declines with a short reason; no stock moves. */
+export async function declineAllocation(id: string, note: string): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { error } = await supabase.rpc('decline_stock_allocation', { p_allocation: id, p_note: note || null });
+  if (error) throw error;
+}
+
+/** Manager cancels a still-pending box. Throws if it was already actioned. */
+export async function cancelAllocation(id: string): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { data, error } = await supabase
+    .from('stock_allocations')
+    .update({ status: 'cancelled' })
+    .eq('id', id)
+    .eq('status', 'pending')
+    .select('id');
+  if (error) throw error;
+  if ((data ?? []).length === 0) {
+    throw new Error('This job box is no longer pending — refresh to see its current state.');
+  }
+}
+
+/** Requested-vs-on-hand per line (pure). Allocating short is allowed — the
+ *  physical box is truth — but the UI flags it honestly. */
+export function allocationShortfalls(
+  levels: StockLevel[],
+  lines: { materialId: string; qty: number }[],
+): Map<string, { onHand: number; short: number }> {
+  const byMaterial = new Map(levels.map((l) => [l.materialId, l.qty]));
+  const out = new Map<string, { onHand: number; short: number }>();
+  for (const line of lines) {
+    const onHand = byMaterial.get(line.materialId) ?? 0;
+    if (line.qty > onHand) out.set(line.materialId, { onHand, short: Math.round((line.qty - onHand) * 100) / 100 });
+  }
+  return out;
 }

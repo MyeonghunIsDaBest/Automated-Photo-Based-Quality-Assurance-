@@ -488,7 +488,7 @@ export default function InvoicesTab({ initialCustomerFilter, onChanged }: Props)
   async function handleFromJob(jobId: string) {
     const inv = await createInvoiceFromJob(jobId);
     setShowFromJob(false);
-    setToast({ message: "Invoice created from job â€” approved variations included", type: "success" });
+    setToast({ message: "Invoice created from job — original quote scope + accepted variations, grouped by cost centre.", type: "success" });
     void fetchInvoices();
     onChanged();
     setSelectedId(inv.id);

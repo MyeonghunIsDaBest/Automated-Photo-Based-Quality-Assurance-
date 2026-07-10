@@ -77,6 +77,11 @@ export default function SettingsTab({ onChanged }: Props) {
   const [stcPrice, setStcPrice]                   = useState("0");
   const [veecValue, setVeecValue]                 = useState("0");
   const [labourOverhead, setLabourOverhead]       = useState("0");
+  // The pricing floor (mig 94): minimum markup ON COST — sell never below cost × (1 + this).
+  const [minMarkupPct, setMinMarkupPct]           = useState("25");
+  // Proposal print blocks (mig 97): terms & conditions + one footer line.
+  const [quoteTerms, setQuoteTerms]               = useState("");
+  const [proposalFooter, setProposalFooter]       = useState("");
 
   useEffect(() => {
     if (!isAdmin) { setLoading(false); return; }
@@ -98,6 +103,9 @@ export default function SettingsTab({ onChanged }: Props) {
           setStcPrice(String(s.stcUnitPrice ?? 0));
           setVeecValue(String(s.veecUnitValue ?? 0));
           setLabourOverhead(String(s.defaultLabourOverhead ?? 0));
+          setMinMarkupPct(String(Math.round((s.minMarkupPct ?? 0.25) * 100)));
+          setQuoteTerms(s.quoteTerms ?? "");
+          setProposalFooter(s.proposalFooter ?? "");
         }
       })
       .catch(() => {})
@@ -123,6 +131,9 @@ export default function SettingsTab({ onChanged }: Props) {
         stcUnitPrice: parseFloat(stcPrice) || 0,
         veecUnitValue: parseFloat(veecValue) || 0,
         defaultLabourOverhead: parseFloat(labourOverhead) || 0,
+        minMarkupPct: (parseFloat(minMarkupPct) || 0) / 100,
+        quoteTerms: quoteTerms.trim() || null,
+        proposalFooter: proposalFooter.trim() || null,
       });
       setSettings(updated);
       setToast({ message: "Settings saved.", type: "success" });
@@ -274,6 +285,13 @@ export default function SettingsTab({ onChanged }: Props) {
                 disabled={saving} className={inputCls}
               />
             </Field>
+            <Field label="Minimum markup — the floor (%)" hint="Sell prices never drop below cost + this. Flags below-floor prices and powers a quote's “Revert to minimum pricing”. Buy-price wins stay ours: a cheaper buy never lowers a set sell price.">
+              <input
+                type="number" min="0" step="any" value={minMarkupPct}
+                onChange={(e) => setMinMarkupPct(e.target.value)}
+                disabled={saving} className={inputCls}
+              />
+            </Field>
           </div>
           <div className="mt-5 grid gap-5 sm:grid-cols-2">
             <Field label="STC unit price ($)" hint="Current STC certificate price; prefilled into solar quotes.">
@@ -294,6 +312,25 @@ export default function SettingsTab({ onChanged }: Props) {
               <input
                 type="number" min="0" step="any" value={labourOverhead}
                 onChange={(e) => setLabourOverhead(e.target.value)}
+                disabled={saving} className={inputCls}
+              />
+            </Field>
+          </div>
+          {/* Proposal print blocks (mig 97) — set once, printed on every quote */}
+          <div className="mt-5 grid gap-5">
+            <Field label="Quote terms & conditions" hint="Printed at the end of every quote/proposal. Leave blank to hide the block.">
+              <textarea
+                rows={5} value={quoteTerms}
+                onChange={(e) => setQuoteTerms(e.target.value)}
+                placeholder={"e.g. Quote valid for 30 days. 50% deposit on acceptance…"}
+                disabled={saving} className={`${inputCls} resize-y`}
+              />
+            </Field>
+            <Field label="Proposal footer line" hint="One line under the proposal — licence number, thank-you, or both. Leave blank to hide.">
+              <input
+                value={proposalFooter}
+                onChange={(e) => setProposalFooter(e.target.value)}
+                placeholder="e.g. REC 12345 · Thank you for the opportunity to quote"
                 disabled={saving} className={inputCls}
               />
             </Field>

@@ -266,6 +266,7 @@ export async function applyTemplateToQuote(
   quoteId: string,
   templateId: string,
   qtyMultiplier = 1,
+  sectionId?: string | null,
 ): Promise<number> {
   if (!supabaseConfigured()) throw NOT_CONFIGURED;
   const tpl = await getTemplateWithItems(templateId);
@@ -280,15 +281,15 @@ export async function applyTemplateToQuote(
   // a stable sort_order matching the template order.
   for (const item of tpl.items) {
     if (item.kind === 'material' && item.materialId) {
-      await addQuoteItemFromMaterial(quoteId, item.materialId, (item.qty || 1) * mult);
+      await addQuoteItemFromMaterial(quoteId, item.materialId, (item.qty || 1) * mult, sectionId);
       added += 1;
     } else if (item.kind === 'prebuild' && item.prebuildId) {
       for (let i = 0; i < mult; i += 1) {
-        const rows = await addQuoteItemFromPrebuild(quoteId, item.prebuildId);
+        const rows = await addQuoteItemFromPrebuild(quoteId, item.prebuildId, 1, sectionId);
         added += rows.length;
       }
     } else if (item.kind === 'labour' && item.role) {
-      await addQuoteItemLabour(quoteId, item.role, (item.qty || 0) * mult);
+      await addQuoteItemLabour(quoteId, item.role, (item.qty || 0) * mult, undefined, sectionId);
       added += 1;
     }
   }

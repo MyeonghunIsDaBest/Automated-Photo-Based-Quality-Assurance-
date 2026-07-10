@@ -1,101 +1,101 @@
 {
-  "generatedAt": "2026-06-21T18:43:41.236Z",
+  "generatedAt": "2026-07-09T06:47:59.262Z",
   "entries": [
     {
-      "id": "f6eca6d",
-      "date": "2026-06-17T06:56:08+08:00",
+      "id": "20ebbb8",
+      "date": "2026-07-02T09:26:44+08:00",
       "surface": "frontend",
       "kind": "change",
-      "headline": "Update.",
-      "filesChanged": 1
+      "headline": "Stock hub first-run rework + Firefox stale-chunk fix.",
+      "filesChanged": 5
     },
     {
-      "id": "e1e9e6b",
-      "date": "2026-06-17T06:46:05+08:00",
+      "id": "a40c7cb",
+      "date": "2026-07-02T09:05:27+08:00",
       "surface": "frontend",
       "kind": "change",
-      "headline": "Sim pro update test.",
-      "filesChanged": 86
+      "headline": "Stock enhancements (batch 6): Settings depth — enhancement pass complete.",
+      "filesChanged": 2
     },
     {
-      "id": "18b2d08",
-      "date": "2026-06-10T10:35:23+08:00",
+      "id": "418a4c3",
+      "date": "2026-07-02T09:01:44+08:00",
       "surface": "frontend",
       "kind": "change",
-      "headline": "Frontend update.",
-      "filesChanged": 34
-    },
-    {
-      "id": "3b45224",
-      "date": "2026-06-08T20:02:39+08:00",
-      "surface": "frontend",
-      "kind": "fix",
-      "headline": "Fix and UI update.",
-      "filesChanged": 13
-    },
-    {
-      "id": "24297d4",
-      "date": "2026-06-05T22:46:23+08:00",
-      "surface": "infra",
-      "kind": "change",
-      "headline": "Backend Update Support.",
-      "filesChanged": 10
-    },
-    {
-      "id": "0fd9762",
-      "date": "2026-06-05T22:45:50+08:00",
-      "surface": "frontend",
-      "kind": "change",
-      "headline": "Huge Update and Fix.",
-      "filesChanged": 25
-    },
-    {
-      "id": "12cb674",
-      "date": "2026-06-05T19:09:56+08:00",
-      "surface": "frontend",
-      "kind": "change",
-      "headline": "Huge frontend update.",
-      "filesChanged": 4
-    },
-    {
-      "id": "392a196",
-      "date": "2026-06-04T20:53:02+08:00",
-      "surface": "frontend",
-      "kind": "change",
-      "headline": "Production update.",
-      "filesChanged": 120
-    },
-    {
-      "id": "80398f3",
-      "date": "2026-06-01T16:29:00+08:00",
-      "surface": "frontend",
-      "kind": "change",
-      "headline": "Production implementation pt1.",
-      "filesChanged": 25
-    },
-    {
-      "id": "79f8a0a",
-      "date": "2026-06-01T11:31:09+08:00",
-      "surface": "frontend",
-      "kind": "fix",
-      "headline": "Daily Brief degrades to hidden when synthesis is unreachable.",
-      "filesChanged": 1
-    },
-    {
-      "id": "35f24e0",
-      "date": "2026-06-01T11:16:10+08:00",
-      "surface": "frontend",
-      "kind": "new",
-      "headline": "Persist warranties to Supabase + realtime (P1.5).",
+      "headline": "Stock enhancements (batch 5): Reports depth.",
       "filesChanged": 3
     },
     {
-      "id": "ba683d4",
-      "date": "2026-06-01T11:08:25+08:00",
+      "id": "e5c9358",
+      "date": "2026-07-02T08:27:52+08:00",
       "surface": "frontend",
-      "kind": "improve",
-      "headline": "Real Supabase password/email updates; drop dead simulators (P0.4b).",
-      "filesChanged": 12
+      "kind": "change",
+      "headline": "Stock enhancements (batch 4): Orders lifecycle depth.",
+      "filesChanged": 4
+    },
+    {
+      "id": "9cd373b",
+      "date": "2026-07-02T08:21:46+08:00",
+      "surface": "frontend",
+      "kind": "change",
+      "headline": "Stock enhancements (batch 3): Restock depth.",
+      "filesChanged": 4
+    },
+    {
+      "id": "c553676",
+      "date": "2026-07-02T08:18:13+08:00",
+      "surface": "frontend",
+      "kind": "change",
+      "headline": "Stock enhancements (restart 1R+2R): Overview filters/grouping + Locations transfers & lifecycle.",
+      "filesChanged": 7
+    },
+    {
+      "id": "ad2a282",
+      "date": "2026-07-01T18:02:33+08:00",
+      "surface": "frontend",
+      "kind": "change",
+      "headline": "Stock enhancements (batch 2): Locations depth.",
+      "filesChanged": 2
+    },
+    {
+      "id": "146167c",
+      "date": "2026-07-01T16:28:01+08:00",
+      "surface": "frontend",
+      "kind": "change",
+      "headline": "Stock enhancements (batch 1): foundation + richer Overview.",
+      "filesChanged": 5
+    },
+    {
+      "id": "682d96d",
+      "date": "2026-07-01T11:22:57+08:00",
+      "surface": "frontend",
+      "kind": "change",
+      "headline": "Quotes register: per-row actions (open / edit / delete).",
+      "filesChanged": 2
+    },
+    {
+      "id": "252a5d1",
+      "date": "2026-06-30T16:33:55+08:00",
+      "surface": "frontend",
+      "kind": "change",
+      "headline": "Stock & Inventory — Phase 4: reporting (module functionally complete).",
+      "filesChanged": 4
+    },
+    {
+      "id": "a3f9b46",
+      "date": "2026-06-30T16:24:20+08:00",
+      "surface": "frontend",
+      "kind": "change",
+      "headline": "Stock & Inventory — Phase 3: purchase-order lifecycle.",
+      "filesChanged": 6
+    },
+    {
+      "id": "41c0863",
+      "date": "2026-06-30T16:11:37+08:00",
+      "surface": "frontend",
+      "kind": "change",
+      "headline": "Stock & Inventory — Phase 2: minimums, auto-restock, transfers.",
+      "filesChanged": 7
     }
   ]
 }

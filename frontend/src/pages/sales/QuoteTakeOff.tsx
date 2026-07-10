@@ -39,6 +39,8 @@ interface Props {
   onAdded: () => void;
   /** Reuse the parent's Toaster (optional — falls back to no-op). */
   onToast?: (message: string, type: "success" | "error" | "info") => void;
+  /** Cost centre new lines land in (null = General). */
+  activeSectionId?: string | null;
 }
 
 function fmtMoney(n: number): string {
@@ -60,7 +62,7 @@ interface Group {
   templates: QuoteTemplate[];
 }
 
-export default function QuoteTakeOff({ quoteId, canSeeCost, isLocked, onAdded, onToast }: Props) {
+export default function QuoteTakeOff({ quoteId, canSeeCost, isLocked, onAdded, onToast, activeSectionId = null }: Props) {
   const [templates, setTemplates] = useState<QuoteTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -209,7 +211,7 @@ export default function QuoteTakeOff({ quoteId, canSeeCost, isLocked, onAdded, o
     const qty = Math.max(1, Math.floor(qtys[t.id] ?? 1));
     setApplyingId(t.id);
     try {
-      const n = await applyTemplateToQuote(quoteId, t.id, qty);
+      const n = await applyTemplateToQuote(quoteId, t.id, qty, activeSectionId);
       onAdded();
       onToast?.(
         `Added ${t.name}${qty > 1 ? ` ×${qty}` : ""} — ${n} line${n === 1 ? "" : "s"}`,

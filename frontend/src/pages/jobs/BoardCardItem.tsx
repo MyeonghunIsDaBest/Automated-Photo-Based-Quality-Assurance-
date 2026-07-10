@@ -135,7 +135,12 @@ export function BoardCardItem({
   now,
 }: BoardCardItemProps) {
   const navigate = useNavigate();
-  const stamp = TYPE_STAMP[card.type];
+  // A service job born from a PROJECT quote wears the Project stamp (the user's
+  // register) while keeping service drag/click semantics.
+  const stamp =
+    card.type === "service" && card.kind === "project"
+      ? { label: "Project", bg: "#F9EFD9", fg: "#C8841E", Icon: Building2 }
+      : TYPE_STAMP[card.type];
   const stageBadge = card.simproStage ? SIMPRO_STAGE_BADGE[card.simproStage] : undefined;
   const isCancelled = card.cancelled === true;
 
@@ -276,6 +281,18 @@ export function BoardCardItem({
           {stageBadge && (
             <span className={stampClass} style={{ backgroundColor: stageBadge.bg, color: stageBadge.fg }}>
               {stageBadge.label}
+            </span>
+          )}
+          {/* Upsell in flight: a variation is sent, awaiting the customer's yes */}
+          {card.variationPending && !isCancelled && card.archived !== true && (
+            <span className={stampClass} style={{ backgroundColor: "#E5F2EA", color: "#246F47" }}>
+              Variation sent
+            </span>
+          )}
+          {/* Work done but revenue not collected yet */}
+          {card.type === "service" && card.column === "completed" && !isCancelled && card.archived !== true && (
+            <span className={stampClass} style={{ backgroundColor: "#F9EFD9", color: "#C8841E" }}>
+              To invoice
             </span>
           )}
           {showWaiting && (

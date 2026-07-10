@@ -172,3 +172,32 @@ export function quoteFinancials(
   const customerPays = round2(Math.max(0, totalIncGst - rebatesTotal));
   return { subtotalExGst, discountExGst, netSubtotalExGst, gstAmount, totalIncGst, rebatesTotal, customerPays };
 }
+
+// ---------------------------------------------------------------------------
+// Pricing floor (migration 94) — minimum markup ON COST.
+//
+// Luke's rule: catalogue sell prices are fixed numbers he sets; the floor is
+// the safety net underneath them. Floor sell = cost × (1 + minMarkupPct) —
+// "25% on our buy price". Markup-on-cost, NOT margin-on-sale. Labour lines are
+// deliberately outside the floor for now (the brief was materials).
+// ---------------------------------------------------------------------------
+
+/** The minimum acceptable sell for a cost under the floor markup.
+ *  Null/zero/negative cost has no floor → null (uncosted lines never flag). */
+export function minSell(cost: number | null | undefined, minMarkupPct: number): number | null {
+  if (cost == null || !Number.isFinite(cost) || cost <= 0) return null;
+  return round2(cost * (1 + minMarkupPct));
+}
+
+/** True when a sell price sits below the floor for its cost. Uncosted lines
+ *  (no cost) and unpriced sells (null) never flag. */
+export function isBelowFloor(
+  sell: number | null | undefined,
+  cost: number | null | undefined,
+  minMarkupPct: number,
+): boolean {
+  const floor = minSell(cost, minMarkupPct);
+  if (floor === null || sell == null || !Number.isFinite(sell)) return false;
+  // Half-cent tolerance so a floor-priced line never flags off rounding.
+  return sell < floor - 0.005;
+}

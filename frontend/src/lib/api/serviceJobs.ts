@@ -43,6 +43,8 @@ interface ServiceJobRow {
   address: string | null;
   customer_id: string | null;
   property_id: string | null;
+  /** 'service' | 'project' (mig 93); absent pre-migration. */
+  kind?: string | null;
   status: ServiceJobStatus;
   scheduled_for: string | null;
   assigned_to: string | null;
@@ -80,6 +82,9 @@ interface ServiceJobTimeEntryRow {
 // Domain types (camelCase — used by the rest of the app)
 // ---------------------------------------------------------------------------
 
+/** Work register a job belongs to (mirrors the quote registers, mig 93). */
+export type ServiceJobKind = 'service' | 'project';
+
 export interface ServiceJob {
   id: string;
   title: string;
@@ -93,6 +98,8 @@ export interface ServiceJob {
   address: string | null;
   customerId: string | null;
   propertyId: string | null;
+  /** service | project — inherited from the originating quote at conversion. */
+  kind: ServiceJobKind;
   status: ServiceJobStatus;
   scheduledFor: string | null;
   assignedTo: string | null;
@@ -142,6 +149,7 @@ function rowToServiceJob(r: ServiceJobRow): ServiceJob {
     address: r.address,
     customerId: r.customer_id,
     propertyId: r.property_id,
+    kind: (r.kind as ServiceJobKind) ?? 'service',
     status: r.status,
     scheduledFor: r.scheduled_for,
     assignedTo: r.assigned_to,
@@ -247,6 +255,8 @@ export interface CreateServiceJobInput {
   assignedTo?: string;
   /** DATE string 'YYYY-MM-DD'. If provided, status is set to 'scheduled'. */
   scheduledFor?: string;
+  /** service | project. Only sent when 'project' (pre-mig-93-safe default). */
+  kind?: ServiceJobKind;
 }
 
 /** Create a service job. Status defaults to 'pending' (DB default) unless
@@ -274,6 +284,9 @@ export async function createServiceJob(input: CreateServiceJobInput): Promise<Se
     job_number: jobNumber,
     created_by: uid,
   };
+  // 'service' is the DB default — only send the column for project jobs, so
+  // ordinary job creation keeps working on databases without migration 93.
+  if (input.kind === 'project') insert.kind = 'project';
   // Only send status / scheduled_for when scheduling upfront; otherwise let
   // the DB default ('pending') apply so we don't override a future migration
   // that might change the default.
@@ -281,11 +294,18 @@ export async function createServiceJob(input: CreateServiceJobInput): Promise<Se
     insert.scheduled_for = input.scheduledFor;
     insert.status = 'scheduled' as ServiceJobStatus;
   }
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('service_jobs')
     .insert(insert)
     .select('*')
     .single();
+  // Pre-mig-93 fallback: if the DB doesn't have the kind column yet, retry once
+  // without it so converting a project quote still creates the job (the mig-93
+  // backfill promotes it to 'project' from the quote link when applied).
+  if (error && 'kind' in insert && (error.code === 'PGRST204' || /'kind' column/i.test(error.message ?? ''))) {
+    delete insert.kind;
+    ({ data, error } = await supabase.from('service_jobs').insert(insert).select('*').single());
+  }
   if (error) throw error;
   return rowToServiceJob(data as ServiceJobRow);
 }

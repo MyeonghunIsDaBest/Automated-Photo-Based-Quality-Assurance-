@@ -118,6 +118,19 @@ export default function Sales() {
   const rawTab        = searchParams.get("tab");
   const customerParam = searchParams.get("customer");
 
+  // One-shot seed for the job drawer's "Add variation" deep link (?newJob=…):
+  // captured once, then stripped from the URL so tab switches, reloads, and
+  // later manual "New variation" clicks don't re-open a prefilled modal.
+  const [variationJobSeed, setVariationJobSeed] = useState<string | null>(() => searchParams.get("newJob"));
+  useEffect(() => {
+    if (searchParams.get("newJob")) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("newJob");
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const VALID_TABS: TabKey[] = ["quotes", "invoices", "variations", "catalogue", "settings"];
   const activeTab: TabKey = VALID_TABS.includes(rawTab as TabKey)
     ? (rawTab as TabKey)
@@ -279,6 +292,7 @@ export default function Sales() {
               initialCustomerFilter={customerParam}
               onChanged={refreshCounts}
               canSeeCost={!denied}
+              initialTypeFilter={(() => { const t = searchParams.get("type"); return t === "service" || t === "project" ? t : null; })()}
             />
           )}
           {activeTab === "invoices" && (
@@ -290,6 +304,8 @@ export default function Sales() {
           {activeTab === "variations" && (
             <VariationsTab
               onChanged={refreshCounts}
+              initialJobId={variationJobSeed}
+              onJobSeedConsumed={() => setVariationJobSeed(null)}
             />
           )}
           {activeTab === "catalogue" && (

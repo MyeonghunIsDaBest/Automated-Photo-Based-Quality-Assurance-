@@ -148,11 +148,15 @@ interface JobsBoardProps {
    * JobsHub uses this to derive stat-strip counts without duplicating the fetch.
    */
   onCardsChanged?: (cards: BoardCard[]) => void;
+  /** Deep-link: open this job's drawer on mount (?job=). */
+  initialJobId?: string | null;
+  /** Deep-link: start on a type filter (?kind= service|maintenance|project). */
+  initialKind?: TypeFilter | null;
 }
 
 // ─── component ───────────────────────────────────────────────────────────────
 
-export default function JobsBoard({ embedded = false, onCardsChanged }: JobsBoardProps = {}) {
+export default function JobsBoard({ embedded = false, onCardsChanged, initialJobId = null, initialKind = null }: JobsBoardProps = {}) {
   const currentProfile = useAppStore((s) => s.currentProfile);
 
   const denied = !canViewJobsBoard(currentProfile);
@@ -165,7 +169,7 @@ export default function JobsBoard({ embedded = false, onCardsChanged }: JobsBoar
   const [includeCancelled, setIncludeCancelled] = useState(false);
   // When on, the board swaps the active columns for a searchable archived list.
   const [showArchived, setShowArchived] = useState(false);
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>(initialKind ?? "all");
 
   // ── Search + filters ──────────────────────────────────────────────────────
   const [search, setSearch] = useState("");
@@ -200,6 +204,12 @@ export default function JobsBoard({ embedded = false, onCardsChanged }: JobsBoar
 
   // Service job detail drawer
   const [openJobId, setOpenJobId] = useState<string | null>(null);
+
+  // Deep-link (?job=…): open the drawer, and follow later URL changes while
+  // the board stays mounted (e.g. two "View job" clicks in a row).
+  useEffect(() => {
+    if (initialJobId) setOpenJobId(initialJobId);
+  }, [initialJobId]);
 
   // Shortcuts modal
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -540,8 +550,15 @@ export default function JobsBoard({ embedded = false, onCardsChanged }: JobsBoar
   const currentProfileId = currentProfile?.id ?? null;
 
   const visibleCards = cards.filter((c) => {
-    // Type filter
-    if (typeFilter !== "all" && c.type !== typeFilter) return false;
+    // Type filter. "Project" = legacy project cards + service jobs born from a
+    // PROJECT quote (kind, mig 93); "Service" excludes those project-kind jobs.
+    if (typeFilter === "project") {
+      if (!(c.type === "project" || (c.type === "service" && c.kind === "project"))) return false;
+    } else if (typeFilter === "service") {
+      if (!(c.type === "service" && c.kind !== "project")) return false;
+    } else if (typeFilter !== "all" && c.type !== typeFilter) {
+      return false;
+    }
     // Search
     if (searchLower) {
       const inTitle = c.title.toLowerCase().includes(searchLower);

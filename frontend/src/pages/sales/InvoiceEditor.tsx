@@ -221,7 +221,8 @@ export default function InvoiceEditor({ invoiceId, onClose, onChanged }: Props) 
       const q = stripSearchChars(catalogueSearch.trim());
       try {
         const mats = await listMaterials({ search: q || undefined });
-        setCatalogueResults(mats.slice(0, 12));
+        // Stock-first ordering: stocked items surface before one-offs.
+        setCatalogueResults([...mats].sort((a, b) => Number(b.isStockItem) - Number(a.isStockItem)).slice(0, 12));
       } catch { setCatalogueResults([]); }
     }, 300);
     return () => { if (catDebRef.current) clearTimeout(catDebRef.current); };
@@ -536,7 +537,8 @@ export default function InvoiceEditor({ invoiceId, onClose, onChanged }: Props) 
                   </td>
                 </tr>
               )}
-              {items.map((item) => {
+              {(() => {
+                const renderRow = (item: (typeof items)[number]) => {
                 const lt = lineTotal({ qty: item.qty, unitPriceExGst: item.unitPriceExGst });
                 const isVariation = !!item.variationId;
                 return (
@@ -598,7 +600,35 @@ export default function InvoiceEditor({ invoiceId, onClose, onChanged }: Props) 
                     )}
                   </tr>
                 );
-              })}
+                };
+
+                // Group by cost centre when any line carries one (quote sections +
+                // accepted variations); blocks keep first-appearance order.
+                const hasCentres = items.some((i) => i.costCentre);
+                if (!hasCentres) return items.map(renderRow);
+                const order: (string | null)[] = [];
+                for (const i of items) {
+                  const k = i.costCentre ?? null;
+                  if (!order.includes(k)) order.push(k);
+                }
+                const cols = isLocked ? 5 : 6;
+                return order.flatMap((k) => {
+                  const rows = items.filter((i) => (i.costCentre ?? null) === k);
+                  const sub = rows.reduce((s, i) => s + lineTotal({ qty: i.qty, unitPriceExGst: i.unitPriceExGst }), 0);
+                  const label = k ?? "General";
+                  return [
+                    <tr key={`hdr-${label}`} className="bg-[#FAF8F2]">
+                      <td colSpan={cols} className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">{label}</td>
+                    </tr>,
+                    ...rows.map(renderRow),
+                    <tr key={`sub-${label}`}>
+                      <td colSpan={cols} className="px-3 pb-2 pt-0.5 text-right text-[11px] text-[#6B6B6B]">
+                        {label} subtotal: <span className="font-semibold tabular-nums text-[#3A3A3A]">{fmtMoney(sub)}</span>
+                      </td>
+                    </tr>,
+                  ];
+                });
+              })()}
             </tbody>
           </table>
         </div>

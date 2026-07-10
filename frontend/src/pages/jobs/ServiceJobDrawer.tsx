@@ -36,7 +36,10 @@ import {
   canLogServiceJobWork,
   canManageSales,
 } from '../../lib/permissions';
-import { listQuotes, createQuote, type Quote } from '../../lib/api/commercial';
+import {
+  listQuotes, createQuote, getQuoteForJob, listVariations, listInvoices, listQuoteSections,
+  type Quote, type Variation, type Invoice, type QuoteSection,
+} from '../../lib/api/commercial';
 import {
   getServiceJob,
   updateServiceJob,
@@ -61,6 +64,7 @@ import { listProfiles } from '../../lib/api/profiles';
 import type { Profile } from '../../types';
 import { JobPhotosSection } from './JobPhotosSection';
 import { TimeEntriesSection } from './TimeEntriesSection';
+import { JobBoxSection } from './JobBoxSection';
 import ProfitSummaryCard from './ProfitSummaryCard';
 
 // ─── Status metadata ──────────────────────────────────────────────────────────
@@ -146,6 +150,37 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
     listQuotes({ serviceJobId: jobId })
       .then((qs) => { if (alive) setJobQuotes(qs); })
       .catch(() => { /* non-fatal — section just shows empty */ });
+    return () => { alive = false; };
+  }, [jobId, canSell]);
+
+  // ── Sales thread: originating quote → variations → invoices (manager-sales) ──
+  const [originQuote, setOriginQuote]     = useState<Quote | null>(null);
+  const [originSections, setOriginSections] = useState<QuoteSection[]>([]);
+  const [jobVariations, setJobVariations] = useState<Variation[]>([]);
+  const [jobInvoices, setJobInvoices]     = useState<Invoice[]>([]);
+
+  useEffect(() => {
+    if (!jobId || !canSell) { setOriginQuote(null); setOriginSections([]); setJobVariations([]); setJobInvoices([]); return; }
+    let alive = true;
+    void (async () => {
+      // Server-scoped reads — client-side filtering would silently truncate at
+      // PostgREST's 1000-row cap once the tables grow.
+      const [origin, variations, invoices] = await Promise.all([
+        getQuoteForJob(jobId).catch(() => null),
+        listVariations({ serviceJobId: jobId }).catch(() => [] as Variation[]),
+        listInvoices({ serviceJobId: jobId }).catch(() => [] as Invoice[]),
+      ]);
+      if (!alive) return;
+      setOriginQuote(origin);
+      setJobVariations(variations);
+      setJobInvoices(invoices);
+      if (origin) {
+        const sections = await listQuoteSections(origin.id).catch(() => [] as QuoteSection[]);
+        if (alive) setOriginSections(sections);
+      } else {
+        setOriginSections([]);
+      }
+    })();
     return () => { alive = false; };
   }, [jobId, canSell]);
 
@@ -800,6 +835,18 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
                 )}
               </section>
 
+              {/* ── Job box (stock allocated → tech accepts at pickup) ── */}
+              <JobBoxSection
+                jobId={jobId}
+                jobKind="service"
+                canManage={canManage}
+                profiles={profiles}
+                defaultAssignee={job.assignedTo ?? null}
+                jobTitle={job.title}
+                jobAddress={job.address ?? null}
+                onChanged={handleSectionChanged}
+              />
+
               {/* ── Notes ────────────────────────────────────────────── */}
               <section>
                 <label className="block mb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
@@ -874,6 +921,126 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
                 </section>
               )}
 
+              {/* ── Sales thread: quote → variations → invoice (manager-sales) ── */}
+              {canSell && (originQuote || jobVariations.length > 0 || jobInvoices.length > 0) && (() => {
+                const acceptedVars = jobVariations.filter((v) => v.status === 'approved');
+                const originValue = originQuote ? originQuote.subtotalExGst - originQuote.discountExGst : 0;
+                // No originating quote (job created directly + priced manually):
+                // the job's stored contract value is the truth, not $0.
+                const contractEx = originQuote
+                  ? originValue + acceptedVars.reduce((s, v) => s + v.subtotalExGst, 0)
+                  : (job?.contractValue ?? 0);
+                // Issued money only — a draft invoice isn't revenue yet.
+                const invoicedInc = jobInvoices
+                  .filter((i) => i.status === 'sent' || i.status === 'paid' || i.status === 'overdue')
+                  .reduce((s, i) => s + i.totalIncGst, 0);
+                const varPill: Record<string, string> = {
+                  draft: 'bg-slate-100 text-slate-600', priced: 'bg-amber-50 text-amber-700',
+                  sent: 'bg-sky-50 text-sky-700', approved: 'bg-emerald-50 text-emerald-700', declined: 'bg-red-50 text-red-600',
+                };
+                const invPill: Record<string, string> = {
+                  draft: 'bg-slate-100 text-slate-600', sent: 'bg-sky-50 text-sky-700',
+                  paid: 'bg-emerald-50 text-emerald-700', overdue: 'bg-red-50 text-red-600', voided: 'bg-slate-100 text-slate-400',
+                };
+                // Cost-centre breakdown: origin quote sections (+ its discount, so
+                // the rows tie back to the contract figure) + each accepted variation.
+                const items = originQuote?.items ?? [];
+                const centres: { id: string; label: string; value: number }[] = [];
+                if (originQuote) {
+                  const general = items.filter((i) => !i.sectionId).reduce((s, i) => s + i.qty * i.unitPriceExGst, 0);
+                  if (general > 0) centres.push({ id: 'general', label: originSections.length > 0 ? 'General' : 'Quoted works', value: general });
+                  for (const sec of originSections) {
+                    const v = items.filter((i) => i.sectionId === sec.id).reduce((s, i) => s + i.qty * i.unitPriceExGst, 0);
+                    if (v > 0) centres.push({ id: sec.id, label: sec.name, value: v });
+                  }
+                  if (originQuote.discountExGst > 0) centres.push({ id: 'discount', label: 'Discount', value: -originQuote.discountExGst });
+                }
+                for (const v of acceptedVars) centres.push({ id: `var-${v.id}`, label: `Variation — ${v.title}`, value: v.subtotalExGst });
+                return (
+                  <section>
+                    <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                      Sales thread
+                    </label>
+                    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+                      <ul className="divide-y divide-slate-100">
+                        {originQuote && (
+                          <li>
+                            <button
+                              type="button"
+                              onClick={() => navigate(`/jobs?view=quotes&quote=${originQuote.id}`)}
+                              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-slate-50"
+                            >
+                              <span className="min-w-0">
+                                <span className="block truncate text-[13px] font-medium text-slate-800">
+                                  {originQuote.number ?? 'Quote'} · {originQuote.title}
+                                </span>
+                                <span className="text-[11px] uppercase tracking-wide text-slate-400">Original quote — this job came from it</span>
+                              </span>
+                              <span className="shrink-0 tabular-nums text-[13px] text-slate-700">${originValue.toFixed(2)}</span>
+                            </button>
+                          </li>
+                        )}
+                        {jobVariations.map((v) => (
+                          <li key={v.id}>
+                            <button
+                              type="button"
+                              onClick={() => navigate('/sales?tab=variations')}
+                              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-slate-50"
+                            >
+                              <span className="min-w-0 flex items-center gap-2">
+                                <span className="truncate text-[13px] text-slate-800">Variation · {v.title}</span>
+                                <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${varPill[v.status] ?? 'bg-slate-100 text-slate-600'}`}>
+                                  {v.status === 'approved' ? 'accepted' : v.status}
+                                </span>
+                              </span>
+                              <span className="shrink-0 tabular-nums text-[13px] text-slate-700">${v.subtotalExGst.toFixed(2)}</span>
+                            </button>
+                          </li>
+                        ))}
+                        {jobInvoices.map((inv) => (
+                          <li key={inv.id}>
+                            <button
+                              type="button"
+                              onClick={() => navigate('/sales?tab=invoices')}
+                              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-slate-50"
+                            >
+                              <span className="min-w-0 flex items-center gap-2">
+                                <span className="truncate text-[13px] text-slate-800">Invoice {inv.number ?? '(draft)'}</span>
+                                <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${invPill[inv.status] ?? 'bg-slate-100 text-slate-600'}`}>
+                                  {inv.status}
+                                </span>
+                              </span>
+                              <span className="shrink-0 tabular-nums text-[13px] text-slate-700">${inv.totalIncGst.toFixed(2)}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-slate-50 px-3 py-2">
+                        <span className="text-[11px] uppercase tracking-wide text-slate-500">
+                          Contract (ex GST) <span className="ml-1 font-semibold tabular-nums text-slate-800">${contractEx.toFixed(2)}</span>
+                        </span>
+                        <span className="text-[11px] uppercase tracking-wide text-slate-500">
+                          Invoiced (inc GST) <span className={`ml-1 font-semibold tabular-nums ${invoicedInc > 0 ? 'text-emerald-700' : 'text-slate-800'}`}>${invoicedInc.toFixed(2)}</span>
+                        </span>
+                      </div>
+                    </div>
+                    {centres.length > 0 && (
+                      <div className="mt-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Cost centres</p>
+                        <ul className="space-y-0.5">
+                          {centres.map((c) => (
+                            <li key={c.id} className="flex items-center justify-between text-[12px] text-slate-600">
+                              <span className="truncate">{c.label}</span>
+                              <span className="ml-2 shrink-0 tabular-nums">${c.value.toFixed(2)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </section>
+                );
+              })()}
+
               {/* ── Quotes (manager-sales only) ──────────────────────── */}
               {canSell && (
                 <section>
@@ -881,15 +1048,26 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
                     <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
                       Quotes
                     </label>
-                    <button
-                      type="button"
-                      onClick={() => void handleNewQuote()}
-                      disabled={creatingQuote}
-                      className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[12px] font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                    >
-                      {creatingQuote ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-                      New quote for this job
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/sales?tab=variations&newJob=${job.id}`)}
+                        className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[12px] font-medium text-slate-700 hover:bg-slate-50"
+                        title="Price extra work as a variation — accepted variations fold into this job as another cost centre"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        Add variation
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleNewQuote()}
+                        disabled={creatingQuote}
+                        className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[12px] font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        {creatingQuote ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                        New quote for this job
+                      </button>
+                    </div>
                   </div>
                   {quoteError && <p className="mb-2 text-[11px] text-red-600">{quoteError}</p>}
                   {jobQuotes.length === 0 ? (

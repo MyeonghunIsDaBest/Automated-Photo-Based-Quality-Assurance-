@@ -15,6 +15,7 @@
 
 import { supabase, supabaseConfigured } from '../supabase';
 import type { CsvMaterialRow, ImportPlan } from '../catalogue/csv';
+import type { PrebuildImportPlan } from '../catalogue/prebuildCsv';
 
 // ---------------------------------------------------------------------------
 // Error sentinel
@@ -783,10 +784,16 @@ function csvRowToInsert(row: CsvMaterialRow, uid: string | null): Record<string,
     sku: row.sku,
     name: row.name,
     description: row.description,
-    unit: row.unit,
+    unit: row.unit ?? 'ea',
     cost_price: row.costPrice,
     sell_price: row.sellPrice,
     tags: row.tags,
+    // Optional P3 columns — only sent when the file provided them, so DB
+    // defaults apply otherwise (and old 7-column files behave exactly as before).
+    ...(row.category !== null && { category: row.category }),
+    ...(row.subcategory !== null && { subcategory: row.subcategory }),
+    ...(row.isStockItem !== null && { is_stock_item: row.isStockItem }),
+    ...(row.isFavourite !== null && { is_favourite: row.isFavourite }),
     source: 'csv',
     created_by: uid,
   };
@@ -796,11 +803,19 @@ function csvRowToUpdate(row: CsvMaterialRow): Record<string, unknown> {
   return {
     sku: row.sku,
     name: row.name,
-    description: row.description,
-    unit: row.unit,
-    cost_price: row.costPrice,
-    sell_price: row.sellPrice,
-    tags: row.tags,
+    // Blank/absent cells never clobber what's already on the material — a CSV
+    // update can only SET values, never clear them (clear in the app instead).
+    // This makes slim price-update exports safe: blank description/unit/sell
+    // cells leave those fields exactly as they are.
+    ...(row.description !== null && { description: row.description }),
+    ...(row.unit !== null && { unit: row.unit }),
+    ...(row.costPrice !== null && { cost_price: row.costPrice }),
+    ...(row.sellPrice !== null && { sell_price: row.sellPrice }),
+    ...(row.tags.length > 0 && { tags: row.tags }),
+    ...(row.category !== null && { category: row.category }),
+    ...(row.subcategory !== null && { subcategory: row.subcategory }),
+    ...(row.isStockItem !== null && { is_stock_item: row.isStockItem }),
+    ...(row.isFavourite !== null && { is_favourite: row.isFavourite }),
   };
 }
 
@@ -857,4 +872,60 @@ export async function runImport(
   }
 
   return { added, updated, skipped: plan.skips.length, failed: { count: failCount, firstError } };
+}
+
+/**
+ * Execute a pre-build import plan (P3 pipeline): creates each planned pre-build
+ * then its material lines in file order, via the same CRUD the editor uses.
+ * Sequential + per-prebuild error isolation: one bad assembly doesn't stop the
+ * rest, and the report says exactly what landed.
+ */
+export async function runPrebuildImport(
+  plan: PrebuildImportPlan,
+): Promise<{ created: number; itemsAdded: number; failed: { count: number; firstError: string | null } }> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+
+  let created = 0;
+  let itemsAdded = 0;
+  let failCount = 0;
+  let firstError: string | null = null;
+
+  for (const c of plan.creates) {
+    let createdId: string | null = null;
+    let lines = 0;
+    try {
+      const pb = await createPrebuild({
+        name: c.prebuild.name,
+        category: c.prebuild.category,
+        subcategory: c.prebuild.subcategory,
+        isFavourite: c.prebuild.isFavourite,
+      });
+      createdId = pb.id;
+      for (let i = 0; i < c.items.length; i++) {
+        await addPrebuildItem({ prebuildId: pb.id, materialId: c.items[i].materialId, qty: c.items[i].qty, sortOrder: i });
+        lines += 1;
+      }
+      created += 1;
+      itemsAdded += lines;
+    } catch (ex) {
+      failCount += 1;
+      if (firstError === null) {
+        const msg = ex instanceof Error ? ex.message : String(ex);
+        firstError = `"${c.prebuild.name}": ${msg}`;
+      }
+      // All-or-nothing per assembly: a half-built prebuild would be skipped
+      // by name on every retry yet misprice every quote that uses it. Roll
+      // the header back (items cascade); best-effort — if even the delete
+      // fails, the name-skip at least keeps retries from double-creating.
+      if (createdId !== null) {
+        try {
+          await deletePrebuild(createdId);
+        } catch {
+          /* leave the failure counts as-is; nothing more we can do client-side */
+        }
+      }
+    }
+  }
+
+  return { created, itemsAdded, failed: { count: failCount, firstError } };
 }

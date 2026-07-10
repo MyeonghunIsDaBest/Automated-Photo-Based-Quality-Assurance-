@@ -42,7 +42,23 @@ interface Props {
   canSeeCost?: boolean;
   /** Deep-link: open this quote in the editor on mount (e.g. from a job drawer). */
   initialQuoteId?: string | null;
+  /** Deep-link: open the register on one of the two quote registers (?type=). */
+  initialTypeFilter?: "service" | "project" | null;
 }
+
+type QuoteTypeFilter = "service" | "project" | null;
+
+/** The two registers living inside the one Quotes tab. */
+const TYPE_SEGMENTS: { key: QuoteTypeFilter; label: string }[] = [
+  { key: null, label: "All quotes" },
+  { key: "service", label: "Service" },
+  { key: "project", label: "Project" },
+];
+
+const typeBadge = (t: "service" | "project") =>
+  t === "project"
+    ? "bg-[#F9EFD9] text-[#C8841E]"
+    : "border border-[#E6E1D4] bg-white text-[#6B6B6B]";
 
 // ─── status tokens ─────────────────────────────────────────────────────────────
 
@@ -85,7 +101,7 @@ function fmtMoney(n: number): string {
 function SkeletonRow() {
   return (
     <tr className="border-b border-[#EFEBE0]">
-      {[120, 180, 140, 80, 70, 60, 24].map((w, i) => (
+      {[120, 64, 180, 140, 80, 70, 60, 24].map((w, i) => (
         <td key={i} className="px-4 py-4">
           <SkeletonLine style={{ width: w }} />
         </td>
@@ -96,7 +112,7 @@ function SkeletonRow() {
 
 // ─── component ───────────────────────────────────────────────────────────────
 
-export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost = false, initialQuoteId = null }: Props) {
+export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost = false, initialQuoteId = null, initialTypeFilter = null }: Props) {
   const [quotes, setQuotes]       = useState<Quote[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -104,6 +120,7 @@ export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost
 
   const [statusFilter, setStatusFilter] = useState<QuoteStatus | null>(null);
   const [customerFilter, setCustomerFilter] = useState<string | null>(initialCustomerFilter ?? null);
+  const [typeFilter, setTypeFilter] = useState<QuoteTypeFilter>(initialTypeFilter ?? null);
   const [search, setSearch] = useState("");
 
   const [showNewModal, setShowNewModal] = useState(false);
@@ -154,23 +171,35 @@ export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost
     [customers],
   );
 
-  // Per-status counts for the chip badges (off the full customer-scoped set).
+  // The active register: Service, Project, or both. Every count, chip badge,
+  // pipeline figure and row below is scoped to it.
+  const typeScoped = useMemo(
+    () => (typeFilter ? quotes.filter((q) => q.quoteType === typeFilter) : quotes),
+    [quotes, typeFilter],
+  );
+  const typeCounts = useMemo(() => ({
+    all: quotes.length,
+    service: quotes.filter((q) => q.quoteType === "service").length,
+    project: quotes.filter((q) => q.quoteType === "project").length,
+  }), [quotes]);
+
+  // Per-status counts for the chip badges (off the register-scoped set).
   const statusCounts = useMemo(() => {
     const c: Record<QuoteStatus, number> = { draft: 0, sent: 0, viewed: 0, accepted: 0, declined: 0, expired: 0 };
-    for (const q of quotes) c[q.status] += 1;
+    for (const q of typeScoped) c[q.status] += 1;
     return c;
-  }, [quotes]);
+  }, [typeScoped]);
 
   // Live-pipeline value for the summary line.
   const pipelineValue = useMemo(
-    () => quotes.filter((q) => PIPELINE_STATUSES.includes(q.status)).reduce((s, q) => s + q.totalIncGst, 0),
-    [quotes],
+    () => typeScoped.filter((q) => PIPELINE_STATUSES.includes(q.status)).reduce((s, q) => s + q.totalIncGst, 0),
+    [typeScoped],
   );
 
   // Visible rows: status chip + search box, both client-side.
   const visible = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return quotes.filter((q) => {
+    return typeScoped.filter((q) => {
       if (statusFilter && q.status !== statusFilter) return false;
       if (!term) return true;
       return (
@@ -179,7 +208,7 @@ export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost
         customerName(q).toLowerCase().includes(term)
       );
     });
-  }, [quotes, statusFilter, search, customerName]);
+  }, [typeScoped, statusFilter, search, customerName]);
 
   function handleQuoteCreated(quoteId: string, openEditor: boolean) {
     setShowNewModal(false);
@@ -225,7 +254,8 @@ export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost
     );
   }
 
-  const total = quotes.length;
+  const total = typeScoped.length;
+  const registerName = typeFilter === "project" ? "project quote" : typeFilter === "service" ? "service quote" : "quote";
 
   return (
     <div className="space-y-5">
@@ -233,7 +263,7 @@ export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="leading-tight">
           <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#6B6B6B]">
-            SERVICE QUOTES · CASONE ELECTRICAL
+            {typeFilter === "project" ? "PROJECT QUOTES" : typeFilter === "service" ? "SERVICE QUOTES" : "SERVICE & PROJECT QUOTES"} · CASONE ELECTRICAL
           </div>
           <h1
             className="m-0 text-[28px] font-medium leading-none text-[#1A1A1A] sm:text-[32px]"
@@ -244,20 +274,46 @@ export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost
           <p className="mt-2 max-w-xl text-[13px] leading-relaxed text-[#6B6B6B]">
             {total > 0 ? (
               <>
-                {total.toLocaleString("en-AU")} quote{total === 1 ? "" : "s"} ·{" "}
+                {total.toLocaleString("en-AU")} {registerName}{total === 1 ? "" : "s"} ·{" "}
                 <span className="font-semibold text-[#3A3A3A]">{fmtMoney(pipelineValue)}</span> in the pipeline.
                 Draft, send, and track them through to accepted.
               </>
             ) : (
-              <>No quotes yet. Spin one up — pick a customer, build the parts &amp; labour, and send it.</>
+              <>No {registerName}s yet. Spin one up — pick a customer, build the parts &amp; labour, and send it.</>
             )}
           </p>
         </div>
 
-        <button type="button" onClick={() => setShowNewModal(true)} className={btnPrimary + " flex-shrink-0"}>
-          <Plus className="h-4 w-4" />
-          New quote
-        </button>
+        <div className="flex flex-shrink-0 flex-col items-end gap-2">
+          <button type="button" onClick={() => setShowNewModal(true)} className={btnPrimary + " flex-shrink-0"}>
+            <Plus className="h-4 w-4" />
+            {typeFilter === "project" ? "New project quote" : typeFilter === "service" ? "New service quote" : "New quote"}
+          </button>
+          {/* The two registers living inside the one tab */}
+          <div className="flex gap-1 rounded-full border border-[#E6E1D4] bg-[#FAF8F2] p-0.5 text-[13px]">
+            {TYPE_SEGMENTS.map((seg) => {
+              const active = typeFilter === seg.key;
+              const count = seg.key === null ? typeCounts.all : typeCounts[seg.key];
+              return (
+                <button
+                  key={seg.label}
+                  type="button"
+                  onClick={() => { setTypeFilter(seg.key); setStatusFilter(null); }}
+                  className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 font-medium transition-colors ${
+                    active ? "bg-[#1A1A1A] text-white shadow-sm" : "text-[#6B6B6B] hover:text-[#1A1A1A]"
+                  }`}
+                >
+                  {seg.label}
+                  <span className={`rounded-full px-1.5 text-[11px] font-semibold tabular-nums ${
+                    active ? "bg-white/20 text-white" : "bg-[#E6E1D4] text-[#6B6B6B]"
+                  }`}>
+                    {count.toLocaleString("en-AU")}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       {/* ── Register card ───────────────────────────────────────────────────── */}
@@ -349,6 +405,7 @@ export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost
             <thead className="border-b border-[#E6E1D4] bg-white">
               <tr>
                 <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Number</th>
+                <th className="w-24 px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Type</th>
                 <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Title</th>
                 <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Customer / Client</th>
                 <th className="px-4 py-3 text-right text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Total inc GST</th>
@@ -362,7 +419,7 @@ export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost
 
               {!loading && visible.length === 0 && !error && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-16 text-center text-[#A0A0A0]">
+                  <td colSpan={8} className="px-4 py-16 text-center text-[#A0A0A0]">
                     <p className="text-sm font-medium">{total === 0 ? "No quotes yet" : "Nothing matches"}</p>
                     <p className="mt-1 text-xs">
                       {total === 0
@@ -380,6 +437,11 @@ export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost
                   onClick={() => setSelectedId(q.id)}
                 >
                   <td className="px-4 py-4 font-mono text-xs text-[#6B6B6B]">{q.number ?? "—"}</td>
+                  <td className="px-4 py-4">
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${typeBadge(q.quoteType)}`}>
+                      {q.quoteType}
+                    </span>
+                  </td>
                   <td className="px-4 py-4 font-medium text-[#1A1A1A]">{q.title}</td>
                   <td className="px-4 py-4 text-[#3A3A3A]">{customerName(q)}</td>
                   <td className="px-4 py-4 text-right tabular-nums font-medium text-[#1A1A1A]">{fmtMoney(q.totalIncGst)}</td>
@@ -430,6 +492,7 @@ export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost
       {showNewModal && (
         <NewQuoteWizard
           customers={customers}
+          initialType={typeFilter ?? "service"}
           onCancel={() => setShowNewModal(false)}
           onCreated={handleQuoteCreated}
         />

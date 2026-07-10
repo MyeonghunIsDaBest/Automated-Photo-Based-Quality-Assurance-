@@ -100,6 +100,7 @@ const getNotificationIcon = (type: string) => {
     case 'chat_message':  return MessageCircle;
     case 'ai_analysis':   return Building2;
     case 'weekly_report': return FileCheck;
+    case 'stock_allocation': return Package;
     default:              return Bell;
   }
 };
@@ -113,6 +114,7 @@ const getNotificationColor = (type: string) => {
     case 'chat_message':  return 'bg-[#F0EDE4] text-[#1A1A1A]'; // ink tone
     case 'ai_analysis':   return 'bg-[#F9EFD9] text-[#C8841E]'; // amber tone
     case 'weekly_report': return 'bg-[#E5F2EA] text-[#246F47]'; // sage tone
+    case 'stock_allocation': return 'bg-[#F9EFD9] text-[#C8841E]'; // amber tone — action needed
     default:              return 'bg-[#EEF1F4] text-[#5B6B7B]'; // slate tone
   }
 };
@@ -529,6 +531,13 @@ export default function TopNav() {
                               onClick={() => {
                                 markAsRead(notification.id);
                                 setNotificationsOpen(false);
+                                // Deep links: accepted/declined boxes carry the
+                                // job ref → manager lands on the job's drawer;
+                                // otherwise (worker's "box ready") → My Van.
+                                if (notification.type === 'stock_allocation') {
+                                  const jobId = (notification.metadata as { serviceJobId?: string } | undefined)?.serviceJobId;
+                                  navigate(jobId ? `/jobs?job=${jobId}` : '/stock');
+                                }
                               }}
                               className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-[#FAF8F2] ${
                                 !notification.read ? 'bg-[#E5F2EA]/50' : ''
