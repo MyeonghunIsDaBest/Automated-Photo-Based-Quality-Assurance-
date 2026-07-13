@@ -227,12 +227,13 @@ export default function QuickActionsSidebar() {
 
   return (
     <>
-      {/* Toggle Button - Fixed on left side */}
+      {/* Toggle Button — desktop-only (the Q-key launcher is a mouse/keyboard
+          affordance; phones have the tab bar + FAB). Docked to the ink rail's
+          right edge now that the P9.B sidebar owns the left of the screen. */}
       <button
         onClick={toggleSidebar}
-        className={`fixed left-0 top-1/2 z-50 -translate-y-1/2 rounded-r-md border-y border-r border-[#E6E1D4] bg-white shadow-[0_2px_8px_rgba(20,20,20,0.08)] transition-all hover:bg-[#FAF8F2] ${
-          isOpen ? 'translate-x-64' : 'translate-x-0'
-        }`}
+        className="fixed top-1/2 z-50 hidden -translate-y-1/2 rounded-r-md border-y border-r border-[#E6E1D4] bg-white shadow-[0_2px_8px_rgba(20,20,20,0.08)] transition-all hover:bg-[#FAF8F2] md:block"
+        style={{ left: isOpen ? '20rem' : '248px' }}
         title="Quick Actions (Q)"
       >
         <div className="flex h-6 w-6 items-center justify-center p-1.5">

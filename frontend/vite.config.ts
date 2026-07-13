@@ -21,16 +21,19 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg', 'icon-maskable.svg'],
       manifest: {
-        name: 'BuildTrack QA',
-        short_name: 'BuildTrack',
+        // One brand everywhere: the app renders as SiteProof — the manifest
+        // must install as SiteProof too (P9.B; was "BuildTrack QA").
+        name: 'SiteProof',
+        short_name: 'SiteProof',
         description:
-          'Automated Photo-Based Quality Assurance — drop a daily site photo, the Gantt chart updates itself.',
-        start_url: '/dashboard',
+          'Quote to cash for trade businesses — jobs, stock, quotes, and photo-backed site records in one place.',
+        // Everyone lands on /home (RoleHomeRedirect) — match it.
+        start_url: '/home',
         scope: '/',
         display: 'standalone',
         orientation: 'portrait',
-        background_color: '#0f172a',
-        theme_color: '#0f172a',
+        background_color: '#F5F2E9',
+        theme_color: '#FAF8F2',
         categories: ['productivity', 'business', 'utilities'],
         icons: [
           {

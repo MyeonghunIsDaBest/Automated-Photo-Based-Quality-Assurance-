@@ -1,6 +1,8 @@
 import type { CSSProperties } from 'react';
 import { Outlet, Navigate, useLocation } from 'react-router-dom';
-import TopNav from './TopNav';
+import AppSidebar from './AppSidebar';
+import TopBar from './TopBar';
+import BottomTabBar from './BottomTabBar';
 import MissingEnvBanner from './MissingEnvBanner';
 import { ErrorBoundary } from '../ui/ErrorBoundary';
 import { useAppStore } from '../../store';
@@ -65,20 +67,43 @@ export default function Layout() {
   }
 
   // The customer portal is a standalone, full-screen experience with its OWN
-  // sidebar nav — so it suppresses the global app chrome (TopNav) to avoid a
-  // double navigation. This is also the testbed for the future sidebar-nav
-  // rework that will replace the TopNav app-wide, starting from this domain.
+  // sidebar nav — so it suppresses the global app shell (rail + bars) to
+  // avoid a double navigation.
   const standaloneShell = location.pathname === '/customer';
+  const isCustomer = (currentProfile ?? currentUser)?.securityGroup === 'customer';
+
+  // The P9.B shell: ink rail (md+) beside a column of TopBar + content, and a
+  // phone bottom tab bar. --bottom-nav-h is owned HERE — main content, the
+  // Toaster, and FABs all pad by it so nothing hides behind the phone bar.
+  // Customers never get the phone bar (their portal owns its shell).
+  const shellStyle = {
+    ...accentStyle,
+    '--bottom-nav-h': isCustomer ? '0px' : 'var(--bottom-nav-h-mq)',
+  } as CSSProperties;
 
   return (
-    <div className="min-h-screen bg-[#FAF8F2]" style={accentStyle}>
+    <div className="min-h-screen bg-[#FAF8F2]" style={shellStyle}>
       <MissingEnvBanner />
-      {!standaloneShell && <TopNav />}
-      <main className="">
-        <ErrorBoundary key={location.pathname} label={`Page · ${location.pathname}`}>
-          <Outlet />
-        </ErrorBoundary>
-      </main>
+      {standaloneShell ? (
+        <main>
+          <ErrorBoundary key={location.pathname} label={`Page · ${location.pathname}`}>
+            <Outlet />
+          </ErrorBoundary>
+        </main>
+      ) : (
+        <div className="flex min-h-screen">
+          <AppSidebar />
+          <div className="flex min-h-screen min-w-0 flex-1 flex-col">
+            <TopBar />
+            <main className="min-w-0 flex-1 pb-[calc(var(--bottom-nav-h,0px)+env(safe-area-inset-bottom))] md:pb-0">
+              <ErrorBoundary key={location.pathname} label={`Page · ${location.pathname}`}>
+                <Outlet />
+              </ErrorBoundary>
+            </main>
+          </div>
+          {!isCustomer && <BottomTabBar />}
+        </div>
+      )}
       <FirstRunOnboarding />
     </div>
   );

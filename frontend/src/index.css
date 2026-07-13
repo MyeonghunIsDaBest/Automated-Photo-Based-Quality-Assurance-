@@ -114,6 +114,15 @@
 .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
 .pl-safe { padding-left: env(safe-area-inset-left); }
 
+/* Height of the phone bottom tab bar (P9.B shell). Layout copies this into
+   --bottom-nav-h (zeroed for customers); main content, the Toaster, and FABs
+   pad by --bottom-nav-h so nothing hides behind the bar. 0 at md+ where the
+   ink sidebar takes over. */
+:root { --bottom-nav-h-mq: 4rem; }
+@media (min-width: 768px) {
+  :root { --bottom-nav-h-mq: 0px; }
+}
+
 /* When a full-screen drawer / modal is open we want the page underneath to
    stop scrolling so the user's finger doesn't drag the background. Apply
    .body-scroll-lock to <body> while the overlay is mounted. */

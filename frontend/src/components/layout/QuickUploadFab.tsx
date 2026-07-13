@@ -50,7 +50,8 @@ export default function QuickUploadFab() {
         transition={{ type: 'spring', damping: 14, stiffness: 360 }}
         className="fixed bottom-6 right-6 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-[#2F8F5C] text-white shadow-[0_8px_28px_rgba(20,20,20,0.18)] ring-4 ring-[#E5F2EA] hover:bg-[#246F47] sm:bottom-8 sm:right-8"
         style={{
-          bottom: 'max(env(safe-area-inset-bottom), 1.5rem)',
+          // Clears the phone bottom tab bar (--bottom-nav-h, 0 at md+).
+          bottom: 'calc(max(env(safe-area-inset-bottom), 1.5rem) + var(--bottom-nav-h, 0px))',
           right: 'max(env(safe-area-inset-right), 1.5rem)',
         }}
         aria-label="Quick upload"
