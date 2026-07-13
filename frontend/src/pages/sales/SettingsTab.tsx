@@ -8,7 +8,7 @@
 import { useEffect, useState } from "react";
 
 import { cardShell, btnPrimary } from "../gantt/components/ledger";
-import { Toaster } from "../../components/ui/Toaster";
+import { Toaster, type ToastState } from "../../components/ui/Toaster";
 import { SkeletonLine } from "../../components/ui/skeleton";
 
 import { canSeeAdminDashboard } from "../../lib/permissions";
@@ -22,8 +22,6 @@ import LabourRatesSettings from "./LabourRatesSettings";
 import QuoteScriptsSettings from "./QuoteScriptsSettings";
 
 // â”€â”€â”€ types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-type ToastState = { message: string; type: "success" | "error" | "info" } | null;
 
 interface Props {
   onChanged: () => void;

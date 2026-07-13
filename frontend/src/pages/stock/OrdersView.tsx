@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Loader2, Plus, Trash2, X, Search } from "lucide-react";
 
-import { Toaster } from "../../components/ui/Toaster";
+import { Toaster, type ToastState } from "../../components/ui/Toaster";
 import MotionDrawer from "../../components/ui/MotionDrawer";
 import { cardShell, btnPrimary, btnGhost, inputField, StatusPill, TONE, type ToneKey } from "../gantt/components/ledger";
 import {
@@ -18,13 +18,12 @@ import { listSuppliers, type Supplier } from "../../lib/api/suppliers";
 import { listMaterials, type Material } from "../../lib/api/materials";
 import { listServiceJobs } from "../../lib/api/serviceJobs";
 import { listSimproJobs } from "../../lib/api/simproJobs";
+import { fmtMoney } from "../../lib/format";
 import PurchaseOrderDrawer from "./PurchaseOrderDrawer";
 
-type ToastState = { message: string; type: "success" | "error" | "info" } | null;
 const PO_TONE: Record<POStatus, ToneKey> = { suggested: "amber", draft: "slate", sent: "sage", partial: "amber", received: "sage", cancelled: "red" };
 const PO_STATUSES: POStatus[] = ["suggested", "draft", "sent", "partial", "received", "cancelled"];
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString();
-const fmtMoney = (n: number) => "$" + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
 let rowSeq = 1;
 interface LineDraft { key: number; materialId: string; qty: string }

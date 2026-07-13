@@ -14,6 +14,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { FRAUNCES, TONE, cardShell } from "../gantt/components/ledger";
 import { SkeletonLine } from "../../components/ui/skeleton";
 import { lineTotal } from "../../lib/commercial/money";
+import { fmtMoney } from "../../lib/format";
 
 import {
   listInvoices,
@@ -40,10 +41,6 @@ function todayIso(): string {
     String(n.getMonth() + 1).padStart(2, "0"),
     String(n.getDate()).padStart(2, "0"),
   ].join("-");
-}
-
-function fmtMoney(n: number): string {
-  return "$" + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
 function fmtDate(iso: string | null): string {

@@ -16,7 +16,7 @@ import { Plus, ChevronUp, ChevronDown, Trash2, RefreshCw, Loader2, Archive, Arch
 
 import { cardShell, btnPrimary, btnGhost } from "../gantt/components/ledger";
 import { SkeletonLine } from "../../components/ui/skeleton";
-import { Toaster } from "../../components/ui/Toaster";
+import { Toaster, type ToastState } from "../../components/ui/Toaster";
 
 import { listMaterials, listPrebuilds, type Material, type Prebuild } from "../../lib/api/materials";
 import { listLabourRates, formatRole, type LabourRate } from "../../lib/api/labourRates";
@@ -34,8 +34,6 @@ import {
   type QuoteTemplateItemKind,
 } from "../../lib/api/quoteTemplates";
 import ConfirmDeleteDialog from "./ConfirmDeleteDialog";
-
-type ToastState = { message: string; type: "success" | "error" | "info" } | null;
 
 interface Props {
   onWritten: () => void;

@@ -44,7 +44,7 @@ import {
   btnGhost,
   StatusPill,
 } from '../gantt/components/ledger';
-import { Toaster } from '../../components/ui/Toaster';
+import { Toaster, type ToastState } from '../../components/ui/Toaster';
 
 import {
   parseSimproCsv,
@@ -130,7 +130,6 @@ function avatarTint(id: string): string {
   return `hsl(${h % 360} 45% 86%)`;
 }
 
-type ToastState = { message: string; type: 'success' | 'error' | 'info' } | null;
 type EmptyCounts = Record<SimproStage, number>;
 
 const ZERO_COUNTS: EmptyCounts = {

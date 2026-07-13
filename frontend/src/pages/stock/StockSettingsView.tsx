@@ -8,7 +8,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Bell, Search, X, Upload, Wand2 } from "lucide-react";
 
-import { Toaster } from "../../components/ui/Toaster";
+import { Toaster, type ToastState } from "../../components/ui/Toaster";
 import { cardShell, inputField, btnGhost } from "../gantt/components/ledger";
 import { listMaterials, type Material } from "../../lib/api/materials";
 import { listSuppliers, type Supplier } from "../../lib/api/suppliers";
@@ -17,14 +17,12 @@ import { getCompanyTotals, type CompanyTotal } from "../../lib/api/stock";
 import {
   listReorderRules, upsertReorderRule, getStockSettings, updateStockSettings, type ReorderRule,
 } from "../../lib/api/purchasing";
+import { fmtQty } from "../../lib/format";
 import type { Profile, SecurityGroup } from "../../types";
 
 const INTERNAL_GROUPS: SecurityGroup[] = ["company_admin", "construction_mgr", "project_manager", "worker", "dev"];
 const fullName = (p: Profile) => `${p.firstName} ${p.lastName}`.trim() || p.email;
-const fmtQty = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
 const OTHER_GROUP = "Other";
-
-type ToastState = { message: string; type: "success" | "error" | "info" } | null;
 
 export default function StockSettingsView() {
   const [items, setItems] = useState<Material[]>([]);

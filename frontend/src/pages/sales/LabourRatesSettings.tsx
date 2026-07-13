@@ -9,7 +9,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { SkeletonLine } from "../../components/ui/skeleton";
-import { Toaster } from "../../components/ui/Toaster";
+import { Toaster, type ToastState } from "../../components/ui/Toaster";
 import {
   listLabourRates,
   createLabourRate,
@@ -20,8 +20,6 @@ import {
 } from "../../lib/api/labourRates";
 
 // ─── types ────────────────────────────────────────────────────────────────────
-
-type ToastState = { message: string; type: "success" | "error" | "info" } | null;
 
 // ─── shared style tokens ──────────────────────────────────────────────────────
 

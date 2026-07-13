@@ -1,10 +1,14 @@
-// Shared "site register" UI kit for the Inventory + Defects tabs.
+// The app-wide "warm ledger" design system (grew out of the Inventory +
+// Defects registers; now the single design language for the whole product).
 //
-// Both surfaces are presented as registers in the same warm logbook as the
-// Site Diary (DayHeader / ProgressBar / TimelineEntry) — cream surfaces, warm
-// #E6E1D4 hairlines, Fraunces numerals, sage accents, dot-marked statuses.
-// Sharing these primitives is what keeps the Materials ledger and the Defect
-// register reading as siblings rather than two unrelated tabs.
+// Cream surfaces, warm #E6E1D4 hairlines, Fraunces numerals, sage accents,
+// dot-marked statuses. The reference articulation lives in
+// design/saas-ui-rework/styles.css — tokens here are reconciled to it (P9.A).
+//
+// Spacing rhythm (from the reference comps): page 28/32/60 · card pad 22/24 ·
+// grid gap 18 · content max-width 1240. Radii: 8 (sm) · 11 (inputs/tiles) ·
+// 14 (cards) · 18 (hero). Touch targets: use `touchTarget` (44px) on anything
+// a field worker taps.
 
 import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
@@ -27,15 +31,22 @@ export const REG = {
 
 export type ToneKey = 'sage' | 'amber' | 'orange' | 'red' | 'slate' | 'ink';
 
-/** Tinted fg/bg + a solid dot, drawn from the Site Diary status palette. */
+/** Tinted fg/bg + a solid dot. Reconciled to design/saas-ui-rework/styles.css
+ *  (P9.A): amber text darkened to the mock's --amber-dk (better contrast on
+ *  the amber wash), orange aligned to --orange/--orange-bg, ink-pill wash to
+ *  the mock's. Deliberate deviation: ink fg stays #1A1A1A (the mock's muted
+ *  text on a pill reads too faint at 11px). */
 export const TONE: Record<ToneKey, { fg: string; bg: string; dot: string }> = {
   sage:   { fg: '#246F47', bg: '#E5F2EA', dot: '#2F8F5C' },
-  amber:  { fg: '#C8841E', bg: '#F9EFD9', dot: '#D69A2E' },
-  orange: { fg: '#B5602A', bg: '#F6E7DA', dot: '#C26A2C' },
+  amber:  { fg: '#9A6B12', bg: '#F9EFD9', dot: '#D69A2E' },
+  orange: { fg: '#A35C2B', bg: '#F4E9DB', dot: '#C26A2C' },
   red:    { fg: '#C44545', bg: '#FBE5E5', dot: '#C44545' },
   slate:  { fg: '#5B6B7B', bg: '#EEF1F4', dot: '#6B7A8F' },
-  ink:    { fg: '#1A1A1A', bg: '#F0EDE4', dot: '#1A1A1A' },
+  ink:    { fg: '#1A1A1A', bg: '#ECE8DE', dot: '#1A1A1A' },
 };
+
+/** Minimum thumb-sized hit area — put this on anything a field worker taps. */
+export const touchTarget = 'min-h-11 min-w-11';
 
 /** Consistent CTA classes so both registers' buttons are identical. */
 export const btnPrimary =
@@ -52,7 +63,7 @@ export const cardShell =
  *  the site shares one focus treatment. (Dense table-cell inputs keep their own
  *  width but reuse the same focus classes.) */
 export const inputField =
-  'w-full rounded-md border border-[#E6E1D4] bg-white px-3 py-2 text-sm text-[#1A1A1A] placeholder:text-[#C0BAB0] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] disabled:cursor-not-allowed disabled:bg-[#FAF8F2] disabled:text-[#6B6B6B]';
+  'w-full rounded-[11px] border border-[#E6E1D4] bg-white px-3 py-2 text-sm text-[#1A1A1A] placeholder:text-[#C0BAB0] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] disabled:cursor-not-allowed disabled:bg-[#FAF8F2] disabled:text-[#6B6B6B]';
 
 // ─── Header ───────────────────────────────────────────────────────────────
 // Echoes the Site Diary DayHeader: a bordered tile (dark kicker strip + glyph)
@@ -109,7 +120,7 @@ export function LedgerStatRow({ stats }: { stats: LedgerStat[] }) {
           const t = TONE[s.tone ?? 'ink'];
           return (
             <div key={i} className="lg:min-w-[104px]">
-              <div className="text-[24px] font-medium leading-none tabular-nums text-[#1A1A1A]" style={{ fontFamily: FRAUNCES }}>
+              <div className="text-[30px] font-medium leading-none tabular-nums text-[#1A1A1A]" style={{ fontFamily: FRAUNCES }}>
                 {s.value}
               </div>
               <div className="mt-1.5 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.1em] text-[#6B6B6B]">

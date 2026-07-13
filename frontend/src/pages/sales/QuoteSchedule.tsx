@@ -25,15 +25,13 @@ import {
 import { listProfilesByRole } from "../../lib/api/profiles";
 import { listLabourRates, ratesMap, formatRole } from "../../lib/api/labourRates";
 import { getProperty, type Property } from "../../lib/api/properties";
+import { fmtMoney } from "../../lib/format";
 import type { Profile, SecurityGroup } from "../../types";
 
 // Internal staff eligible to be scheduled (mirrors QuoteEditor's INTERNAL_GROUPS).
 const INTERNAL_GROUPS: SecurityGroup[] = ["company_admin", "construction_mgr", "project_manager", "worker", "dev"];
 const fullName = (p: Profile) => `${p.firstName} ${p.lastName}`.trim() || p.email;
 
-function fmtMoney(n: number): string {
-  return "$" + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-}
 function fmtHours(n: number): string {
   return n.toFixed(2);
 }

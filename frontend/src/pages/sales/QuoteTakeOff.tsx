@@ -26,6 +26,7 @@ import {
 import { listMaterials, listPrebuilds, type Material, type Prebuild } from "../../lib/api/materials";
 import { ratesMap, formatRole } from "../../lib/api/labourRates";
 import { getCommercialSettings } from "../../lib/api/commercial";
+import { fmtMoney } from "../../lib/format";
 
 const OTHER_GROUP = "Other";
 
@@ -41,10 +42,6 @@ interface Props {
   onToast?: (message: string, type: "success" | "error" | "info") => void;
   /** Cost centre new lines land in (null = General). */
   activeSectionId?: string | null;
-}
-
-function fmtMoney(n: number): string {
-  return "$" + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
 /** A template item resolved to a display label + (possibly unknown) cost/sell. */

@@ -11,7 +11,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react
 import { Plus, Loader2, ChevronRight, Truck, Factory, Warehouse, ClipboardCheck, Search, X, Pencil, Check, Archive, ArrowLeftRight, ArchiveRestore, MapPin, Route, ExternalLink } from "lucide-react";
 import { Link } from "react-router-dom";
 
-import { Toaster } from "../../components/ui/Toaster";
+import { Toaster, type ToastState } from "../../components/ui/Toaster";
 import { cardShell, btnPrimary, btnGhost, inputField, StatusPill, type ToneKey } from "../gantt/components/ledger";
 import {
   listStockLocations, createLocation, updateLocation, listStockLevels, getCompanyTotals,
@@ -23,6 +23,7 @@ import { listProfilesByRole } from "../../lib/api/profiles";
 import { listMaterials, type Material } from "../../lib/api/materials";
 import { listServiceJobs, getServiceJob, type ServiceJob } from "../../lib/api/serviceJobs";
 import { getOrGeocode, haversineKm } from "../../lib/geo";
+import { fmtMoney, fmtQty } from "../../lib/format";
 import AddressSearchInput from "../../components/geo/AddressSearchInput";
 import StockItemDrawer from "./StockItemDrawer";
 import TransferStockModal from "./TransferStockModal";
@@ -37,8 +38,6 @@ const MapFallback = ({ heightClass = "h-56" }: { heightClass?: string }) => (
 
 const INTERNAL_GROUPS: SecurityGroup[] = ["company_admin", "construction_mgr", "project_manager", "worker", "dev"];
 const fullName = (p: Profile) => `${p.firstName} ${p.lastName}`.trim() || p.email;
-const fmtQty = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
-const fmtMoney = (n: number) => "$" + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString();
 const REASON: Record<MovementReason, { label: string; tone: ToneKey }> = {
   usage: { label: "Used", tone: "orange" }, receipt: { label: "Received", tone: "sage" },
@@ -46,7 +45,6 @@ const REASON: Record<MovementReason, { label: string; tone: ToneKey }> = {
   adjustment: { label: "Adjustment", tone: "amber" }, stocktake: { label: "Stock-take", tone: "ink" },
 };
 
-type ToastState = { message: string; type: "success" | "error" | "info" } | null;
 interface LocSummary { items: number; units: number; value: number; lastActivity: string | null }
 
 // Per-type presentation — one source for cards, breadcrumbs, and the add form.

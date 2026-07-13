@@ -16,6 +16,7 @@ import { listMaterials } from "../../lib/api/materials";
 import { listServiceJobs } from "../../lib/api/serviceJobs";
 import { listSimproJobs } from "../../lib/api/simproJobs";
 import { downloadCsv } from "../../lib/stock/csv";
+import { fmtMoney, fmtQty } from "../../lib/format";
 import StockTrendChart, { type TrendPoint } from "./StockTrendChart";
 
 const REASON: Record<MovementReason, { label: string; tone: ToneKey }> = {
@@ -29,8 +30,6 @@ const REASON: Record<MovementReason, { label: string; tone: ToneKey }> = {
 const REASON_KEYS = Object.keys(REASON) as MovementReason[];
 const OTHER_GROUP = "Other";
 
-const fmtQty = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
-const fmtMoney = (n: number) => "$" + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString();
 const today = () => new Date().toISOString().slice(0, 10);
 const daysAgo = (n: number) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);

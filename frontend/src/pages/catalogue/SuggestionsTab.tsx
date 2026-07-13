@@ -25,7 +25,7 @@ import { RefreshCw, CheckSquare, Square, Loader2, X, Pencil, Check, RotateCcw } 
 
 import { TONE, cardShell, btnPrimary, btnGhost } from "../gantt/components/ledger";
 import { SkeletonLine } from "../../components/ui/skeleton";
-import { Toaster } from "../../components/ui/Toaster";
+import { Toaster, type ToastState } from "../../components/ui/Toaster";
 
 import {
   listCandidates,
@@ -39,8 +39,6 @@ import {
 import MaterialFormModal, { type MaterialFormInitial } from "./MaterialFormModal";
 
 // ─── types ────────────────────────────────────────────────────────────────────
-
-type ToastState = { message: string; type: "success" | "error" | "info" } | null;
 
 interface Props {
   onWritten: () => void;

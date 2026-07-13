@@ -79,7 +79,7 @@ export default function MotionDrawer({
             initial="hidden"
             animate="visible"
             exit="exit"
-            className="fixed inset-0 z-40 cursor-default bg-slate-900/40 backdrop-blur-sm"
+            className="fixed inset-0 z-40 cursor-default bg-[#1A1A1A]/40 backdrop-blur-sm"
           />
           {variant === 'modal' ? (
             // Centering wrapper sits between backdrop (z-40) and aside (z-50).

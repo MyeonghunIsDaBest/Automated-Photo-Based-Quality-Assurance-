@@ -11,8 +11,7 @@ import MotionDrawer from "../../components/ui/MotionDrawer";
 import { btnPrimary, btnGhost, inputField } from "../gantt/components/ledger";
 import { listStockLocations, transferStock, type StockLocation, type LocationType } from "../../lib/api/stock";
 import { listMaterials, type Material } from "../../lib/api/materials";
-
-const fmtQty = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
+import { fmtQty } from "../../lib/format";
 
 // Locations grouped by type so long lists stay scannable (mig 96 adds sites/storage).
 const GROUP_ORDER: { type: LocationType; label: string }[] = [

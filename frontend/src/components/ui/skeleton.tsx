@@ -114,7 +114,7 @@ export function BoardSkeleton() {
 // is in flight. Render N of these inside the task body.
 export function GanttRowSkeleton() {
   return (
-    <div className="flex items-center gap-3 border-b border-slate-100 px-3 py-3">
+    <div className="flex items-center gap-3 border-b border-[#EFEBE0] px-3 py-3">
       <Skeleton className="h-8 w-8 rounded-full" />
       <div className="flex-1 space-y-2">
         <Skeleton className="h-3 w-1/3" />

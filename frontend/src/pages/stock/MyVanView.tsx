@@ -6,20 +6,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { PackagePlus, Loader2, Truck, AlertTriangle, Package, ChevronRight } from "lucide-react";
 
-import { Toaster } from "../../components/ui/Toaster";
+import { Toaster, type ToastState } from "../../components/ui/Toaster";
 import { cardShell, btnPrimary, FRAUNCES } from "../gantt/components/ledger";
 import {
   myVan, listStockLevels, subscribeToStockLevels, listMyPendingAllocations,
   type StockLocation, type StockLevel, type StockAllocation,
 } from "../../lib/api/stock";
+import { fmtQty } from "../../lib/format";
 import RecordUsageDrawer from "./RecordUsageDrawer";
 import JobBoxAcceptSheet from "./JobBoxAcceptSheet";
-
-type ToastState = { message: string; type: "success" | "error" | "info" } | null;
-
-function fmtQty(n: number): string {
-  return Number.isInteger(n) ? String(n) : n.toFixed(2);
-}
 
 export default function MyVanView() {
   const [van, setVan] = useState<StockLocation | null>(null);

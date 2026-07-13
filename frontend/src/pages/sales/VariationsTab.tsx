@@ -12,8 +12,9 @@ import { Plus, RefreshCw, Search, Package, Trash2, X, Printer, Send } from "luci
 
 import { FRAUNCES, TONE, cardShell, btnPrimary, btnGhost } from "../gantt/components/ledger";
 import { SkeletonLine } from "../../components/ui/skeleton";
-import { Toaster } from "../../components/ui/Toaster";
+import { Toaster, type ToastState } from "../../components/ui/Toaster";
 import { lineTotal } from "../../lib/commercial/money";
+import { fmtMoney } from "../../lib/format";
 
 import {
   listVariations,
@@ -38,7 +39,6 @@ import { listProjects, type ProjectRow } from "../../lib/api/projects";
 
 // â”€â”€â”€ types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-type ToastState = { message: string; type: "success" | "error" | "info" } | null;
 type AddMode = "catalogue" | "prebuild" | "free" | null;
 
 interface Props {
@@ -50,10 +50,6 @@ interface Props {
 }
 
 // â”€â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-function fmtMoney(n: number): string {
-  return "$" + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-}
 
 function stripSearchChars(s: string): string {
   return s.replace(/[*,()/]/g, "");

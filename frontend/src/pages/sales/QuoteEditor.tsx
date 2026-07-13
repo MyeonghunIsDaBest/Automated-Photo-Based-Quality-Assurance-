@@ -17,8 +17,9 @@ import { Link } from "react-router-dom";
 
 import { FRAUNCES, TONE, cardShell, btnPrimary, btnGhost } from "../gantt/components/ledger";
 import { SkeletonLine } from "../../components/ui/skeleton";
-import { Toaster } from "../../components/ui/Toaster";
+import { Toaster, type ToastState } from "../../components/ui/Toaster";
 import { lineTotal, quoteCostMargin, quoteFinancials, minSell, isBelowFloor } from "../../lib/commercial/money";
+import { fmtMoney } from "../../lib/format";
 import { pushRecentMaterial } from "../../lib/recentMaterials";
 
 import {
@@ -64,7 +65,6 @@ import type { Profile, SecurityGroup } from "../../types";
 
 // â”€â”€â”€ types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-type ToastState = { message: string; type: "success" | "error" | "info" } | null;
 type AddMode = "catalogue" | "prebuild" | "free" | "labour" | "template" | null;
 // Top-level Simpro quote tabs (Details / Parts & Labour / Schedule / Customer Assets).
 type QuoteTab = "details" | "parts" | "schedule" | "assets";
@@ -102,10 +102,6 @@ interface Props {
 }
 
 // â”€â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-function fmtMoney(n: number): string {
-  return "$" + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-}
 
 function stripSearchChars(s: string): string {
   return s.replace(/[*,()/]/g, "");

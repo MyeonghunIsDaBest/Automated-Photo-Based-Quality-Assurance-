@@ -25,6 +25,7 @@ import { useGanttSideStore } from '../store';
 import { useFeatureStore } from '../../../store/features';
 import { useAppStore } from '../../../store';
 import { listSuppliers } from '../../../lib/api/suppliers';
+import { fmtMoney } from '../../../lib/format';
 import { supabaseConfigured } from '../../../lib/supabase';
 import type { Order, OrderLineItem, OrderStatus } from '../types';
 import type { Supplier } from '../../../types';
@@ -42,13 +43,6 @@ interface CartLine {
   /** Pre-filled from defaultUnitCost, editable per-line. */
   unitCost: number;
 }
-
-const fmtAUD = (n: number) =>
-  new Intl.NumberFormat('en-AU', {
-    style: 'currency',
-    currency: 'AUD',
-    maximumFractionDigits: 2,
-  }).format(n);
 
 const today = () => new Date().toISOString().slice(0, 10);
 const inDays = (n: number) => {
@@ -256,7 +250,7 @@ export default function NewOrderModal({
             {cart.length === 0
               ? 'No items selected yet.'
               : `${cart.length} ${cart.length === 1 ? 'line' : 'lines'} · `}
-            <strong className="ml-1 tabular-nums text-slate-900">{fmtAUD(total)}</strong>
+            <strong className="ml-1 tabular-nums text-slate-900">{fmtMoney(total)}</strong>
             <span className="ml-2 text-[10px] uppercase tracking-wider text-amber-700">
               · lands in supplier's pending orders
             </span>
@@ -335,7 +329,7 @@ export default function NewOrderModal({
                       )}
                     </div>
                     <span className="hidden flex-shrink-0 text-[11px] tabular-nums text-slate-500 sm:inline">
-                      {fmtAUD(item.defaultUnitCost)} / {item.unit}
+                      {fmtMoney(item.defaultUnitCost)} / {item.unit}
                     </span>
                     <button
                       type="button"
@@ -367,7 +361,7 @@ export default function NewOrderModal({
               Cart · {cart.length} {cart.length === 1 ? 'line' : 'lines'}
             </p>
             <span className="tabular-nums text-sm font-semibold text-slate-900">
-              {fmtAUD(total)}
+              {fmtMoney(total)}
             </span>
           </header>
           <ul className="divide-y divide-slate-100">
@@ -432,7 +426,7 @@ export default function NewOrderModal({
                   </div>
                   <div className="col-span-3 flex items-center justify-end gap-2 sm:col-span-2">
                     <span className="tabular-nums text-sm font-semibold text-slate-900">
-                      {fmtAUD(lineTotal)}
+                      {fmtMoney(lineTotal)}
                     </span>
                     <button
                       type="button"

@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Loader2, Send, PackageCheck, Receipt, X, Check, AlertTriangle, Trash2, Plus, Mail, Printer } from "lucide-react";
 
-import { Toaster } from "../../components/ui/Toaster";
+import { Toaster, type ToastState } from "../../components/ui/Toaster";
 import MotionDrawer from "../../components/ui/MotionDrawer";
 import { cardShell, btnPrimary, btnGhost, inputField, StatusPill, type ToneKey } from "../gantt/components/ledger";
 import {
@@ -19,14 +19,11 @@ import {
 } from "../../lib/api/purchasing";
 import { listSuppliers, type Supplier } from "../../lib/api/suppliers";
 import { listMaterials, type Material } from "../../lib/api/materials";
-
-type ToastState = { message: string; type: "success" | "error" | "info" } | null;
+import { fmtMoney, fmtQty } from "../../lib/format";
 
 const PO_TONE: Record<POStatus, ToneKey> = {
   suggested: "amber", draft: "slate", sent: "sage", partial: "amber", received: "sage", cancelled: "red",
 };
-const fmtQty = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
-const fmtMoney = (n: number) => "$" + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
 export default function PurchaseOrderDrawer({ poId, onClose, onChanged }: { poId: string | null; onClose: () => void; onChanged: () => void }) {
   const [po, setPo] = useState<POWithItems | null>(null);

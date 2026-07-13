@@ -22,7 +22,7 @@ import {
 
 import { cardShell, btnPrimary, btnGhost, FRAUNCES } from "../gantt/components/ledger";
 import { SkeletonLine } from "../../components/ui/skeleton";
-import { Toaster } from "../../components/ui/Toaster";
+import { Toaster, type ToastState } from "../../components/ui/Toaster";
 
 import {
   listPrebuilds,
@@ -43,8 +43,6 @@ import {
 import ConfirmDeleteDialog from "./ConfirmDeleteDialog";
 
 // ─── types ────────────────────────────────────────────────────────────────────
-
-type ToastState = { message: string; type: "success" | "error" | "info" } | null;
 
 interface Props {
   onWritten: () => void;

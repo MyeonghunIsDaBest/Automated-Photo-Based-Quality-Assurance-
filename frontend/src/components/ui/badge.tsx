@@ -7,18 +7,21 @@ function cn(...inputs: (string | undefined | null | false)[]) {
   return twMerge(clsx(inputs));
 }
 
+// Ledger-toned variants (P9.A): same API, warm TONE washes instead of the
+// Tailwind emerald/slate palette. blue/purple have no ledger equivalent —
+// they map to the slate/ink washes so legacy call sites stay coherent.
 const badgeVariants = cva(
-  'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2',
+  'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-[#2F8F5C] focus:ring-offset-2',
   {
     variants: {
       variant: {
-        default: 'bg-emerald-100 text-emerald-700',
-        secondary: 'bg-slate-100 text-slate-700',
-        destructive: 'bg-red-100 text-red-700',
-        outline: 'border border-slate-200 text-slate-700',
-        warning: 'bg-amber-100 text-amber-700',
-        blue: 'bg-blue-100 text-blue-700',
-        purple: 'bg-purple-100 text-purple-700',
+        default: 'bg-[#E5F2EA] text-[#246F47]',
+        secondary: 'bg-[#EEF1F4] text-[#5B6B7B]',
+        destructive: 'bg-[#FBE5E5] text-[#C44545]',
+        outline: 'border border-[#E6E1D4] text-[#3A3A3A]',
+        warning: 'bg-[#F9EFD9] text-[#9A6B12]',
+        blue: 'bg-[#EEF1F4] text-[#5B6B7B]',
+        purple: 'bg-[#ECE8DE] text-[#1A1A1A]',
       },
     },
     defaultVariants: {

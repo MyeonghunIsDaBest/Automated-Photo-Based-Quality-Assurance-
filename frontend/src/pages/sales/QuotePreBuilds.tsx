@@ -17,6 +17,7 @@ import { Search, X, ChevronRight, Plus, Loader2, Star, Folder } from "lucide-rea
 
 import { listPrebuildsPriced, updatePrebuild, type PrebuildPriced } from "../../lib/api/materials";
 import { addQuoteItemFromPrebuild, getCommercialSettings } from "../../lib/api/commercial";
+import { fmtMoney } from "../../lib/format";
 
 const OTHER_GROUP = "Other";
 
@@ -32,10 +33,6 @@ interface Props {
   onToast?: (message: string, type: "success" | "error" | "info") => void;
   /** Cost centre new lines land in (null = General). */
   activeSectionId?: string | null;
-}
-
-function fmtMoney(n: number): string {
-  return "$" + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
 const groupKey = (p: PrebuildPriced) => (p.category && p.category.trim() ? p.category.trim() : OTHER_GROUP);

@@ -15,7 +15,8 @@ import { ChevronDown, Download, Plus, RefreshCw, X } from "lucide-react";
 
 import { TONE, cardShell, btnPrimary, btnGhost } from "../gantt/components/ledger";
 import { SkeletonLine } from "../../components/ui/skeleton";
-import { Toaster } from "../../components/ui/Toaster";
+import { Toaster, type ToastState } from "../../components/ui/Toaster";
+import { fmtMoney } from "../../lib/format";
 
 import {
   listInvoices,
@@ -36,7 +37,6 @@ import InvoiceEditor from "./InvoiceEditor";
 
 // â”€â”€â”€ types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-type ToastState = { message: string; type: "success" | "error" | "info" } | null;
 type FilterMode = "all" | "draft" | "sent" | "paid" | "overdue" | "voided";
 
 interface Props {
@@ -53,10 +53,6 @@ function todayIso(): string {
     String(n.getMonth() + 1).padStart(2, "0"),
     String(n.getDate()).padStart(2, "0"),
   ].join("-");
-}
-
-function fmtMoney(n: number): string {
-  return "$" + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
 function fmtDate(iso: string | null): string {

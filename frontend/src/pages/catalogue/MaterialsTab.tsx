@@ -19,7 +19,7 @@ import { Plus, RefreshCw, ToggleLeft, ToggleRight, Search, Archive, ArchiveResto
 
 import { cardShell, btnPrimary, btnGhost } from "../gantt/components/ledger";
 import { SkeletonLine } from "../../components/ui/skeleton";
-import { Toaster } from "../../components/ui/Toaster";
+import { Toaster, type ToastState } from "../../components/ui/Toaster";
 
 import {
   listMaterials,
@@ -38,8 +38,6 @@ import MaterialFormModal, { type MaterialFormInitial } from "./MaterialFormModal
 import ConfirmDeleteDialog from "./ConfirmDeleteDialog";
 
 // ─── types ────────────────────────────────────────────────────────────────────
-
-type ToastState = { message: string; type: "success" | "error" | "info" } | null;
 
 interface Props {
   onWritten: () => void;

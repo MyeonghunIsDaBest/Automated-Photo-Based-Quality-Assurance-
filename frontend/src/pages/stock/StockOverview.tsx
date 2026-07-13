@@ -16,6 +16,7 @@ import {
 import { listReorderRules, type ReorderRule } from "../../lib/api/purchasing";
 import { listMaterials } from "../../lib/api/materials";
 import { downloadCsv } from "../../lib/stock/csv";
+import { fmtMoney, fmtQty } from "../../lib/format";
 import StockItemDrawer from "./StockItemDrawer";
 import StockSetupChecklist from "./StockSetupChecklist";
 
@@ -26,8 +27,6 @@ interface MatMeta { fav: boolean; category: string | null }
 
 const FILTER_TONE: Record<Filter, ToneKey | null> = { all: null, low: "amber", out: "red", fav: "sage" };
 const OTHER_GROUP = "Other";
-const fmtQty = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
-const fmtMoney = (n: number) => "$" + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
 export default function StockOverview({ onGoToRestock, onGoToLocations }: { onGoToRestock?: () => void; onGoToLocations?: () => void }) {
   const [totals, setTotals] = useState<CompanyTotal[]>([]);

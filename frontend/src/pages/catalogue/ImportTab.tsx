@@ -20,15 +20,13 @@ import { useRef, useState } from "react";
 import { Upload, Download, RefreshCw, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 
 import { cardShell, btnPrimary, btnGhost, TONE } from "../gantt/components/ledger";
-import { Toaster } from "../../components/ui/Toaster";
+import { Toaster, type ToastState } from "../../components/ui/Toaster";
 
 import { parseMaterialsCsv, planImport, type CsvMaterialRow, type ImportPlan } from "../../lib/catalogue/csv";
 import { listMaterials, runImport } from "../../lib/api/materials";
 import PrebuildImportCard from "./PrebuildImportCard";
 
 // ─── types ────────────────────────────────────────────────────────────────────
-
-type ToastState = { message: string; type: "success" | "error" | "info" } | null;
 
 type Stage = "idle" | "preview" | "plan" | "result";
 

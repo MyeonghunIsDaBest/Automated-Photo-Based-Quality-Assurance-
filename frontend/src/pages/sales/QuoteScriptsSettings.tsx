@@ -5,7 +5,7 @@
 
 import { useEffect, useState } from "react";
 import { Plus, Trash2, Loader2, Pencil } from "lucide-react";
-import { Toaster } from "../../components/ui/Toaster";
+import { Toaster, type ToastState } from "../../components/ui/Toaster";
 import {
   listScripts,
   createScript,
@@ -15,8 +15,6 @@ import {
   type QuoteScript,
   type QuoteScriptType,
 } from "../../lib/api/quoteScripts";
-
-type ToastState = { message: string; type: "success" | "error" | "info" } | null;
 
 const inputCls =
   "w-full rounded-md border border-[#E6E1D4] px-3 py-2 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] disabled:opacity-50 bg-white";

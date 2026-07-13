@@ -8,7 +8,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, RefreshCw, ArrowLeftRight, AlertTriangle, ShoppingCart, CheckCircle2, SlidersHorizontal } from "lucide-react";
 
-import { Toaster } from "../../components/ui/Toaster";
+import { Toaster, type ToastState } from "../../components/ui/Toaster";
 import { cardShell, btnPrimary, btnGhost, inputField, StatusPill, MetaChip, type ToneKey } from "../gantt/components/ledger";
 import {
   getLowStock, listPurchaseOrders, draftRestocks, createPurchaseOrder, getOnOrderMap,
@@ -16,14 +16,12 @@ import {
 } from "../../lib/api/purchasing";
 import { listStockLocations } from "../../lib/api/stock";
 import { listSuppliers, type Supplier } from "../../lib/api/suppliers";
+import { fmtQty } from "../../lib/format";
 import TransferStockModal from "./TransferStockModal";
-
-type ToastState = { message: string; type: "success" | "error" | "info" } | null;
 
 const PO_TONE: Record<POStatus, ToneKey> = {
   suggested: "amber", draft: "slate", sent: "sage", partial: "amber", received: "sage", cancelled: "red",
 };
-const fmtQty = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString();
 
 export default function RestockDashboard({ onGoToSettings }: { onGoToSettings?: () => void }) {

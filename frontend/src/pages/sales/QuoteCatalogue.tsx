@@ -21,6 +21,7 @@ import { addQuoteItemFromMaterial, getCommercialSettings } from "../../lib/api/c
 import { isBelowFloor } from "../../lib/commercial/money";
 import { getCompanyTotals } from "../../lib/api/stock";
 import { getRecentMaterialIds, pushRecentMaterial } from "../../lib/recentMaterials";
+import { fmtMoney } from "../../lib/format";
 
 const OTHER_GROUP = "Other";
 
@@ -36,10 +37,6 @@ interface Props {
   onToast?: (message: string, type: "success" | "error" | "info") => void;
   /** Cost centre new lines land in (null = General). */
   activeSectionId?: string | null;
-}
-
-function fmtMoney(n: number): string {
-  return "$" + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
 /** A catalogue material flattened to the fields the browser renders. */

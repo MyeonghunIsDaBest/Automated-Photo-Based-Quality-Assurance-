@@ -11,6 +11,7 @@ import MotionDrawer from "../../components/ui/MotionDrawer";
 import { cardShell, StatusPill, MetaChip, FRAUNCES, type ToneKey } from "../gantt/components/ledger";
 import { getCompanyTotals, listMovements, type CompanyTotal, type MovementView, type MovementReason } from "../../lib/api/stock";
 import { listReorderRules, type ReorderRule } from "../../lib/api/purchasing";
+import { fmtMoney, fmtQty } from "../../lib/format";
 
 const REASON: Record<MovementReason, { label: string; tone: ToneKey }> = {
   usage: { label: "Used", tone: "orange" },
@@ -20,8 +21,6 @@ const REASON: Record<MovementReason, { label: string; tone: ToneKey }> = {
   adjustment: { label: "Adjustment", tone: "amber" },
   stocktake: { label: "Stock-take", tone: "ink" },
 };
-const fmtQty = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
-const fmtMoney = (n: number) => "$" + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString();
 
 export default function StockItemDrawer({ materialId, onClose }: { materialId: string | null; onClose: () => void }) {

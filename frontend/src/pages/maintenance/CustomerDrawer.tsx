@@ -14,6 +14,7 @@ import type { Customer } from '../../lib/api/customers';
 import { setCustomerActive } from '../../lib/api/customers';
 import type { Property } from '../../lib/api/properties';
 import type { MaintenanceRequestWithContext } from '../../lib/api/maintenanceRequests';
+import { fmtDateMedium } from '../../lib/format';
 import { FRAUNCES, TONE } from '../gantt/components/ledger';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -44,11 +45,6 @@ function relTime(iso: string): string {
   const weeks = Math.floor(days / 7);
   if (weeks < 5) return `${weeks}w ago`;
   return new Date(iso).toLocaleDateString("en-AU", { month: "short", year: "numeric" });
-}
-
-/** Format date as "12 Jan 2025". */
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
 }
 
 /** Customer since Mon YYYY. */
@@ -359,7 +355,7 @@ export default function CustomerDrawer({
                       {r.propertyName ?? "Unknown property"}
                       {r.scheduledFor && (
                         <span className="ml-2 text-[#C8841E]">
-                          scheduled {fmtDate(r.scheduledFor)}
+                          scheduled {fmtDateMedium(r.scheduledFor)}
                         </span>
                       )}
                     </p>

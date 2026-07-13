@@ -17,7 +17,8 @@ import { Plus, RefreshCw, X, Search, MoreVertical, Pencil, Trash2 } from "lucide
 
 import { FRAUNCES, TONE, cardShell, btnPrimary, btnGhost, StatusPill } from "../gantt/components/ledger";
 import { SkeletonLine } from "../../components/ui/skeleton";
-import { Toaster } from "../../components/ui/Toaster";
+import { Toaster, type ToastState } from "../../components/ui/Toaster";
+import { fmtMoney } from "../../lib/format";
 
 import {
   listQuotes,
@@ -32,8 +33,6 @@ import NewQuoteWizard from "./NewQuoteWizard";
 import ConfirmDeleteDialog from "../catalogue/ConfirmDeleteDialog";
 
 // ─── types ───────────────────────────────────────────────────────────────────
-
-type ToastState = { message: string; type: "success" | "error" | "info" } | null;
 
 interface Props {
   initialCustomerFilter?: string | null;
@@ -90,10 +89,6 @@ function ageLabel(createdAt: string): string {
   if (days < 30)  return `${days}d ago`;
   const months = Math.floor(days / 30);
   return `${months}mo ago`;
-}
-
-function fmtMoney(n: number): string {
-  return "$" + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
 // ─── skeleton row (matches the roomy real rows) ──────────────────────────────

@@ -39,7 +39,7 @@ import { listProfiles } from "../../lib/api/profiles";
 import type { Profile } from "../../types";
 
 import { LedgerHeader, cardShell, FRAUNCES, TONE } from "../gantt/components/ledger";
-import { Toaster } from "../../components/ui/Toaster";
+import { Toaster, type ToastState } from "../../components/ui/Toaster";
 import { BoardSkeleton } from "../../components/ui/skeleton";
 import { BoardCardItem } from "./BoardCardItem";
 import { BoardToolbar, type TypeFilter, type SortMode } from "./BoardToolbar";
@@ -50,8 +50,6 @@ import { ShortcutsModal } from "./ShortcutsModal";
 import type { ServiceJobStatus } from "../../lib/api/serviceJobs";
 
 // ─── types ────────────────────────────────────────────────────────────────────
-
-type ToastState = { message: string; type: "success" | "error" | "info" } | null;
 
 interface PendingSchedule {
   type: BoardCardType;

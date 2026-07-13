@@ -9,10 +9,10 @@ import { useRef, useState } from "react";
 import { Upload, Download, RefreshCw, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 
 import { cardShell, btnPrimary, btnGhost, TONE } from "../gantt/components/ledger";
+import type { ToastState } from "../../components/ui/Toaster";
 import { parsePrebuildsCsv, planPrebuildImport, type CsvPrebuild, type PrebuildImportPlan } from "../../lib/catalogue/prebuildCsv";
 import { listMaterials, listPrebuilds, runPrebuildImport } from "../../lib/api/materials";
 
-type ToastState = { message: string; type: "success" | "error" | "info" } | null;
 type Stage = "idle" | "preview" | "plan" | "result";
 
 const PREBUILD_CSV_TEMPLATE =

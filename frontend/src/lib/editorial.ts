@@ -12,13 +12,11 @@
 //   rounded-pill = 9999px
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
-
-/** Combine class names; later values win on conflicts (powered by tailwind-merge). */
-export function cn(...inputs: ClassValue[]): string {
-  return twMerge(clsx(inputs));
-}
+// cn() now lives in lib/cn.ts (P9.A extraction) so this editorial module can
+// be deleted in P9.F without orphaning it. Imported for the recipes below and
+// re-exported for the remaining consumers until then.
+import { cn } from './cn';
+export { cn };
 
 /* ─── Buttons ────────────────────────────────────────────────────────────── */
 
