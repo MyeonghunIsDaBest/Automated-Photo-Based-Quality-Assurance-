@@ -6,8 +6,11 @@ import type { Profile } from '../types';
 
 // We use a tiny test app: index → RoleHomeRedirect, and explicit /home +
 // /dashboard markers. After the redirect, the marker tells us where the
-// component sent us. While `isAuthLoading` is true (or profile is null
-// post-load) the redirect renders null, so neither marker shows up.
+// component sent us. Every role now lands on the Welcome deck at /home
+// (each deck funnels to its real workspace via the cover CTA), so the
+// /dashboard marker exists only to prove nobody is bounced there anymore.
+// While `isAuthLoading` is true (or profile is null post-load) the
+// redirect renders null, so neither marker shows up.
 
 let mockIsAuthLoading = false;
 let mockProfile: Profile | null = null;
@@ -53,7 +56,7 @@ describe('RoleHomeRedirect', () => {
   it('renders nothing when the session is loaded but profile is null', () => {
     // Belt-and-suspenders: shouldn't happen in the atomic refreshProfile
     // flow, but a cross-tab logout race could land here. We don't want to
-    // bounce silently to /dashboard.
+    // bounce silently anywhere on a stale null profile.
     mockIsAuthLoading = false;
     mockProfile = null;
     const { queryByTestId } = renderRedirectAt('/');
@@ -67,10 +70,11 @@ describe('RoleHomeRedirect', () => {
     expect(getByTestId('home-route')).toBeInTheDocument();
   });
 
-  it('routes admins to /dashboard', () => {
+  it('routes admins to /home (Welcome deck), not straight to /dashboard', () => {
     mockProfile = makeProfile('company_admin');
-    const { getByTestId } = renderRedirectAt('/');
-    expect(getByTestId('dashboard-route')).toBeInTheDocument();
+    const { getByTestId, queryByTestId } = renderRedirectAt('/');
+    expect(getByTestId('home-route')).toBeInTheDocument();
+    expect(queryByTestId('dashboard-route')).toBeNull();
   });
 
   it('routes stakeholders to /home', () => {

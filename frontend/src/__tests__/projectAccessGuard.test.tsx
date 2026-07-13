@@ -100,11 +100,28 @@ describe('useProjectAccessGuard', () => {
     expect(setNotificationSpy).not.toHaveBeenCalled();
   });
 
-  it('lets PMs through regardless of membership', () => {
+  // PMs are now project-scoped (same as field roles): they only bypass the
+  // guard on projects they're a member of. Only company_admin / administrator
+  // / dev get the org-wide bypass.
+  it('redirects a PM without a matching membership to /home with a toast', () => {
     mockUser = makeUser('project_manager');
     mockProfile = makeProfile('project_manager');
+    mockMemberships = [];
+    renderHook(() => useProjectAccessGuard('proj_x'), { wrapper });
+    expect(setNotificationSpy).toHaveBeenCalledWith({
+      type: 'info',
+      message: expect.stringMatching(/not on this project/i),
+    });
+    expect(navigateSpy).toHaveBeenCalledWith('/home', { replace: true });
+  });
+
+  it('lets a PM with an active membership through', () => {
+    mockUser = makeUser('project_manager');
+    mockProfile = makeProfile('project_manager');
+    mockMemberships = [makeMembership('proj_x')];
     renderHook(() => useProjectAccessGuard('proj_x'), { wrapper });
     expect(navigateSpy).not.toHaveBeenCalled();
+    expect(setNotificationSpy).not.toHaveBeenCalled();
   });
 
   it('lets a worker with an active membership through', () => {

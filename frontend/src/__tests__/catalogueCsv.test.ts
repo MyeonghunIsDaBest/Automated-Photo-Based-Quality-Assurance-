@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { parseMaterialsCsv, planImport, type CsvMaterialRow } from '../lib/catalogue/csv';
@@ -226,10 +226,15 @@ describe('parsePrebuildsCsv', () => {
 });
 
 // ─── P3 task 80: dry-run the pipeline against the REAL repo starter CSV ───
+// The starter CSV was removed from the repo once Luke's real catalogue took
+// over — the dry-run only executes when the file is present locally.
 
-describe('starter CSV dry-run (casone-catalogue-starter.csv)', () => {
-  // vitest runs from frontend/; the starter CSV lives at the repo root.
-  const text = readFileSync(resolve(process.cwd(), '..', 'casone-catalogue-starter.csv'), 'utf-8');
+const STARTER_CSV = resolve(process.cwd(), '..', 'casone-catalogue-starter.csv');
+
+describe.runIf(existsSync(STARTER_CSV))('starter CSV dry-run (casone-catalogue-starter.csv)', () => {
+  // Guarded read: vitest executes this factory during collection even when
+  // runIf is false, so the read itself must not throw on a missing file.
+  const text = existsSync(STARTER_CSV) ? readFileSync(STARTER_CSV, 'utf-8') : '';
 
   it('parses clean: 42 rows, zero errors, every row stocked + categorised', () => {
     const { rows, errors } = parseMaterialsCsv(text);

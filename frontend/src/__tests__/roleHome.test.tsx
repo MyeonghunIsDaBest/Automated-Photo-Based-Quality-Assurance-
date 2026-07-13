@@ -70,16 +70,11 @@ vi.mock('../lib/hooks/useAutoAcceptInvites', () => ({
   useAutoAcceptInvites: () => undefined,
 }));
 
-// AssignedTasksMini reads from useFeatureStore + useProjectsListStore. Stub
-// both with empty lists — the worker variant should still render its
-// empty-state caption.
-vi.mock('../store/features', () => ({
-  useFeatureStore: (selector: (s: unknown) => unknown) =>
-    selector({ tasks: [] }),
-}));
+// The project-preview slide reads useProjectsListStore. Stub it with an empty
+// list — the deck should still render its "Your first project" preview.
 vi.mock('../pages/projects/store', () => ({
   useProjectsListStore: (selector: (s: unknown) => unknown) =>
-    selector({ projects: [], setActiveProject: () => undefined }),
+    selector({ projects: [], activeProjectId: null, setActiveProject: () => undefined }),
 }));
 
 function renderHome() {
@@ -90,6 +85,10 @@ function renderHome() {
   );
 }
 
+// RoleHome is now the role-tailored Welcome deck: a 7-slide experience whose
+// copy comes from `roleHomeConfig.ts` per security_group. All slides mount in
+// the DOM at once (visibility is CSS-only), so every deck's slide copy is
+// queryable in jsdom.
 describe('RoleHome', () => {
   beforeEach(() => {
     mockMemberships = [];
@@ -102,38 +101,44 @@ describe('RoleHome', () => {
       mockProfile = makeProfile('worker');
     });
 
-    it('renders the worker hero + explainer + three tiles', () => {
+    it('renders the worker cover + product explainer + capability cards', () => {
       renderHome();
-      expect(screen.getByText(/On site,/)).toBeInTheDocument();
-      // First name accent.
-      expect(screen.getByText(/Sam\./)).toBeInTheDocument();
-      // Explainer headline + key accent text.
+      // Worker cover hero ("You're set up," + italic accent "Worker.").
+      expect(screen.getByText(/You're set up,/)).toBeInTheDocument();
+      expect(screen.getByText('Worker.')).toBeInTheDocument();
+      // Personalisation: the rail account footer carries the user's name.
+      expect(screen.getByText('Sam Worker')).toBeInTheDocument();
+      // Shared product-explainer slide.
       expect(screen.getByText(/What is SiteProof/i)).toBeInTheDocument();
-      // The three worker action tiles each render their title.
-      expect(screen.getByText('Photo QA')).toBeInTheDocument();
-      expect(screen.getByText('Site Diary')).toBeInTheDocument();
-      expect(screen.getByText('Inbox')).toBeInTheDocument();
+      // The three worker "Your day" capability cards. Photo QA / Site Diary
+      // also appear in the project-preview minis, so allow multiple matches.
+      expect(screen.getAllByText('Photo QA').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Site Diary').length).toBeGreaterThan(0);
+      expect(screen.getByText('Audit record')).toBeInTheDocument();
     });
 
     it('shows the empty-state copy when no memberships exist', () => {
       renderHome();
-      expect(
-        screen.getByText(/No projects assigned yet/i),
-      ).toBeInTheDocument();
+      // Rail footer sub-label from eyebrowSuffix(0)…
+      expect(screen.getByText('no project yet')).toBeInTheDocument();
+      // …and the cover badge for the unassigned worker.
+      expect(screen.getByText(/No project assigned yet/i)).toBeInTheDocument();
     });
 
-    it('mounts the worker-only "Today\'s brief" section', () => {
+    it('mounts the worker-only "Get added to a crew" final slide', () => {
       renderHome();
-      // The heading uses curly apostrophe.
-      expect(screen.getByText(/Today.{1,3}s brief/i)).toBeInTheDocument();
+      // Final-slide headline unique to the worker deck.
+      expect(screen.getByText('Ask your project manager')).toBeInTheDocument();
+      // "Get added" appears as both the final rail label and the slide title.
+      expect(screen.getAllByText(/Get added/).length).toBeGreaterThan(0);
     });
 
-    it('shows a "loading projects…" eyebrow while memberships fetch', () => {
+    it('shows a "loading…" account sub-label while memberships fetch', () => {
       mockMembershipsLoading = true;
       renderHome();
-      // The eyebrow should say "loading projects…" — not "invited to 0 projects".
-      expect(screen.getByText(/loading projects/i)).toBeInTheDocument();
-      expect(screen.queryByText(/invited to 0 projects/i)).not.toBeInTheDocument();
+      // The rail footer should say "loading…" — not "no project yet".
+      expect(screen.getByText('loading…')).toBeInTheDocument();
+      expect(screen.queryByText('no project yet')).not.toBeInTheDocument();
     });
   });
 
@@ -143,17 +148,20 @@ describe('RoleHome', () => {
       mockProfile = makeProfile('stakeholder');
     });
 
-    it('renders the stakeholder hero + tiles', () => {
+    it('renders the stakeholder cover + sponsor cards', () => {
       renderHome();
-      expect(screen.getByText(/Project overview,/)).toBeInTheDocument();
-      expect(screen.getByText('Latest weekly report')).toBeInTheDocument();
-      expect(screen.getByText('Photo gallery')).toBeInTheDocument();
-      expect(screen.getByText('Schedule snapshot')).toBeInTheDocument();
+      expect(screen.getByText(/Your money,/)).toBeInTheDocument();
+      expect(screen.getByText('Spend vs progress')).toBeInTheDocument();
+      expect(screen.getByText('Visual proof')).toBeInTheDocument();
+      expect(screen.getByText('Release payment')).toBeInTheDocument();
     });
 
-    it("does not show the worker-only Today's brief", () => {
+    it('does not show the worker-only deck content', () => {
       renderHome();
-      expect(screen.queryByText(/Today.{1,3}s brief/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/You're set up,/)).not.toBeInTheDocument();
+      expect(
+        screen.queryByText('Ask your project manager'),
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -163,12 +171,12 @@ describe('RoleHome', () => {
       mockProfile = makeProfile('supplier');
     });
 
-    it('renders the supplier hero + tiles', () => {
+    it('renders the supplier cover + vendor cards', () => {
       renderHome();
       expect(screen.getByText(/Orders & deliveries,/)).toBeInTheDocument();
-      expect(screen.getByText('Open orders')).toBeInTheDocument();
-      expect(screen.getByText('Deliveries due')).toBeInTheDocument();
-      expect(screen.getByText('Outstanding invoices')).toBeInTheDocument();
+      expect(screen.getByText('Respond to orders')).toBeInTheDocument();
+      expect(screen.getByText('Deliveries')).toBeInTheDocument();
+      expect(screen.getByText('Invoices')).toBeInTheDocument();
     });
   });
 
@@ -178,12 +186,13 @@ describe('RoleHome', () => {
       mockProfile = makeProfile('company_admin');
     });
 
-    it('bounces admins to /dashboard (renders no hero)', () => {
-      // <Navigate> renders nothing tangible; we just assert the hero text
-      // for a worker isn't on the page (admin gets the redirect).
+    // Admins are no longer bounced to /dashboard — they get their own
+    // company-admin deck at /home.
+    it('renders the company-admin deck (not another role\'s hero)', () => {
       renderHome();
-      expect(screen.queryByText(/On site,/)).not.toBeInTheDocument();
-      expect(screen.queryByText(/Project overview,/)).not.toBeInTheDocument();
+      expect(screen.getByText(/Your whole company,/)).toBeInTheDocument();
+      expect(screen.queryByText(/You're set up,/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Your money,/)).not.toBeInTheDocument();
       expect(screen.queryByText(/Orders & deliveries,/)).not.toBeInTheDocument();
     });
   });
@@ -194,15 +203,13 @@ describe('RoleHome', () => {
       mockProfile = null;
     });
 
-    // When `currentProfile` is null (e.g. cross-tab logout) RoleHome's
-    // variant lookup returns undefined and the early-return triggers a
-    // <Navigate /> to /dashboard. We just assert no variant hero text is
-    // visible — both the worker hero AND the stakeholder/supplier ones
-    // should be absent.
-    it('renders no role hero when the profile is null', () => {
-      renderHome();
-      expect(screen.queryByText(/On site,/)).not.toBeInTheDocument();
-      expect(screen.queryByText(/Project overview,/)).not.toBeInTheDocument();
+    // When `currentProfile` is null (e.g. cross-tab logout) no deck resolves
+    // and RoleHome renders null — no deck DOM at all, and no redirect fired.
+    it('renders nothing when the profile is null', () => {
+      const { container } = renderHome();
+      expect(container).toBeEmptyDOMElement();
+      expect(screen.queryByText(/You're set up,/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Your money,/)).not.toBeInTheDocument();
       expect(screen.queryByText(/Orders & deliveries,/)).not.toBeInTheDocument();
     });
   });
