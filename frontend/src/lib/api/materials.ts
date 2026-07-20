@@ -14,7 +14,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { supabase, supabaseConfigured } from '../supabase';
-import type { CsvMaterialRow, ImportPlan } from '../catalogue/csv';
+import type { CsvMaterialRow, ImportPlan, SupplierPlan } from '../catalogue/csv';
 import type { PrebuildImportPlan } from '../catalogue/prebuildCsv';
 
 // ---------------------------------------------------------------------------
@@ -779,7 +779,7 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
-function csvRowToInsert(row: CsvMaterialRow, uid: string | null): Record<string, unknown> {
+function csvRowToInsert(row: CsvMaterialRow, uid: string | null, supplierId: string | null): Record<string, unknown> {
   return {
     sku: row.sku,
     name: row.name,
@@ -794,12 +794,13 @@ function csvRowToInsert(row: CsvMaterialRow, uid: string | null): Record<string,
     ...(row.subcategory !== null && { subcategory: row.subcategory }),
     ...(row.isStockItem !== null && { is_stock_item: row.isStockItem }),
     ...(row.isFavourite !== null && { is_favourite: row.isFavourite }),
+    ...(supplierId !== null && { supplier_id: supplierId }),
     source: 'csv',
     created_by: uid,
   };
 }
 
-function csvRowToUpdate(row: CsvMaterialRow): Record<string, unknown> {
+function csvRowToUpdate(row: CsvMaterialRow, supplierId: string | null): Record<string, unknown> {
   return {
     sku: row.sku,
     name: row.name,
@@ -816,16 +817,25 @@ function csvRowToUpdate(row: CsvMaterialRow): Record<string, unknown> {
     ...(row.subcategory !== null && { subcategory: row.subcategory }),
     ...(row.isStockItem !== null && { is_stock_item: row.isStockItem }),
     ...(row.isFavourite !== null && { is_favourite: row.isFavourite }),
+    ...(supplierId !== null && { supplier_id: supplierId }),
   };
 }
 
 export async function runImport(
   plan: ImportPlan,
+  supplierPlan?: SupplierPlan,
 ): Promise<{
   added: number;
   updated: number;
   skipped: number;
   failed: { count: number; firstError: string | null };
+  /** Wholesaler linkage (only non-zero when the file carried supplier columns). */
+  suppliersCreated: number;
+  skusLinked: number;
+  /** Rows carrying a supplier_sku but no supplier name — the code is kept in
+   *  the material's row data but can't land in supplier_skus until a re-import
+   *  names the wholesaler. Surfaced so nothing is silently dropped. */
+  skusParkedNoSupplier: number;
 }> {
   if (!supabaseConfigured()) throw NOT_CONFIGURED;
 
@@ -843,16 +853,75 @@ export async function runImport(
     }
   }
 
-  // Inserts — chunked; failures are caught per-chunk and accumulated
+  // ── Wholesalers first: create the new names, merge with the planned links ──
+  const supplierIdByName = new Map<string, string>(supplierPlan?.links ?? []);
+  let suppliersCreated = 0;
+  if (supplierPlan) {
+    for (const name of supplierPlan.creates) {
+      const { data, error } = await supabase
+        .from('suppliers')
+        .insert({ name, created_by: uid })
+        .select('id')
+        .single();
+      if (error) {
+        recordFailure(error);
+      } else {
+        supplierIdByName.set(name.trim().toLowerCase(), (data as { id: string }).id);
+        suppliersCreated += 1;
+      }
+    }
+  }
+  const supplierIdFor = (row: CsvMaterialRow): string | null => {
+    if (row.supplier === null) return null;
+    return supplierIdByName.get(row.supplier.trim().toLowerCase()) ?? null;
+  };
+
+  // supplier_skus rows accumulate as material ids become known, flushed at the end.
+  const skuLinks: Array<Record<string, unknown>> = [];
+  let skusParkedNoSupplier = 0;
+  function collectSkuLink(row: CsvMaterialRow, materialId: string | null) {
+    if (row.supplierSku === null) return;
+    const sid = supplierIdFor(row);
+    if (sid === null) {
+      skusParkedNoSupplier += 1;
+      return;
+    }
+    if (materialId === null) return; // insert chunk failed — already counted as a failure
+    skuLinks.push({
+      supplier_id: sid,
+      supplier_sku: row.supplierSku,
+      material_id: materialId,
+      qty_multiplier: 1,
+      learned_by: uid,
+    });
+  }
+
+  // Inserts — chunked; failures are caught per-chunk and accumulated. `.select`
+  // returns the created rows so supplier codes can link to the new material ids
+  // (matched back by sku, falling back to name for sku-less rows).
   for (const batch of chunk(plan.adds, CHUNK_SIZE)) {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('materials')
-      .insert(batch.map((row) => csvRowToInsert(row, uid)));
+      .insert(batch.map((row) => csvRowToInsert(row, uid, supplierIdFor(row))))
+      .select('id, sku, name');
     if (error) {
       recordFailure(error);
       // Continue — the next chunk may succeed
     } else {
       added += batch.length;
+      const created = (data ?? []) as Array<{ id: string; sku: string | null; name: string }>;
+      const idBySku = new Map<string, string>();
+      const idByName = new Map<string, string>();
+      for (const c of created) {
+        if (c.sku !== null) idBySku.set(c.sku, c.id);
+        idByName.set(c.name.toLowerCase(), c.id);
+      }
+      for (const row of batch) {
+        const materialId = (row.sku !== null ? idBySku.get(row.sku) : undefined)
+          ?? idByName.get(row.name.toLowerCase())
+          ?? null;
+        collectSkuLink(row, materialId);
+      }
     }
   }
 
@@ -861,17 +930,41 @@ export async function runImport(
     for (const { id, row } of batch) {
       const { error } = await supabase
         .from('materials')
-        .update(csvRowToUpdate(row))
+        .update(csvRowToUpdate(row, supplierIdFor(row)))
         .eq('id', id);
       if (error) {
         recordFailure(error);
       } else {
         updated += 1;
+        collectSkuLink(row, id);
       }
     }
   }
 
-  return { added, updated, skipped: plan.skips.length, failed: { count: failCount, firstError } };
+  // ── Flush wholesaler item codes (idempotent upsert on the mig-98 unique key).
+  //    Degrades gracefully when migration 98 hasn't been applied yet: the
+  //    failure is counted + reported, materials themselves are unaffected. ──
+  let skusLinked = 0;
+  for (const batch of chunk(skuLinks, CHUNK_SIZE)) {
+    const { error } = await supabase
+      .from('supplier_skus')
+      .upsert(batch, { onConflict: 'supplier_id,supplier_sku' });
+    if (error) {
+      recordFailure(error);
+    } else {
+      skusLinked += batch.length;
+    }
+  }
+
+  return {
+    added,
+    updated,
+    skipped: plan.skips.length,
+    failed: { count: failCount, firstError },
+    suppliersCreated,
+    skusLinked,
+    skusParkedNoSupplier,
+  };
 }
 
 /**

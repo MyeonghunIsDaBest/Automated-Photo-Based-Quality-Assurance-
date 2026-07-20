@@ -1,4 +1,5 @@
 import './customerDashboard.css';
+import { useEffect, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import {
   BarChart,
@@ -88,10 +89,37 @@ function SpendTooltip({
   );
 }
 
+type PortalTab = 'overview' | 'projects' | 'invoices' | 'documents' | 'account';
+
 export default function CustomerDashboard() {
   const currentProfile = useAppStore((s) => s.currentProfile);
   const logout = useAppStore((s) => s.logout);
   const navigate = useNavigate();
+
+  // Phone tab bar (≤860px, where the sidebar is hidden). Active tab = last
+  // clicked — this is a STATIC page, so no scrollspy, just smooth anchors.
+  const [activeTab, setActiveTab] = useState<PortalTab>('overview');
+  const [accountSheetOpen, setAccountSheetOpen] = useState(false);
+
+  useEffect(() => {
+    if (!accountSheetOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setAccountSheetOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [accountSheetOpen]);
+
+  const goToSection = (tab: PortalTab, targetId: string | null) => {
+    setActiveTab(tab);
+    setAccountSheetOpen(false);
+    const el = targetId ? document.getElementById(targetId) : null;
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
   const sg = currentProfile?.securityGroup;
   if (sg !== 'customer' && sg !== 'dev') return <Navigate to="/" replace />;
@@ -318,7 +346,7 @@ export default function CustomerDashboard() {
 
           {/* PROJECTS */}
           <div className="section-divider fade-up fade-up-2">
-            <h2 className="section-heading">Active Projects</h2>
+            <h2 className="section-heading" id="projects-heading">Active Projects</h2>
             <a href="#" className="section-link">
               View all projects
               <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6h8M6 2l4 4-4 4" /></svg>
@@ -892,6 +920,95 @@ export default function CustomerDashboard() {
 
         </main>
       </div>
+
+      {/* ═══════════ PHONE TAB BAR (≤860px — the sidebar is hidden) ═══════════ */}
+      <nav className="cust-tabbar" aria-label="Portal sections">
+        <button
+          type="button"
+          className={`cust-tab${activeTab === 'overview' ? ' active' : ''}`}
+          aria-current={activeTab === 'overview' ? 'page' : undefined}
+          onClick={() => goToSection('overview', null)}
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1" y="1" width="6" height="6" rx="1" /><rect x="9" y="1" width="6" height="6" rx="1" /><rect x="1" y="9" width="6" height="6" rx="1" /><rect x="9" y="9" width="6" height="6" rx="1" /></svg>
+          Overview
+        </button>
+        <button
+          type="button"
+          className={`cust-tab${activeTab === 'projects' ? ' active' : ''}`}
+          aria-current={activeTab === 'projects' ? 'page' : undefined}
+          onClick={() => goToSection('projects', 'projects-heading')}
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12M2 8h8M2 12h5" /><circle cx="13" cy="10" r="2.5" /><path d="M13 8v-.5M13 12.5V13" /></svg>
+          Projects
+        </button>
+        <button
+          type="button"
+          className={`cust-tab${activeTab === 'invoices' ? ' active' : ''}`}
+          aria-current={activeTab === 'invoices' ? 'page' : undefined}
+          onClick={() => goToSection('invoices', 'invoices-heading')}
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1v14M5 4h4.5a2.5 2.5 0 0 1 0 5H5M5 9h5a2.5 2.5 0 0 1 0 5H5" /></svg>
+          Invoices
+        </button>
+        <button
+          type="button"
+          className={`cust-tab${activeTab === 'documents' ? ' active' : ''}`}
+          aria-current={activeTab === 'documents' ? 'page' : undefined}
+          onClick={() => goToSection('documents', 'docs-heading')}
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2h8l3 3v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z" /><path d="M11 2v3h3" /></svg>
+          Documents
+        </button>
+        <button
+          type="button"
+          // Account is a sheet trigger, not a section — drive its highlight off
+          // the sheet's own open-state so it doesn't stay lit after the sheet
+          // closes (the underlying section tab keeps `activeTab`).
+          className={`cust-tab${accountSheetOpen ? ' active' : ''}`}
+          aria-expanded={accountSheetOpen}
+          onClick={() => setAccountSheetOpen(true)}
+        >
+          <svg viewBox="0 0 15 15" aria-hidden="true"><circle cx="7.5" cy="5" r="3" /><path d="M1 14a6.5 6.5 0 0 1 13 0" /></svg>
+          Account
+        </button>
+      </nav>
+
+      {/* ═══════════ ACCOUNT SHEET (opened from the phone tab bar) ═══════════ */}
+      {accountSheetOpen && (
+        <>
+          <div
+            className="cust-sheet-backdrop"
+            aria-hidden="true"
+            onClick={() => setAccountSheetOpen(false)}
+          />
+          <div className="cust-sheet" role="dialog" aria-modal="true" aria-label="Account">
+            <div className="cust-sheet-grab" aria-hidden="true" />
+            <button
+              type="button"
+              className="cust-sheet-item"
+              onClick={() => navigate('/settings')}
+            >
+              <svg viewBox="0 0 15 15" aria-hidden="true"><circle cx="7.5" cy="5" r="3" /><path d="M1 14a6.5 6.5 0 0 1 13 0" /></svg>
+              Account Settings
+            </button>
+            <button
+              type="button"
+              className="cust-sheet-item danger"
+              onClick={() => void logout()}
+            >
+              <svg viewBox="0 0 15 15" aria-hidden="true"><path d="M6 2H3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h3M10 10l3-3-3-3M5 7h8" /></svg>
+              Sign Out
+            </button>
+            <button
+              type="button"
+              className="cust-sheet-item muted"
+              onClick={() => setAccountSheetOpen(false)}
+            >
+              Close
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

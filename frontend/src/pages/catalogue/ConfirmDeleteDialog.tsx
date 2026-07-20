@@ -6,9 +6,14 @@
 // distinct from the reversible Archive (deactivate): the copy spells that out,
 // and when an `onArchiveInstead` handler is passed the dialog offers it as the
 // safer alternative. Red confirm button + busy spinner.
+//
+// Shell: MotionDrawer variant="modal" (portal, Esc/backdrop close, focus
+// plumbing). Esc/backdrop are busy-guarded — a delete in flight can't be
+// dismissed mid-write.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { Trash2, Archive, Loader2 } from "lucide-react";
+import MotionDrawer from "../../components/ui/MotionDrawer";
 import { btnGhost } from "../gantt/components/ledger";
 
 interface ConfirmDeleteDialogProps {
@@ -32,8 +37,8 @@ export default function ConfirmDeleteDialog({
   onArchiveInstead,
 }: ConfirmDeleteDialogProps) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4" role="dialog" aria-modal="true">
-      <div className="w-full max-w-md rounded-2xl border border-[#E6E1D4] bg-white p-6 shadow-[0_12px_40px_rgba(20,20,20,0.18)]">
+    <MotionDrawer open onClose={() => { if (!busy) onCancel(); }} variant="modal" ariaLabel={`Delete ${noun}`} sizeClass="max-w-md">
+      <div className="p-6">
         <div className="flex items-start gap-3">
           <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#FBE5E5] text-[#C44545]">
             <Trash2 className="h-5 w-5" />
@@ -76,6 +81,6 @@ export default function ConfirmDeleteDialog({
           </button>
         </div>
       </div>
-    </div>
+    </MotionDrawer>
   );
 }

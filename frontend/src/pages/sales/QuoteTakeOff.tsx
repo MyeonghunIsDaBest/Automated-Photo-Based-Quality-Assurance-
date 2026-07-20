@@ -295,7 +295,7 @@ export default function QuoteTakeOff({ quoteId, canSeeCost, isLocked, onAdded, o
               <button
                 type="button"
                 onClick={() => toggleGroup(g.key)}
-                className="flex w-full items-center gap-2 bg-[#FAF8F2] px-3 py-2.5 text-left hover:bg-[#F4F1E8]"
+                className="flex min-h-11 w-full items-center gap-2 bg-[#FAF8F2] px-3 py-2.5 text-left hover:bg-[#F4F1E8]"
               >
                 {open ? <ChevronDown className="h-4 w-4 text-[#6B6B6B]" /> : <ChevronRight className="h-4 w-4 text-[#6B6B6B]" />}
                 <Layers className="h-4 w-4 text-[#2F8F5C]" />
@@ -318,7 +318,7 @@ export default function QuoteTakeOff({ quoteId, canSeeCost, isLocked, onAdded, o
                           <button
                             type="button"
                             onClick={() => void toggleTemplate(t)}
-                            className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                            className="flex min-h-11 min-w-0 flex-1 items-center gap-2 text-left"
                             aria-label={tplOpen ? "Hide items" : "Show items"}
                           >
                             {tplOpen ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[#A0A0A0]" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[#A0A0A0]" />}
@@ -337,14 +337,14 @@ export default function QuoteTakeOff({ quoteId, canSeeCost, isLocked, onAdded, o
                                   const v = parseInt(e.target.value, 10);
                                   setQtys((prev) => ({ ...prev, [t.id]: Number.isFinite(v) && v >= 1 ? v : 1 }));
                                 }}
-                                className="w-16 rounded-md border border-[#E6E1D4] bg-white px-2 py-1.5 text-right text-sm tabular-nums focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
+                                className="min-h-11 w-16 rounded-md border border-[#E6E1D4] bg-white px-2 py-1.5 text-right text-sm tabular-nums focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] sm:min-h-0"
                                 aria-label={`Quantity for ${t.name}`}
                               />
                               <button
                                 type="button"
                                 onClick={() => void handleAdd(t)}
                                 disabled={applyingId === t.id}
-                                className="inline-flex items-center gap-1 rounded-md bg-[#2F8F5C] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#287a4e] disabled:opacity-60"
+                                className="inline-flex min-h-11 items-center gap-1 rounded-md bg-[#2F8F5C] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#287a4e] disabled:opacity-60 sm:min-h-[36px]"
                               >
                                 {applyingId === t.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
                                 Add

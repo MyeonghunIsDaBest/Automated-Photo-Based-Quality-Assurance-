@@ -18,9 +18,13 @@ interface Props {
   placeholder?: string;
   disabled?: boolean;
   inputClassName?: string;
+  /** When `value` equals this string, skip the forward search entirely — used
+   *  by reverse-geocode write-backs (pin → address) so the programmatic value
+   *  doesn't burn a Nominatim request or pop the dropdown over the field. */
+  skipSearchFor?: string | null;
 }
 
-export default function AddressSearchInput({ value, onChange, onSelect, placeholder = "Search an address…", disabled, inputClassName }: Props) {
+export default function AddressSearchInput({ value, onChange, onSelect, placeholder = "Search an address…", disabled, inputClassName, skipSearchFor }: Props) {
   const [results, setResults] = useState<GeocodeResult[]>([]);
   const [open, setOpen] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -40,7 +44,7 @@ export default function AddressSearchInput({ value, onChange, onSelect, placehol
       setResults([]); setOpen(false); setSearching(false);
       return;
     }
-    if (pickedRef.current === value) { setSearching(false); return; }
+    if (pickedRef.current === value || (skipSearchFor != null && skipSearchFor === value)) { setSearching(false); return; }
     debounceRef.current = window.setTimeout(() => {
       const seq = ++seqRef.current;
       setSearching(true);
@@ -55,7 +59,7 @@ export default function AddressSearchInput({ value, onChange, onSelect, placehol
         .finally(() => { if (seq === seqRef.current) setSearching(false); });
     }, 600);
     return () => { if (debounceRef.current) window.clearTimeout(debounceRef.current); };
-  }, [value]);
+  }, [value, skipSearchFor]);
 
   return (
     <div className="relative">

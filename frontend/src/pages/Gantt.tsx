@@ -225,7 +225,7 @@ export default function Gantt() {
           actions={
             <Link
               to="/projects"
-              className="group relative z-10 inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 active:scale-[0.98]"
+              className="group relative z-10 inline-flex items-center gap-1.5 rounded-full border border-[#E6E1D4] bg-white px-3.5 py-1.5 text-sm font-medium text-[#3A3A3A] shadow-sm transition-all hover:border-[#D8D2C4] hover:bg-[#FAF8F2] hover:text-[#1A1A1A] active:scale-[0.98]"
             >
               <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
               All projects
@@ -248,7 +248,7 @@ export default function Gantt() {
           layoutId — framer-motion FLIPs it between positions on click. */}
       <div className="mb-6 flex items-center gap-3 sm:gap-4">
         <div className="min-w-0 flex-1 overflow-x-auto pb-1">
-          <div className="inline-flex items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
+          <div className="inline-flex items-center gap-1 rounded-2xl border border-[#E6E1D4] bg-white p-1 shadow-sm">
             {visibleTabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
@@ -261,13 +261,13 @@ export default function Gantt() {
                   className={`relative flex flex-shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
                     isActive
                       ? 'text-white'
-                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                      : 'text-[#3A3A3A] hover:bg-[#FAF8F2] hover:text-[#1A1A1A]'
                   }`}
                 >
                   {isActive && (
                     <motion.span
                       layoutId="gantt-primary-tab-pill"
-                      className="absolute inset-0 rounded-xl bg-slate-900 shadow-sm"
+                      className="absolute inset-0 rounded-xl bg-[#1A1A1A] shadow-sm"
                       transition={{ type: 'spring', damping: 30, stiffness: 360 }}
                     />
                   )}
@@ -276,7 +276,7 @@ export default function Gantt() {
                   {typeof count === 'number' && count > 0 && (
                     <span
                       className={`relative z-10 tabular-nums rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
-                        isActive ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-600'
+                        isActive ? 'bg-white/15 text-white' : 'bg-[#F0EDE4] text-[#6B6B6B]'
                       }`}
                     >
                       {count}
@@ -290,7 +290,7 @@ export default function Gantt() {
         <Link
           to="/projects"
           aria-label="Back to all projects"
-          className="group inline-flex flex-shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 active:scale-[0.98]"
+          className="group inline-flex flex-shrink-0 items-center gap-1.5 rounded-full border border-[#E6E1D4] bg-white px-3.5 py-1.5 text-sm font-medium text-[#3A3A3A] shadow-sm transition-all hover:border-[#D8D2C4] hover:bg-[#FAF8F2] hover:text-[#1A1A1A] active:scale-[0.98]"
         >
           <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
           <span className="hidden sm:inline">All projects</span>

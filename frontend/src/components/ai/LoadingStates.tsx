@@ -24,7 +24,7 @@ export function Shimmer({ sizePx = 14 }: { sizePx?: number } = {}) {
   return (
     <span
       aria-hidden
-      className="inline-block animate-spin rounded-full border-2 border-slate-200 border-t-current"
+      className="inline-block animate-spin rounded-full border-2 border-[#E6E1D4] border-t-current"
       style={{ height: sizePx, width: sizePx }}
     />
   );

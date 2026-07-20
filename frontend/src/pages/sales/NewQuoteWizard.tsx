@@ -294,22 +294,24 @@ export default function NewQuoteWizard({ customers, onCancel, onCreated, initial
   const customerName = customerId ? (allCustomers.find((c) => c.id === customerId)?.name ?? "—") : (clientName.trim() || "—");
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#1A1A1A]/50 p-4">
-      <div className="my-4 flex w-full max-w-5xl flex-col overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_8px_28px_rgba(20,20,20,0.18)]">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#1A1A1A]/50 p-2 sm:p-4">
+      <div role="dialog" aria-modal="true" aria-label="New quote" className="my-4 flex max-h-[calc(100dvh-3rem)] w-full max-w-5xl flex-col overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_8px_28px_rgba(20,20,20,0.18)] sm:max-h-none">
 
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-[#E6E1D4] px-6 py-4">
+        {/* Header — phone: title + X only (actions live in the bottom bar); sm+: full single row */}
+        <div className="flex shrink-0 items-center justify-between border-b border-[#E6E1D4] px-4 py-4 sm:px-6">
           <h2 className="text-[22px] font-medium text-[#1A1A1A]" style={{ fontFamily: FRAUNCES, letterSpacing: "-0.01em" }}>
             New {quoteType === "project" ? "Project" : "Service"} Quote
           </h2>
           <div className="flex items-center gap-2">
-            <button type="button" onClick={onCancel} disabled={saving} className={btnGhost}>Cancel</button>
-            <button type="button" onClick={() => void handleSubmit(false)} disabled={saving} className={btnGhost}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Finish
-            </button>
-            <button type="button" onClick={() => void handleSubmit(true)} disabled={saving} className={btnPrimary}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Next
-            </button>
+            <div className="hidden items-center gap-2 sm:flex">
+              <button type="button" onClick={onCancel} disabled={saving} className={btnGhost}>Cancel</button>
+              <button type="button" onClick={() => void handleSubmit(false)} disabled={saving} className={btnGhost}>
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Finish
+              </button>
+              <button type="button" onClick={() => void handleSubmit(true)} disabled={saving} className={btnPrimary}>
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Next
+              </button>
+            </div>
             <button type="button" onClick={onCancel} disabled={saving} className="ml-1 rounded-md p-2 text-[#A0A0A0] hover:bg-[#F0EDE4] hover:text-[#3A3A3A]">
               <X className="h-5 w-5" />
             </button>
@@ -317,13 +319,13 @@ export default function NewQuoteWizard({ customers, onCancel, onCreated, initial
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 border-b border-[#E6E1D4] px-6">
+        <div className="flex shrink-0 gap-1 border-b border-[#E6E1D4] px-4 sm:px-6">
           {([["main", "Main"], ["optional", "Optional"], ["custom", "Custom Fields"]] as [TabKey, string][]).map(([k, label]) => (
             <button
               key={k}
               type="button"
               onClick={() => setTab(k)}
-              className={`-mb-px border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
+              className={`-mb-px min-h-11 border-b-2 px-3 py-3 text-sm font-medium transition-colors ${
                 tab === k ? "border-[#2F8F5C] text-[#1A1A1A]" : "border-transparent text-[#6B6B6B] hover:border-[#E6E1D4] hover:text-[#1A1A1A]"
               }`}
             >
@@ -333,7 +335,7 @@ export default function NewQuoteWizard({ customers, onCancel, onCreated, initial
         </div>
 
         {/* Summary strip */}
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-1 border-b border-[#E6E1D4] bg-[#FAF8F2] px-6 py-2.5 text-sm">
+        <div className="flex shrink-0 flex-wrap items-center gap-x-6 gap-y-1 border-b border-[#E6E1D4] bg-[#FAF8F2] px-4 py-2.5 text-sm sm:px-6">
           <span className="text-[#6B6B6B]">Customer: <span className="font-medium text-[#1A1A1A]">{customerName}</span></span>
           <span className="text-[#6B6B6B]">Quote Total: <span className="font-medium text-[#1A1A1A]">$0.00</span></span>
           <span className="flex items-center gap-1.5 text-[#6B6B6B]">
@@ -341,8 +343,8 @@ export default function NewQuoteWizard({ customers, onCancel, onCreated, initial
           </span>
         </div>
 
-        {/* Body */}
-        <div className="max-h-[64vh] overflow-y-auto px-6 py-5">
+        {/* Body — phone: flex-1 scroll area (action bar sits below, outside the scroll); sm+: capped as before */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:max-h-[64vh] sm:flex-none sm:px-6">
           {err && (
             <p className="mb-4 rounded-md border border-[#F0BFBF] bg-[#FBE5E5] px-3 py-2 text-xs text-[#C44545]">{err}</p>
           )}
@@ -443,7 +445,7 @@ export default function NewQuoteWizard({ customers, onCancel, onCreated, initial
                     const on = technicianIds.includes(p.id);
                     return (
                       <button key={p.id} type="button" onClick={() => toggleTech(p.id)} disabled={saving}
-                        className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${on ? "border-[#2F8F5C] bg-[#E5F2EA] text-[#246F47]" : "border-[#E6E1D4] bg-white text-[#6B6B6B] hover:border-[#D8D2C4]"}`}>
+                        className={`min-h-11 rounded-full border px-3 py-1 text-xs font-medium transition-colors sm:min-h-0 ${on ? "border-[#2F8F5C] bg-[#E5F2EA] text-[#246F47]" : "border-[#E6E1D4] bg-white text-[#6B6B6B] hover:border-[#D8D2C4]"}`}>
                         {fullName(p)}
                       </button>
                     );
@@ -499,7 +501,7 @@ export default function NewQuoteWizard({ customers, onCancel, onCreated, initial
                 <div className={leaveDefault ? "opacity-50" : ""}>
                   <label className={labelCls}>Labour Overhead ($/hr)</label>
                   <div className="flex items-center gap-2">
-                    <label className="flex items-center gap-1 text-xs text-[#6B6B6B]">
+                    <label className="flex min-h-11 items-center gap-1 text-xs text-[#6B6B6B]">
                       <input type="checkbox" checked={useDefaultOverhead} onChange={(e) => setUseDefaultOverhead(e.target.checked)} disabled={saving || leaveDefault} className="h-3.5 w-3.5" />
                       Use default
                     </label>
@@ -509,7 +511,7 @@ export default function NewQuoteWizard({ customers, onCancel, onCreated, initial
                 <div className={leaveDefault ? "opacity-50" : ""}>
                   <label className={labelCls}>Default Material Markup (%)</label>
                   <div className="flex items-center gap-2">
-                    <label className="flex items-center gap-1 text-xs text-[#6B6B6B]">
+                    <label className="flex min-h-11 items-center gap-1 text-xs text-[#6B6B6B]">
                       <input type="checkbox" checked={useDefaultMarkup} onChange={(e) => setUseDefaultMarkup(e.target.checked)} disabled={saving || leaveDefault} className="h-3.5 w-3.5" />
                       Use default
                     </label>
@@ -527,7 +529,7 @@ export default function NewQuoteWizard({ customers, onCancel, onCreated, initial
                 <div>
                   <label className={labelCls}>STC Value ($)</label>
                   <div className="flex items-center gap-2">
-                    <label className="flex items-center gap-1 text-xs text-[#6B6B6B]">
+                    <label className="flex min-h-11 items-center gap-1 text-xs text-[#6B6B6B]">
                       <input type="checkbox" checked={useDefaultStc} onChange={(e) => setUseDefaultStc(e.target.checked)} disabled={saving} className="h-3.5 w-3.5" />
                       Use default
                     </label>
@@ -537,7 +539,7 @@ export default function NewQuoteWizard({ customers, onCancel, onCreated, initial
                 <div>
                   <label className={labelCls}>VEEC Value ($)</label>
                   <div className="flex items-center gap-2">
-                    <label className="flex items-center gap-1 text-xs text-[#6B6B6B]">
+                    <label className="flex min-h-11 items-center gap-1 text-xs text-[#6B6B6B]">
                       <input type="checkbox" checked={useDefaultVeec} onChange={(e) => setUseDefaultVeec(e.target.checked)} disabled={saving} className="h-3.5 w-3.5" />
                       Use default
                     </label>
@@ -562,10 +564,10 @@ export default function NewQuoteWizard({ customers, onCancel, onCreated, initial
                 <p className="mt-0.5 text-xs text-[#6B6B6B]">Generate a percentage voucher (e.g. a 5% service voucher) or apply an existing code — it fills the Discount % above.</p>
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <input value={voucherCode} onChange={(e) => setVoucherCode(e.target.value.toUpperCase())} disabled={saving || voucherBusy} placeholder="Voucher code" className={`${inputCls} max-w-[200px]`} />
-                  <button type="button" onClick={() => void handleApplyVoucher()} disabled={saving || voucherBusy || !voucherCode.trim()} className={btnGhost}>
+                  <button type="button" onClick={() => void handleApplyVoucher()} disabled={saving || voucherBusy || !voucherCode.trim()} className={`${btnGhost} min-h-11 sm:min-h-0`}>
                     {voucherBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} Apply
                   </button>
-                  <button type="button" onClick={() => void handleGenerateVoucher()} disabled={saving || voucherBusy} className={btnGhost}>
+                  <button type="button" onClick={() => void handleGenerateVoucher()} disabled={saving || voucherBusy} className={`${btnGhost} min-h-11 sm:min-h-0`}>
                     <Ticket className="h-3.5 w-3.5" /> Generate {num(discountPct) ?? 5}% voucher
                   </button>
                 </div>
@@ -600,6 +602,19 @@ export default function NewQuoteWizard({ customers, onCancel, onCreated, initial
               ))}
             </div>
           )}
+        </div>
+
+        {/* Phone action bar — same handlers as the sm+ header row */}
+        <div className="sticky bottom-0 flex shrink-0 items-center gap-2 border-t border-[#E6E1D4] bg-white px-4 py-3 sm:hidden">
+          <button type="button" onClick={onCancel} disabled={saving} className={`${btnGhost} min-h-11`}>Cancel</button>
+          <div className="ml-auto flex items-center gap-2">
+            <button type="button" onClick={() => void handleSubmit(false)} disabled={saving} className={`${btnGhost} min-h-11`}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Finish
+            </button>
+            <button type="button" onClick={() => void handleSubmit(true)} disabled={saving} className={`${btnPrimary} min-h-11`}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Next
+            </button>
+          </div>
         </div>
       </div>
     </div>

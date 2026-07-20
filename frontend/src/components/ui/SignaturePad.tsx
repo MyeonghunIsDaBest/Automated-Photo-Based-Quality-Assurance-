@@ -91,7 +91,7 @@ export default function SignaturePad({ onChange, height = 160, disabled = false 
 
   return (
     <div>
-      <div className="relative overflow-hidden rounded-lg border border-slate-300 bg-white">
+      <div className="relative overflow-hidden rounded-lg border border-[#D8D2C4] bg-white">
         <canvas
           ref={canvasRef}
           style={{ width: '100%', height, touchAction: 'none' }}
@@ -103,7 +103,7 @@ export default function SignaturePad({ onChange, height = 160, disabled = false 
           onPointerCancel={endStroke}
         />
         {!hasInk && (
-          <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs text-slate-400">
+          <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs text-[#A0A0A0]">
             Sign here
           </span>
         )}
@@ -113,7 +113,7 @@ export default function SignaturePad({ onChange, height = 160, disabled = false 
           type="button"
           onClick={clear}
           disabled={disabled || !hasInk}
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-slate-500 hover:bg-slate-100 disabled:opacity-40"
+          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-[#6B6B6B] hover:bg-[#F0EDE4] disabled:opacity-40"
         >
           <Eraser className="h-3 w-3" />
           Clear

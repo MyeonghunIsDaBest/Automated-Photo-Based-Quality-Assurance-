@@ -1,16 +1,18 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// pages/jobs/SimproJobsTab.tsx — the "Sim-Pro Jobs" body of the Jobs hub.
+// pages/jobs/SimproJobsTab.tsx — the "Service Jobs" body of the Jobs hub.
 //
-// A staging workspace for jobs imported from Simpro CSV exports:
-//   • Slim header — title + one-line summary + action buttons (Template / Upload
-//     CSV / New job / Confirm import). Sits under the Jobs-hub masthead.
+// Jobs added here manually or imported from Simpro CSV exports:
+//   • Slim header — title + one-line summary + a single "+ New job" popup
+//     (New job · Upload CSV · Download template). Sits under the Jobs-hub masthead.
 //   • Register card — a cream toolbar band (stage tab-strip = the per-stage
-//     counts + search) above a slim 7-column browse table of staged jobs.
+//     counts + search) above the browse: cards on phones/tablets, a 7-column
+//     table on desktop, paged 10 at a time.
 //   • Per-row expander — job detail strip + crew + an inline scheduling Gantt.
-//   • Upload new CSV  → parse (pure) → preview + plan → persist to simpro_jobs.
-//   • Confirm import  → promote staged jobs into projects / service_jobs.
+//   • Upload CSV → parse (pure) → preview + plan → persist to simpro_jobs, then
+//     auto-confirm (promote into projects / service_jobs) — one step, no separate
+//     "Confirm import" button.
 //
-// View = any staff (hub guard). Import + Confirm = canManageServiceJobs (RLS
+// View = any staff (hub guard). Import + create = canManageServiceJobs (RLS
 // also enforces manager-only writes server-side).
 //
 // Pure parse/plan: lib/jobs/simproCsv.ts. Network: lib/api/simproJobs.ts.
@@ -31,6 +33,9 @@ import {
   ZoomIn,
   ZoomOut,
   ArrowDownWideNarrow,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
 } from 'lucide-react';
 
 import { useAppStore } from '../../store';
@@ -122,6 +127,9 @@ const COLUMN_COUNT = 7; // Type, Job, Description, Customer, Site, Due, Actions
 // first) and nudge the user to search to narrow. Stage totals stay accurate (they
 // come from stageCounts(), not this list).
 const BROWSE_LIMIT = 100;
+// Show 10 jobs per page per stage — readable on a phone, and paging is a
+// client-side slice of the already-fetched window so "Next" is instant.
+const PAGE_SIZE = 10;
 
 /** A deterministic warm-ish tint from a user id, for crew avatar backgrounds. */
 function avatarTint(id: string): string {
@@ -155,12 +163,13 @@ export default function SimproJobsTab() {
   // created-date in the Sim-Pro export, so the sequential job number (externalRef)
   // IS the creation-order signal — highest number = newest. "az" = by customer.
   const [sortMode, setSortMode] = useState<'date' | 'az'>('date');
+  const [page, setPage] = useState(0);
   const [jobs, setJobs] = useState<StagedJob[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [toast, setToast] = useState<ToastState>(null);
   const [importOpen, setImportOpen] = useState(false);
-  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   // The staged job currently open in the Edit modal (null = closed).
   const [editingJob, setEditingJob] = useState<StagedJob | null>(null);
@@ -253,6 +262,19 @@ export default function SimproJobsTab() {
     }
     return copy;
   }, [jobs, sortMode]);
+
+  // Reset to page 1 whenever the list identity changes (stage / search / sort),
+  // so you never land on an out-of-range page.
+  useEffect(() => { setPage(0); }, [activeStage, search, sortMode]);
+
+  const pageCount = Math.max(1, Math.ceil(displayJobs.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount - 1);
+  // 10-per-page window — a pure slice of the already-fetched rows, so paging is
+  // instant (no network round-trip on "Next").
+  const pagedJobs = useMemo(
+    () => displayJobs.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE),
+    [displayJobs, safePage],
+  );
 
   // Crew assignments for all currently-loaded jobs (the expander reads from this
   // map; loading all of them up-front keeps expanding a row instant). Clears any
@@ -386,49 +408,84 @@ export default function SimproJobsTab() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="leading-tight">
           <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#6B6B6B]">
-            SIMPRO IMPORT · CASONE ELECTRICAL
+            SERVICE JOBS · CASONE ELECTRICAL
           </div>
           <h1
             className="m-0 text-[28px] font-medium leading-none text-[#1A1A1A] sm:text-[32px]"
             style={{ fontFamily: FRAUNCES, letterSpacing: '-0.02em' }}
           >
-            Simpro <span className="italic text-[#2F8F5C]">jobs.</span>
+            Service <span className="italic text-[#2F8F5C]">jobs.</span>
           </h1>
           <p className="mt-2 max-w-xl text-[13px] leading-relaxed text-[#6B6B6B]">
             {total > 0 ? (
               <>
-                {total.toLocaleString('en-AU')} job{total === 1 ? '' : 's'} staged from Simpro CSV
-                exports. Browse a stage, schedule the work, then confirm into SiteProof.
+                {total.toLocaleString('en-AU')} job{total === 1 ? '' : 's'} here. Add one manually or
+                upload a Simpro CSV export — uploads land straight into SiteProof.
               </>
             ) : (
-              <>No Simpro jobs loaded yet. Upload a Simpro CSV export to stage jobs here, then confirm them into SiteProof.</>
+              <>No jobs here yet. Add one from “+ New job”, or upload a Simpro CSV export to bring them across.</>
             )}
           </p>
         </div>
 
         {canManage && (
-          <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
-            <button type="button" onClick={downloadTemplate} className={btnGhost}>
-              <Download className="h-4 w-4" />
-              Template
-            </button>
-            <button type="button" onClick={() => setImportOpen(true)} className={btnGhost}>
-              <Upload className="h-4 w-4" />
-              Upload CSV
-            </button>
-            <button type="button" onClick={() => setCreateOpen(true)} className={btnGhost}>
-              <Plus className="h-4 w-4" />
-              New job
-            </button>
+          <div className="relative flex-shrink-0">
             <button
               type="button"
-              onClick={() => setConfirmOpen(true)}
-              disabled={total === 0}
+              onClick={() => setMenuOpen((o) => !o)}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
               className={btnPrimary}
             >
-              <CheckCircle2 className="h-4 w-4" />
-              Confirm import
+              <Plus className="h-4 w-4" />
+              New job
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${menuOpen ? 'rotate-180' : ''}`} />
             </button>
+
+            {menuOpen && (
+              <>
+                {/* Click-away scrim */}
+                <button
+                  type="button"
+                  aria-hidden
+                  tabIndex={-1}
+                  onClick={() => setMenuOpen(false)}
+                  className="fixed inset-0 z-40 cursor-default"
+                />
+                <div
+                  role="menu"
+                  className="absolute right-0 z-50 mt-1.5 w-56 overflow-hidden rounded-[12px] border border-[#E6E1D4] bg-white py-1 shadow-[0_18px_40px_-14px_rgba(15,23,42,0.28)]"
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => { setMenuOpen(false); setCreateOpen(true); }}
+                    className="flex min-h-11 w-full items-center gap-2.5 px-3.5 text-left text-[14px] font-medium text-[#3A3A3A] transition-colors hover:bg-[#FAF8F2]"
+                  >
+                    <Plus className="h-4 w-4 text-[#2F8F5C]" />
+                    New job
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => { setMenuOpen(false); setImportOpen(true); }}
+                    className="flex min-h-11 w-full items-center gap-2.5 px-3.5 text-left text-[14px] font-medium text-[#3A3A3A] transition-colors hover:bg-[#FAF8F2]"
+                  >
+                    <Upload className="h-4 w-4 text-[#6B6B6B]" />
+                    Upload CSV
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => { setMenuOpen(false); downloadTemplate(); }}
+                    className="flex min-h-11 w-full items-center gap-2.5 border-t border-[#EFEBE0] px-3.5 text-left text-[13px] text-[#6B6B6B] transition-colors hover:bg-[#FAF8F2]"
+                  >
+                    <Download className="h-4 w-4" />
+                    Download CSV template
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -501,7 +558,53 @@ export default function SimproJobsTab() {
           </div>
         </div>
 
-        <div ref={tableWrapRef} className="overflow-x-auto">
+        <div ref={tableWrapRef}>
+          {/* Phone & tablet — a card per job (crews are on phones/tablets on site) */}
+          <ul className="divide-y divide-[#EFEBE0] lg:hidden">
+            {loading ? (
+              <li className="px-4 py-12 text-center text-sm text-[#A0A0A0]"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></li>
+            ) : jobs.length === 0 ? (
+              <li className="px-4 py-12 text-center text-sm text-[#A0A0A0]">
+                {search.trim() ? 'No jobs match your search in this stage.' : `No ${STAGE_LABEL[activeStage].toLowerCase()} jobs staged.`}
+              </li>
+            ) : (
+              pagedJobs.map((j) => {
+                const cat = inferCategory(j.description);
+                const expanded = expandedId === j.id;
+                return (
+                  <li key={j.id}>
+                    <div className={expanded ? 'bg-[#FAF8F2] px-4 py-3' : 'px-4 py-3'}>
+                      <div className="flex items-center gap-2">
+                        <StatusPill tone={CATEGORY_TONE[cat]}>{CATEGORY_LABEL[cat]}</StatusPill>
+                        <span className="font-mono text-[11.5px] text-[#6B6B6B]">#{j.externalRef}</span>
+                        {j.promotedAt && <CheckCircle2 className="h-3.5 w-3.5 text-[#2F8F5C]" aria-label="Imported into SiteProof" />}
+                      </div>
+                      <p className="mt-1.5 font-medium leading-snug text-[#1A1A1A]">{j.description ?? '—'}</p>
+                      <dl className="mt-2 space-y-0.5 text-[13px]">
+                        <div className="flex gap-2"><dt className="w-[52px] shrink-0 text-[#A0A0A0]">Customer</dt><dd className="min-w-0 flex-1 truncate text-[#3A3A3A]">{j.customerName ?? '—'}</dd></div>
+                        <div className="flex gap-2"><dt className="w-[52px] shrink-0 text-[#A0A0A0]">Site</dt><dd className="min-w-0 flex-1 text-[#3A3A3A]">{j.siteName ?? '—'}{j.suburb && <span className="text-[#A0A0A0]"> · {j.suburb}</span>}</dd></div>
+                        {j.dueDate && <div className="flex gap-2"><dt className="w-[52px] shrink-0 text-[#A0A0A0]">Due</dt><dd className="font-mono text-[#6B6B6B]">{j.dueDate}</dd></div>}
+                      </dl>
+                      <div className="mt-3 flex items-center gap-2">
+                        {canManage && (
+                          <button type="button" onClick={() => setEditingJob(j)} aria-label={`Edit job #${j.externalRef}`} className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-full border border-[#E6E1D4] bg-white text-[13px] font-semibold text-[#3A3A3A] transition-colors hover:bg-[#FAF8F2]"><Pencil className="h-4 w-4" />Edit</button>
+                        )}
+                        <button type="button" onClick={() => setExpandedId((id) => (id === j.id ? null : j.id))} aria-expanded={expanded} className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-full border border-[#E6E1D4] bg-white text-[13px] font-semibold text-[#3A3A3A] transition-colors hover:bg-[#FAF8F2]"><CalendarRange className="h-4 w-4" />{expanded ? 'Hide' : 'View'}</button>
+                      </div>
+                    </div>
+                    {expanded && (
+                      <div className="border-t-2 border-[#D69A2E] bg-[#FAF8F2]">
+                        <JobScheduleExpander job={j} profiles={profiles} assignedIds={crew.get(j.id) ?? []} scheduleOverride={scheduleOverride.get(j.id) ?? null} canManage={canManage} onToggleCrew={(userId) => void toggleCrew(j.id, userId)} onSchedule={(s, e) => void applySchedule(j.id, s, e)} onClear={() => void clearSchedule(j.id)} onSync={syncSchedule} viewportW={viewportW} />
+                      </div>
+                    )}
+                  </li>
+                );
+              })
+            )}
+          </ul>
+
+          {/* Desktop — full table */}
+          <div className="hidden overflow-x-auto lg:block">
           <table className="min-w-full text-[13px]">
             <thead className="border-b border-[#E6E1D4] bg-white">
               <tr>
@@ -534,7 +637,7 @@ export default function SimproJobsTab() {
                   </td>
                 </tr>
               ) : (
-                displayJobs.map((j) => {
+                pagedJobs.map((j) => {
                   const cat = inferCategory(j.description);
                   const expanded = expandedId === j.id;
                   return (
@@ -617,23 +720,40 @@ export default function SimproJobsTab() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
 
-        {/* Truncation hint — the list is capped at BROWSE_LIMIT; the tab badge
-            shows the true stage total. Nudge toward search to find a specific job. */}
-        {!loading && jobs.length >= BROWSE_LIMIT && (
-          <div className="border-t border-[#E6E1D4] bg-[#FAF8F2] px-4 py-2.5 text-center text-[12px] text-[#6B6B6B]">
-            {search.trim() ? (
-              <>Showing the first {BROWSE_LIMIT} matches — refine your search to narrow it down.</>
-            ) : (
-              <>
-                Showing the {BROWSE_LIMIT} most recent of{' '}
-                <span className="font-semibold text-[#3A3A3A]">
-                  {counts[activeStage].toLocaleString('en-AU')}
-                </span>{' '}
-                {STAGE_LABEL[activeStage].toLowerCase()} jobs — search by job no., description, or customer to narrow.
-              </>
-            )}
+        {/* Pager — 10 jobs per stage; slicing the fetched window keeps "Next"
+            instant (no network round-trip). When the stage exceeds the fetched
+            window the note points to search for older jobs. */}
+        {!loading && displayJobs.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#E6E1D4] bg-[#FAF8F2] px-4 py-2.5">
+            <span className="text-[12px] text-[#6B6B6B]">
+              {`${safePage * PAGE_SIZE + 1}–${Math.min((safePage + 1) * PAGE_SIZE, displayJobs.length)}`} of{' '}
+              <span className="font-semibold text-[#3A3A3A]">{displayJobs.length.toLocaleString('en-AU')}</span>
+              {jobs.length >= BROWSE_LIMIT && (
+                <> · most recent {BROWSE_LIMIT} of {counts[activeStage].toLocaleString('en-AU')} — search to reach older</>
+              )}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={safePage === 0}
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                className="inline-flex min-h-9 items-center gap-1 rounded-full border border-[#E6E1D4] bg-white px-3 text-[13px] font-semibold text-[#3A3A3A] transition-colors hover:bg-[#FAF8F2] disabled:opacity-40"
+              >
+                <ChevronLeft className="h-4 w-4" />Prev
+              </button>
+              <span className="text-[12px] tabular-nums text-[#6B6B6B]">{safePage + 1} / {pageCount}</span>
+              <button
+                type="button"
+                disabled={safePage >= pageCount - 1}
+                onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+                className="inline-flex min-h-9 items-center gap-1 rounded-full border border-[#E6E1D4] bg-white px-3 text-[13px] font-semibold text-[#3A3A3A] transition-colors hover:bg-[#FAF8F2] disabled:opacity-40"
+              >
+                Next<ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -643,21 +763,23 @@ export default function SimproJobsTab() {
           onClose={() => setImportOpen(false)}
           onImported={async (msg) => {
             setImportOpen(false);
-            setToast({ message: msg, type: 'success' });
+            // Confirm folded into the upload flow — a CSV upload now lands the
+            // jobs straight into SiteProof (no separate "Confirm import" step).
+            try {
+              const res = await confirmImport();
+              const moved = res.projects + res.services;
+              setToast({
+                message: moved > 0
+                  ? `${msg} · added ${res.services} service job${res.services === 1 ? '' : 's'}${res.projects ? ` + ${res.projects} project${res.projects === 1 ? '' : 's'}` : ''} to SiteProof`
+                  : msg,
+                type: res.failed.count > 0 ? 'info' : 'success',
+              });
+            } catch (e) {
+              setToast({ message: `${msg}, but adding to SiteProof failed: ${e instanceof Error ? e.message : 'error'}`, type: 'error' });
+            }
             await afterWrite();
           }}
           onError={(msg) => setToast({ message: msg, type: 'error' })}
-        />
-      )}
-
-      {confirmOpen && (
-        <ConfirmModal
-          onClose={() => setConfirmOpen(false)}
-          onConfirmed={async (msg, type) => {
-            setConfirmOpen(false);
-            setToast({ message: msg, type });
-            await afterWrite();
-          }}
         />
       )}
 
@@ -899,60 +1021,6 @@ function PlanChip({ count, label, tone }: { count: number; label: string; tone: 
       </span>
       <span className="text-sm text-[#3A3A3A]">{label}</span>
     </div>
-  );
-}
-
-// ─── Confirm-import modal — promote staged → live tables ─────────────────────
-
-function ConfirmModal({
-  onClose,
-  onConfirmed,
-}: {
-  onClose: () => void;
-  onConfirmed: (msg: string, type: 'success' | 'info') => void | Promise<void>;
-}) {
-  const [busy, setBusy] = useState(false);
-
-  async function run() {
-    setBusy(true);
-    try {
-      const res = await confirmImport();
-      const moved = res.projects + res.services;
-      if (moved === 0 && res.failed.count === 0) {
-        await onConfirmed('Nothing new to import — all staged jobs are already in SiteProof.', 'info');
-      } else {
-        const msg =
-          `Imported ${res.services} service job${res.services === 1 ? '' : 's'} · ${res.projects} project${res.projects === 1 ? '' : 's'}` +
-          (res.failed.count > 0 ? ` · ${res.failed.count} failed` : '');
-        await onConfirmed(msg, res.failed.count > 0 ? 'info' : 'success');
-      }
-    } catch (err) {
-      await onConfirmed(err instanceof Error ? err.message : 'Confirm failed', 'info');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <ModalShell title="Confirm import into SiteProof" onClose={onClose}>
-      <div className="space-y-5">
-        <p className="text-sm leading-relaxed text-[#3A3A3A]">
-          This promotes every staged Simpro job into SiteProof — projects and service jobs —
-          carrying the contract value and Simpro job number. Already-imported jobs are skipped,
-          so it's safe to run again after loading a new export.
-        </p>
-        <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} className={btnGhost} disabled={busy}>
-            Cancel
-          </button>
-          <button type="button" onClick={() => void run()} disabled={busy} className={btnPrimary}>
-            {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            <CheckCircle2 className="h-4 w-4" />
-            Confirm import
-          </button>
-        </div>
-      </div>
-    </ModalShell>
   );
 }
 

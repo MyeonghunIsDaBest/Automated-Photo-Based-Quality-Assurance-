@@ -27,6 +27,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { FolderOpen, X, Zap, CalendarClock } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
+import MotionDrawer from '../../components/ui/MotionDrawer';
 import { FRAUNCES } from '../gantt/components/ledger';
 import { canCreateProject } from '../../lib/permissions';
 import { useAppStore } from '../../store';
@@ -34,7 +35,9 @@ import {
   createServiceJob,
   updateServiceJobStatus,
   type ServiceJobStatus,
+  type ServiceJobKind,
 } from '../../lib/api/serviceJobs';
+import { createPrepaidInvoiceForJob } from '../../lib/api/commercial';
 import { listCustomers, type Customer } from '../../lib/api/customers';
 import { listPropertiesForCustomer, type Property } from '../../lib/api/properties';
 import { listProfiles } from '../../lib/api/profiles';
@@ -42,11 +45,6 @@ import type { Profile } from '../../types';
 import { ProjectCreateForm } from '../projects/components/ProjectCreateForm';
 
 // ─── style constants ──────────────────────────────────────────────────────────
-
-const MODAL_SHELL =
-  'fixed inset-0 z-50 flex items-center justify-center bg-[#1A1A1A]/50 p-4';
-const DIALOG_SHELL =
-  'flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_8px_28px_rgba(20,20,20,0.12)]';
 
 const SELECT_CLASS =
   'block w-full rounded-md border border-[#E6E1D4] px-3 py-2 text-sm shadow-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] disabled:opacity-50 bg-white';
@@ -119,12 +117,21 @@ export interface NewWorkModalProps {
    * undefined / 'pending' → default (no extra step).
    */
   initialStatus?: ServiceJobStatus;
+  /** Open on this tab. 'project' = the Gantt-project tab (needs canCreateProject). */
+  initialTab?: ActiveTab;
+  /** Preset the service form's work register (a "Project Job" = kind 'project'
+   *  service job, NOT a Gantt project). */
+  initialKind?: ServiceJobKind;
+  /** Preset the prepaid toggle (a "Prepaid Job" raises its invoice on save). */
+  initialPrepaid?: boolean;
 }
 
 // ─── ServiceJobForm (embedded in this file, self-contained) ──────────────────
 
 interface ServiceJobFormProps {
   initialStatus: ServiceJobStatus | undefined;
+  initialKind?: ServiceJobKind;
+  initialPrepaid?: boolean;
   saving: boolean;
   setSaving: (v: boolean) => void;
   onCreated: () => void;
@@ -135,6 +142,8 @@ interface ServiceJobFormProps {
 
 function ServiceJobForm({
   initialStatus,
+  initialKind,
+  initialPrepaid,
   saving,
   setSaving,
   onCreated,
@@ -149,6 +158,12 @@ function ServiceJobForm({
   const [customerId, setCustomerId] = useState('');
   const [propertyId, setPropertyId] = useState('');
   const [assigneeId, setAssigneeId] = useState('');
+  // SimPro register + billing options (migs 93 / 102 / 103).
+  const [kind, setKind] = useState<ServiceJobKind>(initialKind ?? 'service');
+  const [isContractor, setIsContractor] = useState(false);
+  const [contractorName, setContractorName] = useState('');
+  const [prepaid, setPrepaid] = useState(!!initialPrepaid);
+  const [contractValue, setContractValue] = useState('');
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
@@ -224,6 +239,16 @@ function ServiceJobForm({
       return;
     }
 
+    const parsedContract = contractValue.trim() === '' ? null : Number(contractValue);
+    if (prepaid && (parsedContract === null || !isFinite(parsedContract) || parsedContract <= 0)) {
+      setFormError('A prepaid job needs a contract value so the upfront invoice isn’t $0.');
+      return;
+    }
+    if (isContractor && !contractorName.trim()) {
+      setFormError('Add the subcontractor’s name.');
+      return;
+    }
+
     if (saving) return;
     setSaving(true);
 
@@ -248,6 +273,11 @@ function ServiceJobForm({
         propertyId: propertyId || undefined,
         assignedTo: assigneeId || undefined,
         scheduledFor: useScheduledFor,
+        kind,
+        isContractor: isContractor || undefined,
+        contractorName: isContractor ? contractorName.trim() : undefined,
+        prepaid: prepaid || undefined,
+        contractValue: parsedContract,
       });
 
       let chainWarning: string | null = null;
@@ -261,6 +291,17 @@ function ServiceJobForm({
         }
       }
 
+      // Prepaid: raise the upfront invoice. Partial-failure safe — the job
+      // exists regardless; a failed invoice only surfaces a warning.
+      if (prepaid) {
+        try {
+          await createPrepaidInvoiceForJob(created.id);
+        } catch (invErr) {
+          const invMsg = invErr instanceof Error ? invErr.message : 'Unknown error';
+          chainWarning = `Job created — couldn't raise the prepaid invoice: ${invMsg}. Raise it from Invoices → From job.`;
+        }
+      }
+
       // Reset form state
       setTitle('');
       setClientName('');
@@ -270,6 +311,11 @@ function ServiceJobForm({
       setCustomerId('');
       setPropertyId('');
       setAssigneeId('');
+      setKind(initialKind ?? 'service');
+      setIsContractor(false);
+      setContractorName('');
+      setPrepaid(!!initialPrepaid);
+      setContractValue('');
 
       if (chainWarning) {
         // Job exists; notify caller so board refreshes, keep modal open to show warning
@@ -452,6 +498,89 @@ function ServiceJobForm({
             </div>
           )}
         </div>
+
+        <hr className="border-[#E6E1D4]" />
+
+        {/* ── REGISTER & BILLING ───────────────────────────────────────── */}
+        <div className="pt-4">
+          <SectionLabel>Register &amp; billing</SectionLabel>
+
+          {/* Work register: Service | Project (mig 93) */}
+          <div className="mb-3">
+            <FieldLabel>Work register</FieldLabel>
+            <div className="inline-flex rounded-md border border-[#E6E1D4] bg-[#FAF8F2] p-0.5">
+              {(['service', 'project'] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setKind(k)}
+                  disabled={saving}
+                  className={`rounded px-3 py-1 text-[12px] font-semibold capitalize transition-colors ${
+                    kind === k ? 'bg-[#1A1A1A] text-white' : 'text-[#6B6B6B] hover:text-[#1A1A1A]'
+                  }`}
+                >
+                  {k}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-[11px] text-[#A0A0A0]">
+              Project = project-register work on the jobs board. For a full Gantt project, use the Gantt project tab.
+            </p>
+          </div>
+
+          {/* Subcontractor (mig 102) */}
+          <label className="mb-2 flex items-center gap-2 text-[13px] text-[#3A3A3A]">
+            <input
+              type="checkbox"
+              checked={isContractor}
+              disabled={saving}
+              onChange={(e) => setIsContractor(e.target.checked)}
+              className="h-4 w-4 accent-[#2F8F5C]"
+            />
+            Subcontractor job
+          </label>
+          {isContractor && (
+            <div className="mb-3">
+              <FieldLabel required>Subcontractor name</FieldLabel>
+              <Input
+                value={contractorName}
+                onChange={(e) => setContractorName(e.target.value)}
+                placeholder="e.g. Volt Bros Electrical"
+                disabled={saving}
+              />
+            </div>
+          )}
+
+          {/* Prepaid (mig 103) */}
+          <label className="mb-2 flex items-center gap-2 text-[13px] text-[#3A3A3A]">
+            <input
+              type="checkbox"
+              checked={prepaid}
+              disabled={saving}
+              onChange={(e) => setPrepaid(e.target.checked)}
+              className="h-4 w-4 accent-[#2F8F5C]"
+            />
+            Prepaid — customer pays upfront (raises an invoice now)
+          </label>
+          {prepaid && (
+            <div>
+              <FieldLabel required>Contract value (ex GST)</FieldLabel>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                inputMode="decimal"
+                value={contractValue}
+                onChange={(e) => setContractValue(e.target.value)}
+                placeholder="0.00"
+                disabled={saving}
+              />
+              <p className="mt-0.5 text-[11px] text-[#A0A0A0]">
+                The job stays on the active board; an invoice is raised now.
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     </form>
   );
@@ -465,13 +594,18 @@ export function NewWorkModal({
   onServiceJobCreated,
   onProjectCreated,
   initialStatus,
+  initialTab,
+  initialKind,
+  initialPrepaid,
 }: NewWorkModalProps) {
   const currentProfile = useAppStore((s) => s.currentProfile);
   const canProject = canCreateProject(currentProfile);
 
   // When initialStatus is set: always service; strip hidden.
-  // Otherwise: default to service tab.
-  const [activeTab, setActiveTab] = useState<ActiveTab>('service');
+  // Otherwise: honour initialTab (Gantt project only when allowed), else service.
+  const [activeTab, setActiveTab] = useState<ActiveTab>(
+    initialTab === 'project' && canProject && !initialStatus ? 'project' : 'service',
+  );
 
   // Shared busy state fed to the active form
   const [saving, setSaving] = useState(false);
@@ -503,17 +637,13 @@ export function NewWorkModal({
     onClose();
   }, [onClose]);
 
-  // Escape closes
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') handleClose();
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [open, handleClose]);
-
-  if (!open) return null;
+  // E10 busy-guard: Esc / backdrop / X all funnel through here — no-op while a
+  // create is in flight so the modal can't vanish mid-save. (Esc + backdrop
+  // handling itself now lives in MotionDrawer.)
+  const guardedClose = useCallback(() => {
+    if (saving) return;
+    handleClose();
+  }, [saving, handleClose]);
 
   const handleServiceJobCreated = () => {
     // For partial-failure the form keeps itself open with an error banner;
@@ -531,15 +661,18 @@ export function NewWorkModal({
   };
 
   return (
-    <div
-      className={MODAL_SHELL}
-      style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}
-      onClick={(e) => {
-        // Backdrop click closes
-        if (e.target === e.currentTarget) handleClose();
-      }}
+    <MotionDrawer
+      open={open}
+      onClose={guardedClose}
+      variant="modal"
+      ariaLabel="New work"
+      sizeClass="max-w-lg"
+      className="rounded-[14px] border border-[#E6E1D4] shadow-[0_8px_28px_rgba(20,20,20,0.12)]"
     >
-      <div className={DIALOG_SHELL}>
+      <div
+        className="flex min-h-0 flex-1 flex-col overflow-hidden"
+        style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}
+      >
         {/* ── Header ──────────────────────────────────────────────────── */}
         <div className="flex items-start justify-between border-b border-[#E6E1D4] px-6 py-4">
           <div>
@@ -555,7 +688,7 @@ export function NewWorkModal({
           </div>
           <button
             type="button"
-            onClick={handleClose}
+            onClick={guardedClose}
             className="rounded-md p-2 text-[#A0A0A0] hover:bg-[#F0EDE4] hover:text-[#3A3A3A]"
             aria-label="Close"
           >
@@ -594,7 +727,7 @@ export function NewWorkModal({
               }`}
             >
               <FolderOpen className="h-3.5 w-3.5" />
-              Project
+              Gantt project
             </button>
           </div>
         )}
@@ -604,6 +737,8 @@ export function NewWorkModal({
           {activeTab === 'service' && (
             <ServiceJobForm
               initialStatus={initialStatus}
+              initialKind={initialKind}
+              initialPrepaid={initialPrepaid}
               saving={saving}
               setSaving={setSaving}
               onCreated={handleServiceJobCreated}
@@ -640,6 +775,6 @@ export function NewWorkModal({
           </Button>
         </div>
       </div>
-    </div>
+    </MotionDrawer>
   );
 }

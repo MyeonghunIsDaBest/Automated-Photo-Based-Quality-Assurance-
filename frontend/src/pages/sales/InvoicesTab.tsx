@@ -16,6 +16,7 @@ import { ChevronDown, Download, Plus, RefreshCw, X } from "lucide-react";
 import { TONE, cardShell, btnPrimary, btnGhost } from "../gantt/components/ledger";
 import { SkeletonLine } from "../../components/ui/skeleton";
 import { Toaster, type ToastState } from "../../components/ui/Toaster";
+import MotionDrawer from "../../components/ui/MotionDrawer";
 import { fmtMoney } from "../../lib/format";
 
 import {
@@ -42,6 +43,15 @@ type FilterMode = "all" | "draft" | "sent" | "paid" | "overdue" | "voided";
 interface Props {
   initialCustomerFilter?: string | null;
   onChanged: () => void;
+  /** Seed the status filter from the Invoices hub sub-view (?view=). */
+  initialFilterMode?: FilterMode;
+  /** Open a new-invoice flow on mount (from the sidebar create actions). */
+  openNew?: 'blank' | 'from-quote' | 'from-job' | null;
+  /** Called once openNew has been consumed so the hub can strip ?new=. */
+  onNewConsumed?: () => void;
+  /** Hide the internal status-filter chips — the Invoices hub owns status
+   *  navigation via its sub-view tabs (avoids a duplicate, desyncable control). */
+  hideStatusChips?: boolean;
 }
 
 // â”€â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -138,54 +148,52 @@ function FromQuoteModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#1A1A1A]/50 p-4">
-      <div className="flex w-full max-w-md flex-col overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_8px_28px_rgba(20,20,20,0.12)]">
-        <div className="flex items-center justify-between border-b border-[#E6E1D4] px-6 py-4">
-          <div>
-            <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-[#6B6B6B]">Sales &middot; Invoices</p>
-            <h2 className="mt-1 text-lg font-medium text-[#1A1A1A]">From accepted quote</h2>
-          </div>
-          <button type="button" onClick={onClose} disabled={creating} className="rounded-md p-2 text-[#A0A0A0] hover:bg-[#F0EDE4]">
-            <X className="h-5 w-5" />
+    <MotionDrawer open onClose={() => { if (!creating) onClose(); }} variant="modal" ariaLabel="From accepted quote" sizeClass="max-w-md">
+      <div className="flex items-center justify-between border-b border-[#E6E1D4] px-6 py-4">
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-[#6B6B6B]">Sales &middot; Invoices</p>
+          <h2 className="mt-1 text-lg font-medium text-[#1A1A1A]">From accepted quote</h2>
+        </div>
+        <button type="button" onClick={onClose} disabled={creating} className="rounded-md p-2 text-[#A0A0A0] hover:bg-[#F0EDE4]">
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+      <div className="flex flex-col gap-4 px-6 py-5">
+        {loading && <p className="text-sm text-[#A0A0A0]">Loading accepted quotes...</p>}
+        {!loading && quotes.length === 0 && (
+          <p className="text-sm text-[#6B6B6B]">No accepted quotes available. Accept a quote first.</p>
+        )}
+        {!loading && quotes.length > 0 && (
+          <select
+            value={selected}
+            onChange={(e) => setSelected(e.target.value)}
+            disabled={creating}
+            className="w-full rounded-md border border-[#E6E1D4] px-3 py-2 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] disabled:opacity-50"
+          >
+            <option value="">Select a quote...</option>
+            {quotes.map((q) => (
+              <option key={q.id} value={q.id}>
+                {q.number ? q.number + " â€” " : ""}{q.title}
+              </option>
+            ))}
+          </select>
+        )}
+        {err && (
+          <p className="rounded-md border border-[#F0BFBF] bg-[#FBE5E5] px-3 py-2 text-xs text-[#C44545]">{err}</p>
+        )}
+        <div className="flex items-center justify-end gap-2 border-t border-[#E6E1D4] pt-4">
+          <button type="button" onClick={onClose} disabled={creating} className={btnGhost}>Cancel</button>
+          <button
+            type="button"
+            disabled={!selected || creating || loading}
+            onClick={() => void handleConfirm()}
+            className={btnPrimary}
+          >
+            {creating ? "Creating..." : "Create invoice"}
           </button>
         </div>
-        <div className="flex flex-col gap-4 px-6 py-5">
-          {loading && <p className="text-sm text-[#A0A0A0]">Loading accepted quotes...</p>}
-          {!loading && quotes.length === 0 && (
-            <p className="text-sm text-[#6B6B6B]">No accepted quotes available. Accept a quote first.</p>
-          )}
-          {!loading && quotes.length > 0 && (
-            <select
-              value={selected}
-              onChange={(e) => setSelected(e.target.value)}
-              disabled={creating}
-              className="w-full rounded-md border border-[#E6E1D4] px-3 py-2 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] disabled:opacity-50"
-            >
-              <option value="">Select a quote...</option>
-              {quotes.map((q) => (
-                <option key={q.id} value={q.id}>
-                  {q.number ? q.number + " â€” " : ""}{q.title}
-                </option>
-              ))}
-            </select>
-          )}
-          {err && (
-            <p className="rounded-md border border-[#F0BFBF] bg-[#FBE5E5] px-3 py-2 text-xs text-[#C44545]">{err}</p>
-          )}
-          <div className="flex items-center justify-end gap-2 border-t border-[#E6E1D4] pt-4">
-            <button type="button" onClick={onClose} disabled={creating} className={btnGhost}>Cancel</button>
-            <button
-              type="button"
-              disabled={!selected || creating || loading}
-              onClick={() => void handleConfirm()}
-              className={btnPrimary}
-            >
-              {creating ? "Creating..." : "Create invoice"}
-            </button>
-          </div>
-        </div>
       </div>
-    </div>
+    </MotionDrawer>
   );
 }
 
@@ -227,59 +235,57 @@ function FromJobModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#1A1A1A]/50 p-4">
-      <div className="flex w-full max-w-md flex-col overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_8px_28px_rgba(20,20,20,0.12)]">
-        <div className="flex items-center justify-between border-b border-[#E6E1D4] px-6 py-4">
-          <div>
-            <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-[#6B6B6B]">Sales &middot; Invoices</p>
-            <h2 className="mt-1 text-lg font-medium text-[#1A1A1A]">From service job</h2>
-          </div>
-          <button type="button" onClick={onClose} disabled={creating} className="rounded-md p-2 text-[#A0A0A0] hover:bg-[#F0EDE4]">
-            <X className="h-5 w-5" />
+    <MotionDrawer open onClose={() => { if (!creating) onClose(); }} variant="modal" ariaLabel="From service job" sizeClass="max-w-md">
+      <div className="flex items-center justify-between border-b border-[#E6E1D4] px-6 py-4">
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-[#6B6B6B]">Sales &middot; Invoices</p>
+          <h2 className="mt-1 text-lg font-medium text-[#1A1A1A]">From service job</h2>
+        </div>
+        <button type="button" onClick={onClose} disabled={creating} className="rounded-md p-2 text-[#A0A0A0] hover:bg-[#F0EDE4]">
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+      <div className="flex flex-col gap-4 px-6 py-5">
+        {loading && <p className="text-sm text-[#A0A0A0]">Loading jobs...</p>}
+        {!loading && jobs.length === 0 && (
+          <p className="text-sm text-[#6B6B6B]">No in-progress or completed jobs found.</p>
+        )}
+        {!loading && jobs.length > 0 && (
+          <>
+            <p className="text-xs text-[#6B6B6B]">
+              Approved variations linked to the selected job will be included as variation-flagged lines.
+            </p>
+            <select
+              value={selected}
+              onChange={(e) => setSelected(e.target.value)}
+              disabled={creating}
+              className="w-full rounded-md border border-[#E6E1D4] px-3 py-2 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] disabled:opacity-50"
+            >
+              <option value="">Select a job...</option>
+              {jobs.map((j) => (
+                <option key={j.id} value={j.id}>
+                  {j.title}{j.status === "done" ? " (done)" : " (in progress)"}
+                </option>
+              ))}
+            </select>
+          </>
+        )}
+        {err && (
+          <p className="rounded-md border border-[#F0BFBF] bg-[#FBE5E5] px-3 py-2 text-xs text-[#C44545]">{err}</p>
+        )}
+        <div className="flex items-center justify-end gap-2 border-t border-[#E6E1D4] pt-4">
+          <button type="button" onClick={onClose} disabled={creating} className={btnGhost}>Cancel</button>
+          <button
+            type="button"
+            disabled={!selected || creating || loading}
+            onClick={() => void handleConfirm()}
+            className={btnPrimary}
+          >
+            {creating ? "Creating..." : "Create invoice"}
           </button>
         </div>
-        <div className="flex flex-col gap-4 px-6 py-5">
-          {loading && <p className="text-sm text-[#A0A0A0]">Loading jobs...</p>}
-          {!loading && jobs.length === 0 && (
-            <p className="text-sm text-[#6B6B6B]">No in-progress or completed jobs found.</p>
-          )}
-          {!loading && jobs.length > 0 && (
-            <>
-              <p className="text-xs text-[#6B6B6B]">
-                Approved variations linked to the selected job will be included as variation-flagged lines.
-              </p>
-              <select
-                value={selected}
-                onChange={(e) => setSelected(e.target.value)}
-                disabled={creating}
-                className="w-full rounded-md border border-[#E6E1D4] px-3 py-2 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] disabled:opacity-50"
-              >
-                <option value="">Select a job...</option>
-                {jobs.map((j) => (
-                  <option key={j.id} value={j.id}>
-                    {j.title}{j.status === "done" ? " (done)" : " (in progress)"}
-                  </option>
-                ))}
-              </select>
-            </>
-          )}
-          {err && (
-            <p className="rounded-md border border-[#F0BFBF] bg-[#FBE5E5] px-3 py-2 text-xs text-[#C44545]">{err}</p>
-          )}
-          <div className="flex items-center justify-end gap-2 border-t border-[#E6E1D4] pt-4">
-            <button type="button" onClick={onClose} disabled={creating} className={btnGhost}>Cancel</button>
-            <button
-              type="button"
-              disabled={!selected || creating || loading}
-              onClick={() => void handleConfirm()}
-              className={btnPrimary}
-            >
-              {creating ? "Creating..." : "Create invoice"}
-            </button>
-          </div>
-        </div>
       </div>
-    </div>
+    </MotionDrawer>
   );
 }
 
@@ -337,56 +343,54 @@ function ExportCsvModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#1A1A1A]/50 p-4">
-      <div className="flex w-full max-w-sm flex-col overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_8px_28px_rgba(20,20,20,0.12)]">
-        <div className="flex items-center justify-between border-b border-[#E6E1D4] px-6 py-4">
-          <div>
-            <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-[#6B6B6B]">Sales &middot; Invoices</p>
-            <h2 className="mt-1 text-lg font-medium text-[#1A1A1A]">Export CSV</h2>
+    <MotionDrawer open onClose={() => { if (!exporting) onClose(); }} variant="modal" ariaLabel="Export CSV" sizeClass="max-w-sm">
+      <div className="flex items-center justify-between border-b border-[#E6E1D4] px-6 py-4">
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-[#6B6B6B]">Sales &middot; Invoices</p>
+          <h2 className="mt-1 text-lg font-medium text-[#1A1A1A]">Export CSV</h2>
+        </div>
+        <button type="button" onClick={onClose} disabled={exporting} className="rounded-md p-2 text-[#A0A0A0] hover:bg-[#F0EDE4]">
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+      <form onSubmit={(e) => void handleExport(e)} className="flex flex-col gap-4 px-6 py-5">
+        <p className="text-xs text-[#6B6B6B]">Exports invoices by issue date in Xero-compatible format. Capped at 200.</p>
+        <div className="flex gap-3">
+          <div className="flex-1">
+            <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">From</label>
+            <input
+              type="date"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              disabled={exporting}
+              required
+              className="w-full rounded-md border border-[#E6E1D4] px-3 py-2 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] disabled:opacity-50"
+            />
           </div>
-          <button type="button" onClick={onClose} disabled={exporting} className="rounded-md p-2 text-[#A0A0A0] hover:bg-[#F0EDE4]">
-            <X className="h-5 w-5" />
+          <div className="flex-1">
+            <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">To</label>
+            <input
+              type="date"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              disabled={exporting}
+              required
+              className="w-full rounded-md border border-[#E6E1D4] px-3 py-2 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] disabled:opacity-50"
+            />
+          </div>
+        </div>
+        {err && (
+          <p className="rounded-md border border-[#F0BFBF] bg-[#FBE5E5] px-3 py-2 text-xs text-[#C44545]">{err}</p>
+        )}
+        <div className="flex items-center justify-end gap-2 border-t border-[#E6E1D4] pt-4">
+          <button type="button" onClick={onClose} disabled={exporting} className={btnGhost}>Cancel</button>
+          <button type="submit" disabled={exporting} className={btnPrimary}>
+            <Download className="h-4 w-4" />
+            {exporting ? "Exporting..." : "Export"}
           </button>
         </div>
-        <form onSubmit={(e) => void handleExport(e)} className="flex flex-col gap-4 px-6 py-5">
-          <p className="text-xs text-[#6B6B6B]">Exports invoices by issue date in Xero-compatible format. Capped at 200.</p>
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">From</label>
-              <input
-                type="date"
-                value={from}
-                onChange={(e) => setFrom(e.target.value)}
-                disabled={exporting}
-                required
-                className="w-full rounded-md border border-[#E6E1D4] px-3 py-2 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] disabled:opacity-50"
-              />
-            </div>
-            <div className="flex-1">
-              <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">To</label>
-              <input
-                type="date"
-                value={to}
-                onChange={(e) => setTo(e.target.value)}
-                disabled={exporting}
-                required
-                className="w-full rounded-md border border-[#E6E1D4] px-3 py-2 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] disabled:opacity-50"
-              />
-            </div>
-          </div>
-          {err && (
-            <p className="rounded-md border border-[#F0BFBF] bg-[#FBE5E5] px-3 py-2 text-xs text-[#C44545]">{err}</p>
-          )}
-          <div className="flex items-center justify-end gap-2 border-t border-[#E6E1D4] pt-4">
-            <button type="button" onClick={onClose} disabled={exporting} className={btnGhost}>Cancel</button>
-            <button type="submit" disabled={exporting} className={btnPrimary}>
-              <Download className="h-4 w-4" />
-              {exporting ? "Exporting..." : "Export"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+      </form>
+    </MotionDrawer>
   );
 }
 
@@ -401,13 +405,13 @@ const FILTER_MODES: { key: FilterMode; label: string }[] = [
   { key: "voided",  label: "Voided"  },
 ];
 
-export default function InvoicesTab({ initialCustomerFilter, onChanged }: Props) {
+export default function InvoicesTab({ initialCustomerFilter, onChanged, initialFilterMode, openNew, onNewConsumed, hideStatusChips = false }: Props) {
   const [invoices, setInvoices]   = useState<Invoice[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
 
-  const [filterMode, setFilterMode]       = useState<FilterMode>("all");
+  const [filterMode, setFilterMode]       = useState<FilterMode>(initialFilterMode ?? "all");
   const [customerFilter, setCustomerFilter] = useState<string | null>(
     initialCustomerFilter ?? null
   );
@@ -454,6 +458,18 @@ export default function InvoicesTab({ initialCustomerFilter, onChanged }: Props)
     customersLoaded.current = true;
     listCustomers().then(setCustomers).catch(() => {});
   }, []);
+
+  // Sidebar create actions land here with ?new= — open the matching flow.
+  // No once-ref: the parent strips ?new= via onNewConsumed immediately, so the
+  // `!openNew` guard alone prevents a double-fire while still letting a repeat
+  // create action (which re-sets ?new=) re-open the flow.
+  useEffect(() => {
+    if (!openNew) return;
+    if (openNew === 'from-quote') setShowFromQuote(true);
+    else if (openNew === 'from-job') setShowFromJob(true);
+    else setNewMenuOpen(true);
+    onNewConsumed?.();
+  }, [openNew, onNewConsumed]);
 
   const filterCustomerName = customerFilter
     ? (customers.find((c) => c.id === customerFilter)?.name ?? customerFilter)
@@ -510,7 +526,8 @@ export default function InvoicesTab({ initialCustomerFilter, onChanged }: Props)
     <div className={`${cardShell} overflow-hidden`}>
       {/* â”€â”€ Toolbar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div className="flex flex-wrap items-center gap-3 border-b border-[#E6E1D4] px-4 py-3">
-        {/* Status filter chips */}
+        {/* Status filter chips (hidden when the Invoices hub owns status nav) */}
+        {!hideStatusChips && (
         <div className="flex flex-wrap gap-1.5">
           {FILTER_MODES.map(({ key, label }) => {
             const active = filterMode === key;
@@ -535,6 +552,7 @@ export default function InvoicesTab({ initialCustomerFilter, onChanged }: Props)
             );
           })}
         </div>
+        )}
 
         {/* Customer filter chip */}
         {filterCustomerName && (

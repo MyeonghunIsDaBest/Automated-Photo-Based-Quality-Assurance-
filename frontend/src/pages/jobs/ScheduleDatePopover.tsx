@@ -3,6 +3,7 @@
 // Cancel. Busy state while the parent is calling the API.
 
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Calendar } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -53,7 +54,9 @@ export function ScheduleDatePopover({
     onConfirm(date);
   };
 
-  return (
+  // Portaled to <body>: the routed page sits inside a transform-animated
+  // wrapper, which would trap this fixed overlay above the phone tab bar.
+  return createPortal(
     <div
       className={MODAL_SHELL}
       style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}
@@ -85,7 +88,7 @@ export function ScheduleDatePopover({
             type="button"
             onClick={onCancel}
             disabled={busy}
-            className="rounded-md p-2 text-[#A0A0A0] hover:bg-[#F0EDE4] hover:text-[#3A3A3A] disabled:opacity-50"
+            className="grid min-h-11 min-w-11 place-items-center rounded-md text-[#A0A0A0] hover:bg-[#F0EDE4] hover:text-[#3A3A3A] disabled:opacity-50"
             aria-label="Cancel"
           >
             <X className="h-4 w-4" />
@@ -123,6 +126,7 @@ export function ScheduleDatePopover({
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

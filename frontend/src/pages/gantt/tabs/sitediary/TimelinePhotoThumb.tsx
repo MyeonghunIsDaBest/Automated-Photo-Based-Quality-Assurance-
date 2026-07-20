@@ -34,7 +34,7 @@ export function TimelinePhotoThumb({ photoId, large = false }: TimelinePhotoThum
   }, [photoId]);
 
   const cls = large
-    ? 'w-full aspect-square rounded-[7px] border border-slate-200 bg-slate-100 overflow-hidden grid place-items-center'
+    ? 'w-full aspect-square rounded-[7px] border border-[#E6E1D4] bg-[#FAF8F2] overflow-hidden grid place-items-center'
     : 'w-[54px] h-[54px] rounded-[7px] border border-[#E6E1D4] bg-[#FAF8F2] overflow-hidden grid place-items-center';
 
   return (
@@ -42,7 +42,7 @@ export function TimelinePhotoThumb({ photoId, large = false }: TimelinePhotoThum
       {url ? (
         <img src={url} alt="" className="w-full h-full object-cover" loading="lazy" />
       ) : (
-        <ImageIcon className="h-4 w-4 text-slate-300" />
+        <ImageIcon className="h-4 w-4 text-[#D8D2C4]" />
       )}
     </div>
   );

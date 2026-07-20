@@ -20,12 +20,12 @@ export function TabHeader({ eyebrow, title, description, action }: TabHeaderProp
   return (
     <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
       <div className="min-w-0 flex-1">
-        <div className="mb-1.5 flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.2em] text-slate-500">
-          <span className="inline-block h-px w-6 bg-slate-400" />
+        <div className="mb-1.5 flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.2em] text-[#6B6B6B]">
+          <span className="inline-block h-px w-6 bg-[#A0A0A0]" />
           {eyebrow}
         </div>
         <h2
-          className="text-xl font-medium leading-tight text-slate-900 sm:text-2xl"
+          className="text-xl font-medium leading-tight text-[#1A1A1A] sm:text-2xl"
           style={{
             fontFamily: "'Fraunces', Georgia, serif",
             fontFeatureSettings: "'ss01'",
@@ -36,7 +36,7 @@ export function TabHeader({ eyebrow, title, description, action }: TabHeaderProp
           {title}
         </h2>
         {description && (
-          <p className="mt-1.5 max-w-xl text-[13px] leading-relaxed text-slate-500">
+          <p className="mt-1.5 max-w-xl text-[13px] leading-relaxed text-[#6B6B6B]">
             {description}
           </p>
         )}

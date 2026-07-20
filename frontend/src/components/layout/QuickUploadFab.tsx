@@ -48,7 +48,7 @@ export default function QuickUploadFab() {
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.94 }}
         transition={{ type: 'spring', damping: 14, stiffness: 360 }}
-        className="fixed bottom-6 right-6 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-[#2F8F5C] text-white shadow-[0_8px_28px_rgba(20,20,20,0.18)] ring-4 ring-[#E5F2EA] hover:bg-[#246F47] sm:bottom-8 sm:right-8"
+        className="fixed bottom-6 right-6 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-[#2F8F5C] text-white shadow-[0_8px_28px_rgba(20,20,20,0.18)] ring-4 ring-[#E5F2EA] hover:bg-[#246F47] sm:bottom-8 sm:right-8 print:hidden"
         style={{
           // Clears the phone bottom tab bar (--bottom-nav-h, 0 at md+).
           bottom: 'calc(max(env(safe-area-inset-bottom), 1.5rem) + var(--bottom-nav-h, 0px))',
@@ -203,7 +203,7 @@ function QuickUploadModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-[#1A1A1A]/40 p-2 sm:items-center sm:p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-[#1A1A1A]/40 p-2 sm:items-center sm:p-4 print:hidden"
       onClick={busy ? undefined : onClose}
       role="dialog"
       aria-modal="true"

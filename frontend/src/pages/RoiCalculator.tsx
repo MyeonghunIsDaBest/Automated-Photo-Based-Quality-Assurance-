@@ -31,7 +31,7 @@ export default function RoiCalculator() {
   }, [sites, photosPerWeek, diariesPerWeek, hourlyRate]);
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
+    <div className="rounded-2xl border border-[#E6E1D4] bg-white p-4 sm:p-6">
       <div className="grid gap-4 sm:grid-cols-2">
         <NumField
           label="Active sites"
@@ -83,16 +83,16 @@ export default function RoiCalculator() {
             ≈ {result.hoursSaved.toLocaleString()} admin hours / month
           </p>
         </div>
-        <p className="mt-2 text-[11px] text-slate-500">
+        <p className="mt-2 text-[11px] text-[#6B6B6B]">
           Based on{' '}
-          <strong className="font-medium text-slate-700">{result.photosPerMonth.toLocaleString()}</strong> photo updates
+          <strong className="font-medium text-[#3A3A3A]">{result.photosPerMonth.toLocaleString()}</strong> photo updates
           and{' '}
-          <strong className="font-medium text-slate-700">{result.diariesPerMonth.toLocaleString()}</strong> diary entries
+          <strong className="font-medium text-[#3A3A3A]">{result.diariesPerMonth.toLocaleString()}</strong> diary entries
           across {sites} site{sites === 1 ? '' : 's'} per month, at {MIN_PER_PHOTO_UPDATE} min saved per photo + {MIN_PER_POLISH} min per polished diary entry.
         </p>
       </div>
 
-      <p className="mt-3 text-[10px] text-slate-400">
+      <p className="mt-3 text-[10px] text-[#A0A0A0]">
         Rough estimate. Real savings vary by team workflow. Compare against your
         actual paperwork hours — the win usually comes from variance reduction
         (consistent QA records), not just absolute minute-counts.
@@ -113,7 +113,7 @@ function NumField({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-slate-500">
+      <span className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">
         {label}
       </span>
       <input
@@ -125,9 +125,9 @@ function NumField({
           const n = Number(e.target.value);
           if (Number.isFinite(n)) onChange(Math.min(max, Math.max(min, n)));
         }}
-        className="block w-full rounded-md border border-slate-200 px-3 py-2 text-sm tabular-nums shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+        className="block w-full rounded-md border border-[#E6E1D4] px-3 py-2 text-sm tabular-nums shadow-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
       />
-      <p className="mt-1 text-[10px] text-slate-400">{caption}</p>
+      <p className="mt-1 text-[10px] text-[#A0A0A0]">{caption}</p>
     </label>
   );
 }

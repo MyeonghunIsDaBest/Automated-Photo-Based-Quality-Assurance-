@@ -22,14 +22,14 @@ export function FilterPills<V extends string>({ options, value, onChange }: Filt
             onClick={() => onChange(option.value)}
             className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
               active
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                ? 'border-[#A8D0B8] bg-[#E5F2EA] text-[#246F47]'
+                : 'border-[#E6E1D4] bg-white text-[#3A3A3A] hover:bg-[#FAF8F2]'
             }`}
           >
             <span>{option.label}</span>
             <span
               className={`rounded-full px-1.5 text-[10px] tabular-nums ${
-                active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'
+                active ? 'bg-[#CFE8DA] text-[#246F47]' : 'bg-[#F0EDE4] text-[#6B6B6B]'
               }`}
             >
               {option.count}

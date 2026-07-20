@@ -1,9 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // pages/sales/QuotesTab.tsx — the Quotes register, styled to match the Sim-Pro
 // Jobs body: a slim section header (eyebrow + Fraunces title + summary + action),
-// a cream toolbar band (status filter chips with count badges + search), then a
-// roomy browse table (taller rows, shared StatusPill). Mounted under both the
-// Jobs hub and the Sales masthead.
+// a cream toolbar band (status filter chips with count badges + search), then
+// the shared Register kit (responsive grid rows, portalled RowMenu, hand-authored
+// phone summaries). Mounted under both the Jobs hub and the Sales masthead.
 //
 // Props:
 //   initialCustomerFilter — pre-selects a customer filter via ?customer= param.
@@ -13,9 +13,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Plus, RefreshCw, X, Search, MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { Plus, RefreshCw, X, Search } from "lucide-react";
 
 import { FRAUNCES, TONE, cardShell, btnPrimary, btnGhost, StatusPill } from "../gantt/components/ledger";
+import { Register, RegisterRow, RowMenu } from "../../components/ui/Register";
 import { SkeletonLine } from "../../components/ui/skeleton";
 import { Toaster, type ToastState } from "../../components/ui/Toaster";
 import { fmtMoney } from "../../lib/format";
@@ -28,6 +29,7 @@ import {
 } from "../../lib/api/commercial";
 import { listCustomers, type Customer } from "../../lib/api/customers";
 import { QUOTE_STATUS_TONE } from "./quoteStatus";
+import { matchesQuoteSubView, type QuoteSubView } from "../../lib/commercial/quoteSubViews";
 import QuoteEditor from "./QuoteEditor";
 import NewQuoteWizard from "./NewQuoteWizard";
 import ConfirmDeleteDialog from "../catalogue/ConfirmDeleteDialog";
@@ -43,6 +45,10 @@ interface Props {
   initialQuoteId?: string | null;
   /** Deep-link: open the register on one of the two quote registers (?type=). */
   initialTypeFilter?: "service" | "project" | null;
+  /** SimPro status sub-view (from the Quotes hub tabs). When set, the register
+   *  is filtered to that sub-view and the standalone status chips are hidden —
+   *  the hub owns the status navigation. Service/Project segment stays. */
+  subView?: QuoteSubView | null;
 }
 
 type QuoteTypeFilter = "service" | "project" | null;
@@ -91,23 +97,37 @@ function ageLabel(createdAt: string): string {
   return `${months}mo ago`;
 }
 
-// ─── skeleton row (matches the roomy real rows) ──────────────────────────────
+// ─── register layout ─────────────────────────────────────────────────────────
+
+// One grid template shared by header + every row (Register passes it down via
+// context). Fixed tracks keep columns aligned across rows (each row is its own
+// grid, so content-sized `auto` tracks would drift); Title/Customer take the
+// remaining space with minmax(0,…fr) so they can truncate.
+const REGISTER_COLS =
+  "100px 80px minmax(0,2.2fr) minmax(0,1.6fr) 110px 96px 80px 44px";
+
+// ─── skeleton row (one Register row of shimmer lines) ────────────────────────
 
 function SkeletonRow() {
   return (
-    <tr className="border-b border-[#EFEBE0]">
-      {[120, 64, 180, 140, 80, 70, 60, 24].map((w, i) => (
-        <td key={i} className="px-4 py-4">
-          <SkeletonLine style={{ width: w }} />
-        </td>
+    <RegisterRow
+      mobile={
+        <span className="flex flex-col gap-1.5 py-0.5">
+          <SkeletonLine style={{ width: 140 }} />
+          <SkeletonLine style={{ width: 200 }} />
+        </span>
+      }
+    >
+      {[72, 52, 180, 140, 80, 64, 52, 20].map((w, i) => (
+        <SkeletonLine key={i} style={{ width: w }} />
       ))}
-    </tr>
+    </RegisterRow>
   );
 }
 
 // ─── component ───────────────────────────────────────────────────────────────
 
-export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost = false, initialQuoteId = null, initialTypeFilter = null }: Props) {
+export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost = false, initialQuoteId = null, initialTypeFilter = null, subView = null }: Props) {
   const [quotes, setQuotes]       = useState<Quote[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -121,7 +141,6 @@ export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost
   const [showNewModal, setShowNewModal] = useState(false);
   const [selectedId, setSelectedId]     = useState<string | null>(initialQuoteId);
   const [toast, setToast]               = useState<ToastState>(null);
-  const [menuFor, setMenuFor]           = useState<string | null>(null);   // open row action menu
   const [confirmDelete, setConfirmDelete] = useState<Quote | null>(null);
   const [deleting, setDeleting]         = useState(false);
 
@@ -191,11 +210,15 @@ export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost
     [typeScoped],
   );
 
-  // Visible rows: status chip + search box, both client-side.
+  // Visible rows: hub sub-view (or standalone status chip) + search, client-side.
   const visible = useMemo(() => {
     const term = search.trim().toLowerCase();
     return typeScoped.filter((q) => {
-      if (statusFilter && q.status !== statusFilter) return false;
+      if (subView) {
+        if (!matchesQuoteSubView(q, subView)) return false;
+      } else if (statusFilter && q.status !== statusFilter) {
+        return false;
+      }
       if (!term) return true;
       return (
         (q.number ?? "").toLowerCase().includes(term) ||
@@ -203,7 +226,7 @@ export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost
         customerName(q).toLowerCase().includes(term)
       );
     });
-  }, [typeScoped, statusFilter, search, customerName]);
+  }, [typeScoped, statusFilter, subView, search, customerName]);
 
   function handleQuoteCreated(quoteId: string, openEditor: boolean) {
     setShowNewModal(false);
@@ -250,6 +273,7 @@ export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost
   }
 
   const total = typeScoped.length;
+  const isFiltered = statusFilter !== null || subView !== null || search.trim() !== "";
   const registerName = typeFilter === "project" ? "project quote" : typeFilter === "service" ? "service quote" : "quote";
 
   return (
@@ -315,6 +339,7 @@ export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost
       <div className={`overflow-hidden ${cardShell}`}>
         {/* Toolbar band: status chips (with counts) + customer chip + search */}
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E6E1D4] bg-[#FAF8F2] px-4 py-3">
+          {!subView && (
           <div className="inline-flex flex-wrap items-center gap-1">
             <button
               type="button"
@@ -355,6 +380,7 @@ export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost
               );
             })}
           </div>
+          )}
 
           <div className="flex flex-wrap items-center gap-2">
             {filterCustomerName && (
@@ -394,93 +420,88 @@ export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost
           </div>
         )}
 
-        {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-[13px]">
-            <thead className="border-b border-[#E6E1D4] bg-white">
-              <tr>
-                <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Number</th>
-                <th className="w-24 px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Type</th>
-                <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Title</th>
-                <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Customer / Client</th>
-                <th className="px-4 py-3 text-right text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Total inc GST</th>
-                <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Status</th>
-                <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Created</th>
-                <th className="w-10 px-2 py-3" aria-label="Actions" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#EFEBE0]">
-              {loading && [1, 2, 3, 4, 5].map((i) => <SkeletonRow key={i} />)}
+        {/* Register: grid rows at sm+, hand-authored summaries on phone. The
+            outer card already draws the shell, so this instance strips its own. */}
+        <Register
+          cols={REGISTER_COLS}
+          className="rounded-none border-0 shadow-none"
+          header={
+            <>
+              <span>Number</span>
+              <span>Type</span>
+              <span>Title</span>
+              <span>Customer / Client</span>
+              <span className="text-right">Total inc GST</span>
+              <span>Status</span>
+              <span>Created</span>
+              <span aria-hidden="true" />
+            </>
+          }
+          footer={
+            !loading && !error && isFiltered ? (
+              <div className="border-t border-[#E6E1D4] bg-[#FAF8F2] px-4 py-2 text-xs text-[#6B6B6B]">
+                Showing {visible.length.toLocaleString("en-AU")} of {total.toLocaleString("en-AU")}
+              </div>
+            ) : undefined
+          }
+        >
+          {loading && [1, 2, 3, 4, 5].map((i) => <SkeletonRow key={i} />)}
 
-              {!loading && visible.length === 0 && !error && (
-                <tr>
-                  <td colSpan={8} className="px-4 py-16 text-center text-[#A0A0A0]">
-                    <p className="text-sm font-medium">{total === 0 ? "No quotes yet" : "Nothing matches"}</p>
-                    <p className="mt-1 text-xs">
-                      {total === 0
-                        ? "Your first one is a button away."
-                        : "Try clearing the status filter or search."}
-                    </p>
-                  </td>
-                </tr>
-              )}
+          {!loading && visible.length === 0 && !error && (
+            <div className="px-4 py-16 text-center text-[#A0A0A0]">
+              <p className="text-sm font-medium">{total === 0 ? "No quotes yet" : "Nothing matches"}</p>
+              <p className="mt-1 text-xs">
+                {total === 0
+                  ? "Your first one is a button away."
+                  : "Try clearing the status filter or search."}
+              </p>
+            </div>
+          )}
 
-              {!loading && visible.map((q) => (
-                <tr
-                  key={q.id}
-                  className="cursor-pointer transition-colors hover:bg-[#FAF8F2]"
-                  onClick={() => setSelectedId(q.id)}
-                >
-                  <td className="px-4 py-4 font-mono text-xs text-[#6B6B6B]">{q.number ?? "—"}</td>
-                  <td className="px-4 py-4">
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${typeBadge(q.quoteType)}`}>
-                      {q.quoteType}
-                    </span>
-                  </td>
-                  <td className="px-4 py-4 font-medium text-[#1A1A1A]">{q.title}</td>
-                  <td className="px-4 py-4 text-[#3A3A3A]">{customerName(q)}</td>
-                  <td className="px-4 py-4 text-right tabular-nums font-medium text-[#1A1A1A]">{fmtMoney(q.totalIncGst)}</td>
-                  <td className="px-4 py-4">
-                    <StatusPill tone={STATUS_TONE[q.status]} className="uppercase tracking-wide">
+          {!loading && visible.map((q) => (
+            <RegisterRow
+              key={q.id}
+              onClick={() => setSelectedId(q.id)}
+              mobile={
+                <span className="flex min-w-0 flex-col gap-1">
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="min-w-0 truncate font-semibold text-[#1A1A1A]">{q.number ?? "—"}</span>
+                    <StatusPill tone={STATUS_TONE[q.status]} className="shrink-0 uppercase tracking-wide">
                       {STATUS_LABELS[q.status]}
                     </StatusPill>
-                  </td>
-                  <td className="px-4 py-4 text-xs text-[#6B6B6B]">{ageLabel(q.createdAt)}</td>
-                  <td className="px-2 py-4 text-right" onClick={(e) => e.stopPropagation()}>
-                    <div className="relative inline-block">
-                      <button
-                        type="button"
-                        aria-label={`Actions for ${q.number ?? q.title}`}
-                        onClick={() => setMenuFor(menuFor === q.id ? null : q.id)}
-                        className="rounded-md p-1.5 text-[#A0A0A0] transition-colors hover:bg-[#F0EDE4] hover:text-[#1A1A1A]"
-                      >
-                        <MoreVertical className="h-4 w-4" />
-                      </button>
-                      {menuFor === q.id && (
-                        <div className="absolute right-0 z-20 mt-1 w-40 overflow-hidden rounded-lg border border-[#E6E1D4] bg-white py-1 shadow-[0_8px_28px_rgba(20,20,20,0.12)]">
-                          <button
-                            type="button"
-                            onClick={() => { setMenuFor(null); setSelectedId(q.id); }}
-                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[#3A3A3A] hover:bg-[#FAF8F2]"
-                          >
-                            <Pencil className="h-3.5 w-3.5" /> Open / edit
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => { setMenuFor(null); setConfirmDelete(q); }}
-                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[#C44545] hover:bg-[#FBE5E5]"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" /> Delete
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  </span>
+                  <span className="truncate">{q.title}</span>
+                  <span className="truncate text-[13px] text-[#6B6B6B]">
+                    {customerName(q)} · {fmtMoney(q.totalIncGst)} · {ageLabel(q.createdAt)}
+                  </span>
+                </span>
+              }
+            >
+              <span className="truncate font-mono text-xs text-[#6B6B6B]">{q.number ?? "—"}</span>
+              <span className="min-w-0">
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${typeBadge(q.quoteType)}`}>
+                  {q.quoteType}
+                </span>
+              </span>
+              <span className="truncate font-medium text-[#1A1A1A]">{q.title}</span>
+              <span className="truncate text-[#3A3A3A]">{customerName(q)}</span>
+              <span className="text-right font-medium tabular-nums text-[#1A1A1A]">{fmtMoney(q.totalIncGst)}</span>
+              <span className="min-w-0">
+                <StatusPill tone={STATUS_TONE[q.status]} className="uppercase tracking-wide">
+                  {STATUS_LABELS[q.status]}
+                </StatusPill>
+              </span>
+              <span className="text-xs text-[#6B6B6B]">{ageLabel(q.createdAt)}</span>
+              <RowMenu
+                label={`Actions for ${q.number ?? q.title}`}
+                items={[
+                  { label: "Open / edit", onSelect: () => setSelectedId(q.id) },
+                  { label: "Delete", tone: "danger", onSelect: () => setConfirmDelete(q) },
+                ]}
+              />
+            </RegisterRow>
+          ))}
+        </Register>
       </div>
 
       {/* New Quote modal */}
@@ -492,9 +513,6 @@ export default function QuotesTab({ initialCustomerFilter, onChanged, canSeeCost
           onCreated={handleQuoteCreated}
         />
       )}
-
-      {/* Click-catcher: closes an open row menu when you click elsewhere. */}
-      {menuFor && <button type="button" aria-hidden tabIndex={-1} className="fixed inset-0 z-10 cursor-default" onClick={() => setMenuFor(null)} />}
 
       {confirmDelete && (
         <ConfirmDeleteDialog

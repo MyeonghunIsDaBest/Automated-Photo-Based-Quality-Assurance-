@@ -22,8 +22,9 @@ import { Upload, Download, RefreshCw, ChevronDown, ChevronRight, Loader2 } from 
 import { cardShell, btnPrimary, btnGhost, TONE } from "../gantt/components/ledger";
 import { Toaster, type ToastState } from "../../components/ui/Toaster";
 
-import { parseMaterialsCsv, planImport, type CsvMaterialRow, type ImportPlan } from "../../lib/catalogue/csv";
+import { parseMaterialsCsv, planImport, planSupplierResolution, type CsvMaterialRow, type ImportPlan, type SupplierPlan } from "../../lib/catalogue/csv";
 import { listMaterials, runImport } from "../../lib/api/materials";
+import { listSuppliers } from "../../lib/api/suppliers";
 import PrebuildImportCard from "./PrebuildImportCard";
 
 // ─── types ────────────────────────────────────────────────────────────────────
@@ -37,8 +38,8 @@ interface Props {
 // ─── template CSV content ─────────────────────────────────────────────────────
 
 const CSV_TEMPLATE =
-  "sku,name,unit,cost_price,sell_price,tags,description,category,subcategory,is_stock_item,is_favourite\r\n" +
-  'TPS25,"2.5mm TPS cable",m,1.10,2.20,cable|consumable,Twin and earth,Electrical,Cables,yes,no\r\n';
+  "sku,name,unit,cost_price,sell_price,tags,description,category,subcategory,is_stock_item,is_favourite,supplier,supplier_sku\r\n" +
+  'TPS25,"2.5mm TPS cable",m,1.10,2.20,cable|consumable,Twin and earth,Electrical,Cables,yes,no,AWM Electrical,10023756\r\n';
 
 // ─── summary chip ─────────────────────────────────────────────────────────────
 
@@ -79,12 +80,16 @@ export default function ImportTab({ onWritten }: Props) {
   const [parseErrors, setParseErrors] = useState<string[]>([]);
   const [validRows, setValidRows]     = useState<CsvMaterialRow[]>([]);
   const [plan, setPlan]               = useState<ImportPlan | null>(null);
+  const [supplierPlan, setSupplierPlan] = useState<SupplierPlan | null>(null);
   const [skipsOpen, setSkipsOpen]     = useState(false);
   const [result, setResult]           = useState<{
     added: number;
     updated: number;
     skipped: number;
     failed: { count: number; firstError: string | null };
+    suppliersCreated: number;
+    skusLinked: number;
+    skusParkedNoSupplier: number;
   } | null>(null);
   const [toast, setToast]             = useState<ToastState>(null);
 
@@ -123,7 +128,10 @@ export default function ImportTab({ onWritten }: Props) {
     const seq = planSeq.current;
     setBusy(true);
     try {
-      const existing = await listMaterials({ includeInactive: true });
+      const [existing, suppliers] = await Promise.all([
+        listMaterials({ includeInactive: true }),
+        listSuppliers().catch(() => []),
+      ]);
       if (seq !== planSeq.current) return; // user reset / picked a new file mid-flight
       const p = planImport(
         existing.map((m) => ({
@@ -135,6 +143,7 @@ export default function ImportTab({ onWritten }: Props) {
         validRows,
       );
       setPlan(p);
+      setSupplierPlan(planSupplierResolution(suppliers.map((s) => ({ id: s.id, name: s.name })), validRows));
       setSkipsOpen(false);
       // refreshOnly (post-confirm): update the plan in place so the result
       // panel stays visible — the user switches over via "Review updated plan".
@@ -150,7 +159,7 @@ export default function ImportTab({ onWritten }: Props) {
     if (!plan) return;
     setBusy(true);
     try {
-      const res = await runImport(plan);
+      const res = await runImport(plan, supplierPlan ?? undefined);
       setResult(res);
       // The pre-import plan is stale now — drop it so nobody can confirm it
       // twice (sku-less adds would duplicate), and refresh it in place while
@@ -180,6 +189,7 @@ export default function ImportTab({ onWritten }: Props) {
     setParseErrors([]);
     setValidRows([]);
     setPlan(null);
+    setSupplierPlan(null);
     setResult(null);
     setSkipsOpen(false);
     if (fileRef.current) fileRef.current.value = "";
@@ -215,7 +225,7 @@ export default function ImportTab({ onWritten }: Props) {
             <div className="text-center">
               <p className="text-sm font-medium text-[#3A3A3A]">Upload a CSV file to import materials</p>
               <p className="mt-1 text-xs text-[#A0A0A0]">
-                Needs the 7 core columns; group/subgroup/stock/favourite columns are optional. Download the template to see all 11.
+                Needs the 7 core columns; group/subgroup/stock/favourite/wholesaler columns are optional. Download the template to see all 13.
               </p>
             </div>
             <label className={btnPrimary + " cursor-pointer"}>
@@ -322,6 +332,26 @@ export default function ImportTab({ onWritten }: Props) {
               <SummaryChip count={plan.skips.length} label="skipped" bg="#F0EDE4" fg="#8A8378" />
             </div>
 
+            {/* Wholesaler resolution — shown only when the file carries supplier columns */}
+            {supplierPlan && (supplierPlan.links.size > 0 || supplierPlan.creates.length > 0) && (
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-6">
+                  {supplierPlan.links.size > 0 && (
+                    <SummaryChip count={supplierPlan.links.size} label="linked to existing wholesalers" bg={TONE.sky.bg} fg={TONE.sky.fg} />
+                  )}
+                  {supplierPlan.creates.length > 0 && (
+                    <SummaryChip count={supplierPlan.creates.length} label="NEW wholesalers will be created" bg={TONE.violet.bg} fg={TONE.violet.fg} />
+                  )}
+                </div>
+                {supplierPlan.creates.length > 0 && (
+                  <p className="text-xs text-[#6B6B6B]">
+                    Will create: <span className="font-medium text-[#3A3A3A]">{supplierPlan.creates.join(", ")}</span>
+                    {" "}— add contact details later in Admin → Suppliers.
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Skip reasons expandable */}
             {plan.skips.length > 0 && (
               <div>
@@ -377,7 +407,19 @@ export default function ImportTab({ onWritten }: Props) {
                 <SummaryChip count={result.added} label="added" bg={TONE.sage.bg} fg={TONE.sage.fg} />
                 <SummaryChip count={result.updated} label="updated" bg={TONE.amber.bg} fg={TONE.amber.fg} />
                 <SummaryChip count={result.skipped} label="skipped" bg="#F0EDE4" fg="#8A8378" />
+                {result.suppliersCreated > 0 && (
+                  <SummaryChip count={result.suppliersCreated} label="wholesalers created" bg={TONE.violet.bg} fg={TONE.violet.fg} />
+                )}
+                {result.skusLinked > 0 && (
+                  <SummaryChip count={result.skusLinked} label="supplier codes linked" bg={TONE.sky.bg} fg={TONE.sky.fg} />
+                )}
               </div>
+              {result.skusParkedNoSupplier > 0 && (
+                <p className="mt-2 text-xs text-[#6B6B6B]">
+                  {result.skusParkedNoSupplier} supplier code{result.skusParkedNoSupplier !== 1 ? "s" : ""} had no wholesaler name in the file —
+                  fill the <span className="font-mono">supplier</span> column and re-import (matched by SKU) to link them.
+                </p>
+              )}
             </div>
             {result.failed.count > 0 && (
               <div className="rounded-[10px] border border-[#F0BFBF] bg-[#FBE5E5] px-4 py-3 space-y-1">

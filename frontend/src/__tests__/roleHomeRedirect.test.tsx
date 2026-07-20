@@ -4,13 +4,11 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import RoleHomeRedirect from '../pages/home/RoleHomeRedirect';
 import type { Profile } from '../types';
 
-// We use a tiny test app: index → RoleHomeRedirect, and explicit /home +
-// /dashboard markers. After the redirect, the marker tells us where the
-// component sent us. Every role now lands on the Welcome deck at /home
-// (each deck funnels to its real workspace via the cover CTA), so the
-// /dashboard marker exists only to prove nobody is bounced there anymore.
-// While `isAuthLoading` is true (or profile is null post-load) the
-// redirect renders null, so neither marker shows up.
+// P9.B: the Welcome deck retired from routing — every role lands on its REAL
+// workspace: internal roles (admins/managers/PMs/workers/dev) → /dashboard,
+// supplier → /supplier, stakeholder → /sponsor, customer → /customer.
+// While `isAuthLoading` is true (or profile is null post-load) the redirect
+// renders null, so no marker shows up.
 
 let mockIsAuthLoading = false;
 let mockProfile: Profile | null = null;
@@ -32,8 +30,10 @@ function renderRedirectAt(path = '/') {
     <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route path="/" element={<RoleHomeRedirect />} />
-        <Route path="/home" element={<div data-testid="home-route" />} />
         <Route path="/dashboard" element={<div data-testid="dashboard-route" />} />
+        <Route path="/supplier" element={<div data-testid="supplier-route" />} />
+        <Route path="/sponsor" element={<div data-testid="sponsor-route" />} />
+        <Route path="/customer" element={<div data-testid="customer-route" />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -49,7 +49,6 @@ describe('RoleHomeRedirect', () => {
     mockIsAuthLoading = true;
     mockProfile = null;
     const { queryByTestId } = renderRedirectAt('/');
-    expect(queryByTestId('home-route')).toBeNull();
     expect(queryByTestId('dashboard-route')).toBeNull();
   });
 
@@ -60,32 +59,36 @@ describe('RoleHomeRedirect', () => {
     mockIsAuthLoading = false;
     mockProfile = null;
     const { queryByTestId } = renderRedirectAt('/');
-    expect(queryByTestId('home-route')).toBeNull();
     expect(queryByTestId('dashboard-route')).toBeNull();
   });
 
-  it('routes field roles to /home', () => {
+  it('routes workers to the role-lensed /dashboard', () => {
     mockProfile = makeProfile('worker');
     const { getByTestId } = renderRedirectAt('/');
-    expect(getByTestId('home-route')).toBeInTheDocument();
+    expect(getByTestId('dashboard-route')).toBeInTheDocument();
   });
 
-  it('routes admins to /home (Welcome deck), not straight to /dashboard', () => {
+  it('routes admins to /dashboard', () => {
     mockProfile = makeProfile('company_admin');
-    const { getByTestId, queryByTestId } = renderRedirectAt('/');
-    expect(getByTestId('home-route')).toBeInTheDocument();
-    expect(queryByTestId('dashboard-route')).toBeNull();
+    const { getByTestId } = renderRedirectAt('/');
+    expect(getByTestId('dashboard-route')).toBeInTheDocument();
   });
 
-  it('routes stakeholders to /home', () => {
+  it('routes stakeholders to the sponsor cockpit', () => {
     mockProfile = makeProfile('stakeholder');
     const { getByTestId } = renderRedirectAt('/');
-    expect(getByTestId('home-route')).toBeInTheDocument();
+    expect(getByTestId('sponsor-route')).toBeInTheDocument();
   });
 
-  it('routes suppliers to /home', () => {
+  it('routes suppliers to the supplier workspace', () => {
     mockProfile = makeProfile('supplier');
     const { getByTestId } = renderRedirectAt('/');
-    expect(getByTestId('home-route')).toBeInTheDocument();
+    expect(getByTestId('supplier-route')).toBeInTheDocument();
+  });
+
+  it('routes customers to the portal', () => {
+    mockProfile = makeProfile('customer');
+    const { getByTestId } = renderRedirectAt('/');
+    expect(getByTestId('customer-route')).toBeInTheDocument();
   });
 });

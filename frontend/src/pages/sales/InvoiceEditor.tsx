@@ -16,9 +16,13 @@ import {
   ArrowLeft, Printer, Plus, Trash2, RefreshCw, Search, Package,
 } from "lucide-react";
 
-import { FRAUNCES, TONE, cardShell, btnPrimary, btnGhost } from "../gantt/components/ledger";
+import { TONE, cardShell, btnPrimary, btnGhost } from "../gantt/components/ledger";
+import { PRINT, PRINT_EXACT } from "../../components/print/printTheme";
+import PrintDocFooter from "../../components/print/PrintDocFooter";
+import PrintLogo from "../../components/print/PrintLogo";
 import { SkeletonLine } from "../../components/ui/skeleton";
 import { Toaster, type ToastState } from "../../components/ui/Toaster";
+import MotionDrawer from "../../components/ui/MotionDrawer";
 import { lineTotal } from "../../lib/commercial/money";
 import { fmtMoney } from "../../lib/format";
 
@@ -111,27 +115,25 @@ function ConfirmModal({
   onClose: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#1A1A1A]/50 p-4">
-      <div className="flex w-full max-w-sm flex-col overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_8px_28px_rgba(20,20,20,0.12)]">
-        <div className="px-6 py-5">
-          <h2 className="text-base font-semibold text-[#1A1A1A]">{title}</h2>
-          <p className="mt-2 text-sm text-[#6B6B6B]">{body}</p>
-        </div>
-        <div className="flex items-center justify-end gap-2 border-t border-[#E6E1D4] px-6 py-4">
-          <button type="button" onClick={onClose} className={btnGhost}>Cancel</button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            className={danger
-              ? "inline-flex items-center gap-1.5 rounded-full bg-[#C44545] px-4 py-1.5 text-sm font-medium text-white hover:bg-[#A83535] transition-colors"
-              : btnPrimary
-            }
-          >
-            {confirmLabel}
-          </button>
-        </div>
+    <MotionDrawer open onClose={onClose} variant="modal" ariaLabel={title} sizeClass="max-w-sm">
+      <div className="px-6 py-5">
+        <h2 className="text-base font-semibold text-[#1A1A1A]">{title}</h2>
+        <p className="mt-2 text-sm text-[#6B6B6B]">{body}</p>
       </div>
-    </div>
+      <div className="flex items-center justify-end gap-2 border-t border-[#E6E1D4] px-6 py-4">
+        <button type="button" onClick={onClose} className={btnGhost}>Cancel</button>
+        <button
+          type="button"
+          onClick={onConfirm}
+          className={danger
+            ? "inline-flex items-center gap-1.5 rounded-full bg-[#C44545] px-4 py-1.5 text-sm font-medium text-white hover:bg-[#A83535] transition-colors"
+            : btnPrimary
+          }
+        >
+          {confirmLabel}
+        </button>
+      </div>
+    </MotionDrawer>
   );
 }
 
@@ -436,24 +438,19 @@ export default function InvoiceEditor({ invoiceId, onClose, onChanged }: Props) 
           opacity: isVoided ? 0.55 : 1,
         }}
       >
-        {/* Document header */}
+        {/* Document header — designer print identity (P6-P), same anatomy as
+            the quote sheet: logo/wordmark + tagline left, orange number right. */}
         <div className="mb-2 flex flex-wrap items-start justify-between gap-6">
-          <div>
-            <p
-              className="text-[22px] font-semibold text-[#1A1A1A]"
-              style={{ fontFamily: FRAUNCES }}
-            >
-              {settings?.businessName ?? "Your Business"}
-            </p>
-            {settings?.abn && (
-              <p className="mt-0.5 text-sm text-[#6B6B6B]">ABN {settings.abn}</p>
+          <div className="min-w-0 max-w-md">
+            <PrintLogo logoUrl={settings?.logoUrl} businessName={settings?.businessName} />
+            {settings?.printTagline && (
+              <p className="mt-2 text-[11.5px] leading-relaxed" style={{ color: PRINT.grey }}>
+                {settings.printTagline}
+              </p>
             )}
           </div>
           <div className="text-right">
-            <p
-              className="text-[28px] font-medium text-[#1A1A1A]"
-              style={{ fontFamily: FRAUNCES, letterSpacing: "-0.02em" }}
-            >
+            <p className="text-[32px] font-light tracking-tight" style={{ color: PRINT.orange }}>
               {invoice.number ?? "INV-??????"}
             </p>
             {/* Status stamp */}
@@ -473,9 +470,13 @@ export default function InvoiceEditor({ invoiceId, onClose, onChanged }: Props) 
           </div>
         </div>
 
+        {/* Thick brand rule under the header (designer artwork) */}
+        <div aria-hidden className={`mb-4 h-[3px] w-full ${PRINT_EXACT}`} style={{ background: PRINT.orange }} />
+
         {/* TAX INVOICE compliance label */}
         <p
-          className="mb-6 text-[13px] font-semibold uppercase tracking-[0.22em] text-[#6B6B6B]"
+          className="mb-6 text-[13px] font-bold uppercase tracking-[0.22em]"
+          style={{ color: PRINT.navy }}
         >
           TAX INVOICE
         </p>
@@ -500,7 +501,7 @@ export default function InvoiceEditor({ invoiceId, onClose, onChanged }: Props) 
 
         {/* Customer / client block */}
         <div className="mb-8 border-b border-[#EFEBE0] pb-6">
-          <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#A0A0A0]">Invoice for</p>
+          <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: PRINT.navy }}>Invoice for</p>
           <p className="text-base font-semibold text-[#1A1A1A]">
             {invoice.clientName ?? (invoice.customerId ? "(customer linked)" : "â€”")}
           </p>
@@ -516,7 +517,7 @@ export default function InvoiceEditor({ invoiceId, onClose, onChanged }: Props) 
         <div className="mb-6 overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead>
-              <tr className="border-b border-[#E6E1D4] bg-[#FAF8F2]">
+              <tr className={`border-b border-[#E6E1D4] bg-[#FBE7D9] ${PRINT_EXACT}`}>
                 <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Description</th>
                 <th className="w-20 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Qty</th>
                 <th className="w-16 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Unit</th>
@@ -757,18 +758,22 @@ export default function InvoiceEditor({ invoiceId, onClose, onChanged }: Props) 
 
         {/* â”€â”€ Totals footer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         <div className="mb-8 flex justify-end">
-          <div className="w-full max-w-xs space-y-1">
+          <div className="w-full max-w-xs space-y-1" style={{ breakInside: "avoid" }}>
             <div className="flex items-center justify-between text-sm text-[#6B6B6B]">
               <span>Subtotal (ex GST)</span>
               <span className="tabular-nums">{fmtMoney(invoice.subtotalExGst)}</span>
             </div>
-            <div className="flex items-center justify-between text-sm text-[#6B6B6B]">
+            <div className="flex items-center justify-between pb-2 text-sm text-[#6B6B6B]" style={{ borderBottom: `2px solid ${PRINT.navy}` }}>
               <span>GST ({((settings?.gstRate ?? 0.1) * 100).toFixed(0)}%)</span>
               <span className="tabular-nums">{fmtMoney(invoice.gstAmount)}</span>
             </div>
-            <div className="flex items-center justify-between border-t border-[#E6E1D4] pt-2 text-base font-semibold text-[#1A1A1A]">
+            {/* The designer's solid-orange total band */}
+            <div
+              className={`mt-2 flex items-center justify-between px-4 py-2.5 text-base font-bold text-white ${PRINT_EXACT}`}
+              style={{ background: PRINT.orange }}
+            >
               <span>Total (inc GST)</span>
-              <span className="tabular-nums text-[18px]" style={{ fontFamily: FRAUNCES }}>
+              <span className="tabular-nums text-[18px]">
                 {fmtMoney(invoice.totalIncGst)}
               </span>
             </div>
@@ -790,8 +795,11 @@ export default function InvoiceEditor({ invoiceId, onClose, onChanged }: Props) 
           />
         </div>
 
+        {/* ── Branded document footer (designer artwork, P6-P) — shared with the quote ── */}
+        <PrintDocFooter settings={settings} />
+
         {/* â”€â”€ Status action bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-        <div className="flex flex-wrap items-center gap-3 border-t border-[#EFEBE0] pt-5 print:hidden">
+        <div className="mt-8 flex flex-wrap items-center gap-3 border-t border-[#EFEBE0] pt-5 print:hidden">
           <span
             className="inline-flex rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em]"
             style={{ backgroundColor: statusTone.bg, color: statusTone.fg }}
@@ -833,34 +841,13 @@ export default function InvoiceEditor({ invoiceId, onClose, onChanged }: Props) 
           confirmLabel={confirmConfig.confirmLabel}
           danger={confirmConfig.danger}
           onConfirm={() => void handleConfirmedAction()}
-          onClose={() => setConfirmAction(null)}
+          onClose={() => { if (!saving) setConfirmAction(null); }}
         />
       )}
 
       {toast && (
         <Toaster message={toast.message} type={toast.type} onClose={() => setToast(null)} />
       )}
-
-      {/* â”€â”€ Print stylesheet â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <style>{`
-        @media print {
-          body.printing-commercial-doc * { visibility: hidden; }
-          body.printing-commercial-doc .print-sheet,
-          body.printing-commercial-doc .print-sheet * { visibility: visible; }
-          body.printing-commercial-doc .print-sheet {
-            position: absolute;
-            inset: 0 auto auto 0;
-            width: 100%;
-            border: none !important;
-            box-shadow: none !important;
-            padding: 0 !important;
-            opacity: 1 !important;
-          }
-          body.printing-commercial-doc .print\\:hidden { visibility: hidden !important; }
-          body.printing-commercial-doc .print\\:border-0 { border: none !important; }
-          body.printing-commercial-doc .print\\:px-0 { padding-left: 0 !important; padding-right: 0 !important; }
-        }
-      `}</style>
     </>
   );
 }

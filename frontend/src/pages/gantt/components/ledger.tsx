@@ -29,7 +29,7 @@ export const REG = {
   sageDark: '#246F47',
 } as const;
 
-export type ToneKey = 'sage' | 'amber' | 'orange' | 'red' | 'slate' | 'ink';
+export type ToneKey = 'sage' | 'amber' | 'orange' | 'red' | 'slate' | 'ink' | 'sky' | 'violet' | 'emerald';
 
 /** Tinted fg/bg + a solid dot. Reconciled to design/saas-ui-rework/styles.css
  *  (P9.A): amber text darkened to the mock's --amber-dk (better contrast on
@@ -43,6 +43,11 @@ export const TONE: Record<ToneKey, { fg: string; bg: string; dot: string }> = {
   red:    { fg: '#C44545', bg: '#FBE5E5', dot: '#C44545' },
   slate:  { fg: '#5B6B7B', bg: '#EEF1F4', dot: '#6B7A8F' },
   ink:    { fg: '#1A1A1A', bg: '#ECE8DE', dot: '#1A1A1A' },
+  // Board lifecycle tones (from the test.html board mock, P9.B7): one hue per
+  // stage so "sky" always means scheduled, "violet" invoiced, "emerald" paid.
+  sky:     { fg: '#2A6F9E', bg: '#E3F0FA', dot: '#2A6F9E' },
+  violet:  { fg: '#6B3FA0', bg: '#EFE7FB', dot: '#6B3FA0' },
+  emerald: { fg: '#2F8F5C', bg: '#E1F3EA', dot: '#10B981' },
 };
 
 /** Minimum thumb-sized hit area — put this on anything a field worker taps. */

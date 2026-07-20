@@ -778,6 +778,17 @@
 }
 .cust-portal .cust-dev-switch:hover{transform:translateY(-1px);box-shadow:0 8px 26px rgba(0,0,0,.3)}
 
+/* ═══ PHONE TAB BAR + ACCOUNT SHEET (hidden ≥861px — the sidebar handles nav there) ═══ */
+.cust-portal .cust-tabbar,
+.cust-portal .cust-sheet,
+.cust-portal .cust-sheet-backdrop{display:none}
+
+/* Smooth-scroll anchor targets land clear of the 60px sticky topbar */
+.cust-portal #main-content,
+.cust-portal #projects-heading,
+.cust-portal #invoices-heading,
+.cust-portal #docs-heading{scroll-margin-top:72px}
+
 /* ═══ RESPONSIVE ═══ */
 @media(max-width:1100px){
   .cust-portal .grid-4{grid-template-columns:repeat(2,1fr)}
@@ -786,10 +797,100 @@
 @media(max-width:860px){
   .cust-portal{--sidebar-w:0px}
   .cust-portal .sidebar{display:none}
-  .cust-portal .content{padding:16px}
+  .cust-portal .content{padding:16px;padding-bottom:calc(72px + env(safe-area-inset-bottom))}
   .cust-portal .grid-3{grid-template-columns:1fr}
   .cust-portal .grid-2{grid-template-columns:1fr}
   .cust-portal .topbar{padding:0 16px}
+
+  /* Bottom tab bar — the portal's only navigation at this width */
+  .cust-portal .cust-tabbar{
+    display:flex;
+    align-items:stretch;
+    position:fixed;
+    left:0; right:0; bottom:0;
+    z-index:60; /* above the sticky topbar (40); dev switch stays at 200 */
+    height:calc(64px + env(safe-area-inset-bottom));
+    padding:0 4px env(safe-area-inset-bottom);
+    background:var(--navy-2);
+    border-top:1px solid var(--navy-border);
+  }
+  .cust-portal .cust-tab{
+    position:relative;
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:3px;
+    background:none;
+    border:none;
+    cursor:pointer;
+    padding-top:2px;
+    font-family:var(--f-body);
+    font-size:10px;
+    font-weight:600;
+    letter-spacing:0.02em;
+    color:var(--navy-muted);
+    transition:color .15s;
+  }
+  .cust-portal .cust-tab svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+  .cust-portal .cust-tab.active{color:#fff}
+  .cust-portal .cust-tab.active::before{
+    content:'';
+    position:absolute;
+    top:0; left:50%;
+    transform:translateX(-50%);
+    width:36px; height:3px;
+    background:var(--stripe);
+    border-radius:0 0 3px 3px;
+  }
+
+  /* Account bottom sheet */
+  .cust-portal .cust-sheet-backdrop{
+    display:block;
+    position:fixed;
+    inset:0;
+    z-index:70;
+    background:rgba(15,23,36,.5);
+  }
+  .cust-portal .cust-sheet{
+    display:block;
+    position:fixed;
+    left:0; right:0; bottom:0;
+    z-index:80;
+    background:var(--navy-2);
+    border-top:1px solid var(--navy-border);
+    border-radius:16px 16px 0 0;
+    padding:8px 12px calc(12px + env(safe-area-inset-bottom));
+    box-shadow:0 -12px 32px rgba(0,0,0,.35);
+  }
+  .cust-portal .cust-sheet-grab{
+    width:36px; height:4px;
+    margin:4px auto 10px;
+    border-radius:var(--r-pill);
+    background:var(--navy-border);
+  }
+  .cust-portal .cust-sheet-item{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    width:100%;
+    padding:13px 12px;
+    background:none;
+    border:none;
+    border-radius:var(--r-md);
+    cursor:pointer;
+    font-family:var(--f-body);
+    font-size:14px;
+    font-weight:500;
+    color:#fff;
+    text-align:left;
+    transition:background .12s;
+  }
+  .cust-portal .cust-sheet-item:hover{background:var(--navy-3)}
+  .cust-portal .cust-sheet-item svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;flex-shrink:0}
+  .cust-portal .cust-sheet-item.danger{color:#F87171}
+  .cust-portal .cust-sheet-item.muted{color:var(--navy-muted);justify-content:center}
 }
 @media(max-width:600px){
   .cust-portal .grid-4{grid-template-columns:1fr}

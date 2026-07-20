@@ -8,6 +8,8 @@ import { Camera, Plus, Sparkles, Trash2, X, Sun, Cloud, CloudRain, CloudSnow, Za
 import { format, parseISO } from 'date-fns';
 import MotionDrawer from '../../../../components/ui/MotionDrawer';
 import { Button } from '../../../../components/ui/button';
+import { inputField } from '../../components/ledger';
+import { cn } from '../../../../lib/cn';
 import { useGanttSideStore } from '../../store';
 import { uploadAndAttach } from './uploadDiaryPhoto';
 import { uploadPhoto } from '../../../../lib/api/photos';
@@ -520,29 +522,40 @@ export function DiaryEntryDrawer({
 
   const livePhotoIds = entry?.photoIds ?? [];
 
+  // Close-guard (E8): Esc / backdrop / X no-op while an upload or the create
+  // batch is in flight so a stray dismiss can't orphan a half-written entry.
+  // Also bail while Sparky is open: Sparky is a hand-rolled modal (not a
+  // MotionDrawer), so it's absent from MotionDrawer's openStack — one Esc would
+  // otherwise fire Sparky's close AND this drawer's, discarding an in-progress
+  // entry. Programmatic closes after a successful save call onClose directly.
+  const guardedClose = () => {
+    if (uploadBusy || creating || sparkyOpen) return;
+    onClose();
+  };
+
   return (
     <MotionDrawer
       open={open}
-      onClose={onClose}
+      onClose={guardedClose}
       ariaLabel="Site diary entry"
       sizeClass="sm:w-[520px] lg:w-[600px]"
     >
       <div className="flex h-full min-h-0 flex-col">
         {/* Header */}
-        <header className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+        <header className="flex items-center justify-between border-b border-[#EFEBE0] px-5 py-3">
           <div>
             <h2 className="text-[17px] font-medium" style={{ fontFamily: "'Fraunces', Georgia, serif" }}>
               {drawerTitle}
             </h2>
             {!isCreate && entry ? (
-              <p className="text-[11px] text-slate-400 mt-0.5">Auto-saves on blur</p>
+              <p className="text-[11px] text-[#A0A0A0] mt-0.5">Auto-saves on blur</p>
             ) : null}
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={guardedClose}
             aria-label="Close"
-            className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500"
+            className="grid min-h-11 min-w-11 place-items-center rounded-md text-[#A0A0A0] hover:bg-[#F0EDE4] hover:text-[#3A3A3A]"
           >
             <X className="h-4 w-4" />
           </button>
@@ -553,13 +566,13 @@ export function DiaryEntryDrawer({
           {/* Description */}
           <section>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+              <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6B6B6B]">
                 Description
               </label>
               <button
                 type="button"
                 onClick={() => setSparkyOpen(true)}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-slate-200 bg-white text-[11.5px] font-semibold text-slate-700 hover:bg-slate-50 hover:border-emerald-300"
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-[#E6E1D4] bg-white text-[11.5px] font-semibold text-[#3A3A3A] hover:bg-[#FAF8F2] hover:border-[#2F8F5C]"
               >
                 <Sparkles className="h-3 w-3 text-[#C8841E]" />
                 Ask Sparky
@@ -572,13 +585,13 @@ export function DiaryEntryDrawer({
               autoFocus={isCreate}
               rows={5}
               placeholder="What happened today? Mention worker, location, milestones, blockers…"
-              className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none"
+              className={inputField}
             />
           </section>
 
           {/* Time & status */}
           <section>
-            <label className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 mb-1.5">
+            <label className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6B6B6B] mb-1.5">
               Time &amp; status
             </label>
             <div className="grid grid-cols-3 gap-2">
@@ -587,14 +600,14 @@ export function DiaryEntryDrawer({
                 value={startTime}
                 onChange={(e) => setStartTime(e.target.value)}
                 onBlur={commitStartTime}
-                className="rounded-md border border-slate-200 px-2.5 py-1.5 text-sm"
+                className={inputField}
               />
               <input
                 type="time"
                 value={endTime}
                 onChange={(e) => setEndTime(e.target.value)}
                 onBlur={commitEndTime}
-                className="rounded-md border border-slate-200 px-2.5 py-1.5 text-sm"
+                className={inputField}
               />
               <div className="flex items-center gap-1">
                 {STATUS_OPTIONS.map((s) => {
@@ -605,7 +618,7 @@ export function DiaryEntryDrawer({
                       type="button"
                       onClick={() => commitStatus(s.value)}
                       className={`flex-1 px-2 py-1 rounded-full border text-[11px] font-semibold ${
-                        on ? s.pill : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                        on ? s.pill : 'bg-white text-[#6B6B6B] border-[#E6E1D4] hover:bg-[#FAF8F2]'
                       }`}
                     >
                       {s.label}
@@ -615,7 +628,7 @@ export function DiaryEntryDrawer({
               </div>
             </div>
             {isCreate ? (
-              <p className="mt-1 text-[10.5px] text-slate-400">
+              <p className="mt-1 text-[10.5px] text-[#A0A0A0]">
                 Start time auto-stamped to now. Edit if needed.
               </p>
             ) : null}
@@ -624,10 +637,10 @@ export function DiaryEntryDrawer({
           {/* Primary worker */}
           {draftPersonnel[0] ? (
             <section>
-              <label className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 mb-1.5">
+              <label className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6B6B6B] mb-1.5">
                 Primary worker
               </label>
-              <div className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-2">
+              <div className="flex items-center gap-3 rounded-md border border-[#E6E1D4] px-3 py-2">
                 <div
                   className="w-9 h-9 rounded-full grid place-items-center text-white text-[12px] font-semibold"
                   style={{ background: WORKER_COLORS[colorIndexForWorker(draftPersonnel[0].workerId)] }}
@@ -635,8 +648,8 @@ export function DiaryEntryDrawer({
                   {initialsFor(draftPersonnel[0].workerName)}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold text-slate-900 truncate">{draftPersonnel[0].workerName}</div>
-                  <div className="text-xs text-slate-500 truncate">
+                  <div className="text-sm font-semibold text-[#1A1A1A] truncate">{draftPersonnel[0].workerName}</div>
+                  <div className="text-xs text-[#6B6B6B] truncate">
                     {draftPersonnel[0].role}{draftPersonnel[0].company ? ` · ${draftPersonnel[0].company}` : ''}
                   </div>
                 </div>
@@ -649,9 +662,9 @@ export function DiaryEntryDrawer({
                     value={draftPersonnel[0].hours || ''}
                     onChange={(e) => handlePrimaryHoursChange(e.target.value)}
                     placeholder="0"
-                    className="w-16 rounded-md border border-slate-200 px-2 py-1 text-sm text-right"
+                    className={cn(inputField, 'w-16 px-2 py-1 text-right tabular-nums')}
                   />
-                  <span className="text-xs text-slate-500">h</span>
+                  <span className="text-xs text-[#6B6B6B]">h</span>
                 </div>
               </div>
             </section>
@@ -660,13 +673,13 @@ export function DiaryEntryDrawer({
           {/* Additional personnel */}
           <section>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+              <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6B6B6B]">
                 Additional personnel
               </label>
               <button
                 type="button"
                 onClick={() => setShowAddPerson((v) => !v)}
-                className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-800"
+                className="inline-flex items-center gap-1 text-xs font-semibold text-[#2F8F5C] hover:text-[#246F47]"
               >
                 <Plus className="h-3 w-3" />
                 Add person
@@ -676,7 +689,7 @@ export function DiaryEntryDrawer({
               {draftPersonnel.slice(1).map((p, sliceIdx) => {
                 const idx = sliceIdx + 1;
                 return (
-                  <div key={p.id} className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2">
+                  <div key={p.id} className="flex items-center gap-2 rounded-md border border-[#E6E1D4] px-3 py-2">
                     <div
                       className="w-7 h-7 rounded-full grid place-items-center text-white text-[10px] font-semibold"
                       style={{ background: WORKER_COLORS[colorIndexForWorker(p.workerId)] }}
@@ -684,8 +697,8 @@ export function DiaryEntryDrawer({
                       {initialsFor(p.workerName)}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-slate-900 truncate">{p.workerName}</div>
-                      <div className="text-[11px] text-slate-500 truncate">
+                      <div className="text-sm font-medium text-[#1A1A1A] truncate">{p.workerName}</div>
+                      <div className="text-[11px] text-[#6B6B6B] truncate">
                         {p.role}{p.company ? ` · ${p.company}` : ''}
                       </div>
                     </div>
@@ -697,13 +710,13 @@ export function DiaryEntryDrawer({
                       value={p.hours || ''}
                       onChange={(e) => handleAdditionalHoursChange(idx, e.target.value)}
                       placeholder="0"
-                      className="w-14 rounded-md border border-slate-200 px-2 py-1 text-xs text-right"
+                      className={cn(inputField, 'w-14 px-2 py-1 text-xs text-right tabular-nums')}
                     />
-                    <span className="text-[10px] text-slate-500">h</span>
+                    <span className="text-[10px] text-[#6B6B6B]">h</span>
                     <button
                       type="button"
                       onClick={() => handleRemovePerson(idx)}
-                      className="p-1 rounded text-slate-400 hover:text-red-600 hover:bg-red-50"
+                      className="p-1 rounded text-[#A0A0A0] hover:text-[#C44545] hover:bg-[#FBE5E5]"
                       aria-label={`Remove ${p.workerName}`}
                     >
                       <X className="h-3.5 w-3.5" />
@@ -712,13 +725,13 @@ export function DiaryEntryDrawer({
                 );
               })}
               {showAddPerson ? (
-                <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-2 space-y-1.5">
+                <div className="rounded-md border border-dashed border-[#D8D2C4] bg-[#FAF8F2] px-3 py-2 space-y-1.5">
                   <input
                     type="text"
                     value={newPerson.name}
                     onChange={(e) => setNewPerson((p) => ({ ...p, name: e.target.value }))}
                     placeholder="Name"
-                    className="w-full rounded border border-slate-200 px-2 py-1 text-xs"
+                    className={cn(inputField, 'px-2 py-1 text-xs')}
                   />
                   <div className="grid grid-cols-3 gap-1.5">
                     <input
@@ -726,14 +739,14 @@ export function DiaryEntryDrawer({
                       value={newPerson.role}
                       onChange={(e) => setNewPerson((p) => ({ ...p, role: e.target.value }))}
                       placeholder="Role"
-                      className="rounded border border-slate-200 px-2 py-1 text-xs"
+                      className={cn(inputField, 'px-2 py-1 text-xs')}
                     />
                     <input
                       type="text"
                       value={newPerson.company}
                       onChange={(e) => setNewPerson((p) => ({ ...p, company: e.target.value }))}
                       placeholder="Company"
-                      className="rounded border border-slate-200 px-2 py-1 text-xs"
+                      className={cn(inputField, 'px-2 py-1 text-xs')}
                     />
                     <input
                       type="number"
@@ -743,7 +756,7 @@ export function DiaryEntryDrawer({
                       value={newPerson.hours}
                       onChange={(e) => setNewPerson((p) => ({ ...p, hours: e.target.value }))}
                       placeholder="Hours"
-                      className="rounded border border-slate-200 px-2 py-1 text-xs text-right"
+                      className={cn(inputField, 'px-2 py-1 text-xs text-right tabular-nums')}
                     />
                   </div>
                   <div className="flex justify-end gap-2">
@@ -753,14 +766,14 @@ export function DiaryEntryDrawer({
                 </div>
               ) : null}
               {draftPersonnel.length <= 1 && !showAddPerson ? (
-                <p className="text-[11px] text-slate-400">Just one worker on this entry. Use Add person to log a crew.</p>
+                <p className="text-[11px] text-[#A0A0A0]">Just one worker on this entry. Use Add person to log a crew.</p>
               ) : null}
             </div>
           </section>
 
           {/* Conditions */}
           <section>
-            <label className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 mb-1.5">
+            <label className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6B6B6B] mb-1.5">
               Conditions
             </label>
             <div className="flex items-center gap-1.5 flex-wrap">
@@ -773,8 +786,8 @@ export function DiaryEntryDrawer({
                     onClick={() => commitWeather(value)}
                     className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[12px] font-medium transition-colors duration-200 ${
                       on
-                        ? 'bg-[#FFF8E1] text-slate-900 border-[#E8C25A]'
-                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                        ? 'bg-[#FFF8E1] text-[#1A1A1A] border-[#E8C25A]'
+                        : 'bg-white text-[#3A3A3A] border-[#E6E1D4] hover:bg-[#FAF8F2]'
                     }`}
                   >
                     <Icon className={`h-3.5 w-3.5 ${on ? 'text-[#D6A22F]' : ''}`} />
@@ -790,9 +803,9 @@ export function DiaryEntryDrawer({
                   onChange={(e) => setTempC(e.target.value)}
                   onBlur={commitTemp}
                   placeholder="—"
-                  className="w-16 rounded-md border border-slate-200 px-2 py-1 text-sm text-right"
+                  className={cn(inputField, 'w-16 px-2 py-1 text-right tabular-nums')}
                 />
-                <span className="text-xs text-slate-500">°C</span>
+                <span className="text-xs text-[#6B6B6B]">°C</span>
               </div>
             </div>
 
@@ -825,23 +838,23 @@ export function DiaryEntryDrawer({
 
           {/* Tags + Common Works picker */}
           <section>
-            <label className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 mb-1.5">
+            <label className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6B6B6B] mb-1.5">
               Tags
             </label>
             <div className="flex flex-wrap gap-1.5 mb-2">
               {tags.length === 0 ? (
-                <span className="text-[11px] text-slate-400">No tags yet. Pick a Common Works template below or type your own.</span>
+                <span className="text-[11px] text-[#A0A0A0]">No tags yet. Pick a Common Works template below or type your own.</span>
               ) : (
                 tags.map((t) => (
                   <span
                     key={t}
-                    className="inline-flex items-center gap-1 rounded-[7px] bg-slate-100 border border-slate-200 px-2 py-0.5 text-[11.5px] font-medium text-slate-700"
+                    className="inline-flex items-center gap-1 rounded-[7px] bg-[#F0EDE4] border border-[#E6E1D4] px-2 py-0.5 text-[11.5px] font-medium text-[#3A3A3A]"
                   >
                     {t}
                     <button
                       type="button"
                       onClick={() => removeTag(t)}
-                      className="text-slate-400 hover:text-red-600"
+                      className="text-[#A0A0A0] hover:text-[#C44545]"
                       aria-label={`Remove ${t}`}
                     >
                       <X className="h-2.5 w-2.5" />
@@ -862,14 +875,14 @@ export function DiaryEntryDrawer({
                   }
                 }}
                 placeholder="Add a tag…"
-                className="flex-1 rounded-md border border-slate-200 px-2.5 py-1.5 text-sm"
+                className={cn(inputField, 'flex-1')}
               />
               <Button size="sm" variant="outline" onClick={() => addTag(tagDraft)}>Add</Button>
             </div>
             <div>
               <div className="flex items-center gap-1.5 mb-1.5">
                 <Zap className="h-3 w-3 text-[#C8841E]" />
-                <span className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                <span className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[#6B6B6B]">
                   Common works
                 </span>
               </div>
@@ -884,8 +897,8 @@ export function DiaryEntryDrawer({
                       onClick={() => toggleTemplateTag(tpl.name)}
                       className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11.5px] font-medium transition-colors ${
                         on
-                          ? 'bg-emerald-600 text-white border-emerald-600'
-                          : 'bg-white text-slate-700 border-slate-200 hover:border-emerald-400 hover:bg-emerald-50/40'
+                          ? 'bg-[#2F8F5C] text-white border-[#2F8F5C]'
+                          : 'bg-white text-[#3A3A3A] border-[#E6E1D4] hover:border-[#2F8F5C] hover:bg-[#E1F3EA]/40'
                       }`}
                     >
                       {tpl.name}
@@ -901,14 +914,14 @@ export function DiaryEntryDrawer({
 
           {/* Photos */}
           <section>
-            <label className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 mb-1.5">
+            <label className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6B6B6B] mb-1.5">
               Photos
             </label>
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploadBusy || creating}
-              className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-200 px-4 py-4 text-sm text-slate-600 hover:border-emerald-400 hover:bg-emerald-50/40 hover:text-slate-900 disabled:opacity-60"
+              className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-[#E6E1D4] px-4 py-4 text-sm text-[#3A3A3A] hover:border-[#2F8F5C] hover:bg-[#E1F3EA]/40 hover:text-[#1A1A1A] disabled:opacity-60"
             >
               <Camera className="h-4 w-4" />
               {uploadBusy ? 'Uploading…' : 'Upload photo'}
@@ -923,20 +936,20 @@ export function DiaryEntryDrawer({
               aria-label="Upload diary photos"
             />
             {uploadError ? (
-              <p className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              <p className="mt-2 rounded-md border border-[#F0C8C8] bg-[#FBE5E5] px-3 py-2 text-xs text-[#C44545]">
                 {uploadError}
               </p>
             ) : null}
 
             {isCreate ? (
               draftPhotoFiles.length === 0 ? (
-                <p className="mt-2 text-[11px] text-slate-400">
+                <p className="mt-2 text-[11px] text-[#A0A0A0]">
                   No photos yet. They upload when you click Create entry.
                 </p>
               ) : (
                 <div className="mt-2 grid grid-cols-3 gap-1.5">
                   {draftPhotoUrls.map((url, idx) => (
-                    <div key={url} className="relative aspect-square overflow-hidden rounded-[7px] border border-slate-200 bg-slate-100">
+                    <div key={url} className="relative aspect-square overflow-hidden rounded-[7px] border border-[#E6E1D4] bg-[#F0EDE4]">
                       <img src={url} alt="" className="h-full w-full object-cover" />
                       <PhotoUploadRing
                         status={uploadStates[idx]?.status ?? 'pending'}
@@ -956,7 +969,7 @@ export function DiaryEntryDrawer({
                 </div>
               )
             ) : livePhotoIds.length === 0 ? (
-              <p className="mt-2 text-[11px] text-slate-400">No photos attached yet.</p>
+              <p className="mt-2 text-[11px] text-[#A0A0A0]">No photos attached yet.</p>
             ) : (
               <div className="mt-2 grid grid-cols-3 gap-1.5">
                 {livePhotoIds.map((id) => (
@@ -968,14 +981,14 @@ export function DiaryEntryDrawer({
         </div>
 
         {/* Footer */}
-        <footer className="flex flex-shrink-0 items-center justify-between gap-3 border-t border-slate-100 px-5 py-3">
+        <footer className="flex flex-shrink-0 items-center justify-between gap-3 border-t border-[#EFEBE0] px-5 py-3">
           {isCreate ? (
             <>
-              <span className="text-xs text-slate-400">
+              <span className="text-xs text-[#A0A0A0]">
                 {creating ? 'Saving…' : "Saving logs today's entry."}
               </span>
               <div className="flex items-center gap-2">
-                <Button variant="outline" onClick={onClose} disabled={creating}>Cancel</Button>
+                <Button variant="outline" onClick={guardedClose} disabled={creating}>Cancel</Button>
                 <Button onClick={handleCreate} disabled={!canCreate || creating}>
                   {creating ? 'Saving…' : 'Create entry'}
                 </Button>
@@ -983,16 +996,16 @@ export function DiaryEntryDrawer({
             </>
           ) : (
             <>
-              <span className="text-xs text-slate-400">Auto-saves on blur</span>
+              <span className="text-xs text-[#A0A0A0]">Auto-saves on blur</span>
               {entry ? (
                 confirmDelete ? (
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-red-600">Delete this entry?</span>
+                    <span className="text-xs text-[#C44545]">Delete this entry?</span>
                     <Button variant="outline" size="sm" onClick={() => setConfirmDelete(false)}>Cancel</Button>
                     <button
                       type="button"
                       onClick={handleDelete}
-                      className="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 active:bg-red-800"
+                      className="inline-flex items-center gap-1.5 rounded-md bg-[#C44545] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#A83838] active:bg-[#8F3030]"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                       Confirm
@@ -1002,7 +1015,7 @@ export function DiaryEntryDrawer({
                   <button
                     type="button"
                     onClick={() => setConfirmDelete(true)}
-                    className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-red-50 hover:text-red-600"
+                    className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-[#6B6B6B] hover:bg-[#FBE5E5] hover:text-[#C44545]"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                     Delete entry

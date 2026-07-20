@@ -10,6 +10,8 @@ import { Loader2, Send, PackageCheck, Receipt, X, Check, AlertTriangle, Trash2, 
 
 import { Toaster, type ToastState } from "../../components/ui/Toaster";
 import MotionDrawer from "../../components/ui/MotionDrawer";
+import ItemCombobox from "../../components/ui/ItemCombobox";
+import { cn } from "../../lib/cn";
 import { cardShell, btnPrimary, btnGhost, inputField, StatusPill, type ToneKey } from "../gantt/components/ledger";
 import {
   getPurchaseOrderWithItems, updatePurchaseOrderStatus, receivePurchaseOrder,
@@ -289,7 +291,7 @@ export default function PurchaseOrderDrawer({ poId, onClose, onChanged }: { poId
                               value={e.qty ?? String(i.qtyOrdered)}
                               onChange={(ev) => setEdits((p) => ({ ...p, [i.id]: { ...p[i.id], qty: ev.target.value } }))}
                               onBlur={() => void saveLineEdit(i.id)}
-                              className={`${inputField} w-20 text-right tabular-nums`}
+                              className={cn(inputField, "w-20 text-right tabular-nums")}
                             />
                           ) : (
                             <span className="tabular-nums text-[#3A3A3A]">{fmtQty(i.qtyOrdered)}</span>
@@ -303,7 +305,7 @@ export default function PurchaseOrderDrawer({ poId, onClose, onChanged }: { poId
                               value={recv[i.id] ?? ""}
                               placeholder={remaining > 0 ? fmtQty(remaining) : "0"}
                               onChange={(ev) => setRecv((p) => ({ ...p, [i.id]: ev.target.value }))}
-                              className={`${inputField} w-20 text-right tabular-nums`}
+                              className={cn(inputField, "w-20 text-right tabular-nums")}
                             />
                           </td>
                         )}
@@ -315,7 +317,7 @@ export default function PurchaseOrderDrawer({ poId, onClose, onChanged }: { poId
                               placeholder="—"
                               onChange={(ev) => setEdits((p) => ({ ...p, [i.id]: { ...p[i.id], cost: ev.target.value } }))}
                               onBlur={() => void saveLineEdit(i.id)}
-                              className={`${inputField} w-20 text-right tabular-nums`}
+                              className={cn(inputField, "w-20 text-right tabular-nums")}
                             />
                           ) : (
                             <span className="tabular-nums text-[#6B6B6B]">{i.unitCost != null ? fmtMoney(i.unitCost) : "—"}</span>
@@ -341,11 +343,16 @@ export default function PurchaseOrderDrawer({ poId, onClose, onChanged }: { poId
               {/* Add a line (draft only) */}
               {canEdit && (
                 <div className="flex items-center gap-2 border-t border-[#EFEBE0] bg-[#FCFBF7] px-3 py-2.5">
-                  <select value={addLine.materialId} onChange={(e) => setAddLine((p) => ({ ...p, materialId: e.target.value }))} className={`${inputField} flex-1`}>
-                    <option value="">Add an item…</option>
-                    {materials.map((m) => <option key={m.id} value={m.id}>{m.name}{m.sku ? ` (${m.sku})` : ""}</option>)}
-                  </select>
-                  <input type="number" min={0} step="any" inputMode="decimal" value={addLine.qty} onChange={(e) => setAddLine((p) => ({ ...p, qty: e.target.value }))} placeholder="Qty" className={`${inputField} w-24 text-right tabular-nums`} />
+                  <div className="min-w-0 flex-1">
+                    <ItemCombobox
+                      options={materials.map((m) => ({ id: m.id, label: m.name, sublabel: m.sku }))}
+                      value={addLine.materialId}
+                      onChange={(id) => setAddLine((p) => ({ ...p, materialId: id }))}
+                      placeholder="Add an item — type to search…"
+                      ariaLabel="Add an item"
+                    />
+                  </div>
+                  <input type="number" min={0} step="any" inputMode="decimal" value={addLine.qty} onChange={(e) => setAddLine((p) => ({ ...p, qty: e.target.value }))} placeholder="Qty" className={cn(inputField, "w-24 text-right tabular-nums")} />
                   <button type="button" onClick={() => void handleAddLine()} className="inline-flex items-center gap-1 rounded-md border border-[#E6E1D4] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#2F8F5C] hover:bg-[#FAF8F2]"><Plus className="h-3.5 w-3.5" /> Add</button>
                 </div>
               )}
@@ -398,7 +405,7 @@ export default function PurchaseOrderDrawer({ poId, onClose, onChanged }: { poId
                   <label><span className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-[#6B6B6B]">Date</span>
                     <input type="date" value={inv.date} onChange={(e) => setInv((p) => ({ ...p, date: e.target.value }))} className={inputField} /></label>
                   <label className="w-28"><span className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-[#6B6B6B]">Amount</span>
-                    <input type="number" min={0} step="any" inputMode="decimal" value={inv.amount} onChange={(e) => setInv((p) => ({ ...p, amount: e.target.value }))} className={`${inputField} text-right tabular-nums`} /></label>
+                    <input type="number" min={0} step="any" inputMode="decimal" value={inv.amount} onChange={(e) => setInv((p) => ({ ...p, amount: e.target.value }))} className={cn(inputField, "text-right tabular-nums")} /></label>
                   <button type="button" onClick={() => void handleAddInvoice()} disabled={busy} className={btnGhost}>Match invoice</button>
                 </div>
               </div>

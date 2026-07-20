@@ -13,6 +13,7 @@ import { Plus, RefreshCw, Search, Package, Trash2, X, Printer, Send } from "luci
 import { FRAUNCES, TONE, cardShell, btnPrimary, btnGhost } from "../gantt/components/ledger";
 import { SkeletonLine } from "../../components/ui/skeleton";
 import { Toaster, type ToastState } from "../../components/ui/Toaster";
+import MotionDrawer from "../../components/ui/MotionDrawer";
 import { lineTotal } from "../../lib/commercial/money";
 import { fmtMoney } from "../../lib/format";
 
@@ -169,88 +170,86 @@ function NewVariationModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#1A1A1A]/50 p-4">
-      <div className="flex w-full max-w-md flex-col overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_8px_28px_rgba(20,20,20,0.12)]">
-        <div className="flex items-center justify-between border-b border-[#E6E1D4] px-6 py-4">
-          <div>
-            <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-[#6B6B6B]">Sales &middot; Variations</p>
-            <h2 className="mt-1 text-lg font-medium text-[#1A1A1A]">New variation</h2>
+    <MotionDrawer open onClose={() => { if (!saving) onClose(); }} variant="modal" ariaLabel="New variation" sizeClass="max-w-md">
+      <div className="flex items-center justify-between border-b border-[#E6E1D4] px-6 py-4">
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-[#6B6B6B]">Sales &middot; Variations</p>
+          <h2 className="mt-1 text-lg font-medium text-[#1A1A1A]">New variation</h2>
+        </div>
+        <button type="button" onClick={onClose} disabled={saving} className="rounded-md p-2 text-[#A0A0A0] hover:bg-[#F0EDE4]">
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+      <form onSubmit={(e) => void handleSubmit(e)} className="flex flex-col gap-4 px-6 py-5">
+        <div>
+          <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">
+            Title <span className="text-[#C44545]">*</span>
+          </label>
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            disabled={saving}
+            placeholder="e.g. Additional GPO â€” bedroom wall"
+            className="w-full rounded-md border border-[#E6E1D4] px-3 py-2 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] disabled:opacity-50"
+          />
+        </div>
+        <div>
+          <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">Link to (optional)</label>
+          <div className="mb-2 flex gap-2">
+            {(["none", "job", "project"] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => { setContextType(t); setContextId(""); }}
+                disabled={saving}
+                className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                  contextType === t
+                    ? "border-[#1A1A1A] bg-[#1A1A1A] text-white"
+                    : "border-[#E6E1D4] text-[#6B6B6B] hover:border-[#D8D2C4]"
+                }`}
+              >
+                {t === "none" ? "None" : t === "job" ? "Service job" : "Project"}
+              </button>
+            ))}
           </div>
-          <button type="button" onClick={onClose} disabled={saving} className="rounded-md p-2 text-[#A0A0A0] hover:bg-[#F0EDE4]">
-            <X className="h-5 w-5" />
+          {contextType === "job" && (
+            <select
+              value={contextId}
+              onChange={(e) => setContextId(e.target.value)}
+              disabled={saving}
+              className="w-full rounded-md border border-[#E6E1D4] px-3 py-2 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] disabled:opacity-50"
+            >
+              <option value="">No job selected</option>
+              {jobs.map((j) => (
+                <option key={j.id} value={j.id}>{j.title}</option>
+              ))}
+            </select>
+          )}
+          {contextType === "project" && (
+            <select
+              value={contextId}
+              onChange={(e) => setContextId(e.target.value)}
+              disabled={saving}
+              className="w-full rounded-md border border-[#E6E1D4] px-3 py-2 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] disabled:opacity-50"
+            >
+              <option value="">No project selected</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          )}
+        </div>
+        {err && (
+          <p className="rounded-md border border-[#F0BFBF] bg-[#FBE5E5] px-3 py-2 text-xs text-[#C44545]">{err}</p>
+        )}
+        <div className="flex items-center justify-end gap-2 border-t border-[#E6E1D4] pt-4">
+          <button type="button" onClick={onClose} disabled={saving} className={btnGhost}>Cancel</button>
+          <button type="submit" disabled={saving} className={btnPrimary}>
+            {saving ? "Creating..." : "Create variation"}
           </button>
         </div>
-        <form onSubmit={(e) => void handleSubmit(e)} className="flex flex-col gap-4 px-6 py-5">
-          <div>
-            <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">
-              Title <span className="text-[#C44545]">*</span>
-            </label>
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              disabled={saving}
-              placeholder="e.g. Additional GPO â€” bedroom wall"
-              className="w-full rounded-md border border-[#E6E1D4] px-3 py-2 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] disabled:opacity-50"
-            />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]">Link to (optional)</label>
-            <div className="mb-2 flex gap-2">
-              {(["none", "job", "project"] as const).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => { setContextType(t); setContextId(""); }}
-                  disabled={saving}
-                  className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                    contextType === t
-                      ? "border-[#1A1A1A] bg-[#1A1A1A] text-white"
-                      : "border-[#E6E1D4] text-[#6B6B6B] hover:border-[#D8D2C4]"
-                  }`}
-                >
-                  {t === "none" ? "None" : t === "job" ? "Service job" : "Project"}
-                </button>
-              ))}
-            </div>
-            {contextType === "job" && (
-              <select
-                value={contextId}
-                onChange={(e) => setContextId(e.target.value)}
-                disabled={saving}
-                className="w-full rounded-md border border-[#E6E1D4] px-3 py-2 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] disabled:opacity-50"
-              >
-                <option value="">No job selected</option>
-                {jobs.map((j) => (
-                  <option key={j.id} value={j.id}>{j.title}</option>
-                ))}
-              </select>
-            )}
-            {contextType === "project" && (
-              <select
-                value={contextId}
-                onChange={(e) => setContextId(e.target.value)}
-                disabled={saving}
-                className="w-full rounded-md border border-[#E6E1D4] px-3 py-2 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] disabled:opacity-50"
-              >
-                <option value="">No project selected</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            )}
-          </div>
-          {err && (
-            <p className="rounded-md border border-[#F0BFBF] bg-[#FBE5E5] px-3 py-2 text-xs text-[#C44545]">{err}</p>
-          )}
-          <div className="flex items-center justify-end gap-2 border-t border-[#E6E1D4] pt-4">
-            <button type="button" onClick={onClose} disabled={saving} className={btnGhost}>Cancel</button>
-            <button type="submit" disabled={saving} className={btnPrimary}>
-              {saving ? "Creating..." : "Create variation"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+      </form>
+    </MotionDrawer>
   );
 }
 

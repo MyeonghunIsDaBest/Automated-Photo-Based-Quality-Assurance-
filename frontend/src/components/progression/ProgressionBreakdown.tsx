@@ -33,17 +33,17 @@ function BarRow({ label, value, weight, contribution, showValues, color }: BarRo
   return (
     <div>
       <div className="mb-1 flex items-baseline justify-between text-[11px]">
-        <span className="font-medium text-slate-600">
+        <span className="font-medium text-[#3A3A3A]">
           {label}
-          <span className="ml-1 text-slate-400">· {weight}%</span>
+          <span className="ml-1 text-[#A0A0A0]">· {weight}%</span>
         </span>
         {showValues && (
-          <span className="tabular-nums text-slate-500">
+          <span className="tabular-nums text-[#6B6B6B]">
             {Math.round(value)}% → {contribution.toFixed(1)}
           </span>
         )}
       </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+      <div className="h-1.5 overflow-hidden rounded-full bg-[#F0EDE4]">
         <div
           className="h-1.5 rounded-full transition-all"
           style={{ width: `${Math.min(100, Math.max(0, value))}%`, backgroundColor: color }}
@@ -62,13 +62,13 @@ export default function ProgressionBreakdown({
   const derived = deriveProgress(signals, weights, targetPhotos);
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-3">
+    <div className="rounded-lg border border-[#E6E1D4] bg-white p-3">
       <div className="mb-2 flex items-baseline justify-between">
-        <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500">
+        <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-[#6B6B6B]">
           Derived progress
         </p>
-        <p className="tabular-nums text-base font-medium text-slate-900">
-          {derived.pct}<span className="text-xs text-slate-400">%</span>
+        <p className="tabular-nums text-base font-medium text-[#1A1A1A]">
+          {derived.pct}<span className="text-xs text-[#A0A0A0]">%</span>
         </p>
       </div>
       <div className="space-y-2">

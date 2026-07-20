@@ -63,10 +63,10 @@ export default function GanttToolbar({
   const endLabel   = format(parseISO(activeWindow.endDate), 'MMM d, yyyy');
 
   return (
-    <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#E6E1D4] bg-white px-3 py-2 shadow-sm">
       {/* Left: zoom segmented control + Today button */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="inline-flex items-center gap-0.5 rounded-xl bg-slate-100 p-0.5">
+        <div className="inline-flex items-center gap-0.5 rounded-xl bg-[#F0EDE4] p-0.5">
           {ZOOMS.map((z) => {
             const isActive = z === zoom;
             return (
@@ -75,13 +75,13 @@ export default function GanttToolbar({
                 type="button"
                 onClick={() => onZoomChange(z)}
                 className={`relative px-2.5 py-1 text-xs font-medium transition-colors ${
-                  isActive ? 'text-white' : 'text-slate-600 hover:text-slate-900'
+                  isActive ? 'text-white' : 'text-[#3A3A3A] hover:text-[#1A1A1A]'
                 }`}
               >
                 {isActive && (
                   <motion.span
                     layoutId="gantt-zoom-pill"
-                    className="absolute inset-0 rounded-lg bg-slate-900"
+                    className="absolute inset-0 rounded-lg bg-[#1A1A1A]"
                     transition={
                       prefersReduced
                         ? { duration: 0 }
@@ -100,7 +100,7 @@ export default function GanttToolbar({
           onClick={onScrollToToday}
           disabled={!todayInRange}
           title={todayInRange ? "Scroll the timeline to today's marker" : "Today is outside the active range"}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-[#E6E1D4] bg-white px-2.5 py-1 text-xs font-medium text-[#3A3A3A] transition-colors hover:border-[#D8D2C4] hover:bg-[#FAF8F2] disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Target className="h-3 w-3" />
           Today
@@ -109,12 +109,12 @@ export default function GanttToolbar({
 
       {/* Right: active-range badge + custom range picker */}
       <div className="flex flex-wrap items-center gap-2">
-        <span className="hidden text-[11px] font-medium uppercase tracking-[0.18em] text-slate-400 sm:inline">
+        <span className="hidden text-[11px] font-medium uppercase tracking-[0.18em] text-[#A0A0A0] sm:inline">
           Range
         </span>
-        <span className="tabular-nums rounded-full border border-slate-200 bg-slate-50/60 px-2.5 py-1 text-xs text-slate-700">
+        <span className="tabular-nums rounded-full border border-[#E6E1D4] bg-[#FAF8F2]/60 px-2.5 py-1 text-xs text-[#3A3A3A]">
           {startLabel} → {endLabel}
-          <span className="ml-1.5 text-slate-400">· {totalDays}d</span>
+          <span className="ml-1.5 text-[#A0A0A0]">· {totalDays}d</span>
         </span>
 
         <div className="relative">
@@ -123,8 +123,8 @@ export default function GanttToolbar({
             onClick={() => setRangeOpen((o) => !o)}
             className={`inline-flex items-center gap-1.5 rounded-lg border bg-white px-2.5 py-1 text-xs font-medium transition-colors ${
               hasCustomRange
-                ? 'border-emerald-300 text-emerald-700 hover:bg-emerald-50'
-                : 'border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+                ? 'border-[#A8D0B8] text-[#246F47] hover:bg-[#E5F2EA]'
+                : 'border-[#E6E1D4] text-[#3A3A3A] hover:border-[#D8D2C4] hover:bg-[#FAF8F2]'
             }`}
             aria-haspopup="dialog"
             aria-expanded={rangeOpen}
@@ -150,7 +150,7 @@ export default function GanttToolbar({
                   initial="hidden"
                   animate="visible"
                   exit="exit"
-                  className="absolute right-0 top-full z-50 mt-2 w-72 origin-top-right overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg"
+                  className="absolute right-0 top-full z-50 mt-2 w-72 origin-top-right overflow-hidden rounded-xl border border-[#E6E1D4] bg-white shadow-lg"
                 >
                   <RangePicker
                     initialStart={activeWindow.startDate}
@@ -214,11 +214,11 @@ function RangePicker({
       }}
       className="space-y-3 p-4"
     >
-      <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
+      <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-[#6B6B6B]">
         Custom timeline range
       </p>
       <div className="grid grid-cols-2 gap-2">
-        <label className="flex flex-col gap-1 text-[11px] font-medium text-slate-500">
+        <label className="flex flex-col gap-1 text-[11px] font-medium text-[#6B6B6B]">
           From
           <input
             ref={firstInputRef}
@@ -227,10 +227,10 @@ function RangePicker({
             onChange={(e) => setStart(e.target.value)}
             min={projectStart.slice(0, 10)}
             max={projectEnd.slice(0, 10)}
-            className="rounded-md border border-slate-200 px-2 py-1.5 text-xs text-slate-900 focus:border-slate-400 focus:outline-none"
+            className="rounded-md border border-[#E6E1D4] bg-white px-2 py-1.5 text-xs text-[#1A1A1A] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
           />
         </label>
-        <label className="flex flex-col gap-1 text-[11px] font-medium text-slate-500">
+        <label className="flex flex-col gap-1 text-[11px] font-medium text-[#6B6B6B]">
           To
           <input
             type="date"
@@ -238,7 +238,7 @@ function RangePicker({
             onChange={(e) => setEnd(e.target.value)}
             min={projectStart.slice(0, 10)}
             max={projectEnd.slice(0, 10)}
-            className="rounded-md border border-slate-200 px-2 py-1.5 text-xs text-slate-900 focus:border-slate-400 focus:outline-none"
+            className="rounded-md border border-[#E6E1D4] bg-white px-2 py-1.5 text-xs text-[#1A1A1A] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
           />
         </label>
       </div>
@@ -247,7 +247,7 @@ function RangePicker({
           <button
             type="button"
             onClick={onReset}
-            className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-900"
+            className="inline-flex items-center gap-1 text-[11px] font-medium text-[#6B6B6B] hover:text-[#1A1A1A]"
           >
             <RotateCcw className="h-3 w-3" />
             Reset to project
@@ -256,7 +256,7 @@ function RangePicker({
         <button
           type="submit"
           disabled={invalid}
-          className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+          className="rounded-md bg-[#1A1A1A] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#3A3A3A] disabled:opacity-50"
         >
           Apply
         </button>

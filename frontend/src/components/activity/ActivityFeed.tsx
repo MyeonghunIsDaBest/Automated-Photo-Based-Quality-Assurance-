@@ -80,14 +80,14 @@ export default function ActivityFeed({
 
   if (events.length === 0) {
     return (
-      <p className={`text-center text-sm italic text-slate-400 ${dense ? 'py-6' : 'py-12'}`}>
+      <p className={`text-center text-sm italic text-[#A0A0A0] ${dense ? 'py-6' : 'py-12'}`}>
         {emptyLabel ?? 'No activity yet — uploads, comments, and updates will appear here.'}
       </p>
     );
   }
 
   return (
-    <ul className="divide-y divide-slate-100">
+    <ul className="divide-y divide-[#EFEBE0]">
       {/* `initial={false}` prevents the entrance animation from firing on the
           first paint — the activityHighlight keyframe already handles new
           arrivals via data-just-arrived, and a big stagger on initial mount
@@ -108,24 +108,24 @@ export default function ActivityFeed({
               onClick={() => onSelect?.(e)}
               disabled={!onSelect}
               aria-label={`${e.actorName} ${ACTIVITY_VERBS[e.kind]} ${e.targetLabel}, ${timeAgo(e.timestamp)}`}
-              className={`flex w-full items-center gap-3 text-left transition-colors hover:bg-slate-50 active:bg-slate-100 disabled:hover:bg-transparent disabled:active:bg-transparent disabled:cursor-default ${
+              className={`flex w-full items-center gap-3 text-left transition-colors hover:bg-[#FAF8F2] active:bg-[#F0EDE4] disabled:hover:bg-transparent disabled:active:bg-transparent disabled:cursor-default ${
                 dense ? 'px-3 py-2.5' : 'px-4 py-3 sm:px-5'
               }`}
             >
               <div className={`flex flex-shrink-0 items-center justify-center rounded-full ${
                 dense ? 'h-8 w-8' : 'h-9 w-9'
-              } ${ICON_TONE[e.kind] ?? 'bg-slate-50'}`}>
+              } ${ICON_TONE[e.kind] ?? 'bg-[#F0EDE4]'}`}>
                 <ActivityIcon kind={e.kind} />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm text-slate-800">
-                  <span className="font-medium text-slate-900">{e.actorName}</span>{' '}
-                  <span className="text-slate-500">{ACTIVITY_VERBS[e.kind]}</span>{' '}
+                <p className="truncate text-sm text-[#3A3A3A]">
+                  <span className="font-medium text-[#1A1A1A]">{e.actorName}</span>{' '}
+                  <span className="text-[#6B6B6B]">{ACTIVITY_VERBS[e.kind]}</span>{' '}
                   {e.targetLabel}
                 </p>
-                <p className="text-[11px] text-slate-400">{timeAgo(e.timestamp)}</p>
+                <p className="text-[11px] text-[#A0A0A0]">{timeAgo(e.timestamp)}</p>
               </div>
-              {onSelect && <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-300" />}
+              {onSelect && <ChevronRight className="h-4 w-4 flex-shrink-0 text-[#D8D2C4]" />}
             </button>
           </motion.li>
         ))}
@@ -135,14 +135,14 @@ export default function ActivityFeed({
 }
 
 const ICON_TONE: Partial<Record<ActivityKind, string>> = {
-  ai_analysed:  'bg-blue-50',
-  safety_flag:  'bg-red-50',
-  invoice_paid: 'bg-emerald-50',
+  ai_analysed:  'bg-[#E3F0FA]',
+  safety_flag:  'bg-[#FBE5E5]',
+  invoice_paid: 'bg-[#E1F3EA]',
 };
 
 function ActivityIcon({ kind }: { kind: ActivityKind }) {
   const Icon = ICON_FOR_KIND[kind];
-  const tone = ICON_FG[kind] ?? 'text-slate-500';
+  const tone = ICON_FG[kind] ?? 'text-[#6B7A8F]';
   return <Icon className={`h-3.5 w-3.5 ${tone}`} aria-hidden />;
 }
 
@@ -163,9 +163,9 @@ const ICON_FOR_KIND: Record<ActivityKind, typeof TrendingUp> = {
 };
 
 const ICON_FG: Partial<Record<ActivityKind, string>> = {
-  ai_analysed:  'text-blue-600',
-  safety_flag:  'text-red-600',
-  invoice_paid: 'text-emerald-600',
+  ai_analysed:  'text-[#2A6F9E]',
+  safety_flag:  'text-[#C44545]',
+  invoice_paid: 'text-[#2F8F5C]',
 };
 
 // Lifted from Gantt OverviewTab so the helper has a single home. Date-fns is

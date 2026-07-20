@@ -3,6 +3,7 @@
 // Opens on "?" (shift+/). Rows: F or / focus search · N new service job
 // (manager-only note) · Esc clear search / close dialogs · ? this sheet.
 
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { FRAUNCES } from "../gantt/components/ledger";
 
@@ -27,7 +28,9 @@ interface ShortcutsModalProps {
 export function ShortcutsModal({ open, onClose }: ShortcutsModalProps) {
   if (!open) return null;
 
-  return (
+  // Portaled to <body>: the routed page sits inside a transform-animated
+  // wrapper, which would trap this fixed overlay above the phone tab bar.
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-[#1A1A1A]/50 p-4"
       style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}
@@ -83,6 +86,7 @@ export function ShortcutsModal({ open, onClose }: ShortcutsModalProps) {
           ))}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

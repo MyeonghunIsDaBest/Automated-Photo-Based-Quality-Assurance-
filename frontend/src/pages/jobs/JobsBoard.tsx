@@ -16,8 +16,12 @@
 //          layout springs for card moves.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Navigate } from "react-router-dom";
-import { KanbanSquare, Clock, Calendar, CheckCircle2 } from "lucide-react";
+import {
+  KanbanSquare, Clock, Calendar, CheckCircle2, ClipboardList, Zap, Check,
+  Archive, ChevronLeft, ChevronRight, ArrowLeftRight, type LucideIcon,
+} from "lucide-react";
 import { motion, MotionConfig } from "framer-motion";
 
 import { useAppStore } from "../../store";
@@ -38,10 +42,12 @@ import { updateProject } from "../../lib/api/projects";
 import { listProfiles } from "../../lib/api/profiles";
 import type { Profile } from "../../types";
 
-import { LedgerHeader, cardShell, FRAUNCES, TONE } from "../gantt/components/ledger";
+import { LedgerHeader, cardShell, FRAUNCES, TONE, type ToneKey } from "../gantt/components/ledger";
 import { Toaster, type ToastState } from "../../components/ui/Toaster";
 import { BoardSkeleton } from "../../components/ui/skeleton";
+import { useMediaQuery } from "../../lib/hooks/useMediaQuery";
 import { BoardCardItem } from "./BoardCardItem";
+import MoveJobSheet from "./MoveJobSheet";
 import { BoardToolbar, type TypeFilter, type SortMode } from "./BoardToolbar";
 import { ScheduleDatePopover } from "./ScheduleDatePopover";
 import { NewWorkModal } from "./NewWorkModal";
@@ -64,23 +70,25 @@ interface PendingConfirm {
 
 // ─── constants ───────────────────────────────────────────────────────────────
 
-// Column accent bar colours (2px top bar per column)
-const COLUMN_ACCENT: Record<BoardColumn, string> = {
-  pending:     "#8A8378",
-  scheduled:   "#1A1A1A",
-  in_progress: TONE.amber.dot,
-  completed:   "#2F8F5C",
-  invoiced:    "#C8841E",
-  paid:        "#246F47",
+// Column lifecycle tones (test.html board mock, P9.B7): 3px strip + toned
+// count pill + label icon all draw from the same TONE entry, so "sky" always
+// means Scheduled, "violet" Invoiced, "emerald" Paid — board-wide.
+const COLUMN_TONE: Record<BoardColumn, ToneKey> = {
+  pending:     "slate",
+  scheduled:   "sky",
+  in_progress: "amber",
+  completed:   "sage",
+  invoiced:    "violet",
+  paid:        "emerald",
 };
 
-const COLUMNS: { key: BoardColumn; label: string }[] = [
-  { key: "pending",     label: "Pending" },
-  { key: "scheduled",   label: "Scheduled" },
-  { key: "in_progress", label: "In Progress" },
-  { key: "completed",   label: "Completed" },
-  { key: "invoiced",    label: "Invoiced" },
-  { key: "paid",        label: "Paid" },
+const COLUMNS: { key: BoardColumn; label: string; icon: LucideIcon }[] = [
+  { key: "pending",     label: "Pending",     icon: ClipboardList },
+  { key: "scheduled",   label: "Scheduled",   icon: Calendar },
+  { key: "in_progress", label: "In Progress", icon: Zap },
+  { key: "completed",   label: "Completed",   icon: Check },
+  { key: "invoiced",    label: "Invoiced",    icon: Archive },
+  { key: "paid",        label: "Paid",        icon: CheckCircle2 },
 ];
 
 /** Per-column quiet lines — italic serif, the house voice (Design §7). */
@@ -150,11 +158,16 @@ interface JobsBoardProps {
   initialJobId?: string | null;
   /** Deep-link: start on a type filter (?kind= service|maintenance|project). */
   initialKind?: TypeFilter | null;
+  /** Deep-link: open the archived view on mount (Jobs "Archived" sub-view). */
+  initialShowArchived?: boolean;
+  /** Focus a single lifecycle column (Jobs "Pending / In progress / Complete /
+   *  Invoiced" sub-views); null = the full board. */
+  focusColumn?: BoardColumn | null;
 }
 
 // ─── component ───────────────────────────────────────────────────────────────
 
-export default function JobsBoard({ embedded = false, onCardsChanged, initialJobId = null, initialKind = null }: JobsBoardProps = {}) {
+export default function JobsBoard({ embedded = false, onCardsChanged, initialJobId = null, initialKind = null, initialShowArchived = false, focusColumn = null }: JobsBoardProps = {}) {
   const currentProfile = useAppStore((s) => s.currentProfile);
 
   const denied = !canViewJobsBoard(currentProfile);
@@ -166,8 +179,11 @@ export default function JobsBoard({ embedded = false, onCardsChanged, initialJob
   const [error, setError] = useState<string | null>(null);
   const [includeCancelled, setIncludeCancelled] = useState(false);
   // When on, the board swaps the active columns for a searchable archived list.
-  const [showArchived, setShowArchived] = useState(false);
+  const [showArchived, setShowArchived] = useState(initialShowArchived);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>(initialKind ?? "all");
+
+  // Horizontal board scroller (edge fades + hover arrows, P9.B7).
+  const boardScrollRef = useRef<HTMLDivElement>(null);
 
   // ── Search + filters ──────────────────────────────────────────────────────
   const [search, setSearch] = useState("");
@@ -203,11 +219,48 @@ export default function JobsBoard({ embedded = false, onCardsChanged, initialJob
   // Service job detail drawer
   const [openJobId, setOpenJobId] = useState<string | null>(null);
 
+  // ── Phone board (P9.C) ────────────────────────────────────────────────────
+  // Native HTML5 drag never fires on touch, so below md the six-lane drag
+  // board swaps for ONE full-width column + a snapping status-chip strip, and
+  // each card gains a Move button opening a bottom sheet. The two layouts are
+  // never mounted together (touch and drag handlers must not share a card).
+  // Phrased as max-width so useMediaQuery's false default (jsdom/SSR) keeps
+  // the DESKTOP board — the hook's documented safe layout (same convention
+  // as GanttChart's isNarrow query).
+  const isPhone = useMediaQuery("(max-width: 767.98px)");
+  const isDesktop = !isPhone;
+  // Touch-first tablets (iPad/Android ≥768px) get the desktop lanes but HTML5
+  // drag never fires there either — a coarse primary pointer keeps the Move
+  // button available on desktop cards too.
+  const coarsePointer = useMediaQuery("(pointer: coarse)");
+  const [activeCol, setActiveCol] = useState<BoardColumn>(focusColumn ?? "pending");
+  // The sheet stores the card's KEY, never the object — the live card is
+  // re-derived every render so a realtime refetch can't leave the sheet
+  // showing a stale column (and a vanished card closes it honestly).
+  const [moveSheetKey, setMoveSheetKey] = useState<{ type: BoardCardType; id: string } | null>(null);
+  // Once-guard: during MotionDrawer's 250ms exit the previous render's rows
+  // are still tappable — without this a double-tap fires a second move.
+  const movePickedRef = useRef(false);
+
+  const openMoveSheet = (card: BoardCard) => {
+    movePickedRef.current = false;
+    setMoveSheetKey({ type: card.type, id: card.id });
+  };
+
   // Deep-link (?job=…): open the drawer, and follow later URL changes while
   // the board stays mounted (e.g. two "View job" clicks in a row).
   useEffect(() => {
     if (initialJobId) setOpenJobId(initialJobId);
   }, [initialJobId]);
+
+  // Sub-view deep-links change the query while the board stays mounted, so sync
+  // archived + focused-column state on later prop changes (not just at mount).
+  useEffect(() => {
+    setShowArchived(initialShowArchived);
+  }, [initialShowArchived]);
+  useEffect(() => {
+    if (focusColumn) setActiveCol(focusColumn);
+  }, [focusColumn]);
 
   // Shortcuts modal
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -430,6 +483,45 @@ export default function JobsBoard({ embedded = false, onCardsChanged, initialJob
     });
   };
 
+  // ── Tap-to-move (P9.C) — the MoveJobSheet's path through the SAME engine
+  //    the drag path uses: dropResult verdict → blocked toast / confirm dialog /
+  //    date popover / optimistic applyMove. Kept as its own function so the
+  //    drag handlers above stay byte-identical. ───────────────────────────────
+
+  const moveCardTo = (card: BoardCard, targetColumn: BoardColumn) => {
+    if (!canManage) return;
+    if (card.column === targetColumn) return;
+
+    const result = dropResult(card.type, targetColumn);
+
+    if (result.kind === "blocked") {
+      setToast({ message: result.reason, type: "info" });
+      return;
+    }
+    if (result.kind === "confirm") {
+      setPendingConfirm({ id: card.id, status: result.status });
+      return;
+    }
+    if (result.kind === "needs-date") {
+      setPendingSchedule({ type: card.type, id: card.id, title: card.title });
+      return;
+    }
+
+    // result.kind === 'apply'
+    const originalColLabel = COLUMNS.find((c) => c.key === card.column)?.label ?? card.column;
+    void applyMove(card.type, card.id, result.status, targetColumn).then(({ ok, landedColumn }) => {
+      if (ok) {
+        const landedLabel = COLUMNS.find((c) => c.key === landedColumn)?.label ?? landedColumn;
+        announce(`${card.title} moved to ${landedLabel}`);
+        // Drag gets its feedback from the card landing under the pointer;
+        // a tap needs an explicit cue.
+        setToast({ message: `Moved to ${landedLabel}.`, type: "success" });
+      } else {
+        announce(`Move failed — ${card.title} returned to ${originalColLabel}`);
+      }
+    });
+  };
+
   // ── Apply move ────────────────────────────────────────────────────────────
 
   const applyMove = async (
@@ -575,6 +667,15 @@ export default function JobsBoard({ embedded = false, onCardsChanged, initialJob
     const override = optimisticMove.get(c.id);
     return override ? { ...c, column: override } : c;
   });
+
+  // The Move sheet's card, re-derived from LIVE data every render (P9.C review
+  // fix): a teammate's concurrent move updates "Here now" in place, and a card
+  // that vanishes (archived/cancelled/deleted mid-sheet) closes the sheet.
+  const moveSheetCard = moveSheetKey
+    ? cardsWithOptimistic.find(
+        (c) => c.id === moveSheetKey.id && c.type === moveSheetKey.type && !c.cancelled && !c.archived,
+      ) ?? null
+    : null;
 
   // Sort cards within a column per the toolbar toggle:
   //   "date" → newest first (createdAt desc)
@@ -726,11 +827,39 @@ export default function JobsBoard({ embedded = false, onCardsChanged, initialJob
           </div>
         )}
 
-        {/* Board columns */}
-        {!loading && !error && !showArchived && (
+        {/* Board columns — fixed-width lanes in an edge-faded scroller with
+            hover arrows (test.html mock). Drag handlers are untouched.
+            DESKTOP ONLY (P9.C): below md the drag board never mounts — phones
+            get the chip-strip + single-column layout further down instead. */}
+        {!loading && !error && !showArchived && isDesktop && (
           <MotionConfig reducedMotion="user">
-            <div className="flex gap-3 overflow-x-auto pb-2">
-              {COLUMNS.map((col, colIndex) => {
+            <div className="group/board relative">
+              <button
+                type="button"
+                aria-label="Scroll columns left"
+                onClick={() => boardScrollRef.current?.scrollBy({ left: -320, behavior: "smooth" })}
+                className="pointer-events-none absolute -left-1 top-16 z-10 hidden h-[34px] w-[34px] items-center justify-center rounded-full border border-[#E6E1D4] bg-white text-[#3A3A3A] opacity-0 shadow-[0_18px_40px_-14px_rgba(15,23,42,0.24)] transition-opacity hover:bg-[#FAF8F2] group-hover/board:pointer-events-auto group-hover/board:opacity-100 md:flex"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                aria-label="Scroll columns right"
+                onClick={() => boardScrollRef.current?.scrollBy({ left: 320, behavior: "smooth" })}
+                className="pointer-events-none absolute -right-1 top-16 z-10 hidden h-[34px] w-[34px] items-center justify-center rounded-full border border-[#E6E1D4] bg-white text-[#3A3A3A] opacity-0 shadow-[0_18px_40px_-14px_rgba(15,23,42,0.24)] transition-opacity hover:bg-[#FAF8F2] group-hover/board:pointer-events-auto group-hover/board:opacity-100 md:flex"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+              <div
+                ref={boardScrollRef}
+                className="overflow-x-auto pb-2"
+                style={{
+                  maskImage: "linear-gradient(to right, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%)",
+                  WebkitMaskImage: "linear-gradient(to right, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%)",
+                }}
+              >
+                <div className="flex gap-4">
+              {(focusColumn ? COLUMNS.filter((c) => c.key === focusColumn) : COLUMNS).map((col, colIndex) => {
                 const colCards = cardsForColumn(col.key);
                 const isOver = dragOver === col.key;
                 const entrancePlayed = entrancePlayedRef.current;
@@ -757,29 +886,37 @@ export default function JobsBoard({ embedded = false, onCardsChanged, initialJob
                     onDragLeave={canManage ? handleDragLeave : undefined}
                     onDrop={canManage ? handleDrop(col.key) : undefined}
                     className={[
-                      "flex min-w-[280px] flex-1 flex-col overflow-hidden rounded-[14px] border transition-colors",
+                      "flex w-[min(82vw,300px)] shrink-0 flex-col overflow-hidden rounded-[16px] border transition-colors md:w-[300px]",
                       isOver
                         ? "border-[#E6E1D4] bg-[#F0EDE4] outline-dashed outline-1 -outline-offset-4 outline-[#D8D2C4]"
                         : "border-[#E6E1D4] bg-[#FAF8F2]",
                     ].join(" ")}
                   >
-                    {/* 2px accent bar per column */}
+                    {/* 3px lifecycle-tone strip (mock spec) */}
                     <div
                       aria-hidden
-                      className="h-0.5 w-full shrink-0"
-                      style={{ background: COLUMN_ACCENT[col.key] }}
+                      className="h-[3px] w-full shrink-0"
+                      style={{ background: TONE[COLUMN_TONE[col.key]].fg }}
                     />
 
-                    {/* Column header */}
-                    <div className="border-b border-[#E6E1D4] px-4 pt-3 pb-2">
-                      <div className="flex items-center justify-between">
+                    {/* Column header — toned icon + label + Fraunces count pill */}
+                    <div className="px-3.5 pb-2.5 pt-3">
+                      <div className="flex items-center justify-between gap-2">
                         <span
-                          className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6B6B6B]"
+                          className="flex items-center gap-[7px] text-[13.5px] font-bold text-[#1A1A1A]"
                           aria-label={`${col.label}, ${colCards.length} item${colCards.length !== 1 ? "s" : ""}`}
                         >
+                          <col.icon className="h-4 w-4" strokeWidth={1.75} style={{ color: TONE[COLUMN_TONE[col.key]].fg }} />
                           {col.label}
                         </span>
-                        <span className="rounded-full border border-[#E6E1D4] bg-white px-2 py-0.5 text-[11px] font-semibold tabular-nums text-[#3A3A3A]">
+                        <span
+                          className="flex h-[22px] min-w-6 items-center justify-center rounded-full px-[7px] text-[12.5px] font-semibold tabular-nums"
+                          style={{
+                            fontFamily: FRAUNCES,
+                            color: TONE[COLUMN_TONE[col.key]].fg,
+                            backgroundColor: TONE[COLUMN_TONE[col.key]].bg,
+                          }}
+                        >
                           {colCards.length}
                         </span>
                       </div>
@@ -841,6 +978,20 @@ export default function JobsBoard({ embedded = false, onCardsChanged, initialJob
                                 todayIso={todayIso}
                                 now={nowDate}
                               />
+                              {/* Touch-first tablets (≥768px, coarse pointer) see the
+                                  desktop lanes but HTML5 drag never fires from touch —
+                                  the Move sheet is their only way to move a card. */}
+                              {canManage && coarsePointer && !card.cancelled && !card.archived && (
+                                <button
+                                  type="button"
+                                  onClick={() => openMoveSheet(card)}
+                                  aria-label={`Move ${card.title}`}
+                                  className="mt-1 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[11px] border border-[#E6E1D4] bg-white text-[12.5px] font-semibold text-[#3A3A3A] transition-colors active:bg-[#FAF8F2]"
+                                >
+                                  <ArrowLeftRight className="h-3.5 w-3.5 text-[#A0A0A0]" />
+                                  Move
+                                </button>
+                              )}
                             </motion.div>
                           );
                         })
@@ -884,9 +1035,171 @@ export default function JobsBoard({ embedded = false, onCardsChanged, initialJob
                   </motion.div>
                 );
               })}
+                </div>
+              </div>
             </div>
           </MotionConfig>
         )}
+
+        {/* ── Phone board (P9.C) — one column at a time, chosen by a snapping
+               44px status-chip strip. Cards are tap-only here (no drag props);
+               each gets a Move row that opens the bottom sheet. ───────────── */}
+        {!loading && !error && !showArchived && !isDesktop && (() => {
+          const activeMeta = COLUMNS.find((c) => c.key === activeCol) ?? COLUMNS[0];
+          const colCards = cardsForColumn(activeCol);
+          const microMetric = renderMicroMetric(activeCol);
+          const isExpanded = expandedCols.has(activeCol);
+          const overCap = colCards.length > COLUMN_RENDER_CAP;
+          const canAddHere = canManage && activeCol !== "invoiced" && activeCol !== "paid";
+          const shownCards = isExpanded ? colCards : colCards.slice(0, COLUMN_RENDER_CAP);
+          return (
+            <div>
+              {/* Status-chip strip — thumb-sized column switcher with live counts */}
+              <div
+                role="group"
+                aria-label="Board column"
+                className="-mx-4 mb-3 overflow-x-auto px-4 sm:-mx-6 sm:px-6"
+                style={{ scrollSnapType: "x proximity", scrollbarWidth: "none" }}
+              >
+                <div className="flex w-max gap-2 pb-1">
+                  {COLUMNS.map((col) => {
+                    const active = col.key === activeCol;
+                    const tone = TONE[COLUMN_TONE[col.key]];
+                    const count = cardsForColumn(col.key).length;
+                    return (
+                      <button
+                        key={col.key}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={(e) => {
+                          setActiveCol(col.key);
+                          // inline:'nearest' — centering would fight the strip's
+                          // snap-align:start and re-snap in a two-stage jerk.
+                          e.currentTarget.scrollIntoView({ behavior: "smooth", inline: "nearest", block: "nearest" });
+                        }}
+                        className={[
+                          "flex min-h-11 shrink-0 items-center gap-2 rounded-full border px-3.5 text-[13px] font-semibold transition-colors",
+                          active
+                            ? "border-[#1A1A1A] bg-[#1A1A1A] text-white"
+                            : "border-[#E6E1D4] bg-white text-[#3A3A3A]",
+                        ].join(" ")}
+                        style={{ scrollSnapAlign: "start" }}
+                      >
+                        <span aria-hidden className="h-2 w-2 shrink-0 rounded-full" style={{ background: tone.dot }} />
+                        {col.label}
+                        <span
+                          className={`text-[12.5px] font-semibold tabular-nums ${active ? "text-white/75" : "text-[#6B6B6B]"}`}
+                          style={{ fontFamily: FRAUNCES }}
+                        >
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* The active column, full width */}
+              <div className="flex flex-col overflow-hidden rounded-[16px] border border-[#E6E1D4] bg-[#FAF8F2]">
+                <div aria-hidden className="h-[3px] w-full shrink-0" style={{ background: TONE[COLUMN_TONE[activeCol]].fg }} />
+                <div className="px-3.5 pb-2.5 pt-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span
+                      className="flex items-center gap-[7px] text-[13.5px] font-bold text-[#1A1A1A]"
+                      aria-label={`${activeMeta.label}, ${colCards.length} item${colCards.length !== 1 ? "s" : ""}`}
+                    >
+                      <activeMeta.icon className="h-4 w-4" strokeWidth={1.75} style={{ color: TONE[COLUMN_TONE[activeCol]].fg }} />
+                      {activeMeta.label}
+                    </span>
+                    <span
+                      className="flex h-[22px] min-w-6 items-center justify-center rounded-full px-[7px] text-[12.5px] font-semibold tabular-nums"
+                      style={{
+                        fontFamily: FRAUNCES,
+                        color: TONE[COLUMN_TONE[activeCol]].fg,
+                        backgroundColor: TONE[COLUMN_TONE[activeCol]].bg,
+                      }}
+                    >
+                      {colCards.length}
+                    </span>
+                  </div>
+                  {microMetric && <div className="mt-1">{microMetric}</div>}
+                </div>
+
+                <div className="flex flex-col gap-2.5 p-3">
+                  {colCards.length === 0 ? (
+                    <p className="px-4 py-10 text-center text-[13px] italic text-[#A0A0A0]" style={{ fontFamily: FRAUNCES }}>
+                      {EMPTY_COPY[activeCol]}
+                    </p>
+                  ) : (
+                    shownCards.map((card) => {
+                      const cardKey = `${card.type}-${card.id}`;
+                      return (
+                        <div key={cardKey} className="flex flex-col gap-1">
+                          <BoardCardItem
+                            card={card}
+                            draggable={false}
+                            isDragging={false}
+                            onOpenService={(id) => setOpenJobId(id)}
+                            profilesById={profilesById}
+                            canManage={canManage}
+                            todayIso={todayIso}
+                            now={nowDate}
+                          />
+                          {/* Cancelled/archived cards are records, not work —
+                              moving one would silently resurrect it. */}
+                          {canManage && !card.cancelled && !card.archived && (
+                            <button
+                              type="button"
+                              onClick={() => openMoveSheet(card)}
+                              aria-label={`Move ${card.title}`}
+                              className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[11px] border border-[#E6E1D4] bg-white text-[12.5px] font-semibold text-[#3A3A3A] transition-colors active:bg-[#FAF8F2]"
+                            >
+                              <ArrowLeftRight className="h-3.5 w-3.5 text-[#A0A0A0]" />
+                              Move
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {(overCap || canAddHere) && (
+                  <div className="flex flex-col gap-2 border-t border-[#E6E1D4] p-3">
+                    {overCap && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedCols((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(activeCol)) next.delete(activeCol);
+                            else next.add(activeCol);
+                            return next;
+                          })
+                        }
+                        className="min-h-11 self-center rounded-full border border-[#E6E1D4] bg-white px-4 text-[12px] font-semibold text-[#3A3A3A] transition-colors active:bg-[#FAF8F2]"
+                      >
+                        {isExpanded
+                          ? `Show less (top ${COLUMN_RENDER_CAP})`
+                          : `Show all ${colCards.length.toLocaleString("en-AU")}`}
+                      </button>
+                    )}
+                    {canAddHere && (
+                      <button
+                        type="button"
+                        onClick={() => openNewJobForColumn(activeCol)}
+                        className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[9px] border border-dashed border-[#D8D2C4] px-3 text-[12px] text-[#A0A0A0] transition-colors active:border-[#2F8F5C] active:text-[#2F8F5C]"
+                      >
+                        <span className="text-base leading-none">+</span>
+                        Add job
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Archived view — a flat, searchable list (archived jobs leave the active
             board but stay reachable here for reference). Reuses the search + type
@@ -941,8 +1254,28 @@ export default function JobsBoard({ embedded = false, onCardsChanged, initialJob
         busy={scheduleBusy}
       />
 
-      {/* ── Confirm dialog — project → done ──────────────────────────────── */}
-      {pendingConfirm && (
+      {/* ── Move sheet (P9.C) — the tap path into the same move engine ───── */}
+      <MoveJobSheet
+        card={moveSheetCard}
+        columns={COLUMNS}
+        columnTone={COLUMN_TONE}
+        onClose={() => setMoveSheetKey(null)}
+        onPick={(target) => {
+          // Once-guard: the exiting sheet's rows stay tappable for the 250ms
+          // slide-down — a double-tap must not fire a second move.
+          if (movePickedRef.current) return;
+          movePickedRef.current = true;
+          const card = moveSheetCard;
+          setMoveSheetKey(null);
+          if (card) moveCardTo(card, target);
+        }}
+      />
+
+      {/* ── Confirm dialog — project → done. Portaled to <body>: the routed
+             page sits inside a transform-animated wrapper, which would trap
+             this fixed overlay above the phone tab bar (same class of bug as
+             the PO modal strip). ─────────────────────────────────────────── */}
+      {pendingConfirm && createPortal(
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-[#1A1A1A]/50 p-4"
           style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}
@@ -962,7 +1295,7 @@ export default function JobsBoard({ embedded = false, onCardsChanged, initialJob
                 type="button"
                 onClick={() => setPendingConfirm(null)}
                 disabled={confirmBusy}
-                className="rounded-full border border-[#E6E1D4] bg-white px-4 py-1.5 text-[13px] font-medium text-[#3A3A3A] hover:bg-[#FAF8F2] disabled:opacity-50"
+                className="min-h-11 rounded-full border border-[#E6E1D4] bg-white px-4 text-[13px] font-medium text-[#3A3A3A] hover:bg-[#FAF8F2] disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -970,13 +1303,14 @@ export default function JobsBoard({ embedded = false, onCardsChanged, initialJob
                 type="button"
                 onClick={() => void handleConfirmApply()}
                 disabled={confirmBusy}
-                className="rounded-full bg-[#2F8F5C] px-4 py-1.5 text-[13px] font-semibold text-white hover:bg-[#246F47] disabled:opacity-50"
+                className="min-h-11 rounded-full bg-[#2F8F5C] px-4 text-[13px] font-semibold text-white hover:bg-[#246F47] disabled:opacity-50"
               >
                 {confirmBusy ? "Completing…" : "Confirm"}
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {/* ── New Work modal (tabbed: service job + project) ───────────────── */}

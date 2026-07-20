@@ -30,6 +30,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { X, Trash2, Loader2, Pencil, Check, X as XIcon, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import MotionDrawer from '../../components/ui/MotionDrawer';
+import { inputField } from '../gantt/components/ledger';
+import { cn } from '../../lib/cn';
 import { useAppStore } from '../../store';
 import {
   canManageServiceJobs,
@@ -195,7 +197,7 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
         clientName: job.clientName ?? undefined,
         title: job.title,
       });
-      navigate(`/jobs?view=quotes&quote=${q.id}`);
+      navigate(`/quotes?quote=${q.id}`);
     } catch (e) {
       setQuoteError(e instanceof Error ? e.message : 'Failed to create quote.');
     } finally {
@@ -481,13 +483,21 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
   return (
     <MotionDrawer
       open
-      onClose={onClose}
+      // The Set Financials modal is a hand-rolled overlay (not in MotionDrawer's
+      // openStack), so an unguarded Esc/backdrop here would close the WHOLE job
+      // drawer out from under it and discard typed figures. While it's open,
+      // Esc dismisses just the modal (unless a save is in flight); otherwise the
+      // drawer closes as normal.
+      onClose={() => {
+        if (!finModalOpen) onClose();
+        else if (!finSaving) setFinModalOpen(false);
+      }}
       ariaLabel="Service job detail"
       sizeClass="sm:w-[540px] lg:w-[620px]"
     >
       <div className="flex h-full min-h-0 flex-col">
         {/* Header */}
-        <header className="flex flex-shrink-0 items-center justify-between border-b border-slate-100 px-5 py-3">
+        <header className="flex flex-shrink-0 items-center justify-between border-b border-[#EFEBE0] px-5 py-3">
           <div className="min-w-0 flex-1">
             {job ? (
               <div className="flex flex-wrap items-center gap-2">
@@ -510,14 +520,14 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
                 </span>
               </div>
             ) : (
-              <div className="h-6 w-40 animate-pulse rounded bg-slate-200" />
+              <div className="h-6 w-40 animate-pulse rounded bg-[#F0EDE4]" />
             )}
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="ml-3 flex-shrink-0 rounded-md p-1.5 text-slate-500 hover:bg-slate-100"
+            className="ml-3 grid min-h-11 min-w-11 flex-shrink-0 place-items-center rounded-md text-[#A0A0A0] hover:bg-[#F0EDE4] hover:text-[#3A3A3A]"
           >
             <X className="h-4 w-4" />
           </button>
@@ -527,7 +537,7 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
           {/* Loading */}
           {loading && (
-            <div className="flex items-center justify-center py-16 text-slate-400">
+            <div className="flex items-center justify-center py-16 text-[#A0A0A0]">
               <Loader2 className="mr-2 h-5 w-5 animate-spin" />
               Loading…
             </div>
@@ -535,12 +545,12 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
 
           {/* Error */}
           {!loading && loadError && (
-            <div className="rounded-[10px] border border-red-200 bg-red-50 px-4 py-4">
-              <p className="text-sm text-red-700">{loadError}</p>
+            <div className="rounded-[10px] border border-[#F0C8C8] bg-[#FBE5E5] px-4 py-4">
+              <p className="text-sm text-[#C44545]">{loadError}</p>
               <button
                 type="button"
                 onClick={() => void load()}
-                className="mt-2 text-xs font-medium text-red-700 underline"
+                className="mt-2 text-xs font-medium text-[#C44545] underline"
               >
                 Retry
               </button>
@@ -552,14 +562,14 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
               {/* ── Details section ─────────────────────────────────────── */}
               <section>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                  <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6B6B6B]">
                     Client Details
                   </label>
                   {canManage && !editingDetails && (
                     <button
                       type="button"
                       onClick={openDetails}
-                      className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-[11px] font-medium text-slate-600 hover:bg-slate-50"
+                      className="inline-flex items-center gap-1 rounded-full border border-[#E6E1D4] bg-white px-2.5 py-0.5 text-[11px] font-medium text-[#3A3A3A] hover:bg-[#FAF8F2]"
                     >
                       <Pencil className="h-3 w-3" />
                       Edit
@@ -568,10 +578,10 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
                 </div>
 
                 {editingDetails ? (
-                  <div className="space-y-2 rounded-[10px] border border-slate-200 bg-slate-50 p-3">
+                  <div className="space-y-2 rounded-[10px] border border-[#E6E1D4] bg-[#FAF8F2] p-3">
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="block mb-0.5 text-[10px] font-medium text-slate-500">
+                        <label className="block mb-0.5 text-[10px] font-medium text-[#6B6B6B]">
                           Client name
                         </label>
                         <input
@@ -579,11 +589,11 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
                           value={draftClientName}
                           onChange={(e) => setDraftClientName(e.target.value)}
                           placeholder="Client name"
-                          className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs"
+                          className={inputField}
                         />
                       </div>
                       <div>
-                        <label className="block mb-0.5 text-[10px] font-medium text-slate-500">
+                        <label className="block mb-0.5 text-[10px] font-medium text-[#6B6B6B]">
                           Phone
                         </label>
                         <input
@@ -591,12 +601,12 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
                           value={draftClientPhone}
                           onChange={(e) => setDraftClientPhone(e.target.value)}
                           placeholder="04xx xxx xxx"
-                          className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs"
+                          className={inputField}
                         />
                       </div>
                     </div>
                     <div>
-                      <label className="block mb-0.5 text-[10px] font-medium text-slate-500">
+                      <label className="block mb-0.5 text-[10px] font-medium text-[#6B6B6B]">
                         Address
                       </label>
                       <input
@@ -604,11 +614,11 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
                         value={draftAddress}
                         onChange={(e) => setDraftAddress(e.target.value)}
                         placeholder="Site address"
-                        className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs"
+                        className={inputField}
                       />
                     </div>
                     <div>
-                      <label className="block mb-0.5 text-[10px] font-medium text-slate-500">
+                      <label className="block mb-0.5 text-[10px] font-medium text-[#6B6B6B]">
                         Description
                       </label>
                       <textarea
@@ -616,18 +626,18 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
                         onChange={(e) => setDraftDescription(e.target.value)}
                         rows={3}
                         placeholder="What needs to be done…"
-                        className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs resize-none"
+                        className={cn(inputField, 'resize-none')}
                       />
                     </div>
                     {detailError && (
-                      <p className="text-[11px] text-red-600">{detailError}</p>
+                      <p className="text-[11px] text-[#C44545]">{detailError}</p>
                     )}
                     <div className="flex justify-end gap-2">
                       <button
                         type="button"
                         onClick={() => setEditingDetails(false)}
                         disabled={detailSaving}
-                        className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                        className="inline-flex items-center gap-1 rounded-full border border-[#E6E1D4] bg-white px-3 py-1.5 text-[11px] font-medium text-[#3A3A3A] hover:bg-[#FAF8F2] disabled:opacity-50"
                       >
                         <XIcon className="h-3 w-3" />
                         Cancel
@@ -648,21 +658,21 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
                     </div>
                   </div>
                 ) : (
-                  <div className="space-y-1.5 rounded-[10px] border border-slate-200 bg-white px-3 py-2.5">
+                  <div className="space-y-1.5 rounded-[10px] border border-[#E6E1D4] bg-white px-3 py-2.5">
                     {job.clientName && (
                       <div>
-                        <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-400">
+                        <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#A0A0A0]">
                           Name
                         </span>
-                        <p className="text-sm font-medium text-slate-900">{job.clientName}</p>
+                        <p className="text-sm font-medium text-[#1A1A1A]">{job.clientName}</p>
                       </div>
                     )}
                     {job.clientPhone && (
                       <div>
-                        <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-400">
+                        <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#A0A0A0]">
                           Phone
                         </span>
-                        <p className="text-sm text-slate-900">
+                        <p className="text-sm text-[#1A1A1A]">
                           <a href={`tel:${job.clientPhone}`} className="hover:underline">
                             {job.clientPhone}
                           </a>
@@ -671,22 +681,22 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
                     )}
                     {job.address && (
                       <div>
-                        <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-400">
+                        <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#A0A0A0]">
                           Address
                         </span>
-                        <p className="text-sm text-slate-900">{job.address}</p>
+                        <p className="text-sm text-[#1A1A1A]">{job.address}</p>
                       </div>
                     )}
                     {job.description && (
                       <div>
-                        <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-400">
+                        <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#A0A0A0]">
                           Description
                         </span>
-                        <p className="text-sm text-slate-900 whitespace-pre-wrap">{job.description}</p>
+                        <p className="text-sm text-[#1A1A1A] whitespace-pre-wrap">{job.description}</p>
                       </div>
                     )}
                     {!job.clientName && !job.clientPhone && !job.address && !job.description && (
-                      <p className="text-[11px] text-slate-400">No details recorded.{canManage ? ' Click Edit to add.' : ''}</p>
+                      <p className="text-[11px] text-[#A0A0A0]">No details recorded.{canManage ? ' Click Edit to add.' : ''}</p>
                     )}
                   </div>
                 )}
@@ -695,7 +705,7 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
               {/* ── Status buttons ──────────────────────────────────────── */}
               {canLog && (
                 <section>
-                  <label className="block mb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                  <label className="block mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6B6B6B]">
                     Status
                   </label>
                   <div className="flex flex-wrap gap-1.5">
@@ -712,7 +722,7 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
                             'rounded-full border px-3 py-1 text-[11px] font-semibold transition-colors',
                             active
                               ? meta.pill
-                              : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50',
+                              : 'border-[#E6E1D4] bg-white text-[#3A3A3A] hover:bg-[#FAF8F2]',
                             statusBusy ? 'opacity-60' : '',
                           ].join(' ')}
                         >
@@ -722,7 +732,7 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
                     })}
                   </div>
                   {statusError && (
-                    <p className="mt-1 text-[11px] text-red-600">{statusError}</p>
+                    <p className="mt-1 text-[11px] text-[#C44545]">{statusError}</p>
                   )}
                 </section>
               )}
@@ -730,7 +740,7 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
               {/* ── Schedule date (manager only) ─────────────────────── */}
               {canManage && (
                 <section>
-                  <label className="block mb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                  <label className="block mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6B6B6B]">
                     Scheduled Date
                   </label>
                   <div className="flex items-center gap-2">
@@ -738,7 +748,7 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
                       type="date"
                       value={scheduleDateInput}
                       onChange={(e) => setScheduleDateInput(e.target.value)}
-                      className="rounded-md border border-slate-200 px-2.5 py-1.5 text-sm"
+                      className={cn(inputField, 'w-auto')}
                     />
                     <button
                       type="button"
@@ -751,7 +761,7 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
                     </button>
                   </div>
                   {scheduleError && (
-                    <p className="mt-1 text-[11px] text-red-600">{scheduleError}</p>
+                    <p className="mt-1 text-[11px] text-[#C44545]">{scheduleError}</p>
                   )}
                 </section>
               )}
@@ -759,7 +769,7 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
               {/* ── Assignee (manager only) ──────────────────────────── */}
               {canManage && (
                 <section>
-                  <label className="block mb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                  <label className="block mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6B6B6B]">
                     Assigned To
                   </label>
                   <div className="flex items-center gap-2">
@@ -767,7 +777,7 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
                       value={job.assignedTo ?? ''}
                       onChange={(e) => void handleAssigneeChange(e.target.value)}
                       disabled={assigneeSaving}
-                      className="flex-1 rounded-md border border-slate-200 px-2.5 py-1.5 text-sm bg-white disabled:opacity-60"
+                      className={cn(inputField, 'flex-1')}
                     >
                       <option value="">Unassigned</option>
                       {internalProfiles.map((p) => {
@@ -777,10 +787,10 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
                         );
                       })}
                     </select>
-                    {assigneeSaving && <Loader2 className="h-4 w-4 animate-spin text-slate-400" />}
+                    {assigneeSaving && <Loader2 className="h-4 w-4 animate-spin text-[#A0A0A0]" />}
                   </div>
                   {assigneeError && (
-                    <p className="mt-1 text-[11px] text-red-600">{assigneeError}</p>
+                    <p className="mt-1 text-[11px] text-[#C44545]">{assigneeError}</p>
                   )}
                 </section>
               )}
@@ -788,18 +798,18 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
               {/* Read-only assignee display for workers */}
               {!canManage && (
                 <section>
-                  <label className="block mb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                  <label className="block mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6B6B6B]">
                     Assigned To
                   </label>
-                  <p className="text-sm text-slate-900">
-                    {assignedName ?? <span className="text-slate-400">Unassigned</span>}
+                  <p className="text-sm text-[#1A1A1A]">
+                    {assignedName ?? <span className="text-[#A0A0A0]">Unassigned</span>}
                   </p>
                 </section>
               )}
 
               {/* ── Materials ────────────────────────────────────────── */}
               <section>
-                <label className="block mb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                <label className="block mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6B6B6B]">
                   Materials
                 </label>
                 {canLog ? (
@@ -809,10 +819,10 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
                       onChange={(e) => setMaterialsValue(e.target.value)}
                       rows={3}
                       placeholder="List materials used (e.g. 10mm conduit x4, GPO double 2x…)"
-                      className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none resize-none"
+                      className={cn(inputField, 'resize-none')}
                     />
                     {materialsError && (
-                      <p className="mt-0.5 text-[11px] text-red-600">{materialsError}</p>
+                      <p className="mt-0.5 text-[11px] text-[#C44545]">{materialsError}</p>
                     )}
                     {materialsValue !== materialsOriginal && (
                       <div className="mt-1.5 flex justify-end">
@@ -829,8 +839,8 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
                     )}
                   </>
                 ) : (
-                  <p className="text-sm text-slate-900 whitespace-pre-wrap">
-                    {job.materials ?? <span className="text-slate-400">None recorded.</span>}
+                  <p className="text-sm text-[#1A1A1A] whitespace-pre-wrap">
+                    {job.materials ?? <span className="text-[#A0A0A0]">None recorded.</span>}
                   </p>
                 )}
               </section>
@@ -849,7 +859,7 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
 
               {/* ── Notes ────────────────────────────────────────────── */}
               <section>
-                <label className="block mb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                <label className="block mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6B6B6B]">
                   Notes
                 </label>
                 {canLog ? (
@@ -859,10 +869,10 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
                       onChange={(e) => setNotesValue(e.target.value)}
                       rows={3}
                       placeholder="Job notes, access details, follow-up actions…"
-                      className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none resize-none"
+                      className={cn(inputField, 'resize-none')}
                     />
                     {notesError && (
-                      <p className="mt-0.5 text-[11px] text-red-600">{notesError}</p>
+                      <p className="mt-0.5 text-[11px] text-[#C44545]">{notesError}</p>
                     )}
                     {notesValue !== notesOriginal && (
                       <div className="mt-1.5 flex justify-end">
@@ -879,8 +889,8 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
                     )}
                   </>
                 ) : (
-                  <p className="text-sm text-slate-900 whitespace-pre-wrap">
-                    {job.notes ?? <span className="text-slate-400">None recorded.</span>}
+                  <p className="text-sm text-[#1A1A1A] whitespace-pre-wrap">
+                    {job.notes ?? <span className="text-[#A0A0A0]">None recorded.</span>}
                   </p>
                 )}
               </section>
@@ -910,7 +920,7 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
               {/* ── Profit (manager only) ────────────────────────────── */}
               {canManage && (
                 <section>
-                  <label className="block mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                  <label className="block mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6B6B6B]">
                     Profit
                   </label>
                   <ProfitSummaryCard
@@ -935,12 +945,12 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
                   .filter((i) => i.status === 'sent' || i.status === 'paid' || i.status === 'overdue')
                   .reduce((s, i) => s + i.totalIncGst, 0);
                 const varPill: Record<string, string> = {
-                  draft: 'bg-slate-100 text-slate-600', priced: 'bg-amber-50 text-amber-700',
-                  sent: 'bg-sky-50 text-sky-700', approved: 'bg-emerald-50 text-emerald-700', declined: 'bg-red-50 text-red-600',
+                  draft: 'bg-[#ECE8DE] text-[#1A1A1A]', priced: 'bg-[#F9EFD9] text-[#9A6B12]',
+                  sent: 'bg-[#EEF1F4] text-[#5B6B7B]', approved: 'bg-[#E5F2EA] text-[#246F47]', declined: 'bg-[#FBE5E5] text-[#C44545]',
                 };
                 const invPill: Record<string, string> = {
-                  draft: 'bg-slate-100 text-slate-600', sent: 'bg-sky-50 text-sky-700',
-                  paid: 'bg-emerald-50 text-emerald-700', overdue: 'bg-red-50 text-red-600', voided: 'bg-slate-100 text-slate-400',
+                  draft: 'bg-[#ECE8DE] text-[#1A1A1A]', sent: 'bg-[#EEF1F4] text-[#5B6B7B]',
+                  paid: 'bg-[#E1F3EA] text-[#2F8F5C]', overdue: 'bg-[#FBE5E5] text-[#C44545]', voided: 'bg-[#ECE8DE] text-[#A0A0A0]',
                 };
                 // Cost-centre breakdown: origin quote sections (+ its discount, so
                 // the rows tie back to the contract figure) + each accepted variation.
@@ -958,25 +968,25 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
                 for (const v of acceptedVars) centres.push({ id: `var-${v.id}`, label: `Variation — ${v.title}`, value: v.subtotalExGst });
                 return (
                   <section>
-                    <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                    <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6B6B6B]">
                       Sales thread
                     </label>
-                    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-                      <ul className="divide-y divide-slate-100">
+                    <div className="overflow-hidden rounded-lg border border-[#E6E1D4] bg-white">
+                      <ul className="divide-y divide-[#EFEBE0]">
                         {originQuote && (
                           <li>
                             <button
                               type="button"
-                              onClick={() => navigate(`/jobs?view=quotes&quote=${originQuote.id}`)}
-                              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-slate-50"
+                              onClick={() => navigate(`/quotes?quote=${originQuote.id}`)}
+                              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-[#FAF8F2]"
                             >
                               <span className="min-w-0">
-                                <span className="block truncate text-[13px] font-medium text-slate-800">
+                                <span className="block truncate text-[13px] font-medium text-[#3A3A3A]">
                                   {originQuote.number ?? 'Quote'} · {originQuote.title}
                                 </span>
-                                <span className="text-[11px] uppercase tracking-wide text-slate-400">Original quote — this job came from it</span>
+                                <span className="text-[11px] uppercase tracking-wide text-[#A0A0A0]">Original quote — this job came from it</span>
                               </span>
-                              <span className="shrink-0 tabular-nums text-[13px] text-slate-700">${originValue.toFixed(2)}</span>
+                              <span className="shrink-0 tabular-nums text-[13px] text-[#3A3A3A]">${originValue.toFixed(2)}</span>
                             </button>
                           </li>
                         )}
@@ -985,15 +995,15 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
                             <button
                               type="button"
                               onClick={() => navigate('/sales?tab=variations')}
-                              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-slate-50"
+                              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-[#FAF8F2]"
                             >
                               <span className="min-w-0 flex items-center gap-2">
-                                <span className="truncate text-[13px] text-slate-800">Variation · {v.title}</span>
-                                <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${varPill[v.status] ?? 'bg-slate-100 text-slate-600'}`}>
+                                <span className="truncate text-[13px] text-[#3A3A3A]">Variation · {v.title}</span>
+                                <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${varPill[v.status] ?? 'bg-[#EEF1F4] text-[#5B6B7B]'}`}>
                                   {v.status === 'approved' ? 'accepted' : v.status}
                                 </span>
                               </span>
-                              <span className="shrink-0 tabular-nums text-[13px] text-slate-700">${v.subtotalExGst.toFixed(2)}</span>
+                              <span className="shrink-0 tabular-nums text-[13px] text-[#3A3A3A]">${v.subtotalExGst.toFixed(2)}</span>
                             </button>
                           </li>
                         ))}
@@ -1002,34 +1012,34 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
                             <button
                               type="button"
                               onClick={() => navigate('/sales?tab=invoices')}
-                              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-slate-50"
+                              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-[#FAF8F2]"
                             >
                               <span className="min-w-0 flex items-center gap-2">
-                                <span className="truncate text-[13px] text-slate-800">Invoice {inv.number ?? '(draft)'}</span>
-                                <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${invPill[inv.status] ?? 'bg-slate-100 text-slate-600'}`}>
+                                <span className="truncate text-[13px] text-[#3A3A3A]">Invoice {inv.number ?? '(draft)'}</span>
+                                <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${invPill[inv.status] ?? 'bg-[#EEF1F4] text-[#5B6B7B]'}`}>
                                   {inv.status}
                                 </span>
                               </span>
-                              <span className="shrink-0 tabular-nums text-[13px] text-slate-700">${inv.totalIncGst.toFixed(2)}</span>
+                              <span className="shrink-0 tabular-nums text-[13px] text-[#3A3A3A]">${inv.totalIncGst.toFixed(2)}</span>
                             </button>
                           </li>
                         ))}
                       </ul>
-                      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-slate-50 px-3 py-2">
-                        <span className="text-[11px] uppercase tracking-wide text-slate-500">
-                          Contract (ex GST) <span className="ml-1 font-semibold tabular-nums text-slate-800">${contractEx.toFixed(2)}</span>
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#E6E1D4] bg-[#FAF8F2] px-3 py-2">
+                        <span className="text-[11px] uppercase tracking-wide text-[#6B6B6B]">
+                          Contract (ex GST) <span className="ml-1 font-semibold tabular-nums text-[#3A3A3A]">${contractEx.toFixed(2)}</span>
                         </span>
-                        <span className="text-[11px] uppercase tracking-wide text-slate-500">
-                          Invoiced (inc GST) <span className={`ml-1 font-semibold tabular-nums ${invoicedInc > 0 ? 'text-emerald-700' : 'text-slate-800'}`}>${invoicedInc.toFixed(2)}</span>
+                        <span className="text-[11px] uppercase tracking-wide text-[#6B6B6B]">
+                          Invoiced (inc GST) <span className={`ml-1 font-semibold tabular-nums ${invoicedInc > 0 ? 'text-[#2F8F5C]' : 'text-[#3A3A3A]'}`}>${invoicedInc.toFixed(2)}</span>
                         </span>
                       </div>
                     </div>
                     {centres.length > 0 && (
-                      <div className="mt-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
-                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Cost centres</p>
+                      <div className="mt-2 rounded-lg border border-[#E6E1D4] bg-white px-3 py-2">
+                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#A0A0A0]">Cost centres</p>
                         <ul className="space-y-0.5">
                           {centres.map((c) => (
-                            <li key={c.id} className="flex items-center justify-between text-[12px] text-slate-600">
+                            <li key={c.id} className="flex items-center justify-between text-[12px] text-[#6B6B6B]">
                               <span className="truncate">{c.label}</span>
                               <span className="ml-2 shrink-0 tabular-nums">${c.value.toFixed(2)}</span>
                             </li>
@@ -1045,14 +1055,14 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
               {canSell && (
                 <section>
                   <div className="mb-2 flex items-center justify-between">
-                    <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                    <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6B6B6B]">
                       Quotes
                     </label>
                     <div className="flex items-center gap-1.5">
                       <button
                         type="button"
                         onClick={() => navigate(`/sales?tab=variations&newJob=${job.id}`)}
-                        className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[12px] font-medium text-slate-700 hover:bg-slate-50"
+                        className="inline-flex items-center gap-1 rounded-full border border-[#E6E1D4] bg-white px-2.5 py-1 text-[12px] font-medium text-[#3A3A3A] hover:bg-[#FAF8F2]"
                         title="Price extra work as a variation — accepted variations fold into this job as another cost centre"
                       >
                         <Plus className="h-3.5 w-3.5" />
@@ -1062,32 +1072,32 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
                         type="button"
                         onClick={() => void handleNewQuote()}
                         disabled={creatingQuote}
-                        className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[12px] font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                        className="inline-flex items-center gap-1 rounded-full border border-[#E6E1D4] bg-white px-2.5 py-1 text-[12px] font-medium text-[#3A3A3A] hover:bg-[#FAF8F2] disabled:opacity-50"
                       >
                         {creatingQuote ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
                         New quote for this job
                       </button>
                     </div>
                   </div>
-                  {quoteError && <p className="mb-2 text-[11px] text-red-600">{quoteError}</p>}
+                  {quoteError && <p className="mb-2 text-[11px] text-[#C44545]">{quoteError}</p>}
                   {jobQuotes.length === 0 ? (
-                    <p className="text-[12px] text-slate-400">No quotes for this job yet.</p>
+                    <p className="text-[12px] text-[#A0A0A0]">No quotes for this job yet.</p>
                   ) : (
-                    <ul className="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200 bg-white">
+                    <ul className="divide-y divide-[#EFEBE0] overflow-hidden rounded-lg border border-[#E6E1D4] bg-white">
                       {jobQuotes.map((q) => (
                         <li key={q.id}>
                           <button
                             type="button"
-                            onClick={() => navigate(`/jobs?view=quotes&quote=${q.id}`)}
-                            className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-slate-50"
+                            onClick={() => navigate(`/quotes?quote=${q.id}`)}
+                            className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-[#FAF8F2]"
                           >
                             <span className="min-w-0">
-                              <span className="block truncate text-[13px] font-medium text-slate-800">
+                              <span className="block truncate text-[13px] font-medium text-[#3A3A3A]">
                                 {q.number ?? 'Draft'} · {q.title}
                               </span>
-                              <span className="text-[11px] uppercase tracking-wide text-slate-400">{q.status}</span>
+                              <span className="text-[11px] uppercase tracking-wide text-[#A0A0A0]">{q.status}</span>
                             </span>
-                            <span className="shrink-0 tabular-nums text-[13px] text-slate-700">
+                            <span className="shrink-0 tabular-nums text-[13px] text-[#3A3A3A]">
                               ${q.totalIncGst.toFixed(2)}
                             </span>
                           </button>
@@ -1103,18 +1113,18 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
 
         {/* Footer — delete */}
         {!loading && !loadError && job && canManage && (
-          <footer className="flex flex-shrink-0 items-center justify-between border-t border-slate-100 px-5 py-3">
+          <footer className="flex flex-shrink-0 items-center justify-between border-t border-[#EFEBE0] px-5 py-3">
             {deleteError && (
-              <p className="text-xs text-red-600">{deleteError}</p>
+              <p className="text-xs text-[#C44545]">{deleteError}</p>
             )}
             {confirmDelete ? (
               <div className="flex items-center gap-2 ml-auto">
-                <span className="text-xs text-red-600">Delete this job?</span>
+                <span className="text-xs text-[#C44545]">Delete this job?</span>
                 <button
                   type="button"
                   onClick={() => setConfirmDelete(false)}
                   disabled={deleteBusy}
-                  className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[12px] font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                  className="rounded-full border border-[#E6E1D4] bg-white px-3 py-1.5 text-[12px] font-medium text-[#6B6B6B] hover:bg-[#FAF8F2] disabled:opacity-50"
                 >
                   Cancel
                 </button>
@@ -1122,7 +1132,7 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
                   type="button"
                   onClick={() => void handleDelete()}
                   disabled={deleteBusy}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-red-600 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-[#C44545] px-3 py-1.5 text-[12px] font-medium text-white hover:bg-[#A83838] disabled:opacity-50"
                 >
                   {deleteBusy ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1136,7 +1146,7 @@ export function ServiceJobDrawer({ jobId, onClose, onChanged }: Props) {
               <button
                 type="button"
                 onClick={() => setConfirmDelete(true)}
-                className="ml-auto inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-red-50 hover:text-red-600"
+                className="ml-auto inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-[#6B6B6B] hover:bg-[#FBE5E5] hover:text-[#C44545]"
               >
                 <Trash2 className="h-3.5 w-3.5" />
                 Delete job

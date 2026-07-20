@@ -1,18 +1,15 @@
-// Index-route redirect. Field roles land on /home (their editorial,
-// orientation-style landing); admins / PMs / managers land on /dashboard
-// (the data-dense panel they're used to).
+// Index-route redirect — every role lands on its REAL workspace (P9.B).
 //
-// Mounted at `<Route index />` inside the protected Layout in App.tsx.
-// `RequireAuth` gates everything inside `Layout`, so by the time this
-// renders the session is non-loading and `currentProfile` is normally
-// populated. The two early-return cases below are belt-and-suspenders:
-// they cover a logout-in-another-tab race where `currentProfile` briefly
-// nulls out before `isAuthenticated` flips false, and a future refactor
-// that splits the atomic `refreshProfile` set() into separate writes.
+// The Welcome deck era is over: a production SaaS opens on your work, not a
+// slideshow. The deck (RoleHome) stays on disk for reference but is no longer
+// routed; first-run guidance is FirstRunOnboarding's job.
 //
-// Returning `null` in those windows means the user keeps seeing
-// RequireAuth's "Checking session…" frame (or the page they came from)
-// instead of getting bounced to /dashboard on a stale null profile.
+// Mounted at `<Route index />` (and `/home`) inside the protected Layout.
+// `RequireAuth` gates everything inside `Layout`, so by the time this renders
+// the session is non-loading and `currentProfile` is normally populated. The
+// early return covers a logout-in-another-tab race where `currentProfile`
+// briefly nulls out before `isAuthenticated` flips false — returning null
+// keeps the current frame instead of bouncing on a stale profile.
 
 import { Navigate } from 'react-router-dom';
 import { useAppStore } from '../../store';
@@ -23,9 +20,16 @@ export default function RoleHomeRedirect() {
 
   if (isAuthLoading || !currentProfile) return null;
 
-  // Everyone lands on the role-tailored Welcome deck at /home. Each role's deck
-  // funnels to its real workspace via the cover CTA + the "Skip to my work"
-  // shortcut (supplier → /supplier, stakeholder → /sponsor, managers/admins →
-  // /dashboard, worker → /gantt).
-  return <Navigate to="/home" replace />;
+  // Per-role workspaces (mirrors the old deck's "Skip to my work" targets,
+  // except internal field staff also get the role-lensed Dashboard).
+  const to = (() => {
+    switch (currentProfile.securityGroup) {
+      case 'customer':    return '/customer';
+      case 'supplier':    return '/supplier';
+      case 'stakeholder': return '/sponsor';
+      default:            return '/dashboard'; // admins, managers, PMs, workers, dev
+    }
+  })();
+
+  return <Navigate to={to} replace />;
 }

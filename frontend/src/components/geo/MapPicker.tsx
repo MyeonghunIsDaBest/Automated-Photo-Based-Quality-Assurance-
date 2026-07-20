@@ -39,6 +39,29 @@ function ClickToPlace({ onPick, readOnly }: { onPick: MapPickerProps["onPick"]; 
   return null;
 }
 
+/** Leaflet computes its tile layout ONCE from the container's size at mount.
+ *  Inside an animating MotionDrawer modal (scale 0.94→1 spring) that snapshot
+ *  is taken mid-transform → corrupted/cut-off tiles. A CSS transform doesn't
+ *  change layout size, so a ResizeObserver alone never fires during it — the
+ *  timed invalidateSize calls (post-mount + after the spring settles) cover
+ *  the transform case; the observer covers real resizes (breakpoint flips,
+ *  container reflow). Exported for reuse by other map surfaces. */
+export function SizeFix() {
+  const map = useMap();
+  useEffect(() => {
+    const t1 = window.setTimeout(() => map.invalidateSize(), 50);
+    const t2 = window.setTimeout(() => map.invalidateSize(), 400);
+    const ro = new ResizeObserver(() => map.invalidateSize());
+    ro.observe(map.getContainer());
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      ro.disconnect();
+    };
+  }, [map]);
+  return null;
+}
+
 /** Fly to the pin when it changes from OUTSIDE (address search) — internal
  *  picks (map click / marker drag) are skipped so the view never yanks away
  *  from where the user is working. */
@@ -76,6 +99,7 @@ export default function MapPicker({ lat, lng, onPick, heightClass = "h-56", read
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
+        <SizeFix />
         <ClickToPlace onPick={pick} readOnly={readOnly} />
         <Recenter lat={lat} lng={lng} internalPickRef={internalPickRef} />
         {hasPin && (

@@ -329,13 +329,65 @@ html {
   }
 }
 
-/* Print styles */
+/* Coloured bands/cells on printed documents (P6-P brand template): browsers
+   strip background colours at print time unless the element opts out. */
+.print-exact {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* Print styles.
+   Layer 1 — UNCONDITIONAL rules: cover every path to paper (the editors' Print
+   button, Ctrl+P / File→Print, a phone's share-sheet print). App chrome and
+   overlays carry Tailwind `print:hidden` on their roots; the rules below pin
+   the commercial documents themselves.
+   Layer 2 — `body.printing-commercial-doc` visibility sweep: added around
+   window.print() by the Quote/Invoice Print buttons so ONLY the .print-sheet
+   is visible. Hoisted here from QuoteEditor/InvoiceEditor, which each carried
+   an identical copy-pasted <style> block. */
 @media print {
   .no-print {
     display: none !important;
   }
-  
+
   body {
     background: white !important;
   }
+
+  /* The branded document's line items must print as a TABLE even when the
+     screen was showing the phone card layout (print pages measure paper
+     width, not screen width — a narrow viewport must not leak cards), and
+     rows must not split across pages. */
+  .print-sheet table { display: table !important; }
+  .print-sheet thead { display: table-header-group !important; }
+  .print-sheet tbody { display: table-row-group !important; }
+  .print-sheet tr { display: table-row !important; break-inside: avoid; }
+  .print-sheet th,
+  .print-sheet td { display: table-cell !important; }
+  .print-sheet [data-line-cards] { display: none !important; }
+  /* The pins above would otherwise RESURRECT print-hidden cells (Tailwind's
+     print:hidden is a layered, non-!important display:none — it loses to the
+     unlayered !important pins): without this re-kill, the manager-only Cost
+     and Markup columns print on the customer's PDF. Must stay AFTER the pins
+     — later source order at equal importance/specificity wins for th/td. */
+  .print-sheet .print\:hidden { display: none !important; }
+
+  body.printing-commercial-doc * { visibility: hidden; }
+  body.printing-commercial-doc .print-sheet,
+  body.printing-commercial-doc .print-sheet * { visibility: visible; }
+  body.printing-commercial-doc .print-sheet {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    /* Voided invoices dim on screen (inline opacity 0.55) — printed records
+       must come out full-strength; the VOIDED stamp carries the status. The
+       old InvoiceEditor inline block had this and the hoist initially lost it. */
+    opacity: 1 !important;
+  }
+  body.printing-commercial-doc .print\:hidden { visibility: hidden !important; }
+  body.printing-commercial-doc .print\:border-0 { border: none !important; }
+  body.printing-commercial-doc .print\:px-0 { padding-left: 0 !important; padding-right: 0 !important; }
 }

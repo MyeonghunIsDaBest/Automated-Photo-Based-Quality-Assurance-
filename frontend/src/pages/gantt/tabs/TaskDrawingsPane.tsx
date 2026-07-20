@@ -304,13 +304,13 @@ export function TaskDrawingsPane({
       </div>
 
       {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+        <p className="rounded-md border border-[#F0C9C9] bg-[#FBE5E5] px-3 py-2 text-xs text-[#C44545]">
           {error}
         </p>
       ) : null}
 
       {!supabaseConfigured() ? (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        <div className="rounded-md border border-[#F0D5A8] bg-[#F9EFD9] px-3 py-2 text-xs text-[#9A6B12]">
           Drawings need Supabase env keys. Set <code>VITE_SUPABASE_URL</code> and{' '}
           <code>VITE_SUPABASE_ANON_KEY</code> in <code>frontend/.env.local</code>.
         </div>
@@ -342,7 +342,7 @@ export function TaskDrawingsPane({
                 </span>
                 <Icon className={`h-9 w-9 ${style.ink}`} aria-hidden="true" />
                 {/* Subtle hover indicator */}
-                <span className="absolute bottom-2 right-2 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-white/0 group-hover:bg-white/90 text-[10px] text-slate-700 transition-colors">
+                <span className="absolute bottom-2 right-2 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-white/0 group-hover:bg-white/90 text-[10px] text-[#3A3A3A] transition-colors">
                   <ExternalLink className="h-3 w-3" />
                 </span>
                 {/* Phase chip overlapping bottom-left */}
@@ -377,20 +377,20 @@ export function TaskDrawingsPane({
                         e.stopPropagation();
                         setMenuOpenId((id) => (id === row.id ? null : row.id));
                       }}
-                      className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+                      className="p-1 rounded text-[#A0A0A0] hover:text-[#3A3A3A] hover:bg-[#F0EDE4]"
                       aria-label="More options"
                     >
                       <MoreHorizontal className="h-4 w-4" />
                     </button>
                     {menuOpenId === row.id ? (
                       <div
-                        className="absolute right-0 mt-1 w-44 rounded-md border border-slate-200 bg-white shadow-lg z-10 overflow-hidden"
+                        className="absolute right-0 mt-1 w-44 rounded-md border border-[#E6E1D4] bg-white shadow-lg z-10 overflow-hidden"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <button
                           type="button"
                           onClick={() => { setMenuOpenId(null); handleOpen(row); }}
-                          className="flex w-full items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50"
+                          className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[#3A3A3A] hover:bg-[#FAF8F2]"
                         >
                           <ExternalLink className="h-3 w-3" />
                           Open
@@ -398,14 +398,14 @@ export function TaskDrawingsPane({
                         <button
                           type="button"
                           onClick={() => { setPickerForId(row.id); setMenuOpenId(null); }}
-                          className="flex w-full items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50"
+                          className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[#3A3A3A] hover:bg-[#FAF8F2]"
                         >
                           Change phase
                         </button>
                         <button
                           type="button"
                           onClick={() => handleRemove(row)}
-                          className="flex w-full items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50"
+                          className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[#C44545] hover:bg-[#FBE5E5]"
                         >
                           <Trash2 className="h-3 w-3" />
                           Delete
@@ -418,15 +418,15 @@ export function TaskDrawingsPane({
 
               {/* Inline phase picker */}
               {pickerForId === row.id ? (
-                <div className="border-t border-slate-100 px-3 py-2 bg-[#FAF8F2]">
+                <div className="border-t border-[#EFEBE0] px-3 py-2 bg-[#FAF8F2]">
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                    <span className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[#6B6B6B]">
                       Set phase
                     </span>
                     <button
                       type="button"
                       onClick={() => setPickerForId(null)}
-                      className="p-0.5 rounded text-slate-400 hover:text-slate-700"
+                      className="p-0.5 rounded text-[#A0A0A0] hover:text-[#3A3A3A]"
                       aria-label="Close phase picker"
                     >
                       <X className="h-3 w-3" />
@@ -444,7 +444,7 @@ export function TaskDrawingsPane({
                           className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10.5px] font-medium transition-colors ${
                             isOn
                               ? 'bg-[#1A1A1A] text-white border-[#1A1A1A]'
-                              : 'bg-white text-[#3A3A3A] border-[#E6E1D4] hover:bg-slate-50'
+                              : 'bg-white text-[#3A3A3A] border-[#E6E1D4] hover:bg-[#FAF8F2]'
                           }`}
                         >
                           <span className={`w-1.5 h-1.5 rounded-full ${ps.dot}`} />
@@ -465,10 +465,10 @@ export function TaskDrawingsPane({
             type="button"
             onClick={triggerPicker}
             disabled={busy}
-            className="aspect-[5/3] sm:aspect-auto sm:min-h-[180px] flex flex-col items-center justify-center gap-2 rounded-[12px] border-2 border-dashed border-[#D6CDB7] bg-[#FAF8F2] px-4 py-6 text-slate-600 hover:border-emerald-400 hover:bg-emerald-50/40 hover:text-slate-900 disabled:opacity-60 transition-colors"
+            className="aspect-[5/3] sm:aspect-auto sm:min-h-[180px] flex flex-col items-center justify-center gap-2 rounded-[12px] border-2 border-dashed border-[#D6CDB7] bg-[#FAF8F2] px-4 py-6 text-[#3A3A3A] hover:border-[#2F8F5C] hover:bg-[#E1F3EA]/40 hover:text-[#1A1A1A] disabled:opacity-60 transition-colors"
           >
             <span className="w-10 h-10 rounded-md bg-white border border-[#E6E1D4] grid place-items-center">
-              <UploadIcon className="h-4 w-4 text-emerald-600" />
+              <UploadIcon className="h-4 w-4 text-[#2F8F5C]" />
             </span>
             <span className="text-[13px] font-semibold">{busy ? 'Uploading…' : 'Add a drawing'}</span>
             <span className="text-[11px] text-[#6B6B6B]">Drop file or click to browse</span>
@@ -492,13 +492,13 @@ export function TaskDrawingsPane({
 
       {/* Empty / loading hints — only when no add tile is visible either */}
       {!canUpload && drawings.length === 0 && !loading ? (
-        <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-          <Lock className="h-3.5 w-3.5 text-slate-400" />
+        <div className="flex items-center gap-2 rounded-md border border-[#E6E1D4] bg-[#FAF8F2] px-3 py-2 text-xs text-[#6B6B6B]">
+          <Lock className="h-3.5 w-3.5 text-[#A0A0A0]" />
           Your role can view drawings but not upload to this task.
         </div>
       ) : null}
       {loading && drawings.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50/60 px-4 py-6 text-center text-sm text-slate-400">
+        <p className="rounded-lg border border-dashed border-[#E6E1D4] bg-[#FAF8F2]/60 px-4 py-6 text-center text-sm text-[#A0A0A0]">
           Loading drawings…
         </p>
       ) : null}

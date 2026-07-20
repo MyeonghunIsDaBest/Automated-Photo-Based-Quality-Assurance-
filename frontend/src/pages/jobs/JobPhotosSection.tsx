@@ -88,12 +88,12 @@ export function JobPhotosSection({ jobId, photos, canManage, currentProfileId, o
 
   return (
     <section className="space-y-4">
-      <label className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+      <label className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6B6B6B]">
         Photos
       </label>
 
       {deleteError && (
-        <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+        <p className="rounded-md border border-[#F0C8C8] bg-[#FBE5E5] px-3 py-2 text-xs text-[#C44545]">
           {deleteError}
         </p>
       )}
@@ -106,12 +106,12 @@ export function JobPhotosSection({ jobId, photos, canManage, currentProfileId, o
         return (
           <div key={kind}>
             <div className="mb-1.5 flex items-center justify-between">
-              <span className="text-[11px] font-medium text-slate-500">{label}</span>
+              <span className="text-[11px] font-medium text-[#6B6B6B]">{label}</span>
               <button
                 type="button"
                 onClick={() => inputRef.current?.click()}
                 disabled={state.busy}
-                className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                className="inline-flex items-center gap-1 rounded-full border border-[#E6E1D4] bg-white px-2.5 py-1 text-[11px] font-medium text-[#3A3A3A] hover:bg-[#FAF8F2] disabled:opacity-50"
               >
                 {state.busy ? (
                   <Loader2 className="h-3 w-3 animate-spin" />
@@ -132,17 +132,17 @@ export function JobPhotosSection({ jobId, photos, canManage, currentProfileId, o
             </div>
 
             {state.error && (
-              <p className="mb-1.5 text-[11px] text-red-600">{state.error}</p>
+              <p className="mb-1.5 text-[11px] text-[#C44545]">{state.error}</p>
             )}
 
             {groupPhotos.length === 0 ? (
-              <p className="text-[11px] text-slate-400">No {label.toLowerCase()} photos yet.</p>
+              <p className="text-[11px] text-[#A0A0A0]">No {label.toLowerCase()} photos yet.</p>
             ) : (
               <div className="grid grid-cols-3 gap-1.5">
                 {groupPhotos.map((photo) => (
                   <div
                     key={photo.id}
-                    className="group relative aspect-square overflow-hidden rounded-[7px] border border-slate-200 bg-slate-100"
+                    className="group relative aspect-square overflow-hidden rounded-[7px] border border-[#E6E1D4] bg-[#F0EDE4]"
                   >
                     {photo.url ? (
                       <a
@@ -159,7 +159,7 @@ export function JobPhotosSection({ jobId, photos, canManage, currentProfileId, o
                         />
                       </a>
                     ) : (
-                      <div className="flex h-full w-full items-center justify-center text-[10px] text-slate-400">
+                      <div className="flex h-full w-full items-center justify-center text-[10px] text-[#A0A0A0]">
                         No URL
                       </div>
                     )}

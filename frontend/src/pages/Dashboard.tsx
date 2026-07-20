@@ -9,7 +9,6 @@ import { useDashboardCounts } from '../lib/hooks/useDashboardCounts';
 import { useWeather, type WeatherTone } from '../lib/hooks/useWeather';
 import { uploadPhoto } from '../lib/api/photos';
 import { supabaseConfigured } from '../lib/supabase';
-import ActivityFeed from '../components/activity/ActivityFeed';
 import ActivityDetailModal from '../components/activity/ActivityDetailModal';
 import type { ActivityEvent } from '../lib/activity/types';
 import { SECURITY_GROUP_LABELS, canConfirmAIAnalysis, canViewSafetyIncident, canViewFinance, dashboardLens, isFieldRole } from '../lib/permissions';
@@ -17,33 +16,31 @@ import AuditTrailPanel from '../components/audit/AuditTrailPanel';
 import type { SecurityGroup } from '../types';
 import {
   ArrowUpRight,
+  Briefcase,
   Camera,
   CheckCircle2,
   ChevronDown,
-  ChevronRight,
-  ChevronUp,
   Cloud,
   CloudOff,
   CloudFog,
   CloudLightning,
   CloudRain,
   CloudSnow,
-  Image as ImageIcon,
-  ListChecks,
   RotateCw,
   ShieldCheck,
   Sparkles,
   Sun,
+  TrendingUp,
   Users,
   Wind,
-  Eye,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { PlannedVsActualTrend, plannedPctNow } from '../components/charts/PlannedVsActualTrend';
 import { useProjectCrew } from '../lib/hooks/useProjectCrew';
 import { format, parseISO } from 'date-fns';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import CountUp from '../components/ui/CountUp';
-import WhatsNewCard from '../components/dashboard/WhatsNewCard';
+import UpdatesCard from '../components/dashboard/UpdatesCard';
 import ProjectStatusCard from '../components/ai/ProjectStatusCard';
 import DailyBriefCard from '../components/ai/DailyBriefCard';
 import AskAnythingCard from '../components/dashboard/AskAnythingCard';
@@ -66,12 +63,17 @@ const ROLE_BLURB: Record<SecurityGroup, string> = {
 };
 
 const STATUS_BADGE: Record<string, string> = {
-  in_progress: 'border-[#C7D2DC] bg-[#EEF1F4] text-[#5B6B7B]',
-  complete:    'border-[#A8D0B8] bg-[#E5F2EA] text-[#246F47]',
-  delayed:     'border-[#F0BFBF] bg-[#FBE5E5] text-[#C44545]',
-  blocked:     'border-[#F0D5A0] bg-[#F9EFD9] text-[#C8841E]',
-  not_started: 'border-[#E6E1D4] bg-[#FAF8F2] text-[#6B6B6B]',
+  in_progress: 'bg-[#EEF1F4] text-[#5B6B7B]',
+  complete:    'bg-[#E5F2EA] text-[#246F47]',
+  delayed:     'bg-[#FBE5E5] text-[#C44545]',
+  blocked:     'bg-[#F9EFD9] text-[#9A6B12]',
+  not_started: 'border border-[#E6E1D4] bg-[#FAF8F2] text-[#6B6B6B]',
 };
+
+// Primary card chrome from the reference comp: 16px radius + layered paper
+// shadow. (cardShell stays 14px app-wide; the Dashboard opts into 16px locally.)
+const CARD =
+  'rounded-[16px] border border-[#E6E1D4] bg-white shadow-[0_1px_0_0_rgba(15,23,42,0.04),0_1px_2px_-1px_rgba(15,23,42,0.06)]';
 
 const PHASE_ACCENT: Record<string, string> = {
   excavation: 'bg-[#C8841E]',
@@ -195,10 +197,7 @@ export default function Dashboard() {
   // Audit trail section expand/collapse (collapsed by default).
   const [auditOpen, setAuditOpen] = useState(false);
 
-  // Recent-activity expand/collapse.
-  const [showAllActivity, setShowAllActivity] = useState(false);
-  const ACTIVITY_PREVIEW = 5;
-  const visibleActivity = showAllActivity ? recentActivity : recentActivity.slice(0, ACTIVITY_PREVIEW);
+  // (Activity expand/collapse + the What's-new card now live inside UpdatesCard.)
 
   // Task progress breakdown — live from the SAME task store the Gantt reads
   // (project-scoped, phase anchors excluded), so the % here matches /gantt/tasks.
@@ -283,19 +282,7 @@ export default function Dashboard() {
   const crewAvatars = crewRoster.slice(0, 5);
   const crewExtra = Math.max(0, crewTotal - crewAvatars.length);
 
-  // Zone activity — counts active tasks per zone for the last-24h heatmap.
-  // Scoped to the active project so a brand-new project doesn't show zones
-  // belonging to sibling projects in the same store.
-  const zoneActivity = useMemo(() => {
-    return zones.filter((z) => z.projectId === project.id).slice(0, 10).map((z) => {
-      // Derive a "load" number deterministically per zone so demo data
-      // still has visual variation. Real impl: photos uploaded per zone.
-      const seed = z.id.charCodeAt(z.id.length - 1) + z.id.charCodeAt(0);
-      const count = (seed * 13) % 100;
-      return { id: z.id, name: z.name, count };
-    });
-  }, [zones, project.id]);
-  const zoneMax = Math.max(1, ...zoneActivity.map((z) => z.count));
+  // Zone-activity heatmap removed pending real zone telemetry (its counts were synthetic char-code demo data).
 
   // Schedule variance vs the linear planned baseline — the SAME source the Gantt
   // Overview trend uses (plannedPctNow), so the Dashboard and Overview agree.
@@ -331,19 +318,19 @@ export default function Dashboard() {
 
           {/* Identity strip */}
           {roleLabel && (
-            <div className="mt-6 flex flex-wrap items-center gap-3 rounded-[14px] border border-[#E6E1D4] bg-white px-4 py-3 shadow-sm">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#1A1A1A] text-white">
+            <div className={`mt-6 flex flex-wrap items-center gap-3.5 ${CARD} px-4 py-3.5`}>
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-[#1A1A1A] text-white">
                 <ShieldCheck className="h-4 w-4" />
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-baseline gap-2">
-                  <span className="text-[10px] font-medium uppercase tracking-[0.2em]" style={{ color: '#A0A0A0' }}>
+                  <span className="text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: '#A0A0A0' }}>
                     Signed in as
                   </span>
-                  <span className="display text-sm font-medium" style={{ color: '#1A1A1A' }}>
+                  <span className="text-sm font-semibold" style={{ color: '#1A1A1A', fontFamily: FRAUNCES }}>
                     {displayName || currentProfile?.email}
                   </span>
-                  <span className="rounded-full bg-[#E5F2EA] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider" style={{ color: '#246F47' }}>
+                  <span className="rounded-full bg-[#E5F2EA] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.06em]" style={{ color: '#246F47' }}>
                     {roleLabel}
                   </span>
                 </div>
@@ -353,16 +340,16 @@ export default function Dashboard() {
               <button
                 type="button"
                 onClick={() => navigate('/gantt?tab=reports')}
-                className="group flex shrink-0 items-center gap-1.5 rounded-full bg-[#1A1A1A] px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#246F47]"
+                className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-[#1A1A1A] px-4 py-2 text-[12.5px] font-semibold text-white transition-all duration-150 hover:-translate-y-px hover:bg-[#246F47]"
               >
-                <Sparkles className="h-3.5 w-3.5 transition-transform group-hover:-translate-y-px" />
+                <Sparkles className="h-3.5 w-3.5" />
                 Open report deck
               </button>
             </div>
           )}
 
           {/* KPI strip */}
-          <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="mt-8 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
             <MetricCell
               label="Tasks Complete"
               value={`${stats.tasksComplete}/${stats.totalTasks}`}
@@ -433,8 +420,8 @@ export default function Dashboard() {
             phones). */}
         <div className="grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {/* Weather — live from Open-Meteo; geolocation w/ Melbourne fallback */}
-          <section className="flex flex-col rounded-[14px] border border-[#E6E1D4] bg-white p-5">
-            <div className="mb-3 flex items-center justify-between text-[11px] font-medium uppercase tracking-[0.18em]" style={{ color: '#6B6B6B' }}>
+          <section className={`flex flex-col ${CARD} p-5`}>
+            <div className="mb-3 flex items-center justify-between text-[10.5px] font-bold uppercase tracking-[0.1em]" style={{ color: '#6B6B6B' }}>
               <span className="truncate">
                 {weather.locationLabel ? `${weather.locationLabel} weather` : 'On-site weather'}
               </span>
@@ -473,9 +460,9 @@ export default function Dashboard() {
 
             {weather.current && (
               <>
-                <p className="num text-4xl font-medium" style={{ color: '#1A1A1A' }}>
+                <p className="num text-[34px] font-semibold leading-none" style={{ color: '#1A1A1A' }}>
                   {weather.current.tempC}
-                  <span className="ml-0.5 align-top text-base" style={{ color: '#A0A0A0' }}>°C</span>
+                  <span className="ml-0.5 align-top text-base font-medium" style={{ color: '#A0A0A0' }}>°C</span>
                 </p>
                 <div className="mt-2 flex items-center gap-3 text-xs" style={{ color: '#6B6B6B' }}>
                   <span className="inline-flex items-center gap-1">
@@ -517,13 +504,13 @@ export default function Dashboard() {
           </section>
 
           {/* Crew on site */}
-          <section className="rounded-[14px] border border-[#E6E1D4] bg-white p-5">
-            <div className="mb-3 flex items-center justify-between text-[11px] font-medium uppercase tracking-[0.18em]" style={{ color: '#6B6B6B' }}>
+          <section className={`${CARD} p-5`}>
+            <div className="mb-3 flex items-center justify-between text-[10.5px] font-bold uppercase tracking-[0.1em]" style={{ color: '#6B6B6B' }}>
               Crew on site
               <Users className="h-3.5 w-3.5" style={{ color: '#A0A0A0' }} />
             </div>
-            <p className="num text-4xl font-medium" style={{ color: '#1A1A1A' }}>
-              {crewOnSite}<span className="ml-1 align-baseline text-base font-normal" style={{ color: '#A0A0A0' }}>/{crewTotal}</span>
+            <p className="num text-[32px] font-semibold leading-none" style={{ color: '#1A1A1A' }}>
+              {crewOnSite}<span className="ml-1 align-baseline text-sm font-medium" style={{ color: '#A0A0A0' }}>/{crewTotal}</span>
             </p>
             <p className="mt-1 text-sm" style={{ color: '#6B6B6B' }}>
               {Math.round((crewOnSite / Math.max(1, crewTotal)) * 100)}% of registered crew clocked in
@@ -549,12 +536,12 @@ export default function Dashboard() {
 
           {/* Photo capture — opens the camera/file picker and uploads to this
               project (replaces the old floating FAB). Paired with Ask anything. */}
-          <section className="flex flex-col rounded-[14px] border border-[#E6E1D4] bg-white p-5">
-            <div className="mb-3 flex items-center justify-between text-[11px] font-medium uppercase tracking-[0.18em]" style={{ color: '#6B6B6B' }}>
+          <section className={`flex flex-col ${CARD} p-5`}>
+            <div className="mb-3 flex items-center justify-between text-[10.5px] font-bold uppercase tracking-[0.1em]" style={{ color: '#6B6B6B' }}>
               Capture
               <Camera className="h-3.5 w-3.5" style={{ color: '#2F8F5C' }} />
             </div>
-            <p className="display text-2xl font-medium leading-tight" style={{ color: '#1A1A1A' }}>
+            <p className="display text-[18px] font-semibold leading-tight" style={{ color: '#1A1A1A' }}>
               Snap a site photo.
             </p>
             <p className="mt-1.5 text-sm" style={{ color: '#6B6B6B' }}>
@@ -584,18 +571,19 @@ export default function Dashboard() {
         </div>
 
         {/* Main two-column grid */}
-        <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_320px]">
+        <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
           <main className="space-y-6 min-w-0">
 
             {/* Command-lens finance summary — PM + admins who can view finance. */}
             {showFinanceSummary && <FinanceSummaryCard projectId={project.id} />}
 
             {/* Active Jobs */}
-            <section className="overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white">
+            <section className={`overflow-hidden ${CARD}`}>
               <SectionHeader
                 eyebrow="On site"
                 title={`Active jobs on ${project.name}`}
                 description="The work currently in motion"
+                icon={Briefcase}
                 actionLabel="View all"
                 onAction={() => navigate('/projects')}
               />
@@ -638,7 +626,10 @@ export default function Dashboard() {
                           <p className="text-[11px]" style={{ color: '#A0A0A0' }}>
                             Due {format(parseISO(job.endDate), 'MMM d')}
                           </p>
-                          <span className={`mt-0.5 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${badgeClass}`}>
+                          {/* No bare `border` here — Tailwind v4 defaults border
+                              colour to currentColor, which gave the toned chips a
+                              heavy saturated outline; not_started brings its own. */}
+                          <span className={`mt-0.5 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${badgeClass}`}>
                             {job.status.replace('_', ' ')}
                           </span>
                         </div>
@@ -650,25 +641,25 @@ export default function Dashboard() {
             </section>
 
             {/* Task progress — breakdown that mirrors the Gantt's task %. */}
-            <section className="overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white">
+            <section className={`overflow-hidden ${CARD}`}>
               <SectionHeader
                 eyebrow="Schedule"
                 title="Task progress"
                 description="Live from the Gantt — this % matches Tasks on the project"
+                icon={CheckCircle2}
                 actionLabel="Open Gantt"
                 onAction={() => navigate(`/gantt?project=${project.id}&tab=tasks`)}
               />
               <div className="px-6 py-5">
                 <div className="mb-4 flex items-end justify-between gap-4">
                   <div>
-                    <p className="num text-4xl font-medium leading-none" style={{ color: '#1A1A1A' }}>
-                      {taskBreakdown.pct}<span className="ml-0.5 align-top text-xl" style={{ color: '#A0A0A0' }}>%</span>
+                    <p className="num text-[32px] font-semibold leading-none" style={{ color: '#1A1A1A' }}>
+                      {taskBreakdown.pct}<span className="ml-0.5 align-top text-base font-medium" style={{ color: '#A0A0A0' }}>%</span>
                     </p>
                     <p className="mt-1 text-xs" style={{ color: '#6B6B6B' }}>
                       {taskBreakdown.complete}/{taskBreakdown.total} task{taskBreakdown.total === 1 ? '' : 's'} complete
                     </p>
                   </div>
-                  <ListChecks className="h-5 w-5" style={{ color: '#D8D2C4' }} aria-hidden />
                 </div>
 
                 {/* Stacked status bar — proportions of each task status */}
@@ -706,14 +697,15 @@ export default function Dashboard() {
             </section>
 
             {/* Planned vs Actual */}
-            <section className="overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white">
+            <section className={`overflow-hidden ${CARD}`}>
               <SectionHeader
                 eyebrow="Trend"
                 title="Planned vs actual"
                 description="Schedule baseline (target) vs recorded progress"
+                icon={TrendingUp}
               />
               <div className="px-2 pb-4 pt-2">
-                <div className="mb-2 flex items-center justify-between gap-3 px-4 text-[11px]" style={{ color: '#6B6B6B' }}>
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-4 text-[11px]" style={{ color: '#6B6B6B' }}>
                   <span
                     className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
                     style={
@@ -726,7 +718,7 @@ export default function Dashboard() {
                   </span>
                   <span className="flex items-center gap-4">
                     <span className="flex items-center gap-1.5">
-                      <span className="h-2 w-2 rounded-full bg-[#2F8F5C]" /> Actual
+                      <span className="inline-block h-0 w-4 border-t-2 border-[#2F8F5C]" /> Actual
                     </span>
                     <span className="flex items-center gap-1.5">
                       <span className="inline-block h-0 w-4 border-t-2 border-dashed border-[#C44545]" /> Planned
@@ -743,80 +735,24 @@ export default function Dashboard() {
               </div>
             </section>
 
-            {/* Zone activity — heatmap row */}
-            {zoneActivity.length > 0 && (
-              <section className="overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white">
-                <SectionHeader
-                  eyebrow="Spatial"
-                  title="Zone activity (last 24h)"
-                  description="Where the work concentrated"
-                />
-                <div className="px-6 pb-6 pt-2">
-                  <div className="grid grid-cols-5 gap-2 sm:grid-cols-10">
-                    {zoneActivity.map((z) => {
-                      const intensity = Math.max(0.15, z.count / zoneMax);
-                      return (
-                        <div key={z.id} className="text-center">
-                          <div
-                            className="aspect-square rounded-md"
-                            style={{ backgroundColor: `rgba(47, 143, 92, ${intensity})` }}
-                            title={`${z.name}: ${z.count} updates`}
-                          />
-                          <p className="mt-1 text-[10px] font-medium truncate" style={{ color: '#3A3A3A' }}>{z.name}</p>
-                          <p className="text-[9px] tabular-nums" style={{ color: '#A0A0A0' }}>{z.count}</p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </section>
-            )}
           </main>
 
-          {/* Sidebar */}
-          <aside className="space-y-6">
-            <WhatsNewCard />
-
-            {/* Recent activity */}
-            <section className="overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white">
-              <div className="flex items-center justify-between px-5 pt-5 pb-3">
-                <div>
-                  <p className="text-[11px] font-medium uppercase tracking-[0.18em]" style={{ color: '#6B6B6B' }}>
-                    In this project
-                  </p>
-                  <h3 className="display text-lg font-medium" style={{ color: '#1A1A1A' }}>Recent activity</h3>
-                </div>
-                <Eye className="h-4 w-4" style={{ color: '#A0A0A0' }} aria-hidden />
-              </div>
-              <ActivityFeed
-                events={visibleActivity}
-                onSelect={handleActivitySelect}
-                dense
-                emptyLabel="Nothing yet — uploads, comments, and updates will appear here."
-              />
-              {recentActivity.length > ACTIVITY_PREVIEW && (
-                <button
-                  type="button"
-                  onClick={() => setShowAllActivity((v) => !v)}
-                  className="flex w-full items-center justify-center gap-1.5 border-t px-5 py-2.5 text-xs font-medium transition-colors hover:bg-[#FAF8F2]"
-                  style={{ borderColor: '#EFEBE0', color: '#3A3A3A' }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#1A1A1A'; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#3A3A3A'; }}
-                >
-                  {showAllActivity ? (
-                    <>Show less <ChevronUp className="h-3.5 w-3.5" /></>
-                  ) : (
-                    <>Show {recentActivity.length - ACTIVITY_PREVIEW} more <ChevronDown className="h-3.5 w-3.5" /></>
-                  )}
-                </button>
-              )}
-            </section>
+          {/* Sidebar — min-w-0 so a wide child (long feed strings, tabular
+              numerals) can never stretch this grid track past the viewport. */}
+          <aside className="min-w-0 space-y-6">
+            {/* Updates — Activity + What's-new merged behind one toggle, with
+                the "you were last here" catch-up line (P9.B dashboard rework) */}
+            <UpdatesCard
+              events={recentActivity}
+              onSelect={handleActivitySelect}
+              userId={currentProfile?.id ?? null}
+            />
 
             {/* Team */}
-            <section className="rounded-[14px] border border-[#E6E1D4] bg-white p-5">
+            <section className={`${CARD} p-5`}>
               <div className="mb-4 flex items-center justify-between">
                 <div>
-                  <p className="text-[11px] font-medium uppercase tracking-[0.18em]" style={{ color: '#6B6B6B' }}>
+                  <p className="text-[10.5px] font-bold uppercase tracking-[0.1em]" style={{ color: '#6B6B6B' }}>
                     On the roster
                   </p>
                   <h3 className="display text-lg font-medium" style={{ color: '#1A1A1A' }}>Team</h3>
@@ -853,22 +789,22 @@ export default function Dashboard() {
             </section>
 
             {/* Today */}
-            <section className="rounded-[14px] border bg-[#1A1A1A] p-5 text-white" style={{ borderColor: '#1A1A1A' }}>
-              <p className="text-[11px] font-medium uppercase tracking-[0.18em]" style={{ color: '#A8D0B8' }}>
+            <section className="rounded-[16px] bg-[#1A1A1A] p-5 text-white">
+              <p className="text-[10.5px] font-bold uppercase tracking-[0.1em]" style={{ color: '#A8D0B8' }}>
                 Today
               </p>
-              <p className="display mt-1 text-2xl font-medium">
+              <p className="display mt-2 text-[20px] font-semibold">
                 {stats.photosToday} photo{stats.photosToday === 1 ? '' : 's'} captured
               </p>
-              <p className="mt-2 text-xs" style={{ color: '#D8D2C4' }}>
+              <p className="mt-1 text-[11.5px]" style={{ color: 'rgba(255,255,255,0.55)' }}>
                 {stats.tasksInProgress} task{stats.tasksInProgress === 1 ? '' : 's'} in motion ·{' '}
                 {stats.delayedTasks} delayed
               </p>
               <button
                 onClick={() => navigate('/gallery')}
-                className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/5 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/10"
+                className="mt-3.5 inline-flex min-h-9 items-center gap-1.5 rounded-full border border-white/20 bg-white/5 px-3.5 py-1.5 text-[11.5px] font-semibold text-white transition-colors hover:bg-white/10"
               >
-                <ImageIcon className="h-3.5 w-3.5" />
+                <Camera className="h-3.5 w-3.5" />
                 Open gallery
                 <ArrowUpRight className="h-3 w-3" />
               </button>
@@ -882,21 +818,21 @@ export default function Dashboard() {
             <button
               type="button"
               onClick={() => setAuditOpen((o) => !o)}
-              className="flex w-full items-center justify-between gap-3 rounded-[14px] border border-[#E6E1D4] bg-white px-6 py-4 text-left shadow-[0_1px_2px_rgba(20,20,20,0.04)] transition-colors hover:bg-[#FAF8F2]"
+              aria-expanded={auditOpen}
+              className={`flex w-full items-center justify-between gap-3 ${CARD} px-5 py-3.5 text-left transition-colors hover:bg-[#FAF8F2]`}
             >
-              <div className="flex items-center gap-3">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#6B6B6B]">
-                  Audit Trail
+              <div className="flex items-center gap-2.5">
+                <span className="text-[11px] font-bold uppercase tracking-[0.1em] text-[#6B6B6B]">
+                  Audit trail
                 </span>
-                <span className="rounded-full border border-[#E6E1D4] bg-[#FAF8F2] px-2 py-0.5 text-[10px] font-medium tabular-nums text-[#6B6B6B]">
+                <span className="rounded-full border border-[#E6E1D4] bg-[#FAF8F2] px-2 py-0.5 text-[11px] font-medium tabular-nums text-[#A0A0A0]">
                   {auditLogs.length}
                 </span>
               </div>
-              {auditOpen ? (
-                <ChevronDown className="h-4 w-4 text-[#A0A0A0]" />
-              ) : (
-                <ChevronRight className="h-4 w-4 text-[#A0A0A0]" />
-              )}
+              <ChevronDown
+                className={`h-4 w-4 text-[#A0A0A0] transition-transform duration-200 ${auditOpen ? 'rotate-180' : ''}`}
+                aria-hidden
+              />
             </button>
             {auditOpen && (
               <div className="mt-3">
@@ -932,17 +868,17 @@ function MetricCell({
 }) {
   const body = (
     <>
-      <p className="text-[10px] font-medium uppercase tracking-[0.18em]" style={{ color: '#6B6B6B' }}>
+      <p className="text-[10px] font-bold uppercase tracking-[0.1em]" style={{ color: '#6B6B6B' }}>
         {label}
       </p>
       <p
-        className="num mt-3 text-2xl font-medium sm:text-3xl"
+        className="num mt-2 text-2xl font-semibold"
         style={{ color: '#1A1A1A' }}
         data-just-updated={pulse ? 'true' : undefined}
       >
         {numericValue !== undefined ? <CountUp value={numericValue} format={format} /> : value}
       </p>
-      <p className="mt-1 text-[11px]" style={{ color: '#A0A0A0' }}>{caption}</p>
+      <p className="mt-0.5 text-[11px]" style={{ color: '#A0A0A0' }}>{caption}</p>
     </>
   );
 
@@ -951,53 +887,58 @@ function MetricCell({
       <button
         type="button"
         onClick={onClick}
-        className="group relative overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white p-4 text-left shadow-[0_1px_2px_rgba(20,20,20,0.04)] transition-all hover:-translate-y-px hover:border-[#D8D2C4] hover:bg-[#FAF8F2] hover:shadow-[0_4px_16px_rgba(20,20,20,0.08)]"
+        className={`group relative overflow-hidden ${CARD} p-3.5 text-left transition-all hover:-translate-y-px hover:border-[#D8D2C4] hover:bg-[#FAF8F2] hover:shadow-[0_4px_16px_rgba(20,20,20,0.08)]`}
         aria-label={`${label}: ${value}, ${caption}`}
       >
         {body}
-        <ArrowUpRight className="absolute right-3 bottom-3 h-3 w-3 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" style={{ color: '#D8D2C4' }} aria-hidden />
+        <ArrowUpRight className="absolute right-2.5 bottom-2.5 h-3.5 w-3.5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" style={{ color: '#D8D2C4' }} aria-hidden />
       </button>
     );
   }
 
   return (
-    <div className="rounded-[14px] border border-[#E6E1D4] bg-white p-4 shadow-[0_1px_2px_rgba(20,20,20,0.04)]">
+    <div className={`${CARD} p-3.5`}>
       {body}
     </div>
   );
 }
 
 function SectionHeader({
-  eyebrow, title, description, actionLabel, onAction,
+  eyebrow, title, description, icon: Icon, actionLabel, onAction,
 }: {
   eyebrow: string;
   title: string;
   description?: string;
+  icon?: LucideIcon;
   actionLabel?: string;
   onAction?: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-3 border-b px-4 py-5 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between sm:px-6" style={{ borderColor: '#EFEBE0' }}>
-      <div className="min-w-0">
-        <p className="text-[11px] font-medium uppercase tracking-[0.18em]" style={{ color: '#6B6B6B' }}>
-          {eyebrow}
-        </p>
-        <h2 className="display mt-1 text-xl font-medium" style={{ textWrap: 'balance', color: '#1A1A1A', fontFamily: FRAUNCES }}>{title}</h2>
-        {description && <p className="mt-1 text-sm" style={{ color: '#6B6B6B' }}>{description}</p>}
+    <div className="flex flex-col gap-3 border-b px-4 py-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-5" style={{ borderColor: '#E6E1D4' }}>
+      <div className="flex min-w-0 items-center gap-3">
+        {Icon && (
+          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[9px] bg-[#1A1A1A] text-white" aria-hidden>
+            <Icon className="h-4 w-4" strokeWidth={1.75} />
+          </span>
+        )}
+        <div className="min-w-0">
+          <p className="text-[10.5px] font-bold uppercase tracking-[0.1em]" style={{ color: '#6B6B6B' }}>
+            {eyebrow}
+          </p>
+          <h2 className="mt-px text-[18px] font-medium" style={{ textWrap: 'balance', color: '#1A1A1A', fontFamily: FRAUNCES }}>{title}</h2>
+          {description && <p className="mt-0.5 text-[12px]" style={{ color: '#6B6B6B' }}>{description}</p>}
+        </div>
       </div>
       {actionLabel && onAction && (
         <button
           onClick={onAction}
-          className="group inline-flex items-center gap-1.5 rounded-full border border-[#E6E1D4] px-3 py-1.5 text-xs font-medium transition-colors hover:border-[#1A1A1A] hover:bg-[#1A1A1A] hover:text-white"
+          className="group inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-[#E6E1D4] bg-white px-3.5 py-2 text-[13px] font-semibold transition-colors hover:border-[#D8D2C4] hover:bg-[#FAF8F2]"
           style={{ color: '#3A3A3A' }}
         >
           {actionLabel}
-          <ArrowUpRight className="h-3 w-3 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+          <ArrowUpRight className="h-3.5 w-3.5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
         </button>
       )}
     </div>
   );
 }
-
-// Suppress unused import warning — CheckCircle2 reserved for future status block
-void CheckCircle2;

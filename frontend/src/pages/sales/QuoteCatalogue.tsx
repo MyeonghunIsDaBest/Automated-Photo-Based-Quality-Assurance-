@@ -268,7 +268,7 @@ export default function QuoteCatalogue({ quoteId, canSeeCost, isLocked, onAdded,
                     type="button"
                     onClick={() => void handleToggleFav(r)}
                     disabled={isLocked || togglingFavId === r.id}
-                    className="rounded p-1 disabled:opacity-50"
+                    className="inline-flex h-11 w-11 items-center justify-center rounded disabled:opacity-50 sm:h-8 sm:w-8"
                     aria-label={r.isFavourite ? "Remove favourite" : "Mark favourite"}
                     title={r.isFavourite ? "Remove favourite" : "Mark favourite"}
                   >
@@ -287,14 +287,14 @@ export default function QuoteCatalogue({ quoteId, canSeeCost, isLocked, onAdded,
                           const v = parseInt(e.target.value, 10);
                           setQtys((prev) => ({ ...prev, [r.id]: Number.isFinite(v) && v >= 1 ? v : 1 }));
                         }}
-                        className="w-16 rounded-md border border-[#E6E1D4] bg-white px-2 py-1.5 text-right text-sm tabular-nums focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
+                        className="min-h-11 w-16 rounded-md border border-[#E6E1D4] bg-white px-2 py-1.5 text-right text-sm tabular-nums focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] sm:min-h-0"
                         aria-label={`Quantity for ${r.name}`}
                       />
                       <button
                         type="button"
                         onClick={() => void handleAdd(r)}
                         disabled={addingId === r.id}
-                        className="inline-flex min-h-[36px] items-center gap-1 rounded-md bg-[#2F8F5C] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#287a4e] disabled:opacity-60"
+                        className="inline-flex min-h-11 items-center gap-1 rounded-md bg-[#2F8F5C] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#287a4e] disabled:opacity-60 sm:min-h-[36px]"
                       >
                         {addingId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
                         Add
@@ -305,7 +305,7 @@ export default function QuoteCatalogue({ quoteId, canSeeCost, isLocked, onAdded,
                           onClick={() => void handleAddAndStock(r)}
                           disabled={addingId === r.id}
                           title="Add to the quote AND put it on the stock list"
-                          className="inline-flex min-h-[36px] items-center rounded-md border border-[#E6E1D4] bg-white px-2 py-1.5 text-[11px] font-semibold text-[#2F8F5C] hover:bg-[#FAF8F2] disabled:opacity-50"
+                          className="inline-flex min-h-11 items-center rounded-md border border-[#E6E1D4] bg-white px-2 py-1.5 text-[11px] font-semibold text-[#2F8F5C] hover:bg-[#FAF8F2] disabled:opacity-50 sm:min-h-[36px]"
                         >
                           Add &amp; stock
                         </button>
@@ -419,7 +419,7 @@ export default function QuoteCatalogue({ quoteId, canSeeCost, isLocked, onAdded,
                   disabled={addingId === r.id}
                   onClick={() => void handleAdd(r)}
                   title={`Add ${r.name} (qty ${qtys[r.id] ?? 1})`}
-                  className="inline-flex min-h-[32px] items-center gap-1 rounded-full border border-[#E6E1D4] bg-white px-2.5 py-1 text-xs font-medium text-[#3A3A3A] hover:border-[#2F8F5C] hover:text-[#1A1A1A] disabled:opacity-50"
+                  className="inline-flex min-h-11 items-center gap-1 rounded-full border border-[#E6E1D4] bg-white px-2.5 py-1 text-xs font-medium text-[#3A3A3A] hover:border-[#2F8F5C] hover:text-[#1A1A1A] disabled:opacity-50 sm:min-h-[32px]"
                 >
                   <Plus className="h-3 w-3 text-[#2F8F5C]" />
                   {r.name}
@@ -490,7 +490,7 @@ export default function QuoteCatalogue({ quoteId, canSeeCost, isLocked, onAdded,
             <button
               type="button"
               onClick={() => setFavOnly(true)}
-              className="flex w-full items-center gap-2 border-b border-[#EFEBE0] bg-[#FFFBF0] px-3 py-2.5 text-left hover:bg-[#FFF6DF]"
+              className="flex min-h-11 w-full items-center gap-2 border-b border-[#EFEBE0] bg-[#FFFBF0] px-3 py-2.5 text-left hover:bg-[#FFF6DF]"
             >
               <Star className="h-4 w-4 fill-[#E0A82E] text-[#E0A82E]" />
               <span className="text-sm font-semibold text-[#1A1A1A]">Favourites</span>
@@ -502,7 +502,7 @@ export default function QuoteCatalogue({ quoteId, canSeeCost, isLocked, onAdded,
               key={g.key}
               type="button"
               onClick={() => setPath({ group: g.key, subgroup: null })}
-              className="flex w-full items-center gap-2 border-b border-[#EFEBE0] px-3 py-2.5 text-left last:border-0 hover:bg-[#FAF8F2]"
+              className="flex min-h-11 w-full items-center gap-2 border-b border-[#EFEBE0] px-3 py-2.5 text-left last:border-0 hover:bg-[#FAF8F2]"
             >
               <Folder className="h-4 w-4 text-[#2F8F5C]" />
               <span className="text-sm font-medium text-[#1A1A1A]">{g.key}</span>
@@ -524,7 +524,7 @@ export default function QuoteCatalogue({ quoteId, canSeeCost, isLocked, onAdded,
                   key={s.key}
                   type="button"
                   onClick={() => setPath({ group: path.group, subgroup: s.key })}
-                  className="flex w-full items-center gap-2 border-b border-[#EFEBE0] px-3 py-2.5 text-left last:border-0 hover:bg-[#FAF8F2]"
+                  className="flex min-h-11 w-full items-center gap-2 border-b border-[#EFEBE0] px-3 py-2.5 text-left last:border-0 hover:bg-[#FAF8F2]"
                 >
                   <Folder className="h-4 w-4 text-[#2F8F5C]" />
                   <span className="text-sm font-medium text-[#1A1A1A]">{s.key}</span>

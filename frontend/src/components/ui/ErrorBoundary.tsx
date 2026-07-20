@@ -48,10 +48,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-red-600">
                 Something broke
               </p>
-              <h3 className="mt-1 text-base font-semibold text-slate-900">
+              <h3 className="mt-1 text-base font-semibold text-[#1A1A1A]">
                 {this.props.label ? `“${this.props.label}” crashed.` : 'This view crashed.'}
               </h3>
-              <p className="mt-1 text-sm leading-relaxed text-slate-600">
+              <p className="mt-1 text-sm leading-relaxed text-[#6B6B6B]">
                 The rest of the app is fine — switch tabs to keep working. Open the browser console
                 for the full trace, then send the top line below to your engineer.
               </p>
@@ -62,7 +62,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 <button
                   type="button"
                   onClick={this.reset}
-                  className="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                  className="inline-flex items-center rounded-md border border-[#E6E1D4] bg-white px-3 py-1.5 text-xs font-medium text-[#3A3A3A] shadow-sm hover:bg-[#FAF8F2]"
                 >
                   Try again
                 </button>

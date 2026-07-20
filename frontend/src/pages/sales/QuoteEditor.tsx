@@ -11,11 +11,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft, Printer, Plus, Trash2, RefreshCw, Search, Package, Clock, LayoutTemplate,
-  ChevronUp, ChevronDown, Lock, RotateCcw, Pencil, X, ExternalLink,
+  ChevronUp, ChevronDown, ChevronRight, Lock, RotateCcw, Pencil, X, ExternalLink,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { FRAUNCES, TONE, cardShell, btnPrimary, btnGhost } from "../gantt/components/ledger";
+import { PRINT, PRINT_EXACT } from "../../components/print/printTheme";
+import PrintDocFooter from "../../components/print/PrintDocFooter";
+import PrintLogo from "../../components/print/PrintLogo";
 import { SkeletonLine } from "../../components/ui/skeleton";
 import { Toaster, type ToastState } from "../../components/ui/Toaster";
 import { lineTotal, quoteCostMargin, quoteFinancials, minSell, isBelowFloor } from "../../lib/commercial/money";
@@ -60,6 +63,7 @@ import QuoteStock from "./QuoteStock";
 import QuoteOneOff from "./QuoteOneOff";
 import QuoteSchedule from "./QuoteSchedule";
 import QuoteCustomerAssets from "./QuoteCustomerAssets";
+import LineItemEditSheet from "./LineItemEditSheet";
 import { quoteStatusTone } from "./quoteStatus";
 import type { Profile, SecurityGroup } from "../../types";
 
@@ -189,6 +193,20 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
   const [staff, setStaff]           = useState<Profile[]>([]);
 
   const [addMode, setAddMode]       = useState<AddMode>(null);
+  // Phone card layout: which line the bottom edit sheet is open for. Live-
+  // derived below so the sheet always renders the freshly loaded line (and
+  // closes itself if the line vanishes — e.g. deleted from another tab).
+  const [editItemId, setEditItemId] = useState<string | null>(null);
+  // Force-close housekeeping: when the sheet is shut by the lock gate (quote
+  // accepted elsewhere) or its line vanished, onClose never runs — a stale id
+  // would silently REOPEN the sheet the moment the quote unlocks again.
+  // (Lives up here with the hooks: everything below the loading/error early
+  // returns is off-limits for effects.)
+  useEffect(() => {
+    if (!editItemId || !quote) return;
+    const locked = quote.status === "accepted" || quote.status === "declined" || quote.status === "expired";
+    if (locked || !(quote.items ?? []).some((i) => i.id === editItemId)) setEditItemId(null);
+  }, [editItemId, quote]);
   const [quoteTab, setQuoteTab] = useState<QuoteTab>("details");
   const [billableTab, setBillableTabState] = useState<BillableTab>(() => {
     try {
@@ -854,7 +872,7 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
       if (rows.length === 0) return [];
       const subtotal = rows.reduce((s, it) => s + lineTotal({ qty: it.qty, unitPriceExGst: it.unitPriceExGst }), 0);
       return [
-        <tr key={`hdr-${b.id ?? "general"}`} className="bg-[#FAF8F2]">
+        <tr key={`hdr-${b.id ?? "general"}`} className={`bg-[#FAF8F2] ${PRINT_EXACT}`}>
           <td colSpan={billableCols} className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">{b.name}</td>
         </tr>,
         ...rows.map((item, i) => billableRow(item, i, rows.length)),
@@ -883,7 +901,9 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
     // labour (sell == cost) would otherwise flag on every normal row.
     const belowFloor = canSeeCost && item.kind === "material" && isBelowFloor(item.unitPriceExGst, cost, settings?.minMarkupPct ?? 0.25);
     return (
-      <tr key={item.id} className="border-b border-[#EFEBE0] hover:bg-[#FAF8F2]">
+      // Zebra striping per the designer artwork — alternating rows read as one
+      // record each on the printed page.
+      <tr key={item.id} className={`border-b border-[#EFEBE0] hover:bg-[#FAF8F2] ${idx % 2 === 1 ? `bg-[#F6F6F6] ${PRINT_EXACT}` : ""}`}>
         <td className="px-3 py-2.5 text-[#1A1A1A]">
           {isLocked ? (
             <span>{item.description}</span>
@@ -956,6 +976,84 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
       </tr>
     );
   };
+
+  // ── Phone card layout (Phase D) ──────────────────────────────────────────
+  // Below `sm` the tables above are display:none and each line renders as a
+  // tappable card instead. The swap is PURE CSS (hidden sm:table / sm:hidden)
+  // — print pages measure paper width, not screen width, so a JS-driven swap
+  // would print the cards; index.css additionally pins .print-sheet tables to
+  // table layout and force-hides [data-line-cards] at print.
+  const billableCard = (item: QuoteItem) => {
+    const lt = lineTotal({ qty: item.qty, unitPriceExGst: item.unitPriceExGst });
+    const cost = item.costPriceExGst;
+    const markupPct = cost && cost > 0 ? Math.round(((item.unitPriceExGst - cost) / cost) * 1000) / 10 : null;
+    const belowFloor = canSeeCost && item.kind === "material" && isBelowFloor(item.unitPriceExGst, cost, settings?.minMarkupPct ?? 0.25);
+    const isLabourLine = item.kind === "labour";
+    const body = (
+      <>
+        <div className="flex items-start justify-between gap-2">
+          <p className="min-w-0 text-sm font-medium leading-snug text-[#1A1A1A]">{item.description}</p>
+          {!isLocked && <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-[#D8D2C4]" aria-hidden />}
+        </div>
+        <div className="mt-1.5 flex items-center justify-between gap-2 text-[13px]">
+          <span className="tabular-nums text-[#6B6B6B]">
+            {item.qty} {isLabourLine ? "hrs" : "×"} {isLabourLine ? "@ " : ""}{fmtMoney(item.unitPriceExGst)}
+          </span>
+          <span className="font-semibold tabular-nums text-[#1A1A1A]">{fmtMoney(lt)}</span>
+        </div>
+        {canSeeCost && (
+          <p className="mt-1 text-[11px] tabular-nums text-[#A0A0A0]">
+            Cost {cost == null ? "—" : fmtMoney(cost)}
+            {markupPct !== null && <> · markup {markupPct.toFixed(1)}%</>}
+            {belowFloor && <span className="ml-1.5 rounded-[6px] bg-[#F9EFD9] px-1.5 py-0.5 text-[#8A6D1C]">below floor</span>}
+          </p>
+        )}
+      </>
+    );
+    return isLocked ? (
+      <div key={item.id} className="rounded-[12px] border border-[#E6E1D4] bg-white p-3">{body}</div>
+    ) : (
+      <button
+        type="button"
+        key={item.id}
+        onClick={() => setEditItemId(item.id)}
+        className="block min-h-11 w-full rounded-[12px] border border-[#E6E1D4] bg-white p-3 text-left active:bg-[#FAF8F2]"
+      >
+        {body}
+      </button>
+    );
+  };
+
+  /** Card-list equivalent of groupedRows — same section blocks + subtotals. */
+  const groupedCards = (list: QuoteItem[], emptyCopy: string) => {
+    if (list.length === 0) return <p className="py-4 text-center text-xs text-[#A0A0A0]">{emptyCopy}</p>;
+    if (!grouped) return list.map((item) => billableCard(item));
+    return sectionBlocks.flatMap((b) => {
+      const rows = inSection(list, b.id);
+      if (rows.length === 0) return [];
+      const subtotal = rows.reduce((s, it) => s + lineTotal({ qty: it.qty, unitPriceExGst: it.unitPriceExGst }), 0);
+      return [
+        <p key={`chdr-${b.id ?? "general"}`} className="pt-1 text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">{b.name}</p>,
+        ...rows.map((item) => billableCard(item)),
+        <p key={`csub-${b.id ?? "general"}`} className="text-right text-[11px] text-[#6B6B6B]">
+          {b.name} subtotal: <span className="font-semibold tabular-nums text-[#3A3A3A]">{fmtMoney(subtotal)}</span>
+        </p>,
+      ];
+    });
+  };
+
+  // The edit sheet's line, re-derived from the latest load. Group index/size
+  // use the SAME filter as moveItem so the sheet's Move buttons disable at
+  // exactly the bounds the desktop chevrons would.
+  const editItem = editItemId ? (items.find((i) => i.id === editItemId) ?? null) : null;
+  const editGroup = editItem
+    ? items.filter(
+        (a) =>
+          (editItem.kind === "labour" ? a.kind === "labour" : a.kind !== "labour") &&
+          (a.sectionId ?? null) === (editItem.sectionId ?? null),
+      )
+    : [];
+  const editIdx = editItem ? editGroup.findIndex((i) => i.id === editItem.id) : -1;
 
   return (
     <>
@@ -1038,24 +1136,21 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
         style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}
       >
 
-        {/* Document header */}
-        <div className="mb-8 flex flex-wrap items-start justify-between gap-6">
-          <div>
-            <p
-              className="text-[22px] font-semibold text-[#1A1A1A]"
-              style={{ fontFamily: FRAUNCES }}
-            >
-              {settings?.businessName ?? "Your Business"}
-            </p>
-            {settings?.abn && (
-              <p className="mt-0.5 text-sm text-[#6B6B6B]">ABN {settings.abn}</p>
+        {/* Document header — designer print identity (P6-P): logo/wordmark +
+            tagline left, big orange number right, thick orange rule below. */}
+        <div className="mb-2 flex flex-wrap items-start justify-between gap-6">
+          <div className="min-w-0 max-w-md">
+            {/* Logo with broken-URL fallback to the styled wordmark (worksheet P2
+                lands the real file via Settings → Print identity). */}
+            <PrintLogo logoUrl={settings?.logoUrl} businessName={settings?.businessName} />
+            {settings?.printTagline && (
+              <p className="mt-2 text-[11.5px] leading-relaxed" style={{ color: PRINT.grey }}>
+                {settings.printTagline}
+              </p>
             )}
           </div>
           <div className="text-right">
-            <p
-              className="text-[28px] font-medium text-[#1A1A1A]"
-              style={{ fontFamily: FRAUNCES, letterSpacing: "-0.02em" }}
-            >
+            <p className="text-[32px] font-light tracking-tight" style={{ color: PRINT.orange }}>
               {quote.number ?? "QTE-??????"}
             </p>
             <p className="text-xs text-[#6B6B6B]">
@@ -1096,11 +1191,14 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
           </div>
         </div>
 
+        {/* Thick brand rule under the header (designer artwork) */}
+        <div aria-hidden className={`mb-6 h-[3px] w-full ${PRINT_EXACT}`} style={{ background: PRINT.orange }} />
+
         {/* Title + client block */}
-        <div className="mb-8 border-t border-[#EFEBE0] pt-6">
+        <div className="mb-8">
           {/* Title */}
           <div className="mb-4">
-            <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#A0A0A0]">Title</p>
+            <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: PRINT.navy }}>Title</p>
             {isLocked ? (
               <p className="text-base font-semibold text-[#1A1A1A]">{quote.title}</p>
             ) : (
@@ -1151,7 +1249,7 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
           </div>
 
           {/* Quote for */}
-          <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#A0A0A0]">Quote for</p>
+          <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: PRINT.navy }}>Quote for</p>
           {isLocked ? (
             <>
               <p className="text-base font-semibold text-[#1A1A1A]">
@@ -1451,9 +1549,13 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
           {/* Parts */}
           <div className="mb-6 overflow-x-auto">
             <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6B6B6B]">Parts</p>
-            <table className="min-w-full text-sm">
+            {/* Phone cards — CSS-swapped with the table below; never printed. */}
+            <div data-line-cards="" className="space-y-2 sm:hidden print:hidden">
+              {groupedCards(partsItems, "No parts yet. Use “Add a part” below.")}
+            </div>
+            <table className="hidden min-w-full text-sm sm:table print:table">
               <thead>
-                <tr className="border-b border-[#E6E1D4] bg-[#FAF8F2]">
+                <tr className={`border-b border-[#E6E1D4] bg-[#FBE7D9] ${PRINT_EXACT}`}>
                   <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Description</th>
                   {canSeeCost && <th className="w-24 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B] print:hidden">Cost</th>}
                   {canSeeCost && <th className="w-20 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B] print:hidden">Markup</th>}
@@ -1484,9 +1586,13 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
                 Estimated time: <span className="font-semibold tabular-nums text-[#3A3A3A]">{estHours.toFixed(2)} hrs</span>
               </p>
             </div>
-            <table className="min-w-full text-sm">
+            {/* Phone cards — CSS-swapped with the table below; never printed. */}
+            <div data-line-cards="" className="space-y-2 sm:hidden print:hidden">
+              {groupedCards(labourItems, "No labour yet. Add it from the labour picker below.")}
+            </div>
+            <table className="hidden min-w-full text-sm sm:table print:table">
               <thead>
-                <tr className="border-b border-[#E6E1D4] bg-[#FAF8F2]">
+                <tr className={`border-b border-[#E6E1D4] bg-[#FBE7D9] ${PRINT_EXACT}`}>
                   <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Labour type</th>
                   {canSeeCost && <th className="w-24 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B] print:hidden">Cost rate</th>}
                   {canSeeCost && <th className="w-20 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B] print:hidden">Markup</th>}
@@ -1828,7 +1934,7 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
         {/* ── Cost centre summary (customer-facing; prints) ───────────────── */}
         {grouped && (
           <div className="mb-4 flex justify-end">
-            <div className="w-full max-w-xs space-y-1 border-b border-[#EFEBE0] pb-3">
+            <div className="w-full max-w-xs space-y-1 border-b border-[#EFEBE0] pb-3" style={{ breakInside: "avoid" }}>
               <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#A0A0A0]">Cost centre summary</p>
               {sectionBlocks
                 .filter((b) => inSection(items, b.id).length > 0)
@@ -1844,7 +1950,7 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
 
         {/* ── Totals footer ───────────────────────────────────────────────── */}
         <div className="mb-8 flex justify-end">
-          <div className="w-full max-w-xs space-y-1">
+          <div className="w-full max-w-xs space-y-1" style={{ breakInside: "avoid" }}>
             <div className="flex items-center justify-between text-sm text-[#6B6B6B]">
               <span>Subtotal (ex GST)</span>
               <span className="tabular-nums">{fmtMoney(fin.subtotalExGst)}</span>
@@ -1855,13 +1961,17 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
                 <span className="tabular-nums">-{fmtMoney(fin.discountExGst)}</span>
               </div>
             )}
-            <div className="flex items-center justify-between text-sm text-[#6B6B6B]">
+            <div className="flex items-center justify-between pb-2 text-sm text-[#6B6B6B]" style={{ borderBottom: `2px solid ${PRINT.navy}` }}>
               <span>GST ({(gstRate * 100).toFixed(0)}%)</span>
               <span className="tabular-nums">{fmtMoney(fin.gstAmount)}</span>
             </div>
-            <div className="flex items-center justify-between border-t border-[#E6E1D4] pt-2 text-base font-semibold text-[#1A1A1A]">
+            {/* The designer's solid-orange total band */}
+            <div
+              className={`mt-2 flex items-center justify-between px-4 py-2.5 text-base font-bold text-white ${PRINT_EXACT}`}
+              style={{ background: PRINT.orange }}
+            >
               <span>Total (inc GST)</span>
-              <span className="tabular-nums text-[18px]" style={{ fontFamily: FRAUNCES }}>
+              <span className="tabular-nums text-[18px]">
                 {fmtMoney(fin.totalIncGst)}
               </span>
             </div>
@@ -1894,7 +2004,7 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
         {/* ── Terms & conditions (settings-backed; customer-facing, prints) ── */}
         {settings?.quoteTerms && (
           <div className="mb-8 border-t border-[#EFEBE0] pt-5" style={{ breakInside: "avoid" }}>
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#A0A0A0]">Terms &amp; Conditions</p>
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: PRINT.navy }}>Terms &amp; Conditions</p>
             <p className="whitespace-pre-wrap text-xs leading-relaxed text-[#6B6B6B]">{settings.quoteTerms}</p>
           </div>
         )}
@@ -1902,7 +2012,7 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
         {/* ── Acceptance / signature (prints while the quote is still open) ── */}
         {quote.status !== "accepted" && quote.status !== "declined" && (
           <div className="mb-8 hidden border-t border-[#EFEBE0] pt-5 print:block" style={{ breakInside: "avoid" }}>
-            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#A0A0A0]">Acceptance</p>
+            <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: PRINT.navy }}>Acceptance</p>
             <p className="mb-6 text-xs text-[#6B6B6B]">
               To accept this quote, sign below and return a copy to {settings?.businessName ?? "us"}.
             </p>
@@ -1923,6 +2033,10 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
         {settings?.proposalFooter && (
           <p className="hidden text-center text-[11px] text-[#A0A0A0] print:block">{settings.proposalFooter}</p>
         )}
+
+        {/* ── Branded document footer (designer artwork, P6-P) — identity line,
+               orange contact band, navy trade band. Shared with the invoice. ── */}
+        <PrintDocFooter settings={settings} />
 
         {/* ── Manager-only cost / margin (screen only; never printed) ───────── */}
         {canSeeCost && margin && (
@@ -2146,29 +2260,29 @@ export default function QuoteEditor({ quoteId, onClose, onChanged, canSeeCost = 
 
       </div>
 
+      {/* Phone line-item edit sheet — same save handlers as the desktop cells. */}
+      <LineItemEditSheet
+        item={!isLocked ? editItem : null}
+        saving={saving}
+        canSeeCost={!!canSeeCost}
+        sections={sections}
+        minMarkupPct={settings?.minMarkupPct ?? 0.25}
+        idxInGroup={editIdx}
+        groupSize={editGroup.length}
+        onClose={() => setEditItemId(null)}
+        onUpdate={(it, patch) => void handleItemUpdate(it, patch)}
+        onMarkup={(it, pct) => void handleItemMarkup(it, pct)}
+        onMove={(it, dir) => void moveItem(it, dir)}
+        onMoveToSection={(it, sid) => void moveItemToSection(it, sid)}
+        onRemove={(it) => void handleRemoveItem(it)}
+      />
+
       {toast && (
         <Toaster message={toast.message} type={toast.type} onClose={() => setToast(null)} />
       )}
 
-      {/* â”€â”€ Print stylesheet â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <style>{`
-        @media print {
-          body.printing-commercial-doc * { visibility: hidden; }
-          body.printing-commercial-doc .print-sheet,
-          body.printing-commercial-doc .print-sheet * { visibility: visible; }
-          body.printing-commercial-doc .print-sheet {
-            position: absolute;
-            inset: 0 auto auto 0;
-            width: 100%;
-            border: none !important;
-            box-shadow: none !important;
-            padding: 0 !important;
-          }
-          body.printing-commercial-doc .print\\:hidden { visibility: hidden !important; }
-          body.printing-commercial-doc .print\\:border-0 { border: none !important; }
-          body.printing-commercial-doc .print\\:px-0 { padding-left: 0 !important; padding-right: 0 !important; }
-        }
-      `}</style>
+      {/* Print stylesheet lives in index.css now (Phase D print armour) — it
+          was an identical copy-pasted <style> block here and in InvoiceEditor. */}
     </>
   );
 }

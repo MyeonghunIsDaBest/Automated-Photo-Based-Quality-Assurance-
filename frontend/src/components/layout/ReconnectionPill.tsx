@@ -9,9 +9,14 @@
 
 import { useEffect, useState } from 'react';
 import { WifiOff } from 'lucide-react';
-import { useRealtimeStatusStore, isAnyChannelDegraded } from '../../store/realtimeStatus';
+import { useRealtimeStatusStore, isAnyChannelDegraded, neverSubscribedChannels } from '../../store/realtimeStatus';
 
 const WINDOW_MS = 5_000;
+
+// One console.warn per never-subscribed channel per session — these are
+// misconfigurations (realtime publication missing on the table), not
+// connectivity, so the pill must not claim "Reconnecting…" for them.
+const warnedChannels = new Set<string>();
 
 export default function ReconnectionPill() {
   const channels = useRealtimeStatusStore((s) => s.channels);
@@ -21,11 +26,16 @@ export default function ReconnectionPill() {
   // and there are <10 channels total in this app.
   useEffect(() => {
     const tick = () => {
-      const next = isAnyChannelDegraded(
-        useRealtimeStatusStore.getState(),
-        WINDOW_MS,
-      );
-      setShow(next);
+      const state = useRealtimeStatusStore.getState();
+      setShow(isAnyChannelDegraded(state, WINDOW_MS));
+      for (const name of neverSubscribedChannels(state)) {
+        if (warnedChannels.has(name)) continue;
+        warnedChannels.add(name);
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[realtime] channel "${name}" has never subscribed — check that the table is in the realtime publication (Supabase → Database → Replication).`,
+        );
+      }
     };
     tick();
     const id = window.setInterval(tick, 1_000);

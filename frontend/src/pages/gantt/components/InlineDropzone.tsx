@@ -49,18 +49,18 @@ export function InlineDropzone({
       {...getRootProps()}
       className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-10 text-center transition-colors ${
         isDragActive
-          ? 'border-emerald-500 bg-emerald-50'
-          : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+          ? 'border-[#2F8F5C] bg-[#E1F3EA]'
+          : 'border-[#E6E1D4] hover:border-[#D8D2C4] hover:bg-[#FAF8F2]'
       }`}
     >
       <input {...getInputProps()} />
-      <div className="mb-4 rounded-full bg-slate-100 p-4">
-        <UploadIcon className="h-7 w-7 text-slate-400" />
+      <div className="mb-4 rounded-full bg-[#F0EDE4] p-4">
+        <UploadIcon className="h-7 w-7 text-[#A0A0A0]" />
       </div>
-      <h3 className="text-base font-medium text-slate-900">
+      <h3 className="text-base font-medium text-[#1A1A1A]">
         {isDragActive ? 'Drop files here' : 'Drag & drop files here'}
       </h3>
-      <p className="mt-1.5 text-xs text-slate-500">
+      <p className="mt-1.5 text-xs text-[#6B6B6B]">
         {helperText ?? `or click to browse (max ${maxFiles} files, ${Math.round(maxSize / 1024 / 1024)}MB each)`}
       </p>
       <div className="mt-3 flex flex-wrap justify-center gap-2">

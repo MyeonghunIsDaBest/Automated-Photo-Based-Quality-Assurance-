@@ -7,14 +7,17 @@
 // its stock, adjust, stock-take, transfer, view history, rename/archive. Live.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, Loader2, ChevronRight, Truck, Factory, Warehouse, ClipboardCheck, Search, X, Pencil, Check, Archive, ArrowLeftRight, ArchiveRestore, MapPin, Route, ExternalLink } from "lucide-react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Plus, Loader2, ChevronRight, Truck, Factory, Warehouse, ClipboardCheck, Search, X, Pencil, Check, Archive, ArrowLeftRight, ArchiveRestore, MapPin, Route, ExternalLink, Navigation, Map as MapIcon, Download, Upload, Trash2, AlertTriangle } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { Toaster, type ToastState } from "../../components/ui/Toaster";
+import MotionDrawer from "../../components/ui/MotionDrawer";
+import { DrawerHeader, DrawerBody, DrawerFooter } from "../../components/ui/Sheet";
+import { cn } from "../../lib/cn";
 import { cardShell, btnPrimary, btnGhost, inputField, StatusPill, type ToneKey } from "../gantt/components/ledger";
 import {
-  listStockLocations, createLocation, updateLocation, listStockLevels, getCompanyTotals,
+  listStockLocations, createLocation, updateLocation, deleteLocation, listStockLevels, getCompanyTotals,
   recordStocktake, adjustStock, listMovements, subscribeToStockLevels,
   type StockLocation, type StockLevel, type MovementView, type MovementReason, type UpdateLocationInput,
   type LocationType, type CompanyTotal,
@@ -22,15 +25,18 @@ import {
 import { listProfilesByRole } from "../../lib/api/profiles";
 import { listMaterials, type Material } from "../../lib/api/materials";
 import { listServiceJobs, getServiceJob, type ServiceJob } from "../../lib/api/serviceJobs";
-import { getOrGeocode, haversineKm } from "../../lib/geo";
+import { getOrGeocode, haversineKm, reverseGeocode, directionsUrl } from "../../lib/geo";
 import { fmtMoney, fmtQty } from "../../lib/format";
+import { downloadCsv, parseStockCountCsv, matchStockCounts } from "../../lib/stock/csv";
 import AddressSearchInput from "../../components/geo/AddressSearchInput";
 import StockItemDrawer from "./StockItemDrawer";
 import TransferStockModal from "./TransferStockModal";
+import LocationMinimums from "./LocationMinimums";
 import type { Profile, SecurityGroup } from "../../types";
 
-// Leaflet stays out of the main bundle — the map loads only when a form needs it.
+// Leaflet stays out of the main bundle — the maps load only when actually shown.
 const MapPicker = lazy(() => import("../../components/geo/MapPicker"));
+const LocationsMap = lazy(() => import("../../components/geo/LocationsMap"));
 
 const MapFallback = ({ heightClass = "h-56" }: { heightClass?: string }) => (
   <div className={`animate-pulse rounded-[10px] border border-[#E6E1D4] bg-[#FAF8F2] ${heightClass}`} />
@@ -56,6 +62,11 @@ const TYPE_META: Record<LocationType, { label: string; icon: typeof Truck; tone:
 };
 const ADDABLE_TYPES: LocationType[] = ["van", "site", "storage"];
 
+// ── Chrome tokens (warm-ledger stock re-skin — visual only) ────────────────────
+const eyebrow = "text-[11px] font-bold uppercase tracking-[0.1em] text-[#6B6B6B]";
+const fieldLabel = "mb-1.5 block text-[10px] font-bold uppercase tracking-[0.08em] text-[#A0A0A0]";
+const primaryCard = cn(cardShell, "rounded-[16px]"); // primary stock surfaces are 16px per the P9 spec
+
 export default function LocationsManager() {
   const [locations, setLocations] = useState<StockLocation[]>([]);
   const [staff, setStaff] = useState<Profile[]>([]);
@@ -64,6 +75,12 @@ export default function LocationsManager() {
   const [toast, setToast] = useState<ToastState>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showInactive, setShowInactive] = useState(false);
+  const [locFilter, setLocFilter] = useState(""); // pure client-side narrowing of the loaded list
+  const [manageLoc, setManageLoc] = useState<StockLocation | null>(null); // archive/delete confirm target
+  const [busyAction, setBusyAction] = useState(false);
+  // Focus lands here after a delete/archive removes the card that opened the
+  // modal — else the drawer restores focus to a now-unmounted button → <body>.
+  const listTopRef = useRef<HTMLDivElement>(null);
 
   const [showAdd, setShowAdd] = useState(false);
   const [newType, setNewType] = useState<LocationType>("van");
@@ -74,6 +91,27 @@ export default function LocationsManager() {
   const [newAddress, setNewAddress] = useState("");
   const [newPin, setNewPin] = useState<{ lat: number; lng: number } | null>(null);
   const [savingAdd, setSavingAdd] = useState(false);
+  // Pin↔address interplay (WS5): typing no longer wipes the pin — it just flags
+  // the mismatch; a map tap reverse-geocodes the address back into the field.
+  const [addAddrDirty, setAddAddrDirty] = useState(false);
+  const [addRevBusy, setAddRevBusy] = useState(false);
+  const [addSkipSearch, setAddSkipSearch] = useState<string | null>(null);
+  const addRevSeq = useRef(0);
+  // All-pins map card (lazy — Leaflet loads only when shown).
+  const [showMap, setShowMap] = useState(false);
+
+  function handleAddPin(lat: number, lng: number) {
+    setNewPin({ lat, lng });
+    setAddAddrDirty(false);
+    const seq = ++addRevSeq.current;
+    setAddRevBusy(true);
+    void reverseGeocode(lat, lng)
+      .then((label) => {
+        if (seq !== addRevSeq.current) return;
+        if (label) { setNewAddress(label); setAddSkipSearch(label); }
+      })
+      .finally(() => { if (seq === addRevSeq.current) setAddRevBusy(false); });
+  }
 
   // Find an item — "where's my 100mm conduit?" across every location.
   const [totals, setTotals] = useState<CompanyTotal[]>([]);
@@ -151,6 +189,13 @@ export default function LocationsManager() {
     }
   }
 
+  // One reset path shared by Cancel, the header X, Esc, and the backdrop —
+  // the exact statements the old inline Cancel button ran.
+  function closeAdd() {
+    setShowAdd(false); setNewName(""); setNewDriver(""); setNewJob(""); setNewAddress(""); setNewPin(null);
+    setAddAddrDirty(false); setAddRevBusy(false); setAddSkipSearch(null); addRevSeq.current++;
+  }
+
   // Find-an-item rows: name/SKU match with per-location holdings. Capped for
   // display but never silently — the footer reports the full match count.
   const findResult = useMemo(() => {
@@ -160,6 +205,40 @@ export default function LocationsManager() {
     return { rows: matched.slice(0, 8), matches: matched.length };
   }, [totals, findTerm]);
   const findRows = findResult.rows;
+
+  // Archive (soft — keeps stock + history, just hides) / Reactivate. Shared by
+  // the card's manage popup; the factory never reaches here (no manage button).
+  async function handleArchiveToggle(loc: StockLocation, active: boolean) {
+    setBusyAction(true);
+    try {
+      await updateLocation(loc.id, { isActive: active });
+      setManageLoc(null);
+      await loadAll();
+      listTopRef.current?.focus();
+      setToast({ message: `${loc.name} ${active ? "reactivated" : "archived"}.`, type: "success" });
+    } catch (ex) {
+      setToast({ message: ex instanceof Error ? ex.message : "Failed to update location", type: "error" });
+    } finally {
+      setBusyAction(false);
+    }
+  }
+
+  // Hard delete — only offered when the location holds no stock (the modal gates
+  // this); cascades away its history + sourced job boxes. See deleteLocation.
+  async function handleDeleteLocation(loc: StockLocation) {
+    setBusyAction(true);
+    try {
+      await deleteLocation(loc.id);
+      setManageLoc(null);
+      await loadAll();
+      listTopRef.current?.focus();
+      setToast({ message: `${loc.name} deleted.`, type: "success" });
+    } catch (ex) {
+      setToast({ message: ex instanceof Error ? ex.message : "Failed to delete location", type: "error" });
+    } finally {
+      setBusyAction(false);
+    }
+  }
 
   async function handleReassign(loc: StockLocation, workerId: string) {
     try {
@@ -193,35 +272,41 @@ export default function LocationsManager() {
     );
   }
 
+  // Client-side narrowing only — the list is already loaded; no new queries.
+  const locQ = locFilter.trim().toLowerCase();
+  const shownLocations = locQ
+    ? locations.filter((l) => `${l.name} ${l.type === "van" && l.assignedWorkerId ? staffName(l.assignedWorkerId) : ""}`.toLowerCase().includes(locQ))
+    : locations;
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6B6B6B]">All stock locations</p>
-        <div className="flex items-center gap-3">
-          <label className="flex cursor-pointer items-center gap-1.5 text-xs text-[#6B6B6B]">
-            <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} className="h-3.5 w-3.5 accent-[#2F8F5C]" />
+      <div ref={listTopRef} tabIndex={-1} className="flex flex-wrap items-center justify-between gap-4 focus:outline-none">
+        <p className={eyebrow}>All stock locations</p>
+        <div className="flex items-center gap-3.5">
+          <label className="flex cursor-pointer items-center gap-2 text-[13px] text-[#3A3A3A]">
+            <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} className="h-4 w-4 accent-[#2F8F5C]" />
             Show inactive
           </label>
           {!showAdd && (
-            <button type="button" onClick={() => setShowAdd(true)} className="inline-flex items-center gap-1.5 rounded-md bg-[#2F8F5C] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#287a4e]">
-              <Plus className="h-3.5 w-3.5" /> Add location
+            <button type="button" onClick={() => setShowAdd(true)} className={btnPrimary}>
+              <Plus className="h-4 w-4" /> Add location
             </button>
           )}
         </div>
       </div>
 
       {/* Find an item — every place it's sitting, in one hit */}
-      <div className={`px-4 py-3 ${cardShell}`}>
+      <div className={cn(primaryCard, "px-4 py-3.5")}>
         <div className="relative max-w-md">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#A0A0A0]" />
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#A0A0A0]" />
           <input
             value={findTerm}
             onChange={(e) => setFindTerm(e.target.value)}
             placeholder="Find an item — name or SKU (e.g. 100mm conduit)…"
-            className="w-full rounded-md border border-[#E6E1D4] bg-white py-2 pl-9 pr-9 text-sm focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
+            className="w-full rounded-full border border-[#E6E1D4] bg-white py-2 pl-10 pr-10 text-[13.5px] text-[#1A1A1A] placeholder:text-[#A0A0A0] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
           />
           {findTerm && (
-            <button type="button" onClick={() => setFindTerm("")} className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-[#A0A0A0] hover:text-[#C44545]" aria-label="Clear search">
+            <button type="button" onClick={() => setFindTerm("")} className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-[#A0A0A0] transition-colors hover:text-[#C44545]" aria-label="Clear search">
               <X className="h-4 w-4" />
             </button>
           )}
@@ -257,10 +342,11 @@ export default function LocationsManager() {
         )}
       </div>
 
-      {showAdd && (
-        <div className={`px-4 py-4 ${cardShell}`}>
+      <MotionDrawer open={showAdd} onClose={closeAdd} variant="modal" ariaLabel="Add location" sizeClass="sm:max-w-[640px]">
+        <DrawerHeader title="Add location" subtitle="Vans, job sites, and storage spots" onClose={closeAdd} />
+        <DrawerBody>
           {/* Type picker first — it shapes the rest of the form */}
-          <div className="mb-3 flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-2">
             {ADDABLE_TYPES.map((t) => {
               const M = TYPE_META[t];
               const active = newType === t;
@@ -270,18 +356,18 @@ export default function LocationsManager() {
                   type="button"
                   onClick={() => setNewType(t)}
                   aria-pressed={active}
-                  className={`inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                    active ? "border-[#2F8F5C] bg-[#E5F2EA] text-[#246F47]" : "border-[#E6E1D4] bg-white text-[#6B6B6B] hover:bg-[#FAF8F2]"
+                  className={`inline-flex min-h-11 items-center gap-1.5 rounded-full border px-4 py-2 text-[13px] font-semibold transition-colors ${
+                    active ? "border-[#2F8F5C] bg-[#E5F2EA] text-[#246F47]" : "border-[#E6E1D4] bg-white text-[#3A3A3A] hover:bg-[#FAF8F2]"
                   }`}
                 >
-                  <M.icon className="h-3.5 w-3.5" /> {M.label}
+                  <M.icon className="h-4 w-4" /> {M.label}
                 </button>
               );
             })}
           </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <label>
-              <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">{TYPE_META[newType].label} name</span>
+              <span className={fieldLabel}>{TYPE_META[newType].label} name</span>
               <input
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
@@ -291,7 +377,7 @@ export default function LocationsManager() {
             </label>
             {newType === "van" && (
               <label>
-                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Driver</span>
+                <span className={fieldLabel}>Driver</span>
                 <select value={newDriver} onChange={(e) => setNewDriver(e.target.value)} className={inputField}>
                   <option value="">Unassigned</option>
                   {staff.map((s) => <option key={s.id} value={s.id}>{fullName(s)}</option>)}
@@ -300,7 +386,7 @@ export default function LocationsManager() {
             )}
             {newType === "site" && (
               <label>
-                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Linked job (optional)</span>
+                <span className={fieldLabel}>Linked job (optional)</span>
                 <select value={newJob} onChange={(e) => setNewJob(e.target.value)} className={inputField}>
                   <option value="">No linked job</option>
                   {jobOptions.map((j) => <option key={j.id} value={j.id}>{[j.jobNumber, j.title].filter(Boolean).join(" · ")}</option>)}
@@ -308,68 +394,244 @@ export default function LocationsManager() {
               </label>
             )}
           </div>
-          <div className="mt-3">
-            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">
+          <div>
+            <span className={fieldLabel}>
               {newType === "van" ? "Home base (for delivery distances)" : "Address (map pin)"}
             </span>
             <AddressSearchInput
               value={newAddress}
-              onChange={(v) => { setNewAddress(v); setNewPin(null); }} // hand-edited text ≠ the old pin
-              onSelect={(r) => { setNewAddress(r.label); setNewPin({ lat: r.lat, lng: r.lng }); }}
+              // Typing keeps the pin — it just flags the mismatch until a
+              // suggestion is picked or the map is tapped (WS5.1).
+              onChange={(v) => { setNewAddress(v); if (newPin) setAddAddrDirty(true); }}
+              onSelect={(r) => { setNewAddress(r.label); setNewPin({ lat: r.lat, lng: r.lng }); setAddAddrDirty(false); }}
+              skipSearchFor={addSkipSearch}
               placeholder={newType === "van" ? "Search the van's home base address…" : "Search the site/storage address…"}
             />
-            <div className="mt-2">
+            {addRevBusy && <p className="mt-1.5 flex items-center gap-1.5 text-[11.5px] text-[#A0A0A0]"><Loader2 className="h-3 w-3 animate-spin" /> Looking up the pin’s address…</p>}
+            {addAddrDirty && !addRevBusy && (
+              <p className="mt-1.5 text-[11.5px] text-[#9A6B12]">Pin doesn’t match the typed address yet — pick a suggestion or tap the map.</p>
+            )}
+            <div className="mt-2.5">
               <Suspense fallback={<MapFallback heightClass="h-48" />}>
-                <MapPicker lat={newPin?.lat ?? null} lng={newPin?.lng ?? null} onPick={(lat, lng) => setNewPin({ lat, lng })} heightClass="h-48" />
+                <MapPicker lat={newPin?.lat ?? null} lng={newPin?.lng ?? null} onPick={handleAddPin} heightClass="h-48" />
               </Suspense>
-              <p className="mt-1 text-[11px] text-[#A0A0A0]">Search above, or tap the map to drop the pin — drag it to fine-tune.</p>
+              <p className="mt-2 text-[11.5px] text-[#A0A0A0]">Search above, or tap the map to drop the pin — drag it to fine-tune. Tapped pins fill the address in automatically.</p>
             </div>
           </div>
-          <div className="mt-3 flex justify-end gap-2">
-            <button type="button" onClick={() => { setShowAdd(false); setNewName(""); setNewDriver(""); setNewJob(""); setNewAddress(""); setNewPin(null); }} className={btnGhost}>Cancel</button>
-            <button type="button" onClick={() => void handleAddLocation()} disabled={savingAdd || !newName.trim()} className={btnPrimary}>
-              {savingAdd ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Add {TYPE_META[newType].label.toLowerCase()}
-            </button>
-          </div>
-        </div>
-      )}
+        </DrawerBody>
+        <DrawerFooter>
+          <button type="button" onClick={closeAdd} className={btnGhost}>Cancel</button>
+          <button type="button" onClick={() => void handleAddLocation()} disabled={savingAdd || !newName.trim()} className={btnPrimary}>
+            {savingAdd ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Add location
+          </button>
+        </DrawerFooter>
+      </MotionDrawer>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {locations.map((loc) => {
+      {/* Location search — client-side narrowing of the loaded list */}
+      <div className="relative max-w-[420px]">
+        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#A0A0A0]" />
+        <input
+          value={locFilter}
+          onChange={(e) => setLocFilter(e.target.value)}
+          placeholder="Search locations by name or driver…"
+          className="w-full rounded-full border border-[#E6E1D4] bg-white py-2 pl-10 pr-10 text-[13.5px] text-[#1A1A1A] placeholder:text-[#A0A0A0] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
+          aria-label="Search locations"
+        />
+        {locFilter && (
+          <button type="button" onClick={() => setLocFilter("")} className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-[#A0A0A0] transition-colors hover:text-[#C44545]" aria-label="Clear location search">
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+
+      {/* All-pins map — every pinned location at once (lazy; Leaflet loads on Show) */}
+      {(() => {
+        const pinned = locations.filter((l) => l.lat != null && l.lng != null);
+        return (
+          <div className={cn(primaryCard, "overflow-hidden")}>
+            <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+              <span className="flex items-center gap-2.5 text-[13.5px] font-bold text-[#1A1A1A]">
+                <span className="grid h-[30px] w-[30px] place-items-center rounded-[9px] bg-[#FAF8F2] text-[#2F8F5C]" aria-hidden><MapIcon className="h-4 w-4" /></span>
+                Map
+                <span className="text-[12px] font-medium text-[#6B6B6B]">{pinned.length} pinned location{pinned.length === 1 ? "" : "s"}</span>
+              </span>
+              <button type="button" onClick={() => setShowMap((v) => !v)} aria-expanded={showMap} className={btnGhost} disabled={pinned.length === 0}>
+                {showMap ? "Hide map" : "Show map"}
+              </button>
+            </div>
+            {showMap && pinned.length > 0 && (
+              <div className="px-5 pb-5">
+                <Suspense fallback={<MapFallback heightClass="h-72" />}>
+                  <LocationsMap
+                    locations={pinned.map((l) => ({ id: l.id, name: l.name, type: l.type, address: l.address, lat: l.lat as number, lng: l.lng as number, isActive: l.isActive }))}
+                    onOpen={(id) => setSelectedId(id)}
+                    heightClass="h-72"
+                  />
+                </Suspense>
+              </div>
+            )}
+            {pinned.length === 0 && (
+              <p className="px-5 pb-4 text-[12px] text-[#A0A0A0]">No pins yet — set an address on the factory or a van and they appear here.</p>
+            )}
+          </div>
+        );
+      })()}
+
+      {shownLocations.length === 0 && (
+        <p className={cn(primaryCard, "px-5 py-8 text-center text-sm text-[#A0A0A0]")}>No locations match “{locFilter.trim()}”.</p>
+      )}
+      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
+        {shownLocations.map((loc) => {
           const s = summary.get(loc.id);
           const M = TYPE_META[loc.type];
+          const dir = directionsUrl(loc);
           return (
-            <button
-              key={loc.id}
-              type="button"
-              onClick={() => setSelectedId(loc.id)}
-              className="flex flex-col rounded-[12px] border border-[#E6E1D4] bg-white p-4 text-left shadow-[0_1px_2px_rgba(20,20,20,0.04)] hover:border-[#D8D2C4]"
-            >
-              <div className="mb-2 flex items-center gap-2">
-                <M.icon className="h-4 w-4 text-[#2F8F5C]" />
-                <span className="text-sm font-semibold text-[#1A1A1A]">{loc.name}</span>
-                {loc.type !== "factory" && loc.type !== "van" && (
-                  <StatusPill tone={M.tone} className="uppercase tracking-wide">{M.label}</StatusPill>
+            // Wrapper div so the Directions link can be a SIBLING of the card
+            // button — an <a> may never nest inside a <button>.
+            <div key={loc.id} className="relative">
+              <button
+                type="button"
+                onClick={() => setSelectedId(loc.id)}
+                className={cn(primaryCard, "flex h-full w-full flex-col p-4 text-left transition-all hover:-translate-y-px hover:border-[#D8D2C4]")}
+              >
+                {/* pr-9 on non-factory cards clears the corner for the manage
+                    (archive/delete) button that overlays the top-right. */}
+                <div className={cn("mb-3 flex items-center gap-2.5", loc.type !== "factory" && "pr-9")}>
+                  <span className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[9px] bg-[#FAF8F2] text-[#2F8F5C]" aria-hidden>
+                    <M.icon className="h-4 w-4" />
+                  </span>
+                  <span className="min-w-0 truncate text-[14.5px] font-semibold text-[#1A1A1A]">{loc.name}</span>
+                  <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                    {loc.type !== "factory" && loc.type !== "van" && (
+                      <StatusPill tone={M.tone} className="uppercase tracking-wide">{M.label}</StatusPill>
+                    )}
+                    {loc.type === "factory" && (loc.lat == null || loc.lng == null) && (
+                      <StatusPill tone="amber" className="uppercase tracking-wide">No pin</StatusPill>
+                    )}
+                    {!loc.isActive && <StatusPill tone="slate" className="uppercase tracking-wide">Inactive</StatusPill>}
+                    {/* Factory keeps the drill-in chevron; other cards surrender
+                        the corner to the manage button (sibling overlay below). */}
+                    {loc.type === "factory" && <ChevronRight className="h-4 w-4 text-[#A0A0A0]" />}
+                  </span>
+                </div>
+                {loc.type === "van" && <p className="mb-1 text-[12.5px] text-[#6B6B6B]">Driver · {staffName(loc.assignedWorkerId)}</p>}
+                {loc.type === "site" && loc.serviceJobId && <p className="mb-1 text-[12.5px] text-[#6B6B6B]">Linked to a job</p>}
+                {loc.address && (
+                  <p className="mb-1 flex items-center gap-1 truncate pr-8 text-[11.5px] text-[#A0A0A0]">
+                    <MapPin className="h-3 w-3 shrink-0" />
+                    <span className="truncate">{loc.address.split(",").slice(0, 2).join(",")}</span>
+                  </p>
                 )}
-                {!loc.isActive && <StatusPill tone="slate" className="uppercase tracking-wide">Inactive</StatusPill>}
-                <ChevronRight className="ml-auto h-4 w-4 text-[#A0A0A0]" />
-              </div>
-              {loc.type === "van" && <p className="mb-1 text-xs text-[#6B6B6B]">Driver: {staffName(loc.assignedWorkerId)}</p>}
-              {loc.type === "site" && loc.serviceJobId && <p className="mb-1 text-xs text-[#6B6B6B]">Linked to a job</p>}
-              {loc.address && (
-                <p className="mb-1 flex items-center gap-1 truncate text-[11px] text-[#A0A0A0]">
-                  <MapPin className="h-3 w-3 shrink-0" />
-                  <span className="truncate">{loc.address.split(",").slice(0, 2).join(",")}</span>
+                <p className="text-[12.5px] text-[#3A3A3A]">
+                  {s ? `${s.items} item${s.items === 1 ? "" : "s"} · ${fmtQty(s.units)} units${s.value ? ` · ${fmtMoney(s.value)}` : ""}` : "Empty"}
                 </p>
+                <p className="mt-auto pt-1.5 text-[11.5px] text-[#A0A0A0]">{s?.lastActivity ? `Last activity ${fmtDate(s.lastActivity)}` : "No activity yet"}</p>
+              </button>
+              {/* Manage (archive / delete) — sibling overlay so it takes its own
+                  click without opening the card. Factory is the anchor: no button. */}
+              {loc.type !== "factory" && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setManageLoc(loc); }}
+                  aria-label={`Archive or delete ${loc.name}`}
+                  title="Archive or delete"
+                  className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-full text-[#A0A0A0] transition-colors hover:bg-[#FBE5E5] hover:text-[#C44545] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C44545]"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
               )}
-              <p className="text-xs text-[#3A3A3A]">
-                {s ? `${s.items} item${s.items === 1 ? "" : "s"} · ${fmtQty(s.units)} units${s.value ? ` · ${fmtMoney(s.value)}` : ""}` : "Empty"}
-              </p>
-              <p className="mt-auto pt-1 text-[11px] text-[#A0A0A0]">{s?.lastActivity ? `Last activity ${fmtDate(s.lastActivity)}` : "No activity yet"}</p>
-            </button>
+              {dir && (
+                <a
+                  href={dir}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={`Directions to ${loc.name}`}
+                  title="Directions"
+                  className="absolute bottom-3 right-3 grid h-8 w-8 place-items-center rounded-full border border-[#E6E1D4] bg-white text-[#2A6F9E] shadow-[0_1px_2px_rgba(20,20,20,0.06)] transition-colors hover:border-[#2A6F9E] hover:bg-[#E3F0FA]"
+                >
+                  <Navigation className="h-4 w-4" />
+                </a>
+              )}
+            </div>
           );
         })}
       </div>
+
+      {/* Archive / delete confirm — a location holding stock can only be archived
+          (kept, hidden); an empty one can be deleted permanently. Factory never
+          reaches here. */}
+      <MotionDrawer
+        open={!!manageLoc}
+        onClose={() => { if (!busyAction) setManageLoc(null); }}
+        variant="modal"
+        ariaLabel="Manage location"
+        sizeClass="sm:max-w-[460px]"
+      >
+        {manageLoc && (() => {
+          const held = summary.get(manageLoc.id);
+          // "Holds stock" = count of items with a non-zero tally (held.items), NOT
+          // the signed sum of quantities — a location with +6 of one item and −6
+          // of another nets to 0 units but is NOT empty. The server re-checks this
+          // in deleteLocation; the client gate just drives the button + copy.
+          const heldItems = held?.items ?? 0;
+          const canDelete = heldItems === 0;
+          const M = TYPE_META[manageLoc.type];
+          const typeWord = M.label.toLowerCase();
+          return (
+            <>
+              <div className="flex items-center justify-between border-b border-[#EFEBE0] px-5 py-3.5">
+                <span className="flex items-center gap-2 text-[14px] font-semibold text-[#1A1A1A]">
+                  <span className="grid h-7 w-7 place-items-center rounded-[9px] bg-[#FAF8F2] text-[#2F8F5C]" aria-hidden><M.icon className="h-4 w-4" /></span>
+                  {manageLoc.name}
+                </span>
+                <button type="button" onClick={() => { if (!busyAction) setManageLoc(null); }} className="rounded-full p-1.5 text-[#A0A0A0] transition-colors hover:bg-[#FAF8F2] hover:text-[#1A1A1A]" aria-label="Close">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="min-h-0 space-y-3 overflow-y-auto px-5 py-4">
+                {canDelete ? (
+                  <>
+                    <p className="text-[13px] leading-relaxed text-[#3A3A3A]">
+                      This {typeWord} holds no stock. You can <b>archive</b> it (kept and reversible, just hidden from the list) or <b>delete</b> it permanently.
+                    </p>
+                    <p className="text-[12px] leading-relaxed text-[#A0A0A0]">
+                      Deleting also clears this {typeWord}&rsquo;s movement history and any packed job boxes sourced from it. This can&rsquo;t be undone.
+                    </p>
+                  </>
+                ) : (
+                  <div className="flex items-start gap-2 rounded-[10px] border border-[#E8D8B5] bg-[#F9EFD9] px-3.5 py-2.5 text-[12.5px] leading-relaxed text-[#8A6B1E]">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>
+                      This {typeWord} still holds stock across <b>{heldItems} item{heldItems === 1 ? "" : "s"}</b>. Move or use it first, then it can be deleted. You can <b>archive</b> it now to hide it while keeping its stock and history.
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[#EFEBE0] px-5 py-3.5">
+                <button type="button" onClick={() => setManageLoc(null)} disabled={busyAction} className={btnGhost}>Cancel</button>
+                {manageLoc.isActive ? (
+                  <button type="button" onClick={() => void handleArchiveToggle(manageLoc, false)} disabled={busyAction} className="inline-flex items-center gap-1.5 rounded-md border border-[#E6E1D4] bg-white px-3.5 py-2 text-[13px] font-semibold text-[#3A3A3A] transition-colors hover:bg-[#FAF8F2] disabled:opacity-50">
+                    <Archive className="h-4 w-4" /> Archive
+                  </button>
+                ) : (
+                  <button type="button" onClick={() => void handleArchiveToggle(manageLoc, true)} disabled={busyAction} className="inline-flex items-center gap-1.5 rounded-md border border-[#E6E1D4] bg-white px-3.5 py-2 text-[13px] font-semibold text-[#2F8F5C] transition-colors hover:bg-[#FAF8F2] disabled:opacity-50">
+                    <ArchiveRestore className="h-4 w-4" /> Reactivate
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => void handleDeleteLocation(manageLoc)}
+                  disabled={busyAction || !canDelete}
+                  title={canDelete ? undefined : "Empty this location's stock before deleting"}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-[#C44545] px-3.5 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-[#A93A3A] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {busyAction ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />} Delete
+                </button>
+              </div>
+            </>
+          );
+        })()}
+      </MotionDrawer>
 
       <StockItemDrawer materialId={findItem} onClose={() => setFindItem(null)} />
       {toast && <Toaster message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
@@ -418,6 +680,24 @@ function LocationDetail({
     location.lat != null && location.lng != null ? { lat: location.lat, lng: location.lng } : null,
   );
   const [savingEdit, setSavingEdit] = useState(false);
+  // Pin↔address interplay (WS5) — mirrors the Add form.
+  const [editAddrDirty, setEditAddrDirty] = useState(false);
+  const [editRevBusy, setEditRevBusy] = useState(false);
+  const [editSkipSearch, setEditSkipSearch] = useState<string | null>(null);
+  const editRevSeq = useRef(0);
+
+  function handleEditPin(lat: number, lng: number) {
+    setEditPin({ lat, lng });
+    setEditAddrDirty(false);
+    const seq = ++editRevSeq.current;
+    setEditRevBusy(true);
+    void reverseGeocode(lat, lng)
+      .then((label) => {
+        if (seq !== editRevSeq.current) return;
+        if (label) { setEditAddress(label); setEditSkipSearch(label); }
+      })
+      .finally(() => { if (seq === editRevSeq.current) setEditRevBusy(false); });
+  }
 
   const refetch = useCallback(async () => {
     const [rows, mv] = await Promise.all([
@@ -454,11 +734,59 @@ function LocationDetail({
       const entries = Object.entries(counts).map(([materialId, v]) => ({ materialId, countedQty: parseFloat(v) })).filter((c) => Number.isFinite(c.countedQty));
       await recordStocktake(location.id, entries);
       setTakeMode(false);
+      setTakePreview(null);
       await refetch();
       onToast({ message: "Stock-take saved.", type: "success" });
     } catch (ex) {
       onToast({ message: ex instanceof Error ? ex.message : "Failed to save stock-take", type: "error" });
     } finally { setSavingTake(false); }
+  }
+
+  // ── Bulk stock-take by CSV (WS5.6): template out, counts in, honest preview.
+  //    The CSV only fills the count sheet — "Save stock-take" stays the single
+  //    write path, so nothing lands without review. ──────────────────────────
+  const takeFileRef = useRef<HTMLInputElement>(null);
+  const [takePreview, setTakePreview] = useState<{
+    matched: Array<{ materialId: string; qty: number; name: string; current: number }>;
+    unmatched: string[];
+    errors: string[];
+  } | null>(null);
+
+  function downloadTakeTemplate() {
+    downloadCsv(
+      `stocktake-${location.name}`,
+      ["ref", "qty"],
+      stockItems.map((m) => [m.sku || m.name, counts[m.id] ?? "0"]),
+    );
+  }
+
+  function importTakeCsv(file: File) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const { rows, errors } = parseStockCountCsv(String(reader.result ?? ""));
+      const { matched, unmatched } = matchStockCounts(rows, stockItems);
+      setTakePreview({
+        matched: matched.map((x) => {
+          const m = stockItems.find((s) => s.id === x.materialId);
+          return { ...x, name: m?.name ?? "(item)", current: parseFloat(counts[x.materialId] ?? "0") || 0 };
+        }),
+        unmatched,
+        errors,
+      });
+    };
+    reader.onerror = () => onToast({ message: "Failed to read the file — please try again.", type: "error" });
+    reader.readAsText(file);
+  }
+
+  function applyTakePreview() {
+    if (!takePreview) return;
+    setCounts((prev) => {
+      const next = { ...prev };
+      for (const m of takePreview.matched) next[m.materialId] = String(m.qty);
+      return next;
+    });
+    onToast({ message: `${takePreview.matched.length} count${takePreview.matched.length === 1 ? "" : "s"} loaded into the sheet — review, then Save stock-take.`, type: "success" });
+    setTakePreview(null);
   }
 
   async function saveAdjust(materialId: string) {
@@ -520,6 +848,12 @@ function LocationDetail({
           <StatusPill tone={TYPE_META[location.type].tone} className="ml-2 uppercase tracking-wide">{TYPE_META[location.type].label}</StatusPill>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {(() => {
+            const dir = directionsUrl(location);
+            return dir ? (
+              <a href={dir} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-[#E6E1D4] bg-white px-3 py-1.5 text-xs font-semibold text-[#2A6F9E] hover:bg-[#FAF8F2]"><Navigation className="h-3.5 w-3.5" /> Directions</a>
+            ) : null;
+          })()}
           <button type="button" onClick={() => setTransferOpen(true)} className="inline-flex items-center gap-1.5 rounded-md border border-[#E6E1D4] bg-white px-3 py-1.5 text-xs font-semibold text-[#3A3A3A] hover:bg-[#FAF8F2]"><ArrowLeftRight className="h-3.5 w-3.5" /> Transfer from here</button>
           <button type="button" onClick={() => setEditing((v) => !v)} className="inline-flex items-center gap-1.5 rounded-md border border-[#E6E1D4] bg-white px-3 py-1.5 text-xs font-semibold text-[#3A3A3A] hover:bg-[#FAF8F2]"><Pencil className="h-3.5 w-3.5" /> Edit</button>
           {!takeMode && (
@@ -527,6 +861,17 @@ function LocationDetail({
           )}
         </div>
       </div>
+
+      {/* Factory with no pin — the map/delivery story starts here (WS5.3) */}
+      {location.type === "factory" && (location.lat == null || location.lng == null) && !editing && (
+        <div className={cn(primaryCard, "flex flex-wrap items-center justify-between gap-3 border-[#F0D5A0] bg-[#FDF8EC] px-5 py-4")}>
+          <div className="min-w-0">
+            <p className="text-[13.5px] font-semibold text-[#1A1A1A]">Set the factory address &amp; pin</p>
+            <p className="mt-0.5 text-[12.5px] text-[#6B6B6B]">Deliveries, van distances, and the locations map all start from the factory’s pin.</p>
+          </div>
+          <button type="button" onClick={() => setEditing(true)} className={btnPrimary}><MapPin className="h-4 w-4" /> Set it now</button>
+        </div>
+      )}
 
       {/* Edit (rename / rego / base address + pin / deactivate) */}
       {editing && (
@@ -554,15 +899,21 @@ function LocationDetail({
             </span>
             <AddressSearchInput
               value={editAddress}
-              onChange={(v) => { setEditAddress(v); setEditPin(null); }} // hand-edited text ≠ the old pin
-              onSelect={(r) => { setEditAddress(r.label); setEditPin({ lat: r.lat, lng: r.lng }); }}
+              // Typing keeps the pin — flags the mismatch instead (WS5.1).
+              onChange={(v) => { setEditAddress(v); if (editPin) setEditAddrDirty(true); }}
+              onSelect={(r) => { setEditAddress(r.label); setEditPin({ lat: r.lat, lng: r.lng }); setEditAddrDirty(false); }}
+              skipSearchFor={editSkipSearch}
               placeholder="Search an address…"
             />
+            {editRevBusy && <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-[#A0A0A0]"><Loader2 className="h-3 w-3 animate-spin" /> Looking up the pin’s address…</p>}
+            {editAddrDirty && !editRevBusy && (
+              <p className="mt-1.5 text-[11px] text-[#9A6B12]">Pin doesn’t match the typed address yet — pick a suggestion or tap the map.</p>
+            )}
             <div className="mt-2">
               <Suspense fallback={<MapFallback heightClass="h-48" />}>
-                <MapPicker lat={editPin?.lat ?? null} lng={editPin?.lng ?? null} onPick={(lat, lng) => setEditPin({ lat, lng })} heightClass="h-48" />
+                <MapPicker lat={editPin?.lat ?? null} lng={editPin?.lng ?? null} onPick={handleEditPin} heightClass="h-48" />
               </Suspense>
-              <p className="mt-1 text-[11px] text-[#A0A0A0]">Search above, or tap the map to drop the pin — drag it to fine-tune. Remember to hit Save.</p>
+              <p className="mt-1 text-[11px] text-[#A0A0A0]">Search above, or tap the map to drop the pin — drag it to fine-tune. Tapped pins fill the address in automatically. Remember to hit Save.</p>
             </div>
           </div>
         </div>
@@ -598,11 +949,59 @@ function LocationDetail({
         <p className="text-[11px] text-[#A0A0A0]">Set this van's home base (Edit → search the address) to see delivery distances for its jobs.</p>
       )}
 
+      {/* This location's own minimums (migration 99) — factory orders, others top up */}
+      <LocationMinimums
+        location={location}
+        levels={levels}
+        onToast={onToast}
+        onRequestTransfer={() => setTransferOpen(true)}
+        onChanged={() => void refetch()}
+      />
+
       {takeMode ? (
         <div className={`overflow-hidden ${cardShell}`}>
-          <div className="flex items-center justify-between border-b border-[#E6E1D4] bg-[#FAF8F2] px-4 py-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#E6E1D4] bg-[#FAF8F2] px-4 py-2.5">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Stock-take — enter the counted quantity for each item</p>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={downloadTakeTemplate} className="inline-flex items-center gap-1.5 rounded-full border border-[#E6E1D4] bg-white px-3 py-1.5 text-[11.5px] font-semibold text-[#3A3A3A] hover:border-[#D8D2C4]"><Download className="h-3.5 w-3.5" /> Template (CSV)</button>
+              <button type="button" onClick={() => takeFileRef.current?.click()} className="inline-flex items-center gap-1.5 rounded-full border border-[#E6E1D4] bg-white px-3 py-1.5 text-[11.5px] font-semibold text-[#3A3A3A] hover:border-[#D8D2C4]"><Upload className="h-3.5 w-3.5" /> Import counts (CSV)</button>
+              <input ref={takeFileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) importTakeCsv(f); e.target.value = ""; }} />
+            </div>
           </div>
+          {takePreview && (
+            <div className="border-b border-[#E6E1D4] bg-[#FCFBF7] px-4 py-3">
+              <p className="text-[12.5px] font-semibold text-[#1A1A1A]">
+                CSV preview — {takePreview.matched.length} matched item{takePreview.matched.length === 1 ? "" : "s"}
+              </p>
+              {takePreview.matched.length > 0 && (
+                <div className="mt-2 max-h-40 overflow-y-auto rounded-[8px] border border-[#EFEBE0] bg-white">
+                  {takePreview.matched.map((m) => {
+                    const delta = Math.round((m.qty - m.current) * 100) / 100;
+                    return (
+                      <p key={m.materialId} className="flex items-center justify-between gap-3 border-b border-[#EFEBE0] px-3 py-1.5 text-[12px] last:border-b-0">
+                        <span className="min-w-0 truncate text-[#3A3A3A]">{m.name}</span>
+                        <span className="shrink-0 tabular-nums text-[#6B6B6B]">
+                          {fmtQty(m.current)} → <b className="text-[#1A1A1A]">{fmtQty(m.qty)}</b>
+                          <span className={delta === 0 ? "ml-1.5 text-[#A0A0A0]" : delta > 0 ? "ml-1.5 text-[#246F47]" : "ml-1.5 text-[#C44545]"}>({delta > 0 ? "+" : ""}{fmtQty(delta)})</span>
+                        </span>
+                      </p>
+                    );
+                  })}
+                </div>
+              )}
+              {takePreview.unmatched.length > 0 && (
+                <p className="mt-2 text-[11.5px] text-[#9A6B12]">Not matched (check SKU/name): {takePreview.unmatched.slice(0, 6).join(", ")}{takePreview.unmatched.length > 6 ? ` +${takePreview.unmatched.length - 6} more` : ""}</p>
+              )}
+              {takePreview.errors.length > 0 && (
+                <p className="mt-1 text-[11.5px] text-[#C44545]">{takePreview.errors.slice(0, 3).join(" · ")}{takePreview.errors.length > 3 ? " …" : ""}</p>
+              )}
+              <p className="mt-1.5 text-[11px] text-[#A0A0A0]">Items not in the CSV keep the counts already on the sheet.</p>
+              <div className="mt-2 flex items-center gap-2">
+                <button type="button" onClick={applyTakePreview} disabled={takePreview.matched.length === 0} className={cn(btnPrimary, "px-3.5 py-1.5 text-[12px]")}>Apply to count</button>
+                <button type="button" onClick={() => setTakePreview(null)} className={cn(btnGhost, "px-3.5 py-1.5 text-[12px]")}>Discard</button>
+              </div>
+            </div>
+          )}
           <div className="max-h-[60vh] overflow-y-auto">
             <table className="min-w-full text-sm">
               <tbody className="divide-y divide-[#EFEBE0]">
@@ -795,6 +1194,14 @@ function UpcomingDeliveries({ van }: { van: StockLocation }) {
                 <span className="shrink-0 rounded-full bg-[#E5F2EA] px-2 py-0.5 text-[11px] font-semibold tabular-nums text-[#246F47]">
                   {km != null ? `≈ ${km} km direct` : "address not found"}
                 </span>
+                {(() => {
+                  const d = directionsUrl({ address: job.address });
+                  return d ? (
+                    <a href={d} target="_blank" rel="noreferrer" aria-label={`Directions to ${job.title}`} title="Directions" className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-[#E6E1D4] text-[#2A6F9E] transition-colors hover:border-[#2A6F9E] hover:bg-[#E3F0FA]">
+                      <Navigation className="h-3.5 w-3.5" />
+                    </a>
+                  ) : null;
+                })()}
               </li>
             ))}
           </ul>

@@ -144,7 +144,11 @@ export function RowMenu({ items, label = 'Row actions' }: { items: RowMenuItem[]
       </button>
       {open && pos && createPortal(
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden />
+          {/* stopPropagation: portal events bubble through the REACT tree, so
+              without it a dismissal click re-fires the RegisterRow's own
+              onClick (opening the row's editor) — the click was meant only to
+              close the menu. */}
+          <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setOpen(false); }} aria-hidden />
           <div
             role="menu"
             className="fixed z-50 w-48 overflow-hidden rounded-[11px] border border-[#E6E1D4] bg-white py-1 shadow-[0_8px_28px_rgba(20,20,20,0.12)]"

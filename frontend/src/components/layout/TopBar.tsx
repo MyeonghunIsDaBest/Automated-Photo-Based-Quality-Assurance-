@@ -102,9 +102,10 @@ export default function TopBar() {
     .toUpperCase();
 
   return (
-    // Solid paper below md (mobile WebKit ghosts through translucent chrome);
-    // blurred paper at md+ where it's safe — the mock's topbar treatment.
-    <header className="sticky top-0 z-40 border-b border-[#E6E1D4] bg-[#FAF8F2] md:bg-[#FAF8F2]/85 md:backdrop-blur">
+    // PHONE-ONLY since P9.B6: on desktop the sidebar owns the project
+    // switcher, notifications, and account (Jordan's test.html mock has no
+    // desktop top bar). Solid paper — mobile WebKit ghosts through blur.
+    <header className="sticky top-0 z-40 border-b border-[#E6E1D4] bg-[#FAF8F2] md:hidden print:hidden">
       <div className="flex h-16 items-center justify-between gap-4 px-4 sm:px-6">
         {/* ─── Left: brand (phone only — the rail owns it on md+) + project pill ─── */}
         <div className="flex min-w-0 items-center gap-4">

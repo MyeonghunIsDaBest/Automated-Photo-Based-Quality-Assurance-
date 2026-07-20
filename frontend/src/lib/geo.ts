@@ -3,8 +3,11 @@
 //   • geocodeSearch()  — Nominatim (OpenStreetMap) address search, AU-biased
 //   • getOrGeocode()   — cache-aware single-address geocode (geocoded_addresses,
 //                        migration 92; falls back to live lookup pre-migration)
+//   • reverseGeocode() — pin → display address (same cache, `rev:`-keyed)
+//   • directionsUrl()  — Google Maps directions deep link (coords or address)
 //   • haversineKm()    — straight-line distance between two pins ("≈ direct")
-// Nominatim usage policy: low volume, identified requests, debounced UI calls.
+// Nominatim usage policy: low volume, identified requests, debounced UI calls;
+// forward + reverse lookups share ONE ≥1100ms politeGap budget.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { supabase, supabaseConfigured } from './supabase';
@@ -20,10 +23,28 @@ export interface GeocodeResult extends GeoPoint {
 }
 
 const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
+const NOMINATIM_REVERSE = 'https://nominatim.openstreetmap.org/reverse';
 
 /** Normalised cache key for an address string. */
 export function addressKey(address: string): string {
   return address.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/** Cache key for a pin — 5dp ≈ 1m precision. `rev:`-prefixed so reverse rows
+ *  never collide with forward addressKey() rows in geocoded_addresses. */
+export function pinKey(lat: number, lng: number): string {
+  return `rev:${lat.toFixed(5)},${lng.toFixed(5)}`;
+}
+
+/** Google Maps directions deep link. Prefers exact coordinates, falls back to
+ *  the encoded address; null when there's nothing to navigate to. */
+export function directionsUrl(dest: { lat?: number | null; lng?: number | null; address?: string | null }): string | null {
+  if (dest.lat != null && dest.lng != null) {
+    return `https://www.google.com/maps/dir/?api=1&destination=${dest.lat},${dest.lng}`;
+  }
+  const addr = dest.address?.trim();
+  if (addr) return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addr)}`;
+  return null;
 }
 
 /** Straight-line (haversine) distance in km, rounded to 1 decimal. */
@@ -106,4 +127,52 @@ export async function getOrGeocode(address: string): Promise<GeoPoint | null> {
     } catch { /* cache write is best-effort */ }
   }
   return { lat: hit.lat, lng: hit.lng };
+}
+
+// Reverse results memo — display_name (or null for unresolvable pins).
+const revCache = new Map<string, string | null>();
+
+/** Pin → formatted address (Nominatim /reverse), for writing a tapped/dragged
+ *  map pin back into the address field. Same cache table + polite spacing as
+ *  the forward path; null on any failure — callers keep the raw coordinates.
+ *  Call only on discrete pin events (click / dragend), never during a drag. */
+export async function reverseGeocode(lat: number, lng: number): Promise<string | null> {
+  const key = pinKey(lat, lng);
+  if (revCache.has(key)) return revCache.get(key) ?? null;
+
+  if (supabaseConfigured()) {
+    try {
+      const { data, error } = await supabase
+        .from('geocoded_addresses')
+        .select('address')
+        .eq('address_key', key)
+        .maybeSingle();
+      if (!error && data?.address) {
+        revCache.set(key, data.address as string);
+        return data.address as string;
+      }
+    } catch { /* cache table missing (pre-mig-92) — fall through to live lookup */ }
+  }
+
+  let label: string | null = null;
+  try {
+    await politeGap();
+    const url = `${NOMINATIM_REVERSE}?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=0`;
+    const res = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!res.ok) throw new Error(`Reverse geocode failed (${res.status})`);
+    const body = (await res.json()) as { display_name?: string };
+    label = body.display_name ?? null;
+  } catch {
+    return null; // offline / rate-limited — the pin's coordinates still save fine
+  }
+
+  revCache.set(key, label);
+  if (label !== null && supabaseConfigured()) {
+    try {
+      await supabase
+        .from('geocoded_addresses')
+        .upsert({ address_key: key, address: label, lat, lng }, { onConflict: 'address_key' });
+    } catch { /* cache write is best-effort */ }
+  }
+  return label;
 }

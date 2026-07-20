@@ -40,6 +40,14 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Design source dump (Illustrator/Word + raw logo variants) — the app only needs
+# the one exported PNG at frontend/src/assets/casone-logo.png, which IS tracked.
+frontend/src/template/
+
+# Real supplier list (business data: codes + prices). Kept out of git; the
+# CSV-parser dry-run test uses runIf(existsSync) so it just skips when absent.
+casone-stock-import.csv
+
 # Markdown files — all .md treated as private notes (roadmaps, weekly
 # planning, build logs, runbooks). The public-facing README at the repo
 # root is the only exception; un-comment the `!README.md` line below if

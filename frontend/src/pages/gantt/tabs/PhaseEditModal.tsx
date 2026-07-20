@@ -15,6 +15,9 @@ import { rolledUpPct } from '../../../types';
 import { useAppStore } from '../../../store';
 import { canForceTaskProgress } from '../../../lib/permissions';
 import { useTaskAiSignal } from '../../../lib/hooks/useTaskAiSignal';
+import MotionDrawer from '../../../components/ui/MotionDrawer';
+import { cn } from '../../../lib/cn';
+import { inputField } from '../components/ledger';
 
 interface PhaseEditModalProps {
   anchor: Task;
@@ -27,12 +30,14 @@ interface PhaseEditModalProps {
   onDeleteTask: (taskId: string) => Promise<void> | void;
 }
 
+// Warm task tones — mirrors the TasksTab / SplitPaneGantt status hexes
+// (in-progress amber, complete sage, delayed red, blocked slate, draft ink).
 const STATUS_BADGE: Record<TaskStatus, string> = {
-  not_started: 'bg-slate-100 text-slate-600',
-  in_progress: 'bg-blue-100 text-blue-700',
-  complete:    'bg-emerald-100 text-emerald-700',
-  delayed:     'bg-red-100 text-red-700',
-  blocked:     'bg-amber-100 text-amber-700',
+  not_started: 'bg-[#ECE8DE] text-[#1A1A1A]',
+  in_progress: 'bg-[#F9EFD9] text-[#9A6B12]',
+  complete:    'bg-[#E5F2EA] text-[#246F47]',
+  delayed:     'bg-[#FBE5E5] text-[#C44545]',
+  blocked:     'bg-[#EEF1F4] text-[#5B6B7B]',
 };
 
 export default function PhaseEditModal({
@@ -56,45 +61,29 @@ export default function PhaseEditModal({
     [children],
   );
 
-  // ESC closes (when no input is focused inside).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-2 backdrop-blur-sm sm:items-center sm:p-4"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="phase-modal-title"
+    <MotionDrawer
+      open
+      onClose={onClose}
+      variant="modal"
+      sizeClass="max-w-2xl"
+      ariaLabel="Manage phase"
     >
-      <div
-        className="flex max-h-[92dvh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
         {/* Header */}
-        <header className="border-b border-slate-100 px-5 py-4">
+        <header className="border-b border-[#EFEBE0] px-5 py-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-slate-500">
+              <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-[#6B6B6B]">
                 Manage phase
               </p>
-              <h2
-                id="phase-modal-title"
-                className="mt-0.5 text-lg font-semibold capitalize text-slate-900"
-              >
+              <h2 className="mt-0.5 text-lg font-semibold capitalize text-[#1A1A1A]">
                 {anchor.phase}
               </h2>
             </div>
             <button
               type="button"
               onClick={onClose}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              className="grid min-h-11 min-w-11 flex-shrink-0 place-items-center rounded-md text-[#A0A0A0] hover:bg-[#F0EDE4] hover:text-[#3A3A3A]"
               aria-label="Close"
             >
               <X className="h-4 w-4" />
@@ -102,14 +91,14 @@ export default function PhaseEditModal({
           </div>
 
           {/* Rolled-up stats strip */}
-          <div className="mt-3 grid grid-cols-3 gap-3 rounded-lg bg-slate-50 px-3 py-2">
+          <div className="mt-3 grid grid-cols-3 gap-3 rounded-lg bg-[#FAF8F2] px-3 py-2">
             <Stat label="Rolled-up" value={`${rolled}%`} />
             <Stat label="Sub-tasks" value={`${children.length}`} />
             <Stat label="Photos" value={`${photoTotal}`} />
           </div>
-          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#F0EDE4]">
             <div
-              className="h-1.5 animate-bar-grow rounded-full bg-emerald-500 transition-[width] duration-700 ease-out"
+              className="h-1.5 animate-bar-grow rounded-full bg-[#2F8F5C] transition-[width] duration-700 ease-out"
               style={{ width: `${rolled}%` }}
             />
           </div>
@@ -118,7 +107,7 @@ export default function PhaseEditModal({
         {/* Body */}
         <div className="editorial-scrollbox flex-1 px-5 py-4">
           {children.length === 0 ? (
-            <p className="rounded-md border border-dashed border-slate-200 bg-slate-50/60 px-4 py-6 text-center text-sm text-slate-400">
+            <p className="rounded-md border border-dashed border-[#E6E1D4] bg-[#FAF8F2]/60 px-4 py-6 text-center text-sm text-[#A0A0A0]">
               No sub-tasks under this phase yet. Add one below to start tracking.
             </p>
           ) : (
@@ -138,27 +127,26 @@ export default function PhaseEditModal({
         </div>
 
         {/* Footer — inline add + close */}
-        <footer className="border-t border-slate-100 px-5 py-3">
+        <footer className="border-t border-[#EFEBE0] px-5 py-3">
           {canEdit ? (
             <InlineAdd anchor={anchor} projectId={projectId} onCreate={onCreateTask} />
           ) : (
-            <p className="text-[11px] text-slate-400">
+            <p className="text-[11px] text-[#A0A0A0]">
               Sub-task creation is owner-only.
             </p>
           )}
         </footer>
-      </div>
-    </div>
+    </MotionDrawer>
   );
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-[10px] font-medium uppercase tracking-wider text-slate-500">
+      <p className="text-[10px] font-medium uppercase tracking-wider text-[#6B6B6B]">
         {label}
       </p>
-      <p className="mt-0.5 text-base font-semibold tabular-nums text-slate-900">
+      <p className="mt-0.5 text-base font-semibold tabular-nums text-[#1A1A1A]">
         {value}
       </p>
     </div>
@@ -205,11 +193,11 @@ function SubTaskEditor({
   };
 
   return (
-    <li className="rounded-lg border border-slate-200 bg-white p-3">
+    <li className="rounded-lg border border-[#E6E1D4] bg-white p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-slate-900">{task.name}</p>
-          <p className="mt-0.5 text-[11px] text-slate-500">
+          <p className="truncate text-sm font-medium text-[#1A1A1A]">{task.name}</p>
+          <p className="mt-0.5 text-[11px] text-[#6B6B6B]">
             {format(parseISO(task.startDate), 'MMM d')} → {format(parseISO(task.endDate), 'MMM d')}
             {task.photoCount > 0 && <span> · {task.photoCount} photo{task.photoCount === 1 ? '' : 's'}</span>}
           </p>
@@ -217,7 +205,7 @@ function SubTaskEditor({
         <div className="flex flex-shrink-0 items-center gap-1.5">
           {aiSignal.sampleSize > 0 && (
             <span
-              className="inline-flex items-center gap-0.5 rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-700"
+              className="inline-flex items-center gap-0.5 rounded bg-[#EFE7FB] px-1.5 py-0.5 text-[10px] font-medium text-[#6B3FA0]"
               title={`AI signal across ${aiSignal.sampleSize} analyses`}
             >
               <Sparkles className="h-2.5 w-2.5" />
@@ -231,7 +219,7 @@ function SubTaskEditor({
             <button
               type="button"
               onClick={() => setConfirmDelete(true)}
-              className="inline-flex h-6 w-6 items-center justify-center rounded text-slate-300 hover:bg-red-50 hover:text-red-600"
+              className="inline-flex h-6 w-6 items-center justify-center rounded text-[#D8D2C4] hover:bg-[#FBE5E5] hover:text-[#C44545]"
               aria-label={`Delete ${task.name}`}
               title="Delete sub-task"
             >
@@ -243,7 +231,7 @@ function SubTaskEditor({
               <button
                 type="button"
                 onClick={() => setConfirmDelete(false)}
-                className="text-[10px] text-slate-500 hover:text-slate-700"
+                className="text-[10px] text-[#6B6B6B] hover:text-[#3A3A3A]"
               >
                 Cancel
               </button>
@@ -253,7 +241,7 @@ function SubTaskEditor({
                   await onDelete(task.id);
                   setConfirmDelete(false);
                 }}
-                className="inline-flex items-center gap-1 rounded bg-red-600 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-red-700"
+                className="inline-flex items-center gap-1 rounded bg-[#C44545] px-2 py-0.5 text-[10px] font-medium text-white hover:bg-[#B03D3D]"
               >
                 <Trash2 className="h-3 w-3" />
                 Confirm
@@ -263,17 +251,17 @@ function SubTaskEditor({
         </div>
       </div>
 
-      <div className={`mt-2.5 rounded-md px-1 py-0.5 transition-colors ${justSaved ? 'bg-emerald-50' : ''}`}>
+      <div className={`mt-2.5 rounded-md px-1 py-0.5 transition-colors ${justSaved ? 'bg-[#E1F3EA]' : ''}`}>
         {isOwner ? (
           <>
             <div className="mb-1 flex items-center gap-2">
-              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#F0EDE4]">
                 <div
-                  className="h-1.5 rounded-full bg-emerald-500 transition-[width] duration-500 ease-out"
+                  className="h-1.5 rounded-full bg-[#2F8F5C] transition-[width] duration-500 ease-out"
                   style={{ width: `${pct}%` }}
                 />
               </div>
-              <span className="w-10 flex-shrink-0 text-right tabular-nums text-xs font-medium text-slate-700">
+              <span className="w-10 flex-shrink-0 text-right tabular-nums text-xs font-medium text-[#3A3A3A]">
                 {pct}%
               </span>
             </div>
@@ -288,10 +276,10 @@ function SubTaskEditor({
               onKeyUp={(e) => commit(Number((e.target as HTMLInputElement).value))}
               onBlur={(e) => commit(Number(e.target.value))}
               disabled={saving}
-              className="w-full accent-emerald-600"
+              className="w-full accent-[#2F8F5C]"
               aria-label={`Override progress for ${task.name}`}
             />
-            <p className="mt-0.5 inline-flex items-center gap-1 text-[10px] text-amber-700">
+            <p className="mt-0.5 inline-flex items-center gap-1 text-[10px] text-[#9A6B12]">
               <Lock className="h-2.5 w-2.5" />
               Owner override · bypasses AI signal
             </p>
@@ -299,17 +287,17 @@ function SubTaskEditor({
         ) : (
           <>
             <div className="flex items-center gap-2">
-              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#F0EDE4]">
                 <div
-                  className="h-1.5 rounded-full bg-emerald-500 transition-[width] duration-500 ease-out"
+                  className="h-1.5 rounded-full bg-[#2F8F5C] transition-[width] duration-500 ease-out"
                   style={{ width: `${task.percentComplete}%` }}
                 />
               </div>
-              <span className="w-10 flex-shrink-0 text-right tabular-nums text-xs font-medium text-slate-700">
+              <span className="w-10 flex-shrink-0 text-right tabular-nums text-xs font-medium text-[#3A3A3A]">
                 {task.percentComplete}%
               </span>
             </div>
-            <p className="mt-1 inline-flex items-center gap-1 text-[10px] text-slate-500">
+            <p className="mt-1 inline-flex items-center gap-1 text-[10px] text-[#6B6B6B]">
               <Lock className="h-2.5 w-2.5" />
               Owner-only override. Progress is derived from AI, photos, and checklist.
             </p>
@@ -360,18 +348,18 @@ function InlineAdd({
 
   return (
     <form onSubmit={submit} className="flex items-center gap-2">
-      <Plus className="h-3.5 w-3.5 flex-shrink-0 text-emerald-600" />
+      <Plus className="h-3.5 w-3.5 flex-shrink-0 text-[#2F8F5C]" />
       <input
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder={`Add a sub-task to ${anchor.phase}…`}
         disabled={busy}
-        className="min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:bg-slate-50"
+        className={cn(inputField, 'min-w-0 flex-1 py-1.5')}
       />
       <button
         type="submit"
         disabled={!name.trim() || busy}
-        className="inline-flex h-8 items-center rounded-md bg-emerald-600 px-3 text-xs font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+        className="inline-flex h-8 items-center rounded-md bg-[#2F8F5C] px-3 text-xs font-medium text-white hover:bg-[#246F47] disabled:cursor-not-allowed disabled:opacity-50"
       >
         {busy ? 'Adding…' : 'Add'}
       </button>

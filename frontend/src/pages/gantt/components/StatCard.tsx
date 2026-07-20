@@ -11,13 +11,13 @@ import type { LucideIcon } from 'lucide-react';
 export type StatTone = 'emerald' | 'blue' | 'amber' | 'red' | 'slate' | 'indigo' | 'violet';
 
 const TONES: Record<StatTone, { bar: string; chip: string; glow: string }> = {
-  emerald: { bar: 'bg-emerald-500', chip: 'bg-emerald-50 text-emerald-600', glow: 'bg-emerald-400/15' },
-  blue:    { bar: 'bg-blue-500',    chip: 'bg-blue-50 text-blue-600',       glow: 'bg-blue-400/15' },
-  amber:   { bar: 'bg-amber-400',   chip: 'bg-amber-50 text-amber-600',     glow: 'bg-amber-300/20' },
-  red:     { bar: 'bg-red-500',     chip: 'bg-red-50 text-red-600',         glow: 'bg-red-400/15' },
-  slate:   { bar: 'bg-slate-400',   chip: 'bg-slate-100 text-slate-500',    glow: 'bg-slate-300/20' },
-  indigo:  { bar: 'bg-indigo-500',  chip: 'bg-indigo-50 text-indigo-600',   glow: 'bg-indigo-400/15' },
-  violet:  { bar: 'bg-violet-500',  chip: 'bg-violet-50 text-violet-600',   glow: 'bg-violet-400/15' },
+  emerald: { bar: 'bg-[#2F8F5C]', chip: 'bg-[#E1F3EA] text-[#2F8F5C]', glow: 'bg-[#2F8F5C]/15' },
+  blue:    { bar: 'bg-[#2A6F9E]', chip: 'bg-[#E3F0FA] text-[#2A6F9E]', glow: 'bg-[#2A6F9E]/15' },
+  amber:   { bar: 'bg-[#D69A2E]', chip: 'bg-[#F9EFD9] text-[#9A6B12]', glow: 'bg-[#D69A2E]/20' },
+  red:     { bar: 'bg-[#C44545]', chip: 'bg-[#FBE5E5] text-[#C44545]', glow: 'bg-[#C44545]/15' },
+  slate:   { bar: 'bg-[#6B7A8F]', chip: 'bg-[#EEF1F4] text-[#5B6B7B]', glow: 'bg-[#6B7A8F]/20' },
+  indigo:  { bar: 'bg-[#6B3FA0]', chip: 'bg-[#EFE7FB] text-[#6B3FA0]', glow: 'bg-[#6B3FA0]/15' },
+  violet:  { bar: 'bg-[#6B3FA0]', chip: 'bg-[#EFE7FB] text-[#6B3FA0]', glow: 'bg-[#6B3FA0]/15' },
 };
 
 export interface StatCardProps {
@@ -36,7 +36,7 @@ export function StatCard({ icon: Icon, label, value, sub, tone = 'slate', delay 
   const t = TONES[tone];
   return (
     <div
-      className="sp-rise relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm transition hover:shadow-md"
+      className="sp-rise relative overflow-hidden rounded-2xl border border-[#E6E1D4]/80 bg-white p-5 shadow-sm transition hover:shadow-md"
       style={{ animationDelay: `${delay}ms` }}
     >
       <span className={`absolute left-6 top-0 h-1 w-10 rounded-b-full ${t.bar}`} aria-hidden="true" />
@@ -45,15 +45,15 @@ export function StatCard({ icon: Icon, label, value, sub, tone = 'slate', delay 
         <span className={`grid h-9 w-9 flex-shrink-0 place-items-center rounded-xl ${t.chip}`}>
           <Icon className="h-5 w-5" />
         </span>
-        <span className="text-xs font-medium uppercase tracking-wider text-slate-500">{label}</span>
+        <span className="text-xs font-medium uppercase tracking-wider text-[#6B6B6B]">{label}</span>
       </div>
       <p
-        className="display mt-3 truncate text-[26px] font-medium leading-none tabular-nums text-slate-900 sm:text-3xl"
+        className="display mt-3 truncate text-[26px] font-medium leading-none tabular-nums text-[#1A1A1A] sm:text-3xl"
         title={typeof value === 'string' || typeof value === 'number' ? String(value) : undefined}
       >
         {value}
       </p>
-      {sub && <p className="mt-1.5 text-[11px] text-slate-400">{sub}</p>}
+      {sub && <p className="mt-1.5 text-[11px] text-[#A0A0A0]">{sub}</p>}
     </div>
   );
 }

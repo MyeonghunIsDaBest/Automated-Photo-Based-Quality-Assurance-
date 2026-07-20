@@ -10,6 +10,7 @@
 
 import { X, CheckCircle2, AlertCircle, Info } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 export type ToastState = { message: string; type: 'success' | 'error' | 'info' } | null;
 
@@ -42,13 +43,18 @@ export function Toaster({ message, type, onClose }: ToasterProps) {
 
   const { bg, border, text, icon: Icon } = config[type];
 
-  return (
-    // Bottom offset includes --bottom-nav-h (set by Layout when the phone tab
-    // bar mounts) + safe-area, so the toast always clears both.
+  return createPortal(
+    // Portalled to <body> at z-[60]: toasts must paint above the drawer layer
+    // (MotionDrawer portals at z-50 — a save-failed toast behind an open edit
+    // sheet is invisible exactly when it matters), and the routed page's
+    // transform wrapper would otherwise cap any in-tree z-index below the
+    // portals. Bottom offset reads the :root --bottom-nav-h-mq directly since
+    // Layout's --bottom-nav-h doesn't reach a body portal; the phone tab bar
+    // is cleared either way.
     <div
-      className="fixed z-50 animate-in slide-in-from-bottom-4 fade-in duration-300"
+      className="fixed z-[60] animate-in slide-in-from-bottom-4 fade-in duration-300 print:hidden"
       style={{
-        bottom: 'calc(1rem + env(safe-area-inset-bottom) + var(--bottom-nav-h, 0px))',
+        bottom: 'calc(1rem + env(safe-area-inset-bottom) + var(--bottom-nav-h-mq, 0px))',
         right: 'calc(1rem + env(safe-area-inset-right))',
         left: 'calc(1rem + env(safe-area-inset-left))',
         maxWidth: 'calc(100vw - 2rem)',
@@ -69,6 +75,7 @@ export function Toaster({ message, type, onClose }: ToasterProps) {
           <X className="h-4 w-4" />
         </button>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -14,15 +14,19 @@
 
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { MoreHorizontal } from 'lucide-react';
+import { MoreHorizontal, ChevronRight } from 'lucide-react';
 import MotionDrawer from '../ui/MotionDrawer';
 import { useAppStore } from '../../store';
-import { bottomTabsFor } from './navConfig';
+import { bottomTabsFor, type NavItem } from './navConfig';
+import { NavFlyoutContent } from './NavFlyoutContent';
 
 export default function BottomTabBar() {
   const location = useLocation();
   const { currentUser, currentProfile } = useAppStore();
   const [moreOpen, setMoreOpen] = useState(false);
+  // Nested sub-sheet: a flyout item's sub-views + create actions (mobile parity
+  // for the desktop hover mega-menu — hover has no touch equivalent).
+  const [sheetItem, setSheetItem] = useState<NavItem | null>(null);
 
   if (!currentUser) return null;
   const principal = currentProfile ?? currentUser ?? null;
@@ -46,7 +50,7 @@ export default function BottomTabBar() {
     <>
       <nav
         aria-label="Primary"
-        className="fixed inset-x-0 bottom-0 z-30 border-t border-[#E6E1D4] bg-[#FAF8F2] pb-safe md:hidden"
+        className="fixed inset-x-0 bottom-0 z-30 border-t border-[#E6E1D4] bg-[#FAF8F2] pb-safe md:hidden print:hidden"
       >
         <div className="flex h-16 items-stretch">
           {tabs.map((item) => {
@@ -83,6 +87,25 @@ export default function BottomTabBar() {
           </p>
           {more.map((item) => {
             const active = isActive(item.path);
+            // Flyout items open a sub-sheet (sub-views + create) instead of
+            // navigating directly — its first sub-view IS the default view.
+            if (item.flyout) {
+              return (
+                <button
+                  key={item.path}
+                  type="button"
+                  onClick={() => setSheetItem(item)}
+                  aria-haspopup="dialog"
+                  className={`flex min-h-11 w-full items-center gap-3 rounded-[11px] px-3.5 text-[15px] font-medium transition-colors ${
+                    active ? 'bg-[#E5F2EA] text-[#246F47]' : 'text-[#3A3A3A] hover:bg-[#FAF8F2]'
+                  }`}
+                >
+                  <item.icon className="h-5 w-5" strokeWidth={1.75} />
+                  <span className="flex-1 text-left">{item.label}</span>
+                  <ChevronRight className="h-4 w-4 text-[#A0A0A0]" />
+                </button>
+              );
+            }
             return (
               <Link
                 key={item.path}
@@ -98,6 +121,18 @@ export default function BottomTabBar() {
               </Link>
             );
           })}
+        </div>
+      </MotionDrawer>
+
+      {/* Sub-sheet: a flyout item's sub-views + create actions. */}
+      <MotionDrawer open={!!sheetItem} onClose={() => setSheetItem(null)} ariaLabel={sheetItem?.label ?? 'Menu'}>
+        <div className="pb-safe">
+          {sheetItem && (
+            <NavFlyoutContent
+              item={sheetItem}
+              onNavigate={() => { setSheetItem(null); setMoreOpen(false); }}
+            />
+          )}
         </div>
       </MotionDrawer>
     </>

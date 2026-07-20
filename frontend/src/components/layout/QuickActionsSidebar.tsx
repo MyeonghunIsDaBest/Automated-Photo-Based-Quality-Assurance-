@@ -232,8 +232,8 @@ export default function QuickActionsSidebar() {
           right edge now that the P9.B sidebar owns the left of the screen. */}
       <button
         onClick={toggleSidebar}
-        className="fixed top-1/2 z-50 hidden -translate-y-1/2 rounded-r-md border-y border-r border-[#E6E1D4] bg-white shadow-[0_2px_8px_rgba(20,20,20,0.08)] transition-all hover:bg-[#FAF8F2] md:block"
-        style={{ left: isOpen ? '20rem' : '248px' }}
+        className="fixed top-1/2 z-50 hidden -translate-y-1/2 rounded-r-md border-y border-r border-[#E6E1D4] bg-white shadow-[0_2px_8px_rgba(20,20,20,0.08)] transition-all hover:bg-[#FAF8F2] md:block print:hidden"
+        style={{ left: isOpen ? '20rem' : '230px' }}
         title="Quick Actions (Q)"
       >
         <div className="flex h-6 w-6 items-center justify-center p-1.5">
@@ -252,7 +252,7 @@ export default function QuickActionsSidebar() {
       {/* Overlay */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-40 bg-[#1A1A1A]/20"
+          className="fixed inset-0 z-40 bg-[#1A1A1A]/20 print:hidden"
           onClick={() => setIsOpen(false)}
         />
       )}
@@ -260,7 +260,7 @@ export default function QuickActionsSidebar() {
       {/* Sidebar Panel — full width on phones, fixed 320px on sm+. */}
       <div
         ref={sidebarRef}
-        className={`fixed left-0 top-0 z-50 h-full w-full transform border-r border-[#E6E1D4] bg-[#FAF8F2] shadow-[0_8px_28px_rgba(20,20,20,0.12)] transition-transform duration-300 ease-in-out sm:w-80 ${
+        className={`fixed left-0 top-0 z-50 h-full w-full transform border-r border-[#E6E1D4] bg-[#FAF8F2] shadow-[0_8px_28px_rgba(20,20,20,0.12)] transition-transform duration-300 ease-in-out print:hidden sm:w-80 ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
         style={{ paddingLeft: 'env(safe-area-inset-left)' }}

@@ -26,17 +26,17 @@ export function SortableHeader<K extends string>({
       : ChevronDown;
 
   return (
-    <th className={`px-4 py-3 font-medium text-slate-700 ${align === 'right' ? 'text-right' : 'text-left'} ${className}`}>
+    <th className={`px-4 py-3 font-medium text-[#3A3A3A] ${align === 'right' ? 'text-right' : 'text-left'} ${className}`}>
       <button
         type="button"
         onClick={() => onToggle(sortKey)}
-        className={`group inline-flex items-center gap-1.5 transition-colors hover:text-slate-900 ${
+        className={`group inline-flex items-center gap-1.5 transition-colors hover:text-[#1A1A1A] ${
           align === 'right' ? 'flex-row-reverse' : ''
         }`}
       >
         <span>{label}</span>
         <Icon
-          className={`h-3.5 w-3.5 ${isActive ? 'text-slate-700' : 'text-slate-400 group-hover:text-slate-600'}`}
+          className={`h-3.5 w-3.5 ${isActive ? 'text-[#3A3A3A]' : 'text-[#A0A0A0] group-hover:text-[#6B6B6B]'}`}
         />
       </button>
     </th>

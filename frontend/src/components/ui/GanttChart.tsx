@@ -44,23 +44,23 @@ export function GanttChart({ tasks, startDate, endDate, compact = false, showMon
 
   const getStatusColor = (status: Task['status']) => {
     switch (status) {
-      case 'not_started': return 'bg-slate-400';
-      case 'in_progress': return 'bg-blue-500';
-      case 'complete': return 'bg-emerald-500';
-      case 'delayed': return 'bg-red-500';
-      case 'blocked': return 'bg-gray-700';
+      case 'not_started': return 'bg-[#C9BBA0]';
+      case 'in_progress': return 'bg-[#D69A2E]';
+      case 'complete': return 'bg-[#2F8F5C]';
+      case 'delayed': return 'bg-[#C44545]';
+      case 'blocked': return 'bg-[#5A6470]';
     }
   };
 
   const getZoneColor = (zoneId?: string) => {
     const zoneColors: Record<string, string> = {
-      'zone_1': '#3B82F6',
-      'zone_2': '#10B981',
-      'zone_3': '#F59E0B',
-      'zone_4': '#EF4444',
-      'zone_5': '#8B5CF6',
+      'zone_1': '#2A6F9E',
+      'zone_2': '#2F8F5C',
+      'zone_3': '#D69A2E',
+      'zone_4': '#C44545',
+      'zone_5': '#6B3FA0',
     };
-    return zoneId ? zoneColors[zoneId] : '#64748b';
+    return zoneId ? zoneColors[zoneId] : '#6B7A8F';
   };
 
   const getStatusLabel = (status: Task['status']) => {
@@ -80,7 +80,7 @@ export function GanttChart({ tasks, startDate, endDate, compact = false, showMon
           return (
             <div
               key={task.id}
-              className={`relative overflow-hidden rounded-xl border border-slate-200 bg-white p-3 ${isHighlighted(task.id) ? HIGHLIGHT_RING : ''}`}
+              className={`relative overflow-hidden rounded-xl border border-[#E6E1D4] bg-white p-3 ${isHighlighted(task.id) ? HIGHLIGHT_RING : ''}`}
             >
               <span
                 className="absolute left-0 top-0 h-full w-1"
@@ -89,8 +89,8 @@ export function GanttChart({ tasks, startDate, endDate, compact = false, showMon
               />
               <div className="flex items-start justify-between gap-2 pl-2">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-slate-900">{task.name}</p>
-                  <p className="mt-0.5 text-[11px] text-slate-500">
+                  <p className="truncate text-sm font-medium text-[#1A1A1A]">{task.name}</p>
+                  <p className="mt-0.5 text-[11px] text-[#6B6B6B]">
                     {format(parseISO(task.startDate), 'MMM d')} →{' '}
                     {format(parseISO(task.endDate), 'MMM d')}
                   </p>
@@ -109,13 +109,13 @@ export function GanttChart({ tasks, startDate, endDate, compact = false, showMon
                 </Badge>
               </div>
               <div className="mt-2 flex items-center gap-2 pl-2">
-                <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+                <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-[#F0EDE4]">
                   <div
                     className={`absolute inset-y-0 left-0 ${statusBg}`}
                     style={{ width: `${task.percentComplete}%` }}
                   />
                 </div>
-                <span className="text-[11px] tabular-nums text-slate-600">
+                <span className="text-[11px] tabular-nums text-[#6B6B6B]">
                   {task.percentComplete}%
                 </span>
               </div>
@@ -129,12 +129,12 @@ export function GanttChart({ tasks, startDate, endDate, compact = false, showMon
   if (compact) {
     return (
       // Compact mode: scroll horizontally on phones so the bar stays readable.
-      <div className="overflow-x-auto rounded-lg border border-slate-200">
+      <div className="overflow-x-auto rounded-lg border border-[#E6E1D4]">
         <div className="min-w-[560px]">
         {/* Task Rows - Compact */}
-        <div className="divide-y divide-slate-100">
+        <div className="divide-y divide-[#EFEBE0]">
           {tasks.length === 0 && (
-            <div className="px-4 py-8 text-center text-xs text-slate-500">
+            <div className="px-4 py-8 text-center text-xs text-[#6B6B6B]">
               No tasks scheduled — upload a photo or add a milestone to begin.
             </div>
           )}
@@ -144,11 +144,11 @@ export function GanttChart({ tasks, startDate, endDate, compact = false, showMon
             return (
               <div key={task.id} className={`flex items-center gap-4 p-3 ${hl ? 'bg-emerald-50/40' : ''}`}>
                 <div className="w-36 flex-shrink-0 sm:w-48">
-                  <p className="truncate text-sm font-medium text-slate-900">{task.name}</p>
-                  <p className="text-xs text-slate-500">{task.percentComplete}%</p>
+                  <p className="truncate text-sm font-medium text-[#1A1A1A]">{task.name}</p>
+                  <p className="text-xs text-[#6B6B6B]">{task.percentComplete}%</p>
                 </div>
                 <div className="flex-1">
-                  <div className="relative h-6 rounded-full bg-slate-100">
+                  <div className="relative h-6 rounded-full bg-[#F0EDE4]">
                     <div
                       className={`absolute top-0 bottom-0 rounded-full ${hl ? HIGHLIGHT_RING : ''}`}
                       style={{
@@ -179,12 +179,12 @@ export function GanttChart({ tasks, startDate, endDate, compact = false, showMon
   return (
     // Full mode: also horizontal-scroll on small viewports — the chart needs
     // ≥640px to be useful at all, and squishing months produces unreadable text.
-    <div className="overflow-x-auto rounded-lg border border-slate-200">
+    <div className="overflow-x-auto rounded-lg border border-[#E6E1D4]">
       <div className="min-w-[640px]">
       {/* Month Headers */}
       {showMonths && (
-        <div className="flex border-b border-slate-200 bg-slate-50">
-          <div className="sticky left-0 z-10 w-36 flex-shrink-0 border-r border-slate-200 bg-slate-50 p-3 text-sm font-medium text-slate-700 sm:w-48">
+        <div className="flex border-b border-[#E6E1D4] bg-[#FAF8F2]">
+          <div className="sticky left-0 z-10 w-36 flex-shrink-0 border-r border-[#E6E1D4] bg-[#FAF8F2] p-3 text-sm font-medium text-[#6B6B6B] sm:w-48">
             Task Name
           </div>
           <div className="flex-1">
@@ -192,7 +192,7 @@ export function GanttChart({ tasks, startDate, endDate, compact = false, showMon
               {months.map((month) => (
                 <div
                   key={month.name}
-                  className="truncate border-r border-slate-200 px-3 py-2 text-sm font-medium text-slate-700"
+                  className="truncate border-r border-[#E6E1D4] px-3 py-2 text-sm font-medium text-[#6B6B6B]"
                   style={{ width: `${month.width}%` }}
                   title={month.name}
                 >
@@ -205,13 +205,13 @@ export function GanttChart({ tasks, startDate, endDate, compact = false, showMon
       )}
 
       {/* Task Rows */}
-      <div className="divide-y divide-slate-100">
+      <div className="divide-y divide-[#EFEBE0]">
         {tasks.length === 0 && (
-          <div className="flex flex-col items-center justify-center bg-slate-50/60 px-6 py-16 text-center">
-            <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
+          <div className="flex flex-col items-center justify-center bg-[#FAF8F2]/60 px-6 py-16 text-center">
+            <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-[#6B6B6B]">
               No tasks yet
             </p>
-            <p className="mt-2 max-w-sm text-sm leading-relaxed text-slate-500">
+            <p className="mt-2 max-w-sm text-sm leading-relaxed text-[#6B6B6B]">
               Upload a daily site photo, or add a milestone — they appear here as the schedule fills in.
             </p>
           </div>
@@ -220,10 +220,10 @@ export function GanttChart({ tasks, startDate, endDate, compact = false, showMon
           const position = getTaskPosition(task);
           return (
             <div key={task.id} className="flex items-center">
-              <div className="sticky left-0 z-10 w-36 flex-shrink-0 border-r border-slate-200 bg-white p-3 sm:w-48">
-                <p className="truncate text-sm font-medium text-slate-900">{task.name}</p>
+              <div className="sticky left-0 z-10 w-36 flex-shrink-0 border-r border-[#E6E1D4] bg-white p-3 sm:w-48">
+                <p className="truncate text-sm font-medium text-[#1A1A1A]">{task.name}</p>
                 <div className="mt-1 flex items-center gap-2">
-                  <span className="text-xs text-slate-500">{task.percentComplete}%</span>
+                  <span className="text-xs text-[#6B6B6B]">{task.percentComplete}%</span>
                   <Badge variant={task.status === 'complete' ? 'default' : task.status === 'delayed' ? 'destructive' : 'blue'} className="text-xs">
                     {getStatusLabel(task.status)}
                   </Badge>
@@ -235,7 +235,7 @@ export function GanttChart({ tasks, startDate, endDate, compact = false, showMon
                   {months.map((month) => (
                     <div
                       key={month.name}
-                      className="border-r border-slate-100"
+                      className="border-r border-[#EFEBE0]"
                       style={{ width: `${month.width}%` }}
                     />
                   ))}
@@ -270,22 +270,22 @@ export function GanttChart({ tasks, startDate, endDate, compact = false, showMon
       </div>
 
       {/* Legend */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-200 bg-slate-50 p-4 text-sm">
-        <span className="text-slate-500">Status:</span>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-[#E6E1D4] bg-[#FAF8F2] p-4 text-sm">
+        <span className="text-[#6B6B6B]">Status:</span>
         <div className="flex items-center gap-2">
-          <div className="h-3 w-3 rounded-full bg-slate-400" />
+          <div className="h-3 w-3 rounded-full bg-[#C9BBA0]" />
           <span>Not Started</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="h-3 w-3 rounded-full bg-blue-500" />
+          <div className="h-3 w-3 rounded-full bg-[#C8841E]" />
           <span>In Progress</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="h-3 w-3 rounded-full bg-emerald-500" />
+          <div className="h-3 w-3 rounded-full bg-[#2F8F5C]" />
           <span>Complete</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="h-3 w-3 rounded-full bg-red-500" />
+          <div className="h-3 w-3 rounded-full bg-[#C44545]" />
           <span>Delayed</span>
         </div>
       </div>

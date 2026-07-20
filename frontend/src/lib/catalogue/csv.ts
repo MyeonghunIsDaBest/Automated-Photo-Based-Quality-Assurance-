@@ -24,6 +24,12 @@ export interface CsvMaterialRow {
   subcategory: string | null;
   isStockItem: boolean | null;
   isFavourite: boolean | null;
+  /** Optional wholesaler columns (P9.BS catalogue→stock onboarding). `supplier`
+   *  is the wholesaler NAME (resolved case-insensitively, created when new);
+   *  `supplierSku` is THEIR item/account code for this material (lands in
+   *  supplier_skus once a supplier is known). Either may appear alone. */
+  supplier: string | null;
+  supplierSku: string | null;
 }
 
 export interface ParseResult {
@@ -56,8 +62,8 @@ export interface ImportPlan {
 // ---------------------------------------------------------------------------
 
 const REQUIRED_HEADERS = ['sku', 'name', 'unit', 'cost_price', 'sell_price', 'tags', 'description'];
-// Optional columns — old 7-column files keep working unchanged.
-const OPTIONAL_HEADERS = ['category', 'subcategory', 'is_stock_item', 'is_favourite'] as const;
+// Optional columns — old 7- and 11-column files keep working unchanged.
+const OPTIONAL_HEADERS = ['category', 'subcategory', 'is_stock_item', 'is_favourite', 'supplier', 'supplier_sku'] as const;
 
 /** Parse one CSV line (quoted fields, doubled-quote escapes). Shared with the
  *  pre-build importer. */
@@ -164,6 +170,8 @@ export function parseMaterialsCsv(text: string): ParseResult {
     subcategory: headerFields.indexOf('subcategory'),
     is_stock_item: headerFields.indexOf('is_stock_item'),
     is_favourite: headerFields.indexOf('is_favourite'),
+    supplier: headerFields.indexOf('supplier'),
+    supplier_sku: headerFields.indexOf('supplier_sku'),
   };
   void OPTIONAL_HEADERS; // documented above; indexes resolved individually
 
@@ -215,6 +223,8 @@ export function parseMaterialsCsv(text: string): ParseResult {
     }
     const rawCategory = idx.category >= 0 ? get(idx.category) : '';
     const rawSubcategory = idx.subcategory >= 0 ? get(idx.subcategory) : '';
+    const rawSupplier = idx.supplier >= 0 ? get(idx.supplier) : '';
+    const rawSupplierSku = idx.supplier_sku >= 0 ? get(idx.supplier_sku) : '';
 
     const tags = rawTags === ''
       ? []
@@ -232,6 +242,8 @@ export function parseMaterialsCsv(text: string): ParseResult {
       subcategory: rawSubcategory === '' ? null : rawSubcategory,
       isStockItem: stockResult,
       isFavourite: favResult,
+      supplier: rawSupplier === '' ? null : rawSupplier,
+      supplierSku: rawSupplierSku === '' ? null : rawSupplierSku,
     });
   }
 
@@ -310,4 +322,49 @@ export function planImport(existing: ExistingMaterial[], rows: CsvMaterialRow[])
   }
 
   return { adds, updates, skips };
+}
+
+// ---------------------------------------------------------------------------
+// Supplier resolution planner — pure, no network calls
+//
+// Distinct `supplier` names in the file resolve case-insensitively against the
+// existing wholesalers. Names with no match are CREATED at import time — the
+// ImportTab plan step surfaces both buckets as explicit chips ("links to N
+// wholesalers · will create M new") so nothing happens silently.
+// ---------------------------------------------------------------------------
+
+export interface ExistingSupplier {
+  id: string;
+  name: string;
+}
+
+export interface SupplierPlan {
+  /** lowercased supplier name → existing supplier id */
+  links: Map<string, string>;
+  /** distinct NEW wholesaler names, original casing of first appearance */
+  creates: string[];
+}
+
+export function planSupplierResolution(existing: ExistingSupplier[], rows: CsvMaterialRow[]): SupplierPlan {
+  const byName = new Map<string, string>();
+  for (const s of existing) byName.set(s.name.trim().toLowerCase(), s.id);
+
+  const links = new Map<string, string>();
+  const creates: string[] = [];
+  const seenNew = new Set<string>();
+
+  for (const row of rows) {
+    if (row.supplier === null) continue;
+    const key = row.supplier.trim().toLowerCase();
+    if (key === '') continue;
+    const existingId = byName.get(key);
+    if (existingId !== undefined) {
+      links.set(key, existingId);
+    } else if (!seenNew.has(key)) {
+      seenNew.add(key);
+      creates.push(row.supplier.trim());
+    }
+  }
+
+  return { links, creates };
 }

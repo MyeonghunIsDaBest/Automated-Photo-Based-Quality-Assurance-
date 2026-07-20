@@ -27,8 +27,8 @@ export default defineConfig({
         short_name: 'SiteProof',
         description:
           'Quote to cash for trade businesses — jobs, stock, quotes, and photo-backed site records in one place.',
-        // Everyone lands on /home (RoleHomeRedirect) — match it.
-        start_url: '/home',
+        // The index route redirects each role to its workspace.
+        start_url: '/',
         scope: '/',
         display: 'standalone',
         orientation: 'portrait',

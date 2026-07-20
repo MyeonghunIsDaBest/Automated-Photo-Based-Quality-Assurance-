@@ -45,6 +45,11 @@ interface ServiceJobRow {
   property_id: string | null;
   /** 'service' | 'project' (mig 93); absent pre-migration. */
   kind?: string | null;
+  /** External-subcontractor job (mig 102); absent pre-migration. */
+  is_contractor?: boolean | null;
+  contractor_name?: string | null;
+  /** Customer paid upfront — invoice raised at creation (mig 103); absent pre-migration. */
+  prepaid?: boolean | null;
   status: ServiceJobStatus;
   scheduled_for: string | null;
   assigned_to: string | null;
@@ -100,6 +105,12 @@ export interface ServiceJob {
   propertyId: string | null;
   /** service | project — inherited from the originating quote at conversion. */
   kind: ServiceJobKind;
+  /** External-subcontractor job (mig 102). `contractorName` is free text; the
+   *  internal owner stays on `assignedTo`. */
+  isContractor: boolean;
+  contractorName: string | null;
+  /** Customer paid upfront — an invoice was raised at creation (mig 103). */
+  prepaid: boolean;
   status: ServiceJobStatus;
   scheduledFor: string | null;
   assignedTo: string | null;
@@ -150,6 +161,9 @@ function rowToServiceJob(r: ServiceJobRow): ServiceJob {
     customerId: r.customer_id,
     propertyId: r.property_id,
     kind: (r.kind as ServiceJobKind) ?? 'service',
+    isContractor: r.is_contractor ?? false,
+    contractorName: r.contractor_name ?? null,
+    prepaid: r.prepaid ?? false,
     status: r.status,
     scheduledFor: r.scheduled_for,
     assignedTo: r.assigned_to,
@@ -199,14 +213,22 @@ const NOT_CONFIGURED = new Error(
 // Job read helpers
 // ---------------------------------------------------------------------------
 
-/** All service jobs, newest first. Optional status filter. */
+/** All service jobs, newest first. Optional status / contractor / prepaid filters. */
 export async function listServiceJobs(filters?: {
   status?: ServiceJobStatus;
+  isContractor?: boolean;
+  prepaid?: boolean;
 }): Promise<ServiceJob[]> {
   if (!supabaseConfigured()) return [];
   let q = supabase.from('service_jobs').select('*');
   if (filters?.status) {
     q = q.eq('status', filters.status);
+  }
+  if (filters?.isContractor !== undefined) {
+    q = q.eq('is_contractor', filters.isContractor);
+  }
+  if (filters?.prepaid !== undefined) {
+    q = q.eq('prepaid', filters.prepaid);
   }
   const { data, error } = await q.order('created_at', { ascending: false });
   if (error) throw error;
@@ -257,6 +279,14 @@ export interface CreateServiceJobInput {
   scheduledFor?: string;
   /** service | project. Only sent when 'project' (pre-mig-93-safe default). */
   kind?: ServiceJobKind;
+  /** External-subcontractor job (mig 102). */
+  isContractor?: boolean;
+  contractorName?: string | null;
+  /** Customer pays upfront (mig 103) — the caller raises the invoice after create. */
+  prepaid?: boolean;
+  /** Agreed price ex GST. Needed for a prepaid job with no source quote so the
+   *  upfront invoice isn't $0. */
+  contractValue?: number | null;
 }
 
 /** Create a service job. Status defaults to 'pending' (DB default) unless
@@ -284,9 +314,18 @@ export async function createServiceJob(input: CreateServiceJobInput): Promise<Se
     job_number: jobNumber,
     created_by: uid,
   };
+  if (input.contractValue != null) insert.contract_value = input.contractValue;
   // 'service' is the DB default — only send the column for project jobs, so
   // ordinary job creation keeps working on databases without migration 93.
   if (input.kind === 'project') insert.kind = 'project';
+  // Contractor (mig 102) + prepaid (mig 103): only send when true, so creation
+  // still works on a DB that hasn't applied those migrations. The retry below
+  // strips whichever column the DB rejects (mirrors the mig-93 pattern).
+  if (input.isContractor) {
+    insert.is_contractor = true;
+    if (input.contractorName) insert.contractor_name = input.contractorName;
+  }
+  if (input.prepaid) insert.prepaid = true;
   // Only send status / scheduled_for when scheduling upfront; otherwise let
   // the DB default ('pending') apply so we don't override a future migration
   // that might change the default.
@@ -294,16 +333,21 @@ export async function createServiceJob(input: CreateServiceJobInput): Promise<Se
     insert.scheduled_for = input.scheduledFor;
     insert.status = 'scheduled' as ServiceJobStatus;
   }
-  let { data, error } = await supabase
-    .from('service_jobs')
-    .insert(insert)
-    .select('*')
-    .single();
-  // Pre-mig-93 fallback: if the DB doesn't have the kind column yet, retry once
-  // without it so converting a project quote still creates the job (the mig-93
-  // backfill promotes it to 'project' from the quote link when applied).
-  if (error && 'kind' in insert && (error.code === 'PGRST204' || /'kind' column/i.test(error.message ?? ''))) {
-    delete insert.kind;
+  // Pre-migration fallback: retry once per missing column named by PostgREST's
+  // PGRST204 error, so a DB missing mig 93/102/103 still creates the job (the
+  // dropped column is a filter/badge concern, not core to the record).
+  const LATE_COLUMNS = ['kind', 'is_contractor', 'contractor_name', 'prepaid', 'contract_value'] as const;
+  let { data, error } = await supabase.from('service_jobs').insert(insert).select('*').single();
+  let retriesLeft = LATE_COLUMNS.length;
+  while (error && retriesLeft-- > 0) {
+    const msg = error.message ?? '';
+    const named = LATE_COLUMNS.find((col) => col in insert && new RegExp(`'${col}'`, 'i').test(msg));
+    if (named) delete insert[named];
+    else if (error.code === 'PGRST204') {
+      let any = false;
+      for (const col of LATE_COLUMNS) if (col in insert) { delete insert[col]; any = true; }
+      if (!any) break;
+    } else break;
     ({ data, error } = await supabase.from('service_jobs').insert(insert).select('*').single());
   }
   if (error) throw error;
@@ -321,6 +365,9 @@ export interface UpdateServiceJobInput {
   materials?: string | null;
   notes?: string | null;
   assignedTo?: string | null;
+  kind?: ServiceJobKind;
+  isContractor?: boolean;
+  contractorName?: string | null;
 }
 
 /** Update mutable fields of a service job. Only provided keys are patched
@@ -343,6 +390,9 @@ export async function updateServiceJob(
       ...(patch.materials !== undefined && { materials: patch.materials }),
       ...(patch.notes !== undefined && { notes: patch.notes }),
       ...(patch.assignedTo !== undefined && { assigned_to: patch.assignedTo }),
+      ...(patch.kind !== undefined && { kind: patch.kind }),
+      ...(patch.isContractor !== undefined && { is_contractor: patch.isContractor }),
+      ...(patch.contractorName !== undefined && { contractor_name: patch.contractorName }),
     })
     .eq('id', id)
     .select('*')

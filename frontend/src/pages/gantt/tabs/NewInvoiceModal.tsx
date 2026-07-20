@@ -3,7 +3,8 @@ import { Receipt, X } from 'lucide-react';
 import { differenceInCalendarDays, format, parseISO } from 'date-fns';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
-import { Badge } from '../../../components/ui/badge';
+import MotionDrawer from '../../../components/ui/MotionDrawer';
+import { FRAUNCES, StatusPill, inputField } from '../components/ledger';
 import { useGanttSideStore, orderTotal } from '../store';
 import type { Order } from '../types';
 
@@ -90,8 +91,6 @@ export default function NewInvoiceModal({
     setAmount(String(orderTotal(order).toFixed(2)));
   }, [order?.id]);
 
-  if (!isOpen) return null;
-
   const canSubmit = !!orderId && invoiceNumber.trim().length > 0 && Number(amount) > 0;
 
   const handleSubmit = () => {
@@ -110,196 +109,194 @@ export default function NewInvoiceModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-2 backdrop-blur-sm sm:items-center sm:p-4"
-      onClick={onClose}
+    <MotionDrawer
+      open={isOpen}
+      onClose={onClose}
+      variant="modal"
+      ariaLabel="Add an invoice"
+      sizeClass="max-w-lg"
     >
-      <div
-        className="flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:max-h-none"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <header className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-          <div>
-            <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-slate-500">
-              New invoice
-            </p>
-            <h3
-              className="mt-1 text-lg font-semibold text-slate-900"
-              style={{ fontFamily: "'Fraunces', Georgia, serif" }}
-            >
-              Add an invoice
-            </h3>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-            aria-label="Close"
+      <header className="flex items-center justify-between border-b border-[#EFEBE0] px-5 py-4">
+        <div>
+          <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-[#6B6B6B]">
+            New invoice
+          </p>
+          <h3
+            className="mt-1 text-lg font-semibold text-[#1A1A1A]"
+            style={{ fontFamily: FRAUNCES }}
           >
-            <X className="h-4 w-4" />
-          </button>
-        </header>
+            Add an invoice
+          </h3>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="grid min-h-11 min-w-11 place-items-center rounded-md text-[#A0A0A0] hover:bg-[#F0EDE4] hover:text-[#3A3A3A]"
+          aria-label="Close"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </header>
 
-        <div className="editorial-scrollbox flex-1 px-5 py-4">
-          <div className="space-y-4">
+      <div className="editorial-scrollbox flex-1 px-5 py-4">
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-[#6B6B6B]">
+              Against order
+            </label>
+            <select
+              value={orderId}
+              onChange={(e) => setOrderId(e.target.value)}
+              className={inputField}
+            >
+              {orders.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.poNumber} — {o.supplierName || 'Unknown'} — {fmtUSD(orderTotal(o))}
+                </option>
+              ))}
+            </select>
+            {order && (
+              <p className="mt-1 text-[11px] text-[#6B6B6B]">
+                {order.lineItems.length} line item{order.lineItems.length === 1 ? '' : 's'}
+                {' · '}
+                ordered {format(parseISO(order.orderedDate), 'MMM d, yyyy')}
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-[#6B6B6B]">Invoice #</label>
+            <Input
+              value={invoiceNumber}
+              onChange={(e) => setInvoiceNumber(e.target.value)}
+              placeholder="INV-2026-0145"
+              className="font-mono"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">
-                Against order
-              </label>
-              <select
-                value={orderId}
-                onChange={(e) => setOrderId(e.target.value)}
-                className="block w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-              >
-                {orders.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.poNumber} — {o.supplierName || 'Unknown'} — {fmtUSD(orderTotal(o))}
-                  </option>
-                ))}
-              </select>
-              {order && (
-                <p className="mt-1 text-[11px] text-slate-500">
-                  {order.lineItems.length} line item{order.lineItems.length === 1 ? '' : 's'}
-                  {' · '}
-                  ordered {format(parseISO(order.orderedDate), 'MMM d, yyyy')}
+              <label className="mb-1 block text-xs font-medium text-[#6B6B6B]">Invoice date</label>
+              <Input
+                type="date"
+                value={invoiceDate}
+                onChange={(e) => setInvoiceDate(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-[#6B6B6B]">Due date</label>
+              <Input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+              />
+              {daysToDue !== null && (
+                <p className="mt-1 text-[11px] tabular-nums text-[#6B6B6B]">
+                  {daysToDue < 0
+                    ? `Already ${Math.abs(daysToDue)}d overdue`
+                    : daysToDue === 0
+                      ? 'Due same day'
+                      : `Due in ${daysToDue}d`}
                 </p>
               )}
             </div>
+          </div>
 
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Invoice #</label>
-              <Input
-                value={invoiceNumber}
-                onChange={(e) => setInvoiceNumber(e.target.value)}
-                placeholder="INV-2026-0145"
-                className="font-mono"
-              />
-            </div>
+          {/* Net-terms quick-picks */}
+          <div className="flex flex-wrap gap-1.5">
+            <span className="self-center text-[10px] font-medium uppercase tracking-wider text-[#A0A0A0]">
+              Terms
+            </span>
+            {NET_TERMS.map((t) => {
+              const active = daysToDue === t.days;
+              return (
+                <button
+                  key={t.days}
+                  type="button"
+                  onClick={() => setDueDate(
+                    new Date(parseISO(invoiceDate).getTime() + t.days * 86_400_000)
+                      .toISOString().slice(0, 10),
+                  )}
+                  className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors ${
+                    active
+                      ? 'border-[#1A1A1A] bg-[#1A1A1A] text-white'
+                      : 'border-[#E6E1D4] text-[#3A3A3A] hover:border-[#D8D2C4] hover:bg-[#FAF8F2]'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Invoice date</label>
-                <Input
-                  type="date"
-                  value={invoiceDate}
-                  onChange={(e) => setInvoiceDate(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Due date</label>
-                <Input
-                  type="date"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                />
-                {daysToDue !== null && (
-                  <p className="mt-1 text-[11px] tabular-nums text-slate-500">
-                    {daysToDue < 0
-                      ? `Already ${Math.abs(daysToDue)}d overdue`
-                      : daysToDue === 0
-                        ? 'Due same day'
-                        : `Due in ${daysToDue}d`}
-                  </p>
-                )}
-              </div>
-            </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-[#6B6B6B]">Amount (AUD)</label>
+            <Input
+              type="number"
+              inputMode="decimal"
+              step={0.01}
+              min={0}
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="tabular-nums"
+            />
+            {order && (
+              <p className="mt-1 text-[11px] text-[#6B6B6B]">
+                Order total {fmtUSD(orderTotal(order))} · pre-filled
+              </p>
+            )}
+          </div>
 
-            {/* Net-terms quick-picks */}
-            <div className="flex flex-wrap gap-1.5">
-              <span className="self-center text-[10px] font-medium uppercase tracking-wider text-slate-400">
-                Terms
-              </span>
-              {NET_TERMS.map((t) => {
-                const active = daysToDue === t.days;
-                return (
-                  <button
-                    key={t.days}
-                    type="button"
-                    onClick={() => setDueDate(
-                      new Date(parseISO(invoiceDate).getTime() + t.days * 86_400_000)
-                        .toISOString().slice(0, 10),
-                    )}
-                    className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors ${
-                      active
-                        ? 'border-slate-900 bg-slate-900 text-white'
-                        : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
-                    }`}
-                  >
-                    {t.label}
-                  </button>
-                );
-              })}
-            </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-[#6B6B6B]">
+              Document reference (optional)
+            </label>
+            <Input
+              value={fileRef}
+              onChange={(e) => setFileRef(e.target.value)}
+              placeholder="orders/2026/SP-L14-switchgear.pdf"
+            />
+          </div>
 
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Amount (AUD)</label>
-              <Input
-                type="number"
-                inputMode="decimal"
-                step={0.01}
-                min={0}
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className="tabular-nums"
-              />
-              {order && (
-                <p className="mt-1 text-[11px] text-slate-500">
-                  Order total {fmtUSD(orderTotal(order))} · pre-filled
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">
-                Document reference (optional)
-              </label>
-              <Input
-                value={fileRef}
-                onChange={(e) => setFileRef(e.target.value)}
-                placeholder="orders/2026/SP-L14-switchgear.pdf"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">
-                Notes (optional)
-              </label>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={2}
-                placeholder="e.g. Progress claim for L14 MEP rough-in; held back 5% retention."
-                className="block w-full rounded-md border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-              />
-              <div className="mt-1.5 flex flex-wrap gap-1">
-                {NOTE_QUICK_FLAGS.map((flag) => (
-                  <button
-                    key={flag}
-                    type="button"
-                    onClick={() => appendNote(flag)}
-                    className="rounded-full border border-slate-200 px-2 py-0.5 text-[10px] text-slate-600 transition-colors hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700"
-                  >
-                    + {flag}
-                  </button>
-                ))}
-              </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-[#6B6B6B]">
+              Notes (optional)
+            </label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              placeholder="e.g. Progress claim for L14 MEP rough-in; held back 5% retention."
+              className={inputField}
+            />
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {NOTE_QUICK_FLAGS.map((flag) => (
+                <button
+                  key={flag}
+                  type="button"
+                  onClick={() => appendNote(flag)}
+                  className="rounded-full border border-[#E6E1D4] px-2 py-0.5 text-[10px] text-[#3A3A3A] transition-colors hover:border-[#2F8F5C] hover:bg-[#E1F3EA] hover:text-[#246F47]"
+                >
+                  + {flag}
+                </button>
+              ))}
             </div>
           </div>
         </div>
-
-        <footer className="flex flex-shrink-0 items-center justify-between gap-3 border-t border-slate-100 px-5 py-3">
-          <Badge variant="outline" className="border-blue-200 bg-blue-50 text-[10px] uppercase tracking-wider text-blue-700">
-            Pending
-          </Badge>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={onClose}>Cancel</Button>
-            <Button onClick={handleSubmit} disabled={!canSubmit}>
-              <Receipt className="mr-1.5 h-4 w-4" />
-              Add invoice
-            </Button>
-          </div>
-        </footer>
       </div>
-    </div>
+
+      <footer className="flex flex-shrink-0 items-center justify-between gap-3 border-t border-[#EFEBE0] px-5 py-3">
+        <StatusPill tone="slate" className="uppercase tracking-wider">
+          Pending
+        </StatusPill>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={handleSubmit} disabled={!canSubmit}>
+            <Receipt className="mr-1.5 h-4 w-4" />
+            Add invoice
+          </Button>
+        </div>
+      </footer>
+    </MotionDrawer>
   );
 }

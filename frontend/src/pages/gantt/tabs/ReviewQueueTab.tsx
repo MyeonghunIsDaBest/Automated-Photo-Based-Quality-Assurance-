@@ -604,7 +604,7 @@ function RecentActivityStrip({ rows }: { rows: RecentAnalysisRow[] }) {
     </div>
   );
 }
-const TONE_DOT: Record<ToneKey, string> = { sage: '#2F8F5C', amber: '#D69A2E', orange: '#C26A2C', red: '#C44545', slate: '#6B7A8F', ink: '#1A1A1A' };
+const TONE_DOT: Record<ToneKey, string> = { sage: '#2F8F5C', amber: '#D69A2E', orange: '#C26A2C', red: '#C44545', slate: '#6B7A8F', ink: '#1A1A1A', sky: '#2A6F9E', violet: '#6B3FA0', emerald: '#10B981' };
 
 // ─── Queue row ───────────────────────────────────────────────────────────────
 

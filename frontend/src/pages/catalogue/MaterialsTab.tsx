@@ -6,18 +6,22 @@
 //     the throw in escapeIlikePattern)
 //   • tag filter chips from listTags
 //   • include-inactive toggle
-//   • table: name / sku / unit / tags (chips) / cost / sell / status
+//   • Register (P9.A kit): name / sku / unit / tags (chips) / cost / sell /
+//     status + RowMenu actions; phone rows get a hand-authored summary
 //     (price cells always visible — page is manager-gated; plan note: P3 reuse
 //     intent is to add a canViewPrices check here when field roles get access)
+//   • rows past RENDER_CAP collapse behind a "Show all N" footer toggle
 //   • add + row-edit via MaterialFormModal
 //   • deactivate / reactivate inline
 //   • skeleton initial load, error-retry panel, friendly empty state
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Plus, RefreshCw, ToggleLeft, ToggleRight, Search, Archive, ArchiveRestore, Trash2 } from "lucide-react";
+import { Plus, RefreshCw, ToggleLeft, ToggleRight, Search } from "lucide-react";
 
 import { cardShell, btnPrimary, btnGhost } from "../gantt/components/ledger";
+import MotionDrawer from "../../components/ui/MotionDrawer";
+import { Register, RegisterRow, RowMenu, type RowMenuItem } from "../../components/ui/Register";
 import { SkeletonLine } from "../../components/ui/skeleton";
 import { Toaster, type ToastState } from "../../components/ui/Toaster";
 
@@ -50,17 +54,42 @@ function fmt(price: number | null): string {
   return "$" + price.toFixed(2);
 }
 
+// How many rows render before collapsing the rest behind a "Show all N" toggle
+// (JobsBoard COLUMN_RENDER_CAP precedent). Post-CSV-import the catalogue holds
+// 300+ rows — rendering them all thrashes layout. Counts stay honest: the
+// filter chips + select-all keep using the full arrays; only the DOM is capped.
+const RENDER_CAP = 60;
+
+// ─── status chip (hand-rolled, kept verbatim from the old table) ──────────────
+
+function ActiveChip({ active }: { active: boolean }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+        active
+          ? "border-[#B8DFC7] bg-[#E5F2EA] text-[#246F47]"
+          : "border-[#E6E1D4] bg-[#F0EDE4] text-[#8A8378]"
+      }`}
+    >
+      <span
+        className="h-1.5 w-1.5 rounded-full"
+        style={{ background: active ? "#2F8F5C" : "#B6AE9F" }}
+      />
+      {active ? "Active" : "Archived"}
+    </span>
+  );
+}
+
 // ─── row skeleton ─────────────────────────────────────────────────────────────
 
-function SkeletonRow({ colCount }: { colCount: number }) {
+function SkeletonRow() {
   return (
-    <tr className="border-b border-[#EFEBE0]">
-      {Array.from({ length: colCount }, (_, i) => (
-        <td key={i} className="px-4 py-3">
-          <SkeletonLine className={i === 0 ? "w-36" : "w-20"} />
-        </td>
-      ))}
-    </tr>
+    <div className="flex min-h-11 items-center gap-4 px-4 py-3">
+      <SkeletonLine className="w-36" />
+      <SkeletonLine className="w-20" />
+      <SkeletonLine className="hidden w-16 sm:block" />
+      <SkeletonLine className="hidden w-24 sm:block" />
+    </div>
   );
 }
 
@@ -84,16 +113,34 @@ export default function MaterialsTab({ onWritten }: Props) {
   const [selected, setSelected]           = useState<Set<string>>(new Set());
   const [bulkMarking, setBulkMarking]     = useState(false);
   const [includeInactive, setIncludeInactive] = useState(false);
+  // Rows past RENDER_CAP stay out of the DOM until the footer toggle expands.
+  const [expanded, setExpanded]           = useState(false);
 
   const [modal, setModal]                 = useState<MaterialFormInitial | null>(null);
 
   useEffect(() => {
-    getCommercialSettings().then((cs) => { if (cs) setMinMarkup(cs.minMarkupPct ?? 0.25); }).catch(() => {});
+    getCommercialSettings().then((cs) => {
+      if (cs) {
+        setMinMarkup(cs.minMarkupPct ?? 0.25);
+        setDefaultMarkup(cs.defaultMaterialMarkup ?? 0.25);
+      }
+    }).catch(() => {});
   }, []);
   const [showModal, setShowModal]         = useState(false);
   const [toast, setToast]                 = useState<ToastState>(null);
   // Pricing floor (mig 94) — flags sells below cost x (1 + floor). Managers only see prices anyway.
   const [minMarkup, setMinMarkup]         = useState(0.25);
+  // Default material markup — what the quote pickers auto-derive with when a
+  // material has no stored sell (cost-only CSV imports). Shown faintly in the
+  // Sell column so formula-priced rows are distinguishable from Luke-priced ones.
+  const [defaultMarkup, setDefaultMarkup] = useState(0.25);
+
+  // Bulk "Price from cost" dialog (P9.BS A4) — writes stored sells for the
+  // selection at a chosen markup; never touches stored sells unless opted in.
+  const [priceDialogOpen, setPriceDialogOpen] = useState(false);
+  const [priceMarkupPct, setPriceMarkupPct]   = useState("");
+  const [priceOverwrite, setPriceOverwrite]   = useState(false);
+  const [pricing, setPricing]                 = useState(false);
 
   // Permanent-delete confirm (distinct from the reversible archive/deactivate).
   const [confirmDelete, setConfirmDelete] = useState<Material | null>(null);
@@ -157,6 +204,49 @@ export default function MaterialsTab({ onWritten }: Props) {
     void fetchMaterials();
   }, [fetchMaterials]);
 
+  // Eligibility for the bulk pricing run — costed rows only; stored sells are
+  // protected unless the overwrite box is ticked.
+  const selectedRows = shown.filter((m) => selected.has(m.id));
+  const priceEligible = selectedRows.filter((m) => m.costPrice != null && (priceOverwrite || m.sellPrice == null));
+  const priceSkippedNoCost = selectedRows.filter((m) => m.costPrice == null).length;
+  const priceSkippedStored = selectedRows.filter((m) => m.costPrice != null && !priceOverwrite && m.sellPrice != null).length;
+
+  async function handleBulkPrice() {
+    // A cleared field must never price: Number("") === 0, which would write
+    // sell = cost (zero margin) across the whole selection in one click.
+    if (priceMarkupPct.trim() === "") {
+      setToast({ message: "Enter a markup percentage first.", type: "error" });
+      return;
+    }
+    const pct = Number(priceMarkupPct);
+    if (!isFinite(pct) || pct < 0) {
+      setToast({ message: "Enter a valid markup percentage (0 or more).", type: "error" });
+      return;
+    }
+    if (priceEligible.length === 0 || pricing) return;
+    setPricing(true);
+    const factor = 1 + pct / 100;
+    const jobs = priceEligible.map((m) => ({ id: m.id, sell: Math.round((m.costPrice as number) * factor * 100) / 100 }));
+    try {
+      const results = await Promise.allSettled(jobs.map((j) => updateMaterial(j.id, { sellPrice: j.sell })));
+      const failedIds = jobs.filter((_, i) => results[i].status === "rejected").map((j) => j.id);
+      // Mirror the bulk-stocked contract: only failed rows stay selected for retry.
+      setSelected(new Set(failedIds));
+      const ok = jobs.length - failedIds.length;
+      setToast({
+        message: failedIds.length === 0
+          ? `${ok} item${ok === 1 ? "" : "s"} priced at cost × ${(factor).toFixed(2)}.`
+          : `${ok} of ${jobs.length} priced — ${failedIds.length} failed and stay selected for retry.`,
+        type: failedIds.length === 0 ? "success" : "error",
+      });
+      setPriceDialogOpen(false);
+      onWritten();
+    } finally {
+      await fetchMaterials();
+      setPricing(false);
+    }
+  }
+
   async function handleBulkSetStocked(value: boolean) {
     if (selected.size === 0 || bulkMarking) return;
     setBulkMarking(true);
@@ -180,10 +270,18 @@ export default function MaterialsTab({ onWritten }: Props) {
     }
   }
 
-  // Esc clears the bulk selection (fast bail-out mid-sweep).
+  // Esc clears the bulk selection (fast bail-out mid-sweep) — but NOT while a
+  // dialog or row menu is up: that same Esc is closing the overlay (MotionDrawer
+  // and RowMenu both listen document-wide), and wiping a 300-row selection as a
+  // side effect of cancelling the pricing dialog would force the whole sweep
+  // to be redone.
   useEffect(() => {
     if (selected.size === 0) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setSelected(new Set()); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (document.querySelector('[role="dialog"], [role="menu"]')) return;
+      setSelected(new Set());
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [selected.size]);
@@ -260,6 +358,52 @@ export default function MaterialsTab({ onWritten }: Props) {
     onWritten();
   }
 
+  // Sell cell content — shared by the desktop cell and the phone summary line.
+  const renderSell = (m: Material) =>
+    m.sellPrice == null && m.costPrice != null ? (
+      // No stored sell — show the price quotes will auto-derive,
+      // faint + chipped so formula-priced rows are unmistakable.
+      <span
+        className="tabular-nums text-[#A0A0A0]"
+        title={`No stored sell — quotes price this automatically at cost × ${(1 + defaultMarkup).toFixed(2)}. Use “Price from cost” to store a fixed sell.`}
+      >
+        <span className="italic">{fmt(Math.round(m.costPrice * (1 + defaultMarkup) * 100) / 100)}</span>
+        <span className="ml-1.5 inline-block rounded-full border border-[#E6E1D4] bg-[#FAF8F2] px-1.5 py-px align-middle text-[9px] font-bold uppercase tracking-wide text-[#A0A0A0]">
+          auto
+        </span>
+      </span>
+    ) : (
+      <span
+        className={`tabular-nums ${isBelowFloor(m.sellPrice, m.costPrice, minMarkup) ? "font-medium text-[#C8841E]" : "text-[#3A3A3A]"}`}
+        title={isBelowFloor(m.sellPrice, m.costPrice, minMarkup) ? "Below the minimum-markup floor" : undefined}
+      >
+        {fmt(m.sellPrice)}
+      </span>
+    );
+
+  // Row overflow menu — Edit + Archive/Restore + Delete (was two icon buttons).
+  const rowMenuItems = (m: Material): RowMenuItem[] => [
+    { label: "Edit", onSelect: () => openEdit(m) },
+    {
+      label: m.isActive ? "Archive" : "Restore",
+      onSelect: () => void handleToggleActive(m),
+    },
+    { label: "Delete permanently", onSelect: () => setConfirmDelete(m), tone: "danger" },
+  ];
+
+  // Grid template computed conditionally so column count always matches the
+  // header (checkbox column for managers; Cost/Sell only when prices show).
+  const registerCols = [
+    ...(canManage ? ["36px"] : []),
+    "minmax(0,2fr)",   // Name
+    "minmax(0,1fr)",   // SKU
+    "56px",            // Unit
+    "minmax(0,1.4fr)", // Tags
+    ...(showPrices ? ["84px", "116px"] : []), // Cost / Sell
+    "104px",           // Status
+    "44px",            // Actions
+  ].join(" ");
+
   return (
     <div className={`${cardShell} overflow-hidden`}>
       {/* Toolbar */}
@@ -301,7 +445,7 @@ export default function MaterialsTab({ onWritten }: Props) {
               type="button"
               onClick={() => void handleBulkSetStocked(true)}
               disabled={bulkMarking}
-              className="ml-2 inline-flex items-center gap-1.5 rounded-full bg-[#2F8F5C] px-3 py-1 text-xs font-semibold text-white hover:bg-[#287a4e] disabled:opacity-60"
+              className="ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-full bg-[#2F8F5C] px-3 py-1 text-xs font-semibold text-white hover:bg-[#287a4e] disabled:opacity-60 sm:min-h-0"
             >
               {bulkMarking ? <RefreshCw className="h-3 w-3 animate-spin" /> : null}
               Mark held in stock ({selected.size})
@@ -313,9 +457,24 @@ export default function MaterialsTab({ onWritten }: Props) {
               onClick={() => void handleBulkSetStocked(false)}
               disabled={bulkMarking}
               title="Take the selected items off the stock list — they stay in the catalogue as one-offs"
-              className="inline-flex items-center gap-1.5 rounded-full border border-[#E6E1D4] bg-white px-3 py-1 text-xs font-semibold text-[#6B6B6B] hover:border-[#D8D2C4] hover:text-[#1A1A1A] disabled:opacity-60"
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-[#E6E1D4] bg-white px-3 py-1 text-xs font-semibold text-[#6B6B6B] hover:border-[#D8D2C4] hover:text-[#1A1A1A] disabled:opacity-60 sm:min-h-0"
             >
               Remove from stock list
+            </button>
+          )}
+          {canManage && selected.size > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setPriceMarkupPct(String(Math.round(defaultMarkup * 10000) / 100));
+                setPriceOverwrite(false);
+                setPriceDialogOpen(true);
+              }}
+              disabled={bulkMarking || pricing}
+              title="Set a stored sell price (cost × markup) for the selected items"
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-[#E6E1D4] bg-white px-3 py-1 text-xs font-semibold text-[#246F47] hover:border-[#2F8F5C] hover:bg-[#E5F2EA] disabled:opacity-60 sm:min-h-0"
+            >
+              Price from cost ({selectedRows.length})
             </button>
           )}
         </div>
@@ -388,13 +547,16 @@ export default function MaterialsTab({ onWritten }: Props) {
         </div>
       )}
 
-      {/* Table */}
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead>
-            <tr className="border-b border-[#E6E1D4] bg-[#FAF8F2]">
-              {canManage && (
-                <th className="w-8 px-3 py-2.5">
+      {/* Register (P9.A kit) — desktop grid at sm+, hand-authored phone summary */}
+      <Register
+        className="rounded-none border-0 shadow-none"
+        cols={registerCols}
+        header={
+          <>
+            {canManage && (
+              <span className="flex items-center">
+                {/* 44px hit area around the 16px checkbox */}
+                <label className="-m-3 flex h-11 w-11 cursor-pointer items-center justify-center">
                   <input
                     type="checkbox"
                     checked={shown.length > 0 && shown.every((m) => selected.has(m.id))}
@@ -403,51 +565,57 @@ export default function MaterialsTab({ onWritten }: Props) {
                     aria-label="Select all in view"
                     title="Select everything in the current view (Esc clears)"
                   />
-                </th>
-              )}
-              <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Name</th>
-              <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">SKU</th>
-              <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Unit</th>
-              <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Tags</th>
-              {showPrices && (
-                <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Cost</th>
-              )}
-              {showPrices && (
-                <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Sell</th>
-              )}
-              <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Status</th>
-              <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading &&
-              [1, 2, 3, 4, 5].map((i) => <SkeletonRow key={i} colCount={showPrices ? 9 : 6} />)}
-
-            {!loading && shown.length === 0 && !error && (
-              <tr>
-                <td colSpan={showPrices ? 9 : 6} className="px-4 py-12 text-center text-[#A0A0A0]">
-                  <p className="text-sm font-medium">No materials found</p>
-                  <p className="mt-1 text-xs">
-                    {stockFilter !== "all"
-                      ? `Nothing under the ${stockFilter === "stocked" ? "Stocked" : "One-off"} chip — try All, or bulk-mark items as held in stock.`
-                      : search || activeTag
-                        ? "Try adjusting filters"
-                        : "Add your first material to get started"}
-                  </p>
-                </td>
-              </tr>
+                </label>
+              </span>
             )}
+            <span>Name</span>
+            <span>SKU</span>
+            <span>Unit</span>
+            <span>Tags</span>
+            {showPrices && <span className="text-right">Cost</span>}
+            {showPrices && <span className="text-right">Sell</span>}
+            <span>Status</span>
+            <span className="text-right">Actions</span>
+          </>
+        }
+        footer={
+          !loading && shown.length > RENDER_CAP ? (
+            <div className="flex justify-center border-t border-[#E6E1D4] px-4 py-2.5">
+              <button
+                type="button"
+                onClick={() => setExpanded((v) => !v)}
+                className="min-h-11 rounded-full border border-[#E6E1D4] bg-white px-4 py-1 text-[12px] font-semibold text-[#3A3A3A] transition-colors hover:bg-[#FAF8F2] sm:min-h-0"
+              >
+                {expanded ? "Show fewer" : `Show all ${shown.length}`}
+              </button>
+            </div>
+          ) : undefined
+        }
+      >
+        {loading && [1, 2, 3, 4, 5].map((i) => <SkeletonRow key={i} />)}
 
-            {!loading &&
-              shown.map((m) => (
-                <tr
-                  key={m.id}
-                  className={`border-b border-[#EFEBE0] transition-colors hover:bg-[#FAF8F2] ${
-                    !m.isActive ? "opacity-50" : ""
-                  }`}
-                >
+        {!loading && shown.length === 0 && !error && (
+          <div className="px-4 py-12 text-center text-[#A0A0A0]">
+            <p className="text-sm font-medium">No materials found</p>
+            <p className="mt-1 text-xs">
+              {stockFilter !== "all"
+                ? `Nothing under the ${stockFilter === "stocked" ? "Stocked" : "One-off"} chip — try All, or bulk-mark items as held in stock.`
+                : search || activeTag
+                  ? "Try adjusting filters"
+                  : "Add your first material to get started"}
+            </p>
+          </div>
+        )}
+
+        {!loading &&
+          shown.slice(0, expanded ? undefined : RENDER_CAP).map((m) => (
+            <RegisterRow
+              key={m.id}
+              className={!m.isActive ? "opacity-50" : undefined}
+              mobile={
+                <span className="flex items-center gap-1">
                   {canManage && (
-                    <td className="px-3 py-3">
+                    <label className="-m-3 flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center">
                       <input
                         type="checkbox"
                         checked={selected.has(m.id)}
@@ -455,91 +623,73 @@ export default function MaterialsTab({ onWritten }: Props) {
                         className="h-4 w-4 accent-[#2F8F5C]"
                         aria-label={`Select ${m.name}`}
                       />
-                    </td>
+                    </label>
                   )}
-                  <td className="px-4 py-3">
-                    <button
-                      type="button"
-                      onClick={() => openEdit(m)}
-                      className="font-medium text-[#1A1A1A] hover:text-[#2F8F5C] hover:underline text-left"
-                    >
-                      {m.name}
-                    </button>
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs text-[#6B6B6B]">
-                    {m.sku ?? "—"}
-                  </td>
-                  <td className="px-4 py-3 text-[#3A3A3A]">{m.unit}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-1">
-                      {m.tags.map((t) => (
-                        <span
-                          key={t}
-                          className="rounded-full border border-[#E6E1D4] px-2 py-0.5 text-[10px] font-medium text-[#6B6B6B]"
-                        >
-                          {t}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                  {showPrices && (
-                    <td className="px-4 py-3 text-right tabular-nums text-[#3A3A3A]">
-                      {fmt(m.costPrice)}
-                    </td>
-                  )}
-                  {showPrices && (
-                    <td
-                      className={`px-4 py-3 text-right tabular-nums ${isBelowFloor(m.sellPrice, m.costPrice, minMarkup) ? "font-medium text-[#C8841E]" : "text-[#3A3A3A]"}`}
-                      title={isBelowFloor(m.sellPrice, m.costPrice, minMarkup) ? "Below the minimum-markup floor" : undefined}
-                    >
-                      {fmt(m.sellPrice)}
-                    </td>
-                  )}
-                  <td className="px-4 py-3">
-                    <span
-                      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                        m.isActive
-                          ? "border-[#B8DFC7] bg-[#E5F2EA] text-[#246F47]"
-                          : "border-[#E6E1D4] bg-[#F0EDE4] text-[#8A8378]"
-                      }`}
-                    >
-                      <span
-                        className="h-1.5 w-1.5 rounded-full"
-                        style={{ background: m.isActive ? "#2F8F5C" : "#B6AE9F" }}
-                      />
-                      {m.isActive ? "Active" : "Archived"}
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-baseline gap-2">
+                      <span className="min-w-0 truncate font-semibold text-[#1A1A1A]">{m.name}</span>
+                      {m.sku ? (
+                        <span className="shrink-0 font-mono text-[11px] text-[#A0A0A0]">{m.sku}</span>
+                      ) : null}
                     </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-1">
-                      {/* Archive / Restore — reversible. Keeps the item out of
-                          pickers but it can always be brought back. */}
-                      <button
-                        type="button"
-                        onClick={() => void handleToggleActive(m)}
-                        title={m.isActive ? "Archive (hide from pickers — can be restored)" : "Restore"}
-                        aria-label={m.isActive ? "Archive material" : "Restore material"}
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[#E6E1D4] bg-white text-[#6B6B6B] transition-colors hover:bg-[#FAF8F2] hover:text-[#1A1A1A]"
-                      >
-                        {m.isActive ? <Archive className="h-3.5 w-3.5" /> : <ArchiveRestore className="h-3.5 w-3.5" />}
-                      </button>
-                      {/* Permanent delete — guarded by a confirm + an FK check. */}
-                      <button
-                        type="button"
-                        onClick={() => setConfirmDelete(m)}
-                        title="Delete permanently"
-                        aria-label="Delete material"
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[#E6E1D4] bg-white text-[#C0BAB0] transition-colors hover:border-[#F0BFBF] hover:bg-[#FBE5E5] hover:text-[#C44545]"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
-      </div>
+                    <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px]">
+                      {showPrices && renderSell(m)}
+                      <ActiveChip active={m.isActive} />
+                    </span>
+                  </span>
+                  <span className="-my-2 shrink-0">
+                    <RowMenu items={rowMenuItems(m)} label={`Actions for ${m.name}`} />
+                  </span>
+                </span>
+              }
+            >
+              {canManage && (
+                <span className="flex items-center">
+                  <label className="-m-3 flex h-11 w-11 cursor-pointer items-center justify-center">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(m.id)}
+                      onChange={() => toggleSelected(m.id)}
+                      className="h-4 w-4 accent-[#2F8F5C]"
+                      aria-label={`Select ${m.name}`}
+                    />
+                  </label>
+                </span>
+              )}
+              <span className="min-w-0">
+                <button
+                  type="button"
+                  onClick={() => openEdit(m)}
+                  className="block max-w-full truncate text-left font-medium text-[#1A1A1A] hover:text-[#2F8F5C] hover:underline"
+                >
+                  {m.name}
+                </button>
+              </span>
+              <span className="truncate font-mono text-xs text-[#6B6B6B]">{m.sku ?? "—"}</span>
+              <span className="text-[#3A3A3A]">{m.unit}</span>
+              <span className="flex min-w-0 flex-wrap gap-1">
+                {m.tags.map((t) => (
+                  <span
+                    key={t}
+                    className="rounded-full border border-[#E6E1D4] px-2 py-0.5 text-[10px] font-medium text-[#6B6B6B]"
+                  >
+                    {t}
+                  </span>
+                ))}
+              </span>
+              {showPrices && (
+                <span className="text-right tabular-nums text-[#3A3A3A]">{fmt(m.costPrice)}</span>
+              )}
+              {showPrices && <span className="text-right">{renderSell(m)}</span>}
+              <span>
+                <ActiveChip active={m.isActive} />
+              </span>
+              <span className="-my-2 flex items-center justify-end">
+                <RowMenu items={rowMenuItems(m)} label={`Actions for ${m.name}`} />
+              </span>
+            </RegisterRow>
+          ))}
+      </Register>
 
       {/* Modal */}
       {showModal && (
@@ -551,6 +701,51 @@ export default function MaterialsTab({ onWritten }: Props) {
           onClose={() => { setShowModal(false); setModal(null); }}
         />
       )}
+
+      {/* Bulk "Price from cost" confirm */}
+      <MotionDrawer open={priceDialogOpen} onClose={() => { if (!pricing) setPriceDialogOpen(false); }} variant="modal" ariaLabel="Price from cost" sizeClass="sm:w-[440px]">
+        <div className="flex h-full flex-col">
+          <div className="border-b border-[#E6E1D4] px-5 py-4">
+            <h2 className="text-[17px] font-semibold text-[#1A1A1A]">Price from cost</h2>
+            <p className="mt-0.5 text-xs text-[#6B6B6B]">Stores a fixed sell price (cost × markup) on the selected items.</p>
+          </div>
+          <div className="space-y-4 px-5 py-4">
+            <label className="block">
+              <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.08em] text-[#A0A0A0]">Markup %</span>
+              <div className="flex items-center gap-3">
+                <input
+                  type="number" min={0} step="any" inputMode="decimal"
+                  value={priceMarkupPct}
+                  onChange={(e) => setPriceMarkupPct(e.target.value)}
+                  className="w-28 rounded-[11px] border border-[#E6E1D4] bg-white px-3 py-2 text-sm tabular-nums focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]"
+                />
+                <span className="text-xs text-[#6B6B6B]">Floor is {Math.round(minMarkup * 10000) / 100}% — going below it will flag every row amber.</span>
+              </div>
+            </label>
+            <label className="flex cursor-pointer items-start gap-2 text-[13px] text-[#3A3A3A]">
+              <input
+                type="checkbox"
+                checked={priceOverwrite}
+                onChange={(e) => setPriceOverwrite(e.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-[#2F8F5C]"
+              />
+              <span>Also overwrite items that already have a stored sell <span className="text-[#A0A0A0]">(off = Luke’s existing prices are untouched)</span></span>
+            </label>
+            <div className="rounded-[10px] border border-[#E6E1D4] bg-[#FAF8F2] px-4 py-3 text-xs text-[#3A3A3A]">
+              <p><b className="tabular-nums">{priceEligible.length}</b> item{priceEligible.length === 1 ? "" : "s"} will be priced.</p>
+              {priceSkippedStored > 0 && <p className="mt-1 text-[#6B6B6B]">{priceSkippedStored} skipped — already have a stored sell.</p>}
+              {priceSkippedNoCost > 0 && <p className="mt-1 text-[#6B6B6B]">{priceSkippedNoCost} skipped — no cost price to mark up from.</p>}
+            </div>
+          </div>
+          <div className="mt-auto flex items-center justify-end gap-2 border-t border-[#E6E1D4] px-5 py-4">
+            <button type="button" onClick={() => setPriceDialogOpen(false)} disabled={pricing} className={btnGhost}>Cancel</button>
+            <button type="button" onClick={() => void handleBulkPrice()} disabled={pricing || priceEligible.length === 0 || priceMarkupPct.trim() === ""} className={btnPrimary}>
+              {pricing && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
+              Price {priceEligible.length} item{priceEligible.length === 1 ? "" : "s"}
+            </button>
+          </div>
+        </div>
+      </MotionDrawer>
 
       {/* Permanent-delete confirm */}
       {confirmDelete && (

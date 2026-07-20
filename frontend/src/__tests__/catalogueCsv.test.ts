@@ -11,7 +11,8 @@ describe('parseMaterialsCsv', () => {
     expect(errors).toEqual([]);
     expect(rows).toEqual([{ sku: 'TPS25', name: '2.5mm TPS cable', unit: 'm',
       costPrice: 1.1, sellPrice: 2.2, tags: ['cable', 'consumable'], description: 'Twin and earth',
-      category: null, subcategory: null, isStockItem: null, isFavourite: null }]);
+      category: null, subcategory: null, isStockItem: null, isFavourite: null,
+      supplier: null, supplierSku: null }]);
   });
   it('handles quoted commas + missing optionals + blank lines', () => {
     const text = 'sku,name,unit,cost_price,sell_price,tags,description\n' +
@@ -20,7 +21,8 @@ describe('parseMaterialsCsv', () => {
     expect(errors).toEqual([]);
     expect(rows[0]).toEqual({ sku: null, name: 'Saddle, 25mm', unit: 'ea',
       costPrice: null, sellPrice: null, tags: [], description: null,
-      category: null, subcategory: null, isStockItem: null, isFavourite: null });
+      category: null, subcategory: null, isStockItem: null, isFavourite: null,
+      supplier: null, supplierSku: null });
   });
   it('reports row-level errors (missing name, bad price) with row numbers, keeps good rows', () => {
     const text = 'sku,name,unit,cost_price,sell_price,tags,description\n' +
@@ -71,7 +73,8 @@ describe('planImport', () => {
   ];
   const row = (over: Partial<CsvMaterialRow>): CsvMaterialRow => ({
     sku: null, name: 'New', unit: 'ea', costPrice: null, sellPrice: null, tags: [], description: null,
-    category: null, subcategory: null, isStockItem: null, isFavourite: null, ...over,
+    category: null, subcategory: null, isStockItem: null, isFavourite: null,
+    supplier: null, supplierSku: null, ...over,
   });
   it('matches by sku → update', () => {
     const plan = planImport(existing, [row({ sku: 'TPS25', name: 'Renamed' })]);

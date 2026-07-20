@@ -6,8 +6,8 @@
 // the server-side daily cache makes the second call free.
 //
 // Visually distinct from ProjectStatusCard: that one is structured % bars; this
-// is a single warm paragraph in the Fraunces serif (.display) over a cream →
-// emerald gradient. Mounted on the Dashboard directly above ProjectStatusCard.
+// is a single warm paragraph on a ledger white card (hairline border, sage
+// eyebrow). Mounted on the Dashboard directly above ProjectStatusCard.
 
 import { useEffect, useRef, useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
@@ -64,15 +64,15 @@ export default function DailyBriefCard({ projectId }: Props) {
   // Loading → shimmer skeleton lines.
   if (loading) {
     return (
-      <section className="rounded-xl border border-emerald-100 bg-gradient-to-br from-[#FAF8F2] to-emerald-50/40 px-5 py-5">
-        <p className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.18em] text-emerald-700/80">
+      <section className="rounded-[16px] border border-[#E6E1D4] bg-white px-5 py-5 shadow-[0_1px_0_0_rgba(15,23,42,0.04),0_1px_2px_-1px_rgba(15,23,42,0.06)]">
+        <p className="flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-[0.1em] text-[#2F8F5C]">
           <Sparkles className="h-3 w-3" aria-hidden />
           AI · Today's brief
         </p>
         <div className="mt-3 space-y-2" aria-hidden>
-          <div className="h-4 w-[92%] animate-pulse rounded bg-emerald-100/70" />
-          <div className="h-4 w-[78%] animate-pulse rounded bg-emerald-100/70" />
-          <div className="h-4 w-[40%] animate-pulse rounded bg-emerald-100/70" />
+          <div className="h-3.5 w-[92%] animate-pulse rounded bg-[#F0EDE4]" />
+          <div className="h-3.5 w-[78%] animate-pulse rounded bg-[#F0EDE4]" />
+          <div className="h-3.5 w-[40%] animate-pulse rounded bg-[#F0EDE4]" />
         </div>
       </section>
     );
@@ -95,14 +95,14 @@ export default function DailyBriefCard({ projectId }: Props) {
     : `${status.overallPct}% overall`;
 
   return (
-    <section className="rounded-xl border border-emerald-100 bg-gradient-to-br from-[#FAF8F2] to-emerald-50/40 px-5 py-5">
+    <section className="rounded-[16px] border border-[#E6E1D4] bg-white px-5 py-5 shadow-[0_1px_0_0_rgba(15,23,42,0.04),0_1px_2px_-1px_rgba(15,23,42,0.06)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.18em] text-emerald-700/80">
+          <p className="flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-[0.1em] text-[#2F8F5C]">
             <Sparkles className="h-3 w-3" aria-hidden />
             AI · Today's brief
           </p>
-          <p className="mt-1 text-[11px] font-medium capitalize tracking-wide text-emerald-800/70">
+          <p className="mt-1 text-[11px] font-medium capitalize tracking-wide text-[#6B6B6B]">
             {phaseContext}
           </p>
         </div>
@@ -110,7 +110,7 @@ export default function DailyBriefCard({ projectId }: Props) {
           type="button"
           onClick={refresh}
           aria-label="Refresh brief"
-          className="inline-flex flex-shrink-0 items-center gap-1 rounded-full border border-emerald-200/70 bg-white/60 px-2.5 py-1 text-[11px] font-medium text-emerald-800 transition-colors hover:bg-white"
+          className="inline-flex flex-shrink-0 items-center gap-1 rounded-full border border-[#E6E1D4] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#3A3A3A] transition-colors hover:bg-[#FAF8F2]"
         >
           <RefreshCw className="h-3 w-3" aria-hidden />
           Refresh
@@ -120,11 +120,11 @@ export default function DailyBriefCard({ projectId }: Props) {
       <Typewriter
         key={status.narrative}
         text={status.narrative}
-        className="display mt-3 text-lg font-medium leading-relaxed text-slate-800 sm:text-xl"
+        className="mt-3 text-[13px] leading-relaxed text-[#3A3A3A]"
       />
 
       {fetchedAt && (
-        <p className="mt-3 text-[10px] uppercase tracking-[0.15em] text-emerald-700/50">
+        <p className="mt-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#A0A0A0]">
           Updated {formatDistanceToNow(fetchedAt, { addSuffix: true })}
           {status.cached ? ' · cached today' : ''}
         </p>
@@ -170,7 +170,7 @@ function Typewriter({ text, className }: { text: string; className?: string }) {
       {text.slice(0, count)}
       {!done && (
         <span
-          className="ml-0.5 inline-block h-[1em] w-[2px] translate-y-[2px] animate-pulse bg-emerald-600/70 align-middle"
+          className="ml-0.5 inline-block h-[1em] w-[2px] translate-y-[2px] animate-pulse bg-[#2F8F5C]/70 align-middle"
           aria-hidden
         />
       )}

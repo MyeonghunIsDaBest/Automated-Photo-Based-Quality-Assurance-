@@ -9,15 +9,15 @@
 // step to push them past Draft.
 
 import { useEffect, useMemo, useState } from 'react';
-import { Check, Minus, Plus, Search, ShoppingCart, Trash2 } from 'lucide-react';
-import EditorialModal from '../../../components/editorial/EditorialModal';
-import EditorialButton from '../../../components/editorial/EditorialButton';
+import { Check, Minus, Plus, Search, ShoppingCart, Trash2, X } from 'lucide-react';
+import MotionDrawer from '../../../components/ui/MotionDrawer';
 import { Input } from '../../../components/ui/input';
 import { Badge } from '../../../components/ui/badge';
+import { FRAUNCES, btnGhost, btnPrimary, inputField } from '../components/ledger';
+import { cn } from '../../../lib/cn';
 import {
   MATERIAL_TIERS,
   MATERIAL_BY_ID,
-  TIER_ACCENT_CLASSES,
   type MaterialItem,
   type MaterialTier,
 } from '../../../lib/constructionMaterials';
@@ -43,6 +43,20 @@ interface CartLine {
   /** Pre-filled from defaultUnitCost, editable per-line. */
   unitCost: number;
 }
+
+// Warm-ledger tier accents — a local, style-only override of
+// TIER_ACCENT_CLASSES from lib/constructionMaterials.ts (that file stays
+// untouched). Hexes come from the ledger TONE map; `bar` isn't used here.
+const TIER_ACCENT: Record<MaterialTier['accent'], { badge: string; ring: string }> = {
+  amber:   { badge: 'border-[#E8D9B5] bg-[#F9EFD9] text-[#9A6B12]', ring: 'ring-[#E8D9B5]' },
+  sky:     { badge: 'border-[#C4DFF0] bg-[#E3F0FA] text-[#2A6F9E]', ring: 'ring-[#C4DFF0]' },
+  slate:   { badge: 'border-[#D8DEE4] bg-[#EEF1F4] text-[#5B6B7B]', ring: 'ring-[#D8DEE4]' },
+  orange:  { badge: 'border-[#E5D0BA] bg-[#F4E9DB] text-[#A35C2B]', ring: 'ring-[#E5D0BA]' },
+  rose:    { badge: 'border-[#F0C8C8] bg-[#FBE5E5] text-[#C44545]', ring: 'ring-[#F0C8C8]' },
+  violet:  { badge: 'border-[#DCCBEF] bg-[#EFE7FB] text-[#6B3FA0]', ring: 'ring-[#DCCBEF]' },
+  emerald: { badge: 'border-[#B8DFC7] bg-[#E1F3EA] text-[#2F8F5C]', ring: 'ring-[#B8DFC7]' },
+  indigo:  { badge: 'border-[#DCCBEF] bg-[#EFE7FB] text-[#6B3FA0]', ring: 'ring-[#DCCBEF]' },
+};
 
 const today = () => new Date().toISOString().slice(0, 10);
 const inDays = (n: number) => {
@@ -237,288 +251,322 @@ export default function NewOrderModal({
     }
   };
 
+  // Busy-guard: backdrop / Esc / close-X no-op while the order write is in
+  // flight so a stray Esc can't dismiss the modal mid-place.
+  const guardedClose = () => {
+    if (!submitting) onClose();
+  };
+
   return (
-    <EditorialModal
+    <MotionDrawer
       open={open}
-      onClose={onClose}
-      eyebrow="Procurement · New order"
-      title="Pick materials by trade tier"
-      size="xl"
-      footer={
+      onClose={guardedClose}
+      variant="modal"
+      ariaLabel="New order"
+      sizeClass="max-w-[960px]"
+    >
+      <header className="flex items-start gap-3 border-b border-[#EFEBE0] px-5 py-4 sm:px-6">
+        <div className="min-w-0 flex-1">
+          <p className="text-[10.5px] font-bold uppercase tracking-[0.07em] text-[#6B6B6B]">
+            Procurement · New order
+          </p>
+          <h2
+            className="mt-1 text-lg font-semibold text-[#1A1A1A] sm:text-xl"
+            style={{ fontFamily: FRAUNCES }}
+          >
+            Pick materials by trade tier
+          </h2>
+        </div>
+        <button
+          type="button"
+          onClick={guardedClose}
+          className="grid min-h-11 min-w-11 flex-shrink-0 place-items-center rounded-md text-[#A0A0A0] transition-colors hover:bg-[#F0EDE4] hover:text-[#3A3A3A]"
+          aria-label="Close"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </header>
+
+      <div className="flex-1 overflow-y-auto px-5 py-4 sm:px-6">
+        <div className="grid gap-4 md:grid-cols-[200px_1fr]">
+          {/* Tier rail — vertical pill list on desktop, horizontal scroll on phones. */}
+          <nav
+            aria-label="Material tiers"
+            className="-mx-1 flex gap-2 overflow-x-auto px-1 md:mx-0 md:flex-col md:overflow-visible md:px-0"
+          >
+            {MATERIAL_TIERS.map((tier) => (
+              <TierButton
+                key={tier.id}
+                tier={tier}
+                active={tier.id === activeTierId}
+                cartCount={cartCountByTier[tier.id] ?? 0}
+                onClick={() => {
+                  setActiveTierId(tier.id);
+                  setSearch('');
+                }}
+              />
+            ))}
+          </nav>
+
+          {/* Item picker for the active tier. */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className={TIER_ACCENT[activeTier.accent].badge}>
+                {activeTier.label}
+              </Badge>
+              <p className="min-w-0 flex-1 truncate text-[11px] text-[#6B6B6B]">
+                {activeTier.description}
+              </p>
+            </div>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#A0A0A0]" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={`Search ${activeTier.label.toLowerCase()} materials…`}
+                className="h-9 pl-8 text-sm"
+              />
+            </div>
+
+            {visibleItems.length === 0 ? (
+              <p className="rounded-md border border-dashed border-[#E6E1D4] bg-[#FAF8F2]/60 px-3 py-6 text-center text-xs text-[#6B6B6B]">
+                No materials match “{search}” in this tier.
+              </p>
+            ) : (
+              <ul className="max-h-[280px] divide-y divide-[#EFEBE0] overflow-y-auto rounded-md border border-[#E6E1D4]">
+                {visibleItems.map((item) => {
+                  const inCart = cart.find((c) => c.itemId === item.id);
+                  return (
+                    <li
+                      key={item.id}
+                      className="flex items-center justify-between gap-3 px-3 py-2 transition-colors hover:bg-[#FAF8F2]"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-[#1A1A1A]">{item.name}</p>
+                        {item.spec && (
+                          <p className="truncate text-[11px] text-[#6B6B6B]">{item.spec}</p>
+                        )}
+                      </div>
+                      <span className="hidden flex-shrink-0 text-[11px] tabular-nums text-[#6B6B6B] sm:inline">
+                        {fmtMoney(item.defaultUnitCost)} / {item.unit}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => addItem(item)}
+                        className={`inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-xs font-medium transition-colors ${
+                          inCart
+                            ? 'border border-[#B8DFC7] bg-[#E1F3EA] text-[#246F47] hover:bg-[#D5EBDF]'
+                            : 'border border-[#E6E1D4] bg-white text-[#3A3A3A] hover:border-[#D8D2C4] hover:bg-[#FAF8F2]'
+                        }`}
+                      >
+                        <Plus className="h-3 w-3" />
+                        {inCart ? `+1 (${inCart.qty})` : 'Add'}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </div>
+
+        {/* Cart — selected materials with editable qty / unit cost. Hidden when
+            empty so the picker dominates the first interaction. */}
+        {cart.length > 0 && (
+          <section className="mt-6 rounded-xl border border-[#E6E1D4]">
+            <header className="flex items-center justify-between border-b border-[#EFEBE0] px-4 py-2.5">
+              <p className="inline-flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.18em] text-[#6B6B6B]">
+                <ShoppingCart className="h-3.5 w-3.5" />
+                Cart · {cart.length} {cart.length === 1 ? 'line' : 'lines'}
+              </p>
+              <span className="tabular-nums text-sm font-semibold text-[#1A1A1A]">
+                {fmtMoney(total)}
+              </span>
+            </header>
+            <ul className="divide-y divide-[#EFEBE0]">
+              {cart.map((line) => {
+                const material = MATERIAL_BY_ID[line.itemId];
+                if (!material) return null;
+                const lineTotal = line.qty * line.unitCost;
+                return (
+                  <li key={line.itemId} className="grid grid-cols-12 gap-2 px-4 py-2.5">
+                    <div className="col-span-12 min-w-0 sm:col-span-5">
+                      <p className="truncate text-sm font-medium text-[#1A1A1A]">{material.name}</p>
+                      {material.spec && (
+                        <p className="truncate text-[11px] text-[#6B6B6B]">{material.spec}</p>
+                      )}
+                    </div>
+                    <div className="col-span-4 sm:col-span-2">
+                      <div className="flex items-center rounded-md border border-[#E6E1D4]">
+                        <button
+                          type="button"
+                          onClick={() => setQty(line.itemId, line.qty - 1)}
+                          className="inline-flex h-8 w-7 items-center justify-center rounded-l-md text-[#6B6B6B] hover:bg-[#FAF8F2]"
+                          aria-label="Decrease quantity"
+                        >
+                          <Minus className="h-3 w-3" />
+                        </button>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min={0}
+                          value={line.qty}
+                          onChange={(e) => setQty(line.itemId, Number(e.target.value) || 0)}
+                          className="h-8 w-full min-w-0 border-0 bg-transparent px-1 text-center text-sm tabular-nums focus:outline-none"
+                          aria-label={`Quantity of ${material.name}`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setQty(line.itemId, line.qty + 1)}
+                          className="inline-flex h-8 w-7 items-center justify-center rounded-r-md text-[#6B6B6B] hover:bg-[#FAF8F2]"
+                          aria-label="Increase quantity"
+                        >
+                          <Plus className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="col-span-1 flex items-center text-[11px] uppercase tracking-wider text-[#6B6B6B]">
+                      {material.unit}
+                    </div>
+                    <div className="col-span-4 sm:col-span-2">
+                      <div className="flex items-center rounded-md border border-[#E6E1D4] px-2">
+                        <span className="text-[11px] text-[#A0A0A0]">$</span>
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          min={0}
+                          step={0.01}
+                          value={line.unitCost}
+                          onChange={(e) => setUnitCost(line.itemId, Number(e.target.value) || 0)}
+                          className="h-8 w-full min-w-0 border-0 bg-transparent text-sm tabular-nums focus:outline-none"
+                          aria-label={`Unit cost for ${material.name}`}
+                        />
+                      </div>
+                    </div>
+                    <div className="col-span-3 flex items-center justify-end gap-2 sm:col-span-2">
+                      <span className="tabular-nums text-sm font-semibold text-[#1A1A1A]">
+                        {fmtMoney(lineTotal)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeItem(line.itemId)}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[#A0A0A0] hover:bg-[#FBE5E5] hover:text-[#C44545]"
+                        aria-label={`Remove ${material.name}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
+
+        {/* Order metadata — supplier + dates + optional linked task / zone /
+            notes. Compact grid so the modal stays scannable on tablet. */}
+        <section className="mt-6 grid gap-3 sm:grid-cols-2">
+          <Field label="Supplier">
+            <input
+              list="supplier-names"
+              value={supplierName}
+              onChange={(e) => setSupplierName(e.target.value)}
+              placeholder="e.g. SteelHaus, NorthCrete, LuxCo"
+              className={cn(inputField, 'h-9')}
+            />
+            <datalist id="supplier-names">
+              {suppliers.map((s) => (
+                <option key={s.id} value={s.name} />
+              ))}
+            </datalist>
+          </Field>
+          <Field label="Linked task (optional)">
+            <select
+              value={taskId}
+              onChange={(e) => setTaskId(e.target.value)}
+              className={cn(inputField, 'h-9')}
+            >
+              <option value="">— None —</option>
+              {tasks.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Order date">
+            <Input
+              type="date"
+              value={orderedDate}
+              onChange={(e) => setOrderedDate(e.target.value)}
+            />
+          </Field>
+          <Field label="Expected delivery">
+            <Input
+              type="date"
+              value={expectedDelivery}
+              onChange={(e) => setExpectedDelivery(e.target.value)}
+            />
+          </Field>
+          <Field label="Zone (optional)">
+            <select
+              value={zoneId}
+              onChange={(e) => setZoneId(e.target.value)}
+              className={cn(inputField, 'h-9')}
+            >
+              <option value="">Project-wide</option>
+              {zones.map((z) => (
+                <option key={z.id} value={z.id}>{z.name}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Notes">
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              placeholder="Delivery instructions, terms, references…"
+              className={inputField}
+            />
+          </Field>
+        </section>
+
+        {error && (
+          <p
+            role="alert"
+            className="mt-4 rounded-md border border-[#F0C8C8] bg-[#FBE5E5] px-3 py-2 text-xs text-[#C44545]"
+          >
+            {error}
+          </p>
+        )}
+      </div>
+
+      <footer className="border-t border-[#EFEBE0] bg-white px-5 py-3 sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="text-xs text-slate-500">
+          <div className="text-xs text-[#6B6B6B]">
             {cart.length === 0
               ? 'No items selected yet.'
               : `${cart.length} ${cart.length === 1 ? 'line' : 'lines'} · `}
-            <strong className="ml-1 tabular-nums text-slate-900">{fmtMoney(total)}</strong>
-            <span className="ml-2 text-[10px] uppercase tracking-wider text-amber-700">
+            <strong className="ml-1 tabular-nums text-[#1A1A1A]">{fmtMoney(total)}</strong>
+            <span className="ml-2 text-[10px] uppercase tracking-wider text-[#9A6B12]">
               · lands in supplier's pending orders
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <EditorialButton variant="ghost" onClick={onClose}>Cancel</EditorialButton>
-            <EditorialButton
-              variant="pill"
+            <button type="button" className={btnGhost} onClick={guardedClose} disabled={submitting}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className={btnPrimary}
               onClick={handlePlace}
               disabled={submitting || cart.length === 0 || !supplierName.trim()}
             >
               <Check className="h-3.5 w-3.5" />
               {submitting ? 'Placing…' : 'Place order'}
-            </EditorialButton>
+            </button>
           </div>
         </div>
-      }
-    >
-      <div className="grid gap-4 md:grid-cols-[200px_1fr]">
-        {/* Tier rail — vertical pill list on desktop, horizontal scroll on phones. */}
-        <nav
-          aria-label="Material tiers"
-          className="-mx-1 flex gap-2 overflow-x-auto px-1 md:mx-0 md:flex-col md:overflow-visible md:px-0"
-        >
-          {MATERIAL_TIERS.map((tier) => (
-            <TierButton
-              key={tier.id}
-              tier={tier}
-              active={tier.id === activeTierId}
-              cartCount={cartCountByTier[tier.id] ?? 0}
-              onClick={() => {
-                setActiveTierId(tier.id);
-                setSearch('');
-              }}
-            />
-          ))}
-        </nav>
-
-        {/* Item picker for the active tier. */}
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className={TIER_ACCENT_CLASSES[activeTier.accent].badge}>
-              {activeTier.label}
-            </Badge>
-            <p className="min-w-0 flex-1 truncate text-[11px] text-slate-500">
-              {activeTier.description}
-            </p>
-          </div>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={`Search ${activeTier.label.toLowerCase()} materials…`}
-              className="h-9 pl-8 text-sm"
-            />
-          </div>
-
-          {visibleItems.length === 0 ? (
-            <p className="rounded-md border border-dashed border-slate-200 bg-slate-50/60 px-3 py-6 text-center text-xs text-slate-500">
-              No materials match “{search}” in this tier.
-            </p>
-          ) : (
-            <ul className="max-h-[280px] divide-y divide-slate-100 overflow-y-auto rounded-md border border-slate-200">
-              {visibleItems.map((item) => {
-                const inCart = cart.find((c) => c.itemId === item.id);
-                return (
-                  <li
-                    key={item.id}
-                    className="flex items-center justify-between gap-3 px-3 py-2 transition-colors hover:bg-slate-50"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-slate-900">{item.name}</p>
-                      {item.spec && (
-                        <p className="truncate text-[11px] text-slate-500">{item.spec}</p>
-                      )}
-                    </div>
-                    <span className="hidden flex-shrink-0 text-[11px] tabular-nums text-slate-500 sm:inline">
-                      {fmtMoney(item.defaultUnitCost)} / {item.unit}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => addItem(item)}
-                      className={`inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-xs font-medium transition-colors ${
-                        inCart
-                          ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                          : 'border border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'
-                      }`}
-                    >
-                      <Plus className="h-3 w-3" />
-                      {inCart ? `+1 (${inCart.qty})` : 'Add'}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
-      </div>
-
-      {/* Cart — selected materials with editable qty / unit cost. Hidden when
-          empty so the picker dominates the first interaction. */}
-      {cart.length > 0 && (
-        <section className="mt-6 rounded-xl border border-slate-200">
-          <header className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
-            <p className="inline-flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
-              <ShoppingCart className="h-3.5 w-3.5" />
-              Cart · {cart.length} {cart.length === 1 ? 'line' : 'lines'}
-            </p>
-            <span className="tabular-nums text-sm font-semibold text-slate-900">
-              {fmtMoney(total)}
-            </span>
-          </header>
-          <ul className="divide-y divide-slate-100">
-            {cart.map((line) => {
-              const material = MATERIAL_BY_ID[line.itemId];
-              if (!material) return null;
-              const lineTotal = line.qty * line.unitCost;
-              return (
-                <li key={line.itemId} className="grid grid-cols-12 gap-2 px-4 py-2.5">
-                  <div className="col-span-12 min-w-0 sm:col-span-5">
-                    <p className="truncate text-sm font-medium text-slate-900">{material.name}</p>
-                    {material.spec && (
-                      <p className="truncate text-[11px] text-slate-500">{material.spec}</p>
-                    )}
-                  </div>
-                  <div className="col-span-4 sm:col-span-2">
-                    <div className="flex items-center rounded-md border border-slate-200">
-                      <button
-                        type="button"
-                        onClick={() => setQty(line.itemId, line.qty - 1)}
-                        className="inline-flex h-8 w-7 items-center justify-center rounded-l-md text-slate-500 hover:bg-slate-50"
-                        aria-label="Decrease quantity"
-                      >
-                        <Minus className="h-3 w-3" />
-                      </button>
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        min={0}
-                        value={line.qty}
-                        onChange={(e) => setQty(line.itemId, Number(e.target.value) || 0)}
-                        className="h-8 w-full min-w-0 border-0 bg-transparent px-1 text-center text-sm tabular-nums focus:outline-none"
-                        aria-label={`Quantity of ${material.name}`}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setQty(line.itemId, line.qty + 1)}
-                        className="inline-flex h-8 w-7 items-center justify-center rounded-r-md text-slate-500 hover:bg-slate-50"
-                        aria-label="Increase quantity"
-                      >
-                        <Plus className="h-3 w-3" />
-                      </button>
-                    </div>
-                  </div>
-                  <div className="col-span-1 flex items-center text-[11px] uppercase tracking-wider text-slate-500">
-                    {material.unit}
-                  </div>
-                  <div className="col-span-4 sm:col-span-2">
-                    <div className="flex items-center rounded-md border border-slate-200 px-2">
-                      <span className="text-[11px] text-slate-400">$</span>
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        min={0}
-                        step={0.01}
-                        value={line.unitCost}
-                        onChange={(e) => setUnitCost(line.itemId, Number(e.target.value) || 0)}
-                        className="h-8 w-full min-w-0 border-0 bg-transparent text-sm tabular-nums focus:outline-none"
-                        aria-label={`Unit cost for ${material.name}`}
-                      />
-                    </div>
-                  </div>
-                  <div className="col-span-3 flex items-center justify-end gap-2 sm:col-span-2">
-                    <span className="tabular-nums text-sm font-semibold text-slate-900">
-                      {fmtMoney(lineTotal)}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => removeItem(line.itemId)}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-600"
-                      aria-label={`Remove ${material.name}`}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      )}
-
-      {/* Order metadata — supplier + dates + optional linked task / zone /
-          notes. Compact grid so the modal stays scannable on tablet. */}
-      <section className="mt-6 grid gap-3 sm:grid-cols-2">
-        <Field label="Supplier">
-          <input
-            list="supplier-names"
-            value={supplierName}
-            onChange={(e) => setSupplierName(e.target.value)}
-            placeholder="e.g. SteelHaus, NorthCrete, LuxCo"
-            className="block h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-          />
-          <datalist id="supplier-names">
-            {suppliers.map((s) => (
-              <option key={s.id} value={s.name} />
-            ))}
-          </datalist>
-        </Field>
-        <Field label="Linked task (optional)">
-          <select
-            value={taskId}
-            onChange={(e) => setTaskId(e.target.value)}
-            className="block h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-          >
-            <option value="">— None —</option>
-            {tasks.map((t) => (
-              <option key={t.id} value={t.id}>{t.name}</option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Order date">
-          <Input
-            type="date"
-            value={orderedDate}
-            onChange={(e) => setOrderedDate(e.target.value)}
-          />
-        </Field>
-        <Field label="Expected delivery">
-          <Input
-            type="date"
-            value={expectedDelivery}
-            onChange={(e) => setExpectedDelivery(e.target.value)}
-          />
-        </Field>
-        <Field label="Zone (optional)">
-          <select
-            value={zoneId}
-            onChange={(e) => setZoneId(e.target.value)}
-            className="block h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-          >
-            <option value="">Project-wide</option>
-            {zones.map((z) => (
-              <option key={z.id} value={z.id}>{z.name}</option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Notes">
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={2}
-            placeholder="Delivery instructions, terms, references…"
-            className="block w-full rounded-md border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-          />
-        </Field>
-      </section>
-
-      {error && (
-        <p
-          role="alert"
-          className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"
-        >
-          {error}
-        </p>
-      )}
-    </EditorialModal>
+      </footer>
+    </MotionDrawer>
   );
 }
 
@@ -533,15 +581,15 @@ function TierButton({
   onClick: () => void;
 }) {
   const Icon = tier.icon;
-  const accent = TIER_ACCENT_CLASSES[tier.accent];
+  const accent = TIER_ACCENT[tier.accent];
   return (
     <button
       type="button"
       onClick={onClick}
       className={`group flex flex-shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors md:w-full ${
         active
-          ? `border-slate-900 bg-slate-900 text-white ring-2 ring-offset-1 ${accent.ring}`
-          : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+          ? `border-[#1A1A1A] bg-[#1A1A1A] text-white ring-2 ring-offset-1 ${accent.ring}`
+          : 'border-[#E6E1D4] bg-white text-[#3A3A3A] hover:border-[#D8D2C4] hover:bg-[#FAF8F2]'
       }`}
     >
       <span
@@ -553,14 +601,14 @@ function TierButton({
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium">{tier.label}</span>
-        <span className={`block text-[10px] ${active ? 'text-white/70' : 'text-slate-500'}`}>
+        <span className={`block text-[10px] ${active ? 'text-white/70' : 'text-[#6B6B6B]'}`}>
           {tier.items.length} items
         </span>
       </span>
       {cartCount > 0 && (
         <span
           className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-semibold tabular-nums ${
-            active ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'
+            active ? 'bg-white text-[#1A1A1A]' : 'bg-[#1A1A1A] text-white'
           }`}
         >
           {cartCount}
@@ -575,7 +623,7 @@ function TierButton({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-medium text-slate-600">{label}</span>
+      <span className="mb-1 block text-xs font-medium text-[#6B6B6B]">{label}</span>
       {children}
     </label>
   );

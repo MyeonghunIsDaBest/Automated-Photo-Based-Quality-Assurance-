@@ -9,6 +9,8 @@ import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { Badge } from '../../../components/ui/badge';
 import MotionDrawer from '../../../components/ui/MotionDrawer';
+import { cn } from '../../../lib/cn';
+import { inputField } from '../components/ledger';
 import { useFeatureStore } from '../../../store/features';
 import { useAppStore } from '../../../store';
 import {
@@ -35,13 +37,17 @@ const STATUS_OPTS: { value: OrderStatus; label: string }[] = [
   { value: 'cancelled', label: 'Cancelled' },
 ];
 
+// Warm-ledger tone map: draft=slate, submitted=sky, confirmed=violet,
+// partial=amber, received=sage, cancelled=red. (draft stays slate to match the
+// Orders list badge — OrdersTab renders draft in slate, so ink here would make
+// the same order two colours across list and drawer.)
 const STATUS_BADGE: Record<OrderStatus, string> = {
-  draft:     'border-slate-200 bg-slate-50 text-slate-600',
-  submitted: 'border-blue-200 bg-blue-50 text-blue-700',
-  confirmed: 'border-indigo-200 bg-indigo-50 text-indigo-700',
-  partial:   'border-amber-200 bg-amber-50 text-amber-700',
-  received:  'border-emerald-200 bg-emerald-50 text-emerald-700',
-  cancelled: 'border-red-200 bg-red-50 text-red-700',
+  draft:     'border-[#C8D3DA] bg-[#EEF1F4] text-[#5B6B7B]',
+  submitted: 'border-[#B8D4E8] bg-[#E3F0FA] text-[#2A6F9E]',
+  confirmed: 'border-[#D8C8EE] bg-[#EFE7FB] text-[#6B3FA0]',
+  partial:   'border-[#F0D5A0] bg-[#F9EFD9] text-[#9A6B12]',
+  received:  'border-[#A8D0B8] bg-[#E5F2EA] text-[#246F47]',
+  cancelled: 'border-[#F0BFBF] bg-[#FBE5E5] text-[#C44545]',
 };
 
 const UNITS = ['ea', 'box', 'm', 'm²', 'm³', 'kg', 'lf', 'sf', 'pallet'] as const;
@@ -211,13 +217,13 @@ export default function OrderDrawer({
     >
       {/* Mobile drag handle */}
         <div className="flex justify-center pt-2 sm:hidden">
-          <span className="h-1 w-10 rounded-full bg-slate-300" />
+          <span className="h-1 w-10 rounded-full bg-[#D8D2C4]" />
         </div>
 
         {/* Header */}
-        <header className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
+        <header className="flex items-start justify-between gap-3 border-b border-[#EFEBE0] px-5 py-4">
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-slate-500">
+            <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-[#6B6B6B]">
               {isCreate ? 'New order' : 'Order'}
             </p>
             <input
@@ -226,7 +232,7 @@ export default function OrderDrawer({
               onBlur={() => !isCreate && commitField('poNumber', (draft.poNumber ?? '').trim() || (order?.poNumber ?? ''))}
               disabled={readOnly}
               placeholder="PO #"
-              className="mt-1 w-full border-0 bg-transparent font-mono text-base font-semibold text-slate-900 placeholder:text-slate-300 focus:outline-none"
+              className="mt-1 w-full border-0 bg-transparent font-mono text-base font-semibold text-[#1A1A1A] placeholder:text-[#C0BAB0] focus:outline-none"
               autoFocus={isCreate}
             />
             <input
@@ -235,14 +241,14 @@ export default function OrderDrawer({
               onBlur={() => !isCreate && commitField('supplierName', (draft.supplierName ?? '').trim())}
               disabled={readOnly}
               placeholder="Supplier name…"
-              className="mt-1 w-full border-0 bg-transparent text-sm text-slate-600 placeholder:text-slate-300 focus:outline-none"
+              className="mt-1 w-full border-0 bg-transparent text-sm text-[#3A3A3A] placeholder:text-[#C0BAB0] focus:outline-none"
             />
           </div>
           <div className="flex flex-col items-end gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="flex h-9 w-9 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              className="grid min-h-11 min-w-11 place-items-center rounded-md text-[#A0A0A0] hover:bg-[#F0EDE4] hover:text-[#3A3A3A]"
               aria-label="Close"
             >
               <X className="h-4 w-4" />
@@ -257,7 +263,7 @@ export default function OrderDrawer({
 
         {/* Sub-tab strip — only in edit mode */}
         {!isCreate && (
-          <nav className="flex-shrink-0 border-b border-slate-100 px-2 py-2">
+          <nav className="flex-shrink-0 border-b border-[#EFEBE0] px-2 py-2">
             <div className="-mx-2 overflow-x-auto px-2">
               <div className="inline-flex items-center gap-1">
                 {TABS.map((t) => {
@@ -269,7 +275,7 @@ export default function OrderDrawer({
                       type="button"
                       onClick={() => setActiveTab(t.id)}
                       className={`flex flex-shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                        isActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
+                        isActive ? 'bg-[#1A1A1A] text-white' : 'text-[#3A3A3A] hover:bg-[#F0EDE4]'
                       }`}
                     >
                       <Icon className="h-3.5 w-3.5" />
@@ -316,11 +322,11 @@ export default function OrderDrawer({
         </div>
 
         {/* Footer */}
-        <footer className="flex flex-shrink-0 items-center justify-between gap-3 border-t border-slate-100 px-5 py-3">
+        <footer className="flex flex-shrink-0 items-center justify-between gap-3 border-t border-[#EFEBE0] px-5 py-3">
           {isCreate ? (
             <>
-              <span className="text-xs text-slate-400">
-                Total <strong className="tabular-nums text-slate-700">{fmtUSD(total)}</strong>
+              <span className="text-xs text-[#A0A0A0]">
+                Total <strong className="tabular-nums text-[#3A3A3A]">{fmtUSD(total)}</strong>
               </span>
               <div className="flex items-center gap-2">
                 <Button variant="outline" onClick={onClose}>Cancel</Button>
@@ -335,12 +341,12 @@ export default function OrderDrawer({
           ) : (
             <>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-400">Status</span>
+                <span className="text-xs text-[#A0A0A0]">Status</span>
                 <select
                   value={(draft.status as OrderStatus) ?? 'draft'}
                   onChange={(e) => commitField('status', e.target.value as OrderStatus)}
                   disabled={readOnly}
-                  className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs"
+                  className={cn(inputField, 'w-auto rounded-md px-2 py-1 text-xs')}
                 >
                   {STATUS_OPTS.map((o) => (
                     <option key={o.value} value={o.value}>{o.label}</option>
@@ -350,12 +356,12 @@ export default function OrderDrawer({
               {!readOnly && canDelete && (
                 confirmDelete ? (
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-red-600">Delete this order?</span>
+                    <span className="text-xs text-[#C44545]">Delete this order?</span>
                     <Button variant="outline" size="sm" onClick={() => setConfirmDelete(false)}>Cancel</Button>
                     <button
                       type="button"
                       onClick={handleDelete}
-                      className="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
+                      className="inline-flex items-center gap-1.5 rounded-md bg-[#C44545] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#A93A3A]"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                       Confirm
@@ -365,7 +371,7 @@ export default function OrderDrawer({
                   <button
                     type="button"
                     onClick={() => setConfirmDelete(true)}
-                    className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-red-50 hover:text-red-600"
+                    className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-[#6B6B6B] hover:bg-[#FBE5E5] hover:text-[#C44545]"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                     Delete order
@@ -395,7 +401,7 @@ function DetailsPane({
   return (
     <section className={isCreate ? '' : 'mb-6'}>
       {!isCreate && (
-        <h3 className="mb-3 text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
+        <h3 className="mb-3 text-[11px] font-medium uppercase tracking-[0.2em] text-[#6B6B6B]">
           Details
         </h3>
       )}
@@ -426,7 +432,7 @@ function DetailsPane({
             value={draft.taskId ?? ''}
             onChange={(e) => commitField('taskId', e.target.value || undefined)}
             disabled={readOnly}
-            className="block w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:bg-slate-50"
+            className={inputField}
           >
             <option value="">— None —</option>
             {tasks.map((t) => (
@@ -440,7 +446,7 @@ function DetailsPane({
             value={draft.zoneId ?? ''}
             onChange={(e) => commitField('zoneId', e.target.value || undefined)}
             disabled={readOnly}
-            className="block w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:bg-slate-50"
+            className={inputField}
           >
             <option value="">Project-wide</option>
             {zones.map((z) => (
@@ -457,7 +463,7 @@ function DetailsPane({
             disabled={readOnly}
             rows={2}
             placeholder="Delivery instructions, terms, references…"
-            className="block w-full rounded-md border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:bg-slate-50"
+            className={inputField}
           />
         </Field>
       </div>
@@ -482,12 +488,12 @@ function LineItemsPane({
   const items = draft.lineItems ?? [];
 
   return (
-    <section className={isCreate ? 'mt-6 pt-6 border-t border-slate-100' : ''}>
+    <section className={isCreate ? 'mt-6 pt-6 border-t border-[#EFEBE0]' : ''}>
       <div className="mb-3 flex items-baseline justify-between">
-        <h3 className="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
+        <h3 className="text-[11px] font-medium uppercase tracking-[0.2em] text-[#6B6B6B]">
           Line items ({items.length})
         </h3>
-        <span className="tabular-nums text-sm font-semibold text-slate-900">
+        <span className="tabular-nums text-sm font-semibold text-[#1A1A1A]">
           {fmtUSD(total)}
         </span>
       </div>
@@ -498,7 +504,7 @@ function LineItemsPane({
           return (
             <li
               key={li.id}
-              className="rounded-lg border border-slate-200 p-3"
+              className="rounded-lg border border-[#E6E1D4] p-3"
             >
               {/* Description — full width */}
               <input
@@ -507,7 +513,7 @@ function LineItemsPane({
                 onBlur={(e) => updateLine(idx, { description: e.target.value }, true)}
                 disabled={readOnly}
                 placeholder="Item description"
-                className="block w-full border-0 bg-transparent px-0 text-sm font-medium text-slate-900 placeholder:text-slate-300 focus:outline-none"
+                className="block w-full border-0 bg-transparent px-0 text-sm font-medium text-[#1A1A1A] placeholder:text-[#C0BAB0] focus:outline-none"
               />
 
               {/* Qty / unit / unit cost / warranty */}
@@ -548,12 +554,12 @@ function LineItemsPane({
 
               {/* Footer — totals + receipt status + actions */}
               <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                <div className="flex items-center gap-3 text-slate-500">
+                <div className="flex items-center gap-3 text-[#6B6B6B]">
                   <span className="tabular-nums">
-                    Line total <strong className="text-slate-900">{fmtUSD(lineTotal)}</strong>
+                    Line total <strong className="text-[#1A1A1A]">{fmtUSD(lineTotal)}</strong>
                   </span>
                   {li.qtyReceived > 0 && (
-                    <span className="inline-flex items-center gap-1 text-emerald-700">
+                    <span className="inline-flex items-center gap-1 text-[#246F47]">
                       <Package className="h-3 w-3" />
                       {li.qtyReceived} of {li.qty} received
                     </span>
@@ -564,7 +570,7 @@ function LineItemsPane({
                     <button
                       type="button"
                       onClick={() => duplicateLine(idx)}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[#A0A0A0] hover:bg-[#F0EDE4] hover:text-[#3A3A3A]"
                       title="Duplicate line"
                     >
                       <Copy className="h-3.5 w-3.5" />
@@ -573,7 +579,7 @@ function LineItemsPane({
                       type="button"
                       onClick={() => removeLine(idx)}
                       disabled={items.length === 1}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-30"
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[#A0A0A0] hover:bg-[#FBE5E5] hover:text-[#C44545] disabled:cursor-not-allowed disabled:opacity-30"
                       title="Remove line"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -590,7 +596,7 @@ function LineItemsPane({
         <button
           type="button"
           onClick={addLine}
-          className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-emerald-600"
+          className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-[#3A3A3A] hover:text-[#2F8F5C]"
         >
           <Plus className="h-3.5 w-3.5" />
           Add line item
@@ -611,10 +617,10 @@ function ReceiptsPane({ order, projectId }: { order: Order; projectId: string })
 
   if (orderDeliveries.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/60 px-4 py-6 text-center">
-        <Truck className="mx-auto mb-2 h-5 w-5 text-slate-400" />
-        <p className="text-sm font-medium text-slate-600">No deliveries logged yet</p>
-        <p className="mt-1 text-xs text-slate-500">
+      <div className="rounded-lg border border-dashed border-[#E6E1D4] bg-[#FAF8F2]/60 px-4 py-6 text-center">
+        <Truck className="mx-auto mb-2 h-5 w-5 text-[#A0A0A0]" />
+        <p className="text-sm font-medium text-[#3A3A3A]">No deliveries logged yet</p>
+        <p className="mt-1 text-xs text-[#6B6B6B]">
           When deliveries arrive, log them in the Deliveries tab — line items
           tick off here automatically.
         </p>
@@ -633,23 +639,23 @@ function ReceiptsPane({ order, projectId }: { order: Order; projectId: string })
           .filter(Boolean) as { description: string; qty: number; unit: string }[];
 
         return (
-          <li key={d.id} className="rounded-lg border border-slate-200 p-3">
+          <li key={d.id} className="rounded-lg border border-[#E6E1D4] p-3">
             <div className="mb-2 flex items-baseline justify-between">
-              <p className="font-medium text-slate-900">
+              <p className="font-medium text-[#1A1A1A]">
                 {format(parseISO(d.receivedDate), 'MMM d, yyyy')}
               </p>
-              <span className="text-[11px] text-slate-500">{d.receivedBy}</span>
+              <span className="text-[11px] text-[#6B6B6B]">{d.receivedBy}</span>
             </div>
             <ul className="space-y-0.5 text-sm">
               {items.map((it, idx) => (
-                <li key={idx} className="flex items-center justify-between text-slate-600">
+                <li key={idx} className="flex items-center justify-between text-[#3A3A3A]">
                   <span className="min-w-0 flex-1 truncate">{it.description}</span>
                   <span className="tabular-nums">{it.qty} {it.unit}</span>
                 </li>
               ))}
             </ul>
             {d.notes && (
-              <p className="mt-2 text-[11px] text-slate-500">{d.notes}</p>
+              <p className="mt-2 text-[11px] text-[#6B6B6B]">{d.notes}</p>
             )}
           </li>
         );
@@ -669,7 +675,7 @@ function ActivityPane({ order, projectId }: { order: Order; projectId: string })
 
   if (orderEvents.length === 0) {
     return (
-      <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50/60 px-4 py-6 text-center text-sm text-slate-400">
+      <p className="rounded-lg border border-dashed border-[#E6E1D4] bg-[#FAF8F2]/60 px-4 py-6 text-center text-sm text-[#A0A0A0]">
         No activity recorded for this order yet.
       </p>
     );
@@ -679,16 +685,16 @@ function ActivityPane({ order, projectId }: { order: Order; projectId: string })
     <ul className="space-y-3">
       {orderEvents.map((e) => (
         <li key={e.id} className="flex items-start gap-3">
-          <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-slate-50">
-            <Calendar className="h-3.5 w-3.5 text-slate-500" />
+          <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#F0EDE4]">
+            <Calendar className="h-3.5 w-3.5 text-[#6B6B6B]" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm text-slate-800">
+            <p className="text-sm text-[#3A3A3A]">
               <span className="font-medium">{e.actorName}</span>{' '}
-              <span className="text-slate-500">{ACTIVITY_VERBS[e.kind]}</span>{' '}
+              <span className="text-[#6B6B6B]">{ACTIVITY_VERBS[e.kind]}</span>{' '}
               {e.targetLabel}
             </p>
-            <p className="text-[10px] text-slate-400">
+            <p className="text-[10px] text-[#A0A0A0]">
               {format(parseISO(e.timestamp), 'MMM d, h:mm a')}
             </p>
           </div>
@@ -703,7 +709,7 @@ function ActivityPane({ order, projectId }: { order: Order; projectId: string })
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-medium text-slate-600">{label}</span>
+      <span className="mb-1 block text-xs font-medium text-[#6B6B6B]">{label}</span>
       {children}
     </label>
   );
@@ -722,7 +728,7 @@ function NumField({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-slate-500">{label}</span>
+      <span className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-[#6B6B6B]">{label}</span>
       <input
         type="number"
         inputMode="decimal"
@@ -732,7 +738,7 @@ function NumField({
         onChange={(e) => onChange(Number(e.target.value) || 0)}
         onBlur={(e) => onCommit(Number(e.target.value) || 0)}
         disabled={disabled}
-        className="block w-full rounded-md border border-slate-200 px-2 py-1.5 text-sm tabular-nums shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:bg-slate-50"
+        className={cn(inputField, 'px-2 py-1.5 tabular-nums')}
       />
     </label>
   );
@@ -749,12 +755,12 @@ function SelectField({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-slate-500">{label}</span>
+      <span className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-[#6B6B6B]">{label}</span>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
-        className="block w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:bg-slate-50"
+        className={cn(inputField, 'px-2 py-1.5')}
       >
         {options.map((o) => (
           <option key={o} value={o}>{o}</option>

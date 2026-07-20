@@ -18,7 +18,7 @@ interface InvoicesTabProps {
 }
 
 const STATUS_TONE: Record<InvoiceStatus, ToneKey> = {
-  pending: 'slate', paid: 'sage', overdue: 'red', disputed: 'amber',
+  pending: 'amber', paid: 'sage', overdue: 'red', disputed: 'orange',
 };
 
 const STATUS_FILTERS: { id: InvoiceStatus | 'all' | 'open'; label: string }[] = [

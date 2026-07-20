@@ -203,6 +203,40 @@ export async function updateLocation(id: string, patch: UpdateLocationInput): Pr
   return rowToLocation(data as StockLocationRow);
 }
 
+/** Hard-delete a location. Managers only (RLS `stock_locations_mgr_all` is FOR
+ *  ALL). The `.neq('type','factory')` is a hard guard so the seeded anchor can
+ *  never be removed even by a stray call. FK cascades (migs 87/95/99) then wipe
+ *  this location's stock levels, its movement history, its reorder rules, and
+ *  any job-box allocations SOURCED from it; transfers and POs that merely point
+ *  AT it are un-linked (set null). Callers should also guard on held stock — a
+ *  location holding units shouldn't be deleted out from under it (archive
+ *  instead). Returns nothing; throws if no row matched (missing, or factory). */
+export async function deleteLocation(id: string): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  // Server-side held-stock guard — the authoritative one. The UI also blocks
+  // this, but the UI's signal comes from getCompanyTotals, which is swallowed to
+  // [] on any fetch error (→ every location would look empty). Re-check here off
+  // the source of truth so a bad client view can never cascade-wipe real levels.
+  // Any non-zero row counts, including a negative (over-issued) tally.
+  const { data: heldRows, error: heldErr } = await supabase
+    .from('stock_levels')
+    .select('id')
+    .eq('location_id', id)
+    .neq('qty', 0)
+    .limit(1);
+  if (heldErr) throw heldErr;
+  if (heldRows && heldRows.length > 0) {
+    throw new Error('This location still holds stock — move or use it up first, or archive it instead.');
+  }
+  const { error, count } = await supabase
+    .from('stock_locations')
+    .delete({ count: 'exact' })
+    .eq('id', id)
+    .neq('type', 'factory');
+  if (error) throw error;
+  if (!count) throw new Error('Location not found, or it’s the factory (which can’t be deleted).');
+}
+
 /** Find the SITE location linked to a job, or create one (manager action —
  *  e.g. the job-drawer "Create site location" shortcut). An archived match is
  *  REACTIVATED (its movement history stays attached) rather than duplicated

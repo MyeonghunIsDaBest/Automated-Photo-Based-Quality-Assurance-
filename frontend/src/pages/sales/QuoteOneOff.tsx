@@ -28,7 +28,7 @@ interface Props {
 }
 
 const INPUT =
-  "w-full rounded-md border border-[#E6E1D4] bg-white px-3 py-2 text-sm text-[#1A1A1A] placeholder:text-[#C0BAB0] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]";
+  "min-h-11 w-full rounded-md border border-[#E6E1D4] bg-white px-3 py-2 text-sm text-[#1A1A1A] placeholder:text-[#C0BAB0] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C] sm:min-h-0";
 const LABEL = "mb-1 block text-[11px] font-medium uppercase tracking-wider text-[#6B6B6B]";
 
 export default function QuoteOneOff({ quoteId, canSeeCost, isLocked, onAdded, onToast, activeSectionId = null }: Props) {
@@ -144,7 +144,7 @@ export default function QuoteOneOff({ quoteId, canSeeCost, isLocked, onAdded, on
           <button
             type="submit"
             disabled={busy}
-            className="inline-flex items-center gap-1.5 rounded-md bg-[#2F8F5C] px-4 py-2 text-sm font-semibold text-white hover:bg-[#287a4e] disabled:opacity-60"
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-md bg-[#2F8F5C] px-4 py-2 text-sm font-semibold text-white hover:bg-[#287a4e] disabled:opacity-60 sm:min-h-[36px]"
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
             Add to quote

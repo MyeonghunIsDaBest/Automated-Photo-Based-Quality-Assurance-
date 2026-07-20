@@ -80,6 +80,14 @@ export default function SettingsTab({ onChanged }: Props) {
   // Proposal print blocks (mig 97): terms & conditions + one footer line.
   const [quoteTerms, setQuoteTerms]               = useState("");
   const [proposalFooter, setProposalFooter]       = useState("");
+  // Print identity (mig 100) — the designer's branded template pulls these.
+  const [printTagline, setPrintTagline]           = useState("");
+  const [recLicence, setRecLicence]               = useState("");
+  const [contactPhone, setContactPhone]           = useState("");
+  const [contactPhoneAlt, setContactPhoneAlt]     = useState("");
+  const [contactEmail, setContactEmail]           = useState("");
+  const [website, setWebsite]                     = useState("");
+  const [logoUrl, setLogoUrl]                     = useState("");
 
   useEffect(() => {
     if (!isAdmin) { setLoading(false); return; }
@@ -104,6 +112,13 @@ export default function SettingsTab({ onChanged }: Props) {
           setMinMarkupPct(String(Math.round((s.minMarkupPct ?? 0.25) * 100)));
           setQuoteTerms(s.quoteTerms ?? "");
           setProposalFooter(s.proposalFooter ?? "");
+          setPrintTagline(s.printTagline ?? "");
+          setRecLicence(s.recLicence ?? "");
+          setContactPhone(s.contactPhone ?? "");
+          setContactPhoneAlt(s.contactPhoneAlt ?? "");
+          setContactEmail(s.contactEmail ?? "");
+          setWebsite(s.website ?? "");
+          setLogoUrl(s.logoUrl ?? "");
         }
       })
       .catch(() => {})
@@ -132,6 +147,13 @@ export default function SettingsTab({ onChanged }: Props) {
         minMarkupPct: (parseFloat(minMarkupPct) || 0) / 100,
         quoteTerms: quoteTerms.trim() || null,
         proposalFooter: proposalFooter.trim() || null,
+        printTagline: printTagline.trim() || null,
+        recLicence: recLicence.trim() || null,
+        contactPhone: contactPhone.trim() || null,
+        contactPhoneAlt: contactPhoneAlt.trim() || null,
+        contactEmail: contactEmail.trim() || null,
+        website: website.trim() || null,
+        logoUrl: logoUrl.trim() || null,
       });
       setSettings(updated);
       setToast({ message: "Settings saved.", type: "success" });
@@ -332,6 +354,44 @@ export default function SettingsTab({ onChanged }: Props) {
                 disabled={saving} className={inputCls}
               />
             </Field>
+          </div>
+
+          {/* Print identity (mig 100) — everything the designer's branded quote/
+              invoice template shows: tagline, licence, contacts, logo. Blank
+              fields simply don't print; nothing is hard-coded in the template. */}
+          <div className="mt-5">
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6B6B6B]">
+              Print identity — the branded quote &amp; invoice template
+            </p>
+            <div className="grid gap-5 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <Field label="Tagline" hint="The one-line positioning sentence under the logo on every printed document.">
+                  <textarea
+                    rows={2} value={printTagline}
+                    onChange={(e) => setPrintTagline(e.target.value)}
+                    disabled={saving} className={`${inputCls} resize-y`}
+                  />
+                </Field>
+              </div>
+              <Field label="REC licence" hint="Printed in the document footer beside the ABN.">
+                <input value={recLicence} onChange={(e) => setRecLicence(e.target.value)} placeholder="REC 28177" disabled={saving} className={inputCls} />
+              </Field>
+              <Field label="Sales email" hint="The 'Email us' contact in the footer band.">
+                <input type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} disabled={saving} className={inputCls} />
+              </Field>
+              <Field label="Phone" hint="The 'Call us today!' number.">
+                <input type="tel" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} disabled={saving} className={inputCls} />
+              </Field>
+              <Field label="Second phone" hint="Optional — printed after the first, pipe-separated.">
+                <input type="tel" value={contactPhoneAlt} onChange={(e) => setContactPhoneAlt(e.target.value)} disabled={saving} className={inputCls} />
+              </Field>
+              <Field label="Website" hint="The 'More information' contact in the footer band.">
+                <input value={website} onChange={(e) => setWebsite(e.target.value)} disabled={saving} className={inputCls} />
+              </Field>
+              <Field label="Logo image URL" hint="Optional override — documents already print the built-in Casone logo. Paste a hosted SVG/PNG here only to use a different one (a re-brand, another business).">
+                <input value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} placeholder="Leave blank for the built-in Casone logo" disabled={saving} className={inputCls} />
+              </Field>
+            </div>
           </div>
         </div>
 

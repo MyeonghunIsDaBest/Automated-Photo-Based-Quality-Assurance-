@@ -13,7 +13,7 @@ import {
 import { Card, CardContent } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
 import TaskDrawer from './TaskDrawer';
-import { LedgerHeader, StatusPill, btnPrimary, btnGhost } from '../components/ledger';
+import { LedgerHeader, StatusPill, btnPrimary, btnGhost, inputField } from '../components/ledger';
 import { EmptyState } from '../components/EmptyState';
 import { useTaskAiSignal } from '../../../lib/hooks/useTaskAiSignal';
 import CountUp from '../../../components/ui/CountUp';
@@ -1238,10 +1238,10 @@ function LeftChildRow({
           {isAtRisk(task) && <AlertTriangle className="h-3 w-3 flex-shrink-0 text-[#C8841E]" aria-label="At risk" />}
           {aiSignal.sampleSize > 0 && (
             <span
-              className={`inline-flex flex-shrink-0 items-center gap-0.5 rounded px-1 text-[10px] font-medium text-violet-700 ${
+              className={`inline-flex flex-shrink-0 items-center gap-0.5 rounded px-1 text-[10px] font-medium text-[#6B3FA0] ${
                 shimmer
-                  ? 'animate-ai-shimmer bg-gradient-to-r from-violet-50 via-violet-200 to-violet-50'
-                  : 'bg-violet-50'
+                  ? 'animate-ai-shimmer bg-gradient-to-r from-[#EFE7FB] via-[#DCC8F0] to-[#EFE7FB]'
+                  : 'bg-[#EFE7FB]'
               }`}
               title={`AI signal across ${aiSignal.sampleSize} analyses`}
             >
@@ -1617,7 +1617,7 @@ function BulkBtn({
   tone?: 'default' | 'danger';
 }) {
   const cls = tone === 'danger'
-    ? 'border-red-200 text-red-600 hover:bg-red-50 disabled:border-[#E6E1D4] disabled:text-[#A0A0A0]'
+    ? 'border-[#F0C9C9] text-[#C44545] hover:bg-[#FBE5E5] disabled:border-[#E6E1D4] disabled:text-[#A0A0A0]'
     : 'border-[#E6E1D4] text-[#3A3A3A] hover:bg-[#FAF8F2] disabled:text-[#A0A0A0]';
   return (
     <button
@@ -1661,40 +1661,40 @@ function AddPhaseModal({
       body={
         <div className="space-y-4">
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-slate-600">Phase name</span>
+            <span className="mb-1 block text-xs font-medium text-[#6B6B6B]">Phase name</span>
             <input
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') void submit(); }}
               placeholder="e.g. Solar & battery"
-              className="block w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              className={inputField}
             />
           </label>
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="mb-1 block text-xs font-medium text-slate-600">Start</span>
+              <span className="mb-1 block text-xs font-medium text-[#6B6B6B]">Start</span>
               <input
                 type="date"
                 value={start}
                 max={end || undefined}
                 onChange={(e) => setStart(e.target.value)}
-                className="block w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                className={inputField}
               />
             </label>
             <label className="block">
-              <span className="mb-1 block text-xs font-medium text-slate-600">End</span>
+              <span className="mb-1 block text-xs font-medium text-[#6B6B6B]">End</span>
               <input
                 type="date"
                 value={end}
                 min={start || undefined}
                 onChange={(e) => setEnd(e.target.value)}
-                className="block w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                className={inputField}
               />
             </label>
           </div>
-          {dateError && <p className="text-xs text-red-600">{dateError}</p>}
-          <p className="text-[11px] text-slate-500">
+          {dateError && <p className="text-xs text-[#C44545]">{dateError}</p>}
+          <p className="text-[11px] text-[#6B6B6B]">
             Creates a top-level phase you can fill with sub-tasks — its progress rolls up from the sub-tasks you add.
           </p>
         </div>
@@ -2109,7 +2109,7 @@ function DeleteConfirmModal({
             value={typed}
             onChange={(e) => setTyped(e.target.value)}
             placeholder={required}
-            className="block w-full rounded-md border border-[#E6E1D4] px-3 py-2 text-sm tabular-nums shadow-sm focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500"
+            className="block w-full rounded-md border border-[#E6E1D4] bg-white px-3 py-2 text-sm tabular-nums shadow-sm focus:border-[#C44545] focus:outline-none focus:ring-1 focus:ring-[#C44545]"
           />
         </div>
       }
@@ -2120,7 +2120,7 @@ function DeleteConfirmModal({
             type="button"
             onClick={onConfirm}
             disabled={busy || !matches}
-            className="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 active:bg-red-800 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-md bg-[#C44545] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#B03D3D] active:bg-[#9A3535] disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Trash2 className="h-4 w-4" />
             {busy ? 'Deleting…' : `Delete ${count}`}

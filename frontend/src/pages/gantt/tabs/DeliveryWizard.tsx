@@ -10,6 +10,7 @@ import { Badge } from '../../../components/ui/badge';
 import { useGanttSideStore } from '../store';
 import { useAppStore } from '../../../store';
 import MotionDrawer from '../../../components/ui/MotionDrawer';
+import { inputField } from '../components/ledger';
 import type { Order, OrderLineItem } from '../types';
 
 interface DeliveryWizardProps {
@@ -89,6 +90,13 @@ export default function DeliveryWizard({
     else if (step === 'check_items' && anyReceiving) setStep('meta');
   };
 
+  // E8 busy-guard: closing is a no-op while the delivery write is in flight
+  // (exemplar: MaterialsTab price dialog). handleSubmit closes directly.
+  const requestClose = () => {
+    if (submitting) return;
+    onClose();
+  };
+
   const handleSubmit = () => {
     if (!order || !anyReceiving) return;
     setSubmitting(true);
@@ -112,23 +120,23 @@ export default function DeliveryWizard({
   return (
     <MotionDrawer
       open={isOpen}
-      onClose={onClose}
+      onClose={requestClose}
       sizeClass="sm:w-[520px] lg:w-[600px]"
       ariaLabel="Delivery wizard"
     >
         {/* Mobile drag handle */}
         <div className="flex justify-center pt-2 sm:hidden">
-          <span className="h-1 w-10 rounded-full bg-slate-300" />
+          <span className="h-1 w-10 rounded-full bg-[#D8D2C4]" />
         </div>
 
         {/* Header */}
-        <header className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
+        <header className="flex items-start justify-between gap-3 border-b border-[#EFEBE0] px-5 py-4">
           <div>
-            <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-slate-500">
+            <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-[#6B6B6B]">
               Step {visibleStepNum} of {totalSteps}
             </p>
             <h2
-              className="mt-1 text-lg font-semibold text-slate-900"
+              className="mt-1 text-lg font-semibold text-[#1A1A1A]"
               style={{ fontFamily: "'Fraunces', Georgia, serif" }}
             >
               {step === 'pick_order'  && 'Which order arrived?'}
@@ -138,8 +146,8 @@ export default function DeliveryWizard({
           </div>
           <button
             type="button"
-            onClick={onClose}
-            className="flex h-9 w-9 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            onClick={requestClose}
+            className="grid min-h-11 min-w-11 place-items-center rounded-md text-[#A0A0A0] hover:bg-[#F0EDE4] hover:text-[#3A3A3A]"
             aria-label="Close"
           >
             <X className="h-4 w-4" />
@@ -147,7 +155,7 @@ export default function DeliveryWizard({
         </header>
 
         {/* Step indicator */}
-        <div className="flex flex-shrink-0 gap-1.5 border-b border-slate-100 px-5 py-3">
+        <div className="flex flex-shrink-0 gap-1.5 border-b border-[#EFEBE0] px-5 py-3">
           {Array.from({ length: totalSteps }).map((_, i) => {
             const ahead = i + 1 < visibleStepNum;
             const cur   = i + 1 === visibleStepNum;
@@ -155,7 +163,7 @@ export default function DeliveryWizard({
               <span
                 key={i}
                 className={`h-1 flex-1 rounded-full transition-colors ${
-                  cur ? 'bg-emerald-500' : ahead ? 'bg-emerald-300' : 'bg-slate-200'
+                  cur ? 'bg-[#2F8F5C]' : ahead ? 'bg-[#A8D0B8]' : 'bg-[#E6E1D4]'
                 }`}
               />
             );
@@ -193,9 +201,9 @@ export default function DeliveryWizard({
         </div>
 
         {/* Footer */}
-        <footer className="flex flex-shrink-0 items-center justify-between gap-3 border-t border-slate-100 px-5 py-3">
+        <footer className="flex flex-shrink-0 items-center justify-between gap-3 border-t border-[#EFEBE0] px-5 py-3">
           {step === 'pick_order' || (step === 'check_items' && presetOrderId) ? (
-            <Button variant="outline" onClick={onClose}>Cancel</Button>
+            <Button variant="outline" onClick={requestClose}>Cancel</Button>
           ) : (
             <Button variant="outline" onClick={handleBack}>
               <ArrowLeft className="mr-1.5 h-4 w-4" />
@@ -244,10 +252,10 @@ function PickOrderStep({
 }) {
   if (orders.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/60 px-4 py-6 text-center">
-        <Package className="mx-auto mb-2 h-5 w-5 text-slate-400" />
-        <p className="text-sm font-medium text-slate-600">Nothing to receive yet</p>
-        <p className="mt-1 text-xs text-slate-500">
+      <div className="rounded-lg border border-dashed border-[#E6E1D4] bg-[#FAF8F2]/60 px-4 py-6 text-center">
+        <Package className="mx-auto mb-2 h-5 w-5 text-[#A0A0A0]" />
+        <p className="text-sm font-medium text-[#3A3A3A]">Nothing to receive yet</p>
+        <p className="mt-1 text-xs text-[#6B6B6B]">
           Place an order in the Orders tab — outstanding ones will show up here.
         </p>
       </div>
@@ -269,35 +277,35 @@ function PickOrderStep({
               onClick={() => onSelect(o.id)}
               className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-all ${
                 isSel
-                  ? 'border-emerald-500 bg-emerald-50 ring-2 ring-emerald-200'
-                  : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                  ? 'border-[#2F8F5C] bg-[#E5F2EA] ring-2 ring-[#C8E0D2]'
+                  : 'border-[#E6E1D4] hover:border-[#D8D2C4] hover:bg-[#FAF8F2]'
               }`}
             >
               <span
                 className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border-2 ${
-                  isSel ? 'border-emerald-600 bg-emerald-600' : 'border-slate-300'
+                  isSel ? 'border-[#2F8F5C] bg-[#2F8F5C]' : 'border-[#D8D2C4]'
                 }`}
               >
                 {isSel && <Check className="h-3 w-3 text-white" />}
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-2">
-                  <span className="font-mono text-[11px] text-slate-700">{o.poNumber}</span>
+                  <span className="font-mono text-[11px] text-[#3A3A3A]">{o.poNumber}</span>
                   <Badge variant="outline" className="text-[10px] uppercase tracking-wider">
                     {o.status}
                   </Badge>
                 </div>
-                <p className="mt-0.5 truncate text-sm font-medium text-slate-900">
+                <p className="mt-0.5 truncate text-sm font-medium text-[#1A1A1A]">
                   {o.supplierName || '—'}
                 </p>
-                <p className="text-[11px] text-slate-500">
+                <p className="text-[11px] text-[#6B6B6B]">
                   {o.lineItems.length} line{o.lineItems.length === 1 ? '' : 's'}
                   {' · '}
                   <span className="tabular-nums">{remaining}</span> still outstanding
                 </p>
               </div>
               {o.expectedDelivery && (
-                <span className="flex-shrink-0 text-[11px] tabular-nums text-slate-500">
+                <span className="flex-shrink-0 text-[11px] tabular-nums text-[#6B6B6B]">
                   ETA {format(parseISO(o.expectedDelivery), 'MMM d')}
                 </span>
               )}
@@ -320,7 +328,7 @@ function CheckItemsStep({
 }) {
   return (
     <div className="space-y-4">
-      <p className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600">
+      <p className="rounded-md bg-[#FAF8F2] px-3 py-2 text-xs text-[#6B6B6B]">
         Pre-filled with the still-outstanding amount on each line.
         Adjust to what physically arrived — set to 0 for items not in this delivery.
       </p>
@@ -358,16 +366,16 @@ function LineRow({
   return (
     <li
       className={`rounded-lg border p-3 ${
-        value === 0 ? 'border-slate-200 bg-slate-50/40' :
-        overReceiving ? 'border-amber-300 bg-amber-50' :
-        fullReceive ? 'border-emerald-300 bg-emerald-50/40' :
-                      'border-slate-200'
+        value === 0 ? 'border-[#E6E1D4] bg-[#FAF8F2]/40' :
+        overReceiving ? 'border-[#F0D5A0] bg-[#F9EFD9]' :
+        fullReceive ? 'border-[#A8D0B8] bg-[#E5F2EA]/40' :
+                      'border-[#E6E1D4]'
       }`}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-slate-900">{line.description}</p>
-          <p className="mt-0.5 text-[11px] text-slate-500">
+          <p className="text-sm font-medium text-[#1A1A1A]">{line.description}</p>
+          <p className="mt-0.5 text-[11px] text-[#6B6B6B]">
             <Box className="mr-1 inline h-3 w-3" />
             <span className="tabular-nums">{line.qtyReceived}</span> of {line.qty} {line.unit} received to date
           </p>
@@ -379,7 +387,7 @@ function LineRow({
           <button
             type="button"
             onClick={() => onChange(Math.max(0, value - 1))}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 active:bg-slate-100"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[#E6E1D4] text-[#3A3A3A] hover:bg-[#FAF8F2] active:bg-[#F0EDE4]"
             aria-label="Decrement"
           >
             −
@@ -395,12 +403,12 @@ function LineRow({
           <button
             type="button"
             onClick={() => onChange(value + 1)}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 active:bg-slate-100"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[#E6E1D4] text-[#3A3A3A] hover:bg-[#FAF8F2] active:bg-[#F0EDE4]"
             aria-label="Increment"
           >
             +
           </button>
-          <span className="text-xs text-slate-500">{line.unit}</span>
+          <span className="text-xs text-[#6B6B6B]">{line.unit}</span>
         </div>
 
         {/* Quick-fill chips */}
@@ -409,7 +417,7 @@ function LineRow({
             <button
               type="button"
               onClick={() => onChange(remaining)}
-              className="rounded-full border border-slate-200 px-2 py-0.5 text-[10px] text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+              className="rounded-full border border-[#E6E1D4] px-2 py-0.5 text-[10px] text-[#3A3A3A] hover:border-[#D8D2C4] hover:bg-[#FAF8F2]"
             >
               Full ({remaining})
             </button>
@@ -417,7 +425,7 @@ function LineRow({
           <button
             type="button"
             onClick={() => onChange(0)}
-            className="rounded-full border border-slate-200 px-2 py-0.5 text-[10px] text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+            className="rounded-full border border-[#E6E1D4] px-2 py-0.5 text-[10px] text-[#3A3A3A] hover:border-[#D8D2C4] hover:bg-[#FAF8F2]"
           >
             None
           </button>
@@ -425,7 +433,7 @@ function LineRow({
       </div>
 
       {overReceiving && (
-        <p className="mt-2 flex items-center gap-1.5 text-[11px] text-amber-700">
+        <p className="mt-2 flex items-center gap-1.5 text-[11px] text-[#9A6B12]">
           <AlertCircle className="h-3 w-3" />
           Receiving more than outstanding — over-delivery accepted but flagged.
         </p>
@@ -449,22 +457,22 @@ function SummaryRow({
   );
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-3">
+    <div className="rounded-lg border border-[#E6E1D4] bg-white p-3">
       <div className="flex items-center justify-between text-sm">
-        <span className="text-slate-600">Receiving in this delivery</span>
+        <span className="text-[#6B6B6B]">Receiving in this delivery</span>
         <span
-          className="tabular-nums font-semibold text-slate-900"
+          className="tabular-nums font-semibold text-[#1A1A1A]"
           style={{ fontFamily: "'Fraunces', Georgia, serif" }}
         >
           {totalReceiving}
         </span>
       </div>
-      <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
+      <div className="mt-1 flex items-center justify-between text-[11px] text-[#6B6B6B]">
         <span>Outstanding before this</span>
         <span className="tabular-nums">{totalRemaining}</span>
       </div>
       {wouldComplete && totalReceiving > 0 && (
-        <p className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700">
+        <p className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-[#C8E0D2] bg-[#E5F2EA] px-2.5 py-1 text-[11px] font-medium text-[#246F47]">
           <Truck className="h-3 w-3" />
           This delivery completes the order
         </p>
@@ -505,7 +513,7 @@ function MetaStep({
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <label className="block">
-          <span className="mb-1 block text-xs font-medium text-slate-600">Received on</span>
+          <span className="mb-1 block text-xs font-medium text-[#6B6B6B]">Received on</span>
           <Input
             type="date"
             value={receivedDate}
@@ -513,7 +521,7 @@ function MetaStep({
           />
         </label>
         <label className="block">
-          <span className="mb-1 block text-xs font-medium text-slate-600">Received by</span>
+          <span className="mb-1 block text-xs font-medium text-[#6B6B6B]">Received by</span>
           <Input
             value={receivedBy}
             onChange={(e) => setReceivedBy(e.target.value)}
@@ -523,7 +531,7 @@ function MetaStep({
       </div>
 
       <label className="block">
-        <span className="mb-1 block text-xs font-medium text-slate-600">
+        <span className="mb-1 block text-xs font-medium text-[#6B6B6B]">
           Notes (optional)
         </span>
         <textarea
@@ -531,7 +539,7 @@ function MetaStep({
           onChange={(e) => setNotes(e.target.value)}
           rows={3}
           placeholder="e.g. 200ft EMT conduit short by 1 length; driver to redeliver Friday. Schneider switchgear arrived undamaged."
-          className="block w-full rounded-md border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          className={inputField}
         />
         <div className="mt-1.5 flex flex-wrap gap-1">
           {DELIVERY_FLAGS.map((f) => (
@@ -539,7 +547,7 @@ function MetaStep({
               key={f}
               type="button"
               onClick={() => appendFlag(f)}
-              className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-600 transition-colors hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700"
+              className="rounded-full border border-[#E6E1D4] bg-white px-2 py-0.5 text-[10px] font-medium text-[#3A3A3A] transition-colors hover:border-[#F0D5A0] hover:bg-[#F9EFD9] hover:text-[#9A6B12]"
             >
               + {f}
             </button>
@@ -547,10 +555,10 @@ function MetaStep({
         </div>
       </label>
 
-      <p className="rounded-md bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
+      <p className="rounded-md bg-[#FAF8F2] px-3 py-2 text-[11px] text-[#6B6B6B]">
         On confirm, the order's line items tick off and its status flips to
-        <strong className="ml-1 text-slate-700">partial</strong> or
-        <strong className="ml-1 text-slate-700">received</strong> automatically based on the totals.
+        <strong className="ml-1 text-[#3A3A3A]">partial</strong> or
+        <strong className="ml-1 text-[#3A3A3A]">received</strong> automatically based on the totals.
       </p>
     </div>
   );

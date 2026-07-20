@@ -19,12 +19,14 @@
 //     selects the new tag)
 //   • preferred supplier: select from listSuppliers (optional)
 //   • busy states + required validation
-//   • house modal grammar (from maintenance/modals.tsx)
+//   • MotionDrawer variant="modal" shell — busy-guarded close (backdrop / Esc /
+//     X can't dismiss mid-save)
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useRef, useState } from "react";
 import { X, Plus, Loader2 } from "lucide-react";
 import { FRAUNCES } from "../gantt/components/ledger";
+import MotionDrawer from "../../components/ui/MotionDrawer";
 import {
   createMaterial,
   updateMaterial,
@@ -38,13 +40,6 @@ import { listSuppliers } from "../../lib/api/suppliers";
 import { getCommercialSettings } from "../../lib/api/commercial";
 import { minSell, isBelowFloor } from "../../lib/commercial/money";
 import type { Supplier } from "../../types";
-
-// ─── house modal shells ───────────────────────────────────────────────────────
-
-const MODAL_SHELL =
-  "fixed inset-0 z-50 flex items-center justify-center bg-[#1A1A1A]/50 p-4";
-const DIALOG_SHELL =
-  "flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-[14px] border border-[#E6E1D4] bg-white shadow-[0_8px_28px_rgba(20,20,20,0.12)]";
 
 // ─── unit presets ─────────────────────────────────────────────────────────────
 
@@ -149,9 +144,11 @@ export default function MaterialFormModal({ initial, source = 'manual', groupOpt
     void listSuppliers().then(setSuppliers);
   }, []);
 
-  // Auto-focus name
+  // Auto-focus name — re-asserted a beat after mount because MotionDrawer moves
+  // initial focus onto the dialog shell itself (its own setTimeout(0) on open).
   useEffect(() => {
-    nameRef.current?.focus();
+    const t = window.setTimeout(() => nameRef.current?.focus(), 50);
+    return () => window.clearTimeout(t);
   }, []);
 
   function toggleTag(tagName: string) {
@@ -235,15 +232,20 @@ export default function MaterialFormModal({ initial, source = 'manual', groupOpt
     }
   }
 
+  // Busy-guarded close — backdrop click, Esc, and the X button all route
+  // through here so the modal can never be dismissed mid-save.
+  function requestClose() {
+    if (!busy) onClose();
+  }
+
   return (
-    <div className={MODAL_SHELL} onClick={onClose}>
-      <div
-        className={DIALOG_SHELL}
-        role="dialog"
-        aria-modal="true"
-        aria-label={isEdit ? "Edit material" : "Add material"}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <MotionDrawer
+      open
+      onClose={requestClose}
+      variant="modal"
+      ariaLabel={isEdit ? "Edit material" : "Add material"}
+      sizeClass="max-w-lg"
+    >
         {/* Header */}
         <div className="flex items-start justify-between border-b border-[#E6E1D4] px-6 py-4">
           <div>
@@ -259,7 +261,7 @@ export default function MaterialFormModal({ initial, source = 'manual', groupOpt
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             className="rounded-md p-2 text-[#A0A0A0] hover:bg-[#F0EDE4] hover:text-[#3A3A3A]"
           >
             <X className="h-5 w-5" />
@@ -293,7 +295,7 @@ export default function MaterialFormModal({ initial, source = 'manual', groupOpt
           </div>
 
           {/* SKU + Unit row */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <FieldLabel>SKU</FieldLabel>
               <input
@@ -325,7 +327,7 @@ export default function MaterialFormModal({ initial, source = 'manual', groupOpt
           </div>
 
           {/* Cost + Sell row */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <FieldLabel hint="ex-GST">Cost price</FieldLabel>
               <input
@@ -367,7 +369,7 @@ export default function MaterialFormModal({ initial, source = 'manual', groupOpt
           </div>
 
           {/* Group + Subgroup — the Catalogue tab tree */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <FieldLabel>Group</FieldLabel>
               <input
@@ -522,9 +524,9 @@ export default function MaterialFormModal({ initial, source = 'manual', groupOpt
         <div className="flex items-center justify-end gap-2 border-t border-[#E6E1D4] px-6 py-4">
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             disabled={busy}
-            className="rounded-full border border-[#E6E1D4] bg-white px-4 py-2 text-[13px] font-semibold text-[#3A3A3A] transition-colors hover:bg-[#FAF8F2] disabled:cursor-not-allowed disabled:opacity-50"
+            className="min-h-11 rounded-full border border-[#E6E1D4] bg-white px-4 py-2 text-[13px] font-semibold text-[#3A3A3A] transition-colors hover:bg-[#FAF8F2] disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-0"
           >
             Cancel
           </button>
@@ -532,13 +534,12 @@ export default function MaterialFormModal({ initial, source = 'manual', groupOpt
             type="submit"
             form="material-form"
             disabled={busy}
-            className="inline-flex items-center gap-1.5 rounded-full bg-[#2F8F5C] px-4 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-[#246F47] disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-full bg-[#2F8F5C] px-4 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-[#246F47] disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-0"
           >
             {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
             {isEdit ? "Save changes" : "Add material"}
           </button>
         </div>
-      </div>
-    </div>
+    </MotionDrawer>
   );
 }

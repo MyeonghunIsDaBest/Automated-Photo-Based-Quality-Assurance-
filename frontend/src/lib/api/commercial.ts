@@ -48,6 +48,13 @@ interface CommercialSettingsRow {
   min_markup_pct: number;
   quote_terms: string | null;
   proposal_footer: string | null;
+  print_tagline: string | null;
+  rec_licence: string | null;
+  contact_phone: string | null;
+  contact_phone_alt: string | null;
+  contact_email: string | null;
+  website: string | null;
+  logo_url: string | null;
 }
 
 interface QuoteRow {
@@ -73,6 +80,8 @@ interface QuoteRow {
   viewed_at: string | null;
   decided_at: string | null;
   converted_job_id: string | null;
+  /** Shelf axis (mig 101): filed out of the working register. Absent pre-migration. */
+  archived_at?: string | null;
   // Phase-1 quote-header fields (migration 79)
   quote_type: string;
   stage: string | null;
@@ -245,6 +254,15 @@ export interface CommercialSettings {
   quoteTerms: string | null;
   /** One footer line under the proposal (licence no. / thank-you; blank = hidden). */
   proposalFooter: string | null;
+  /** Print identity (migration 100) — the designer's branded template pulls
+   *  these; all editable in Sales → Settings, never hard-coded. */
+  printTagline: string | null;
+  recLicence: string | null;
+  contactPhone: string | null;
+  contactPhoneAlt: string | null;
+  contactEmail: string | null;
+  website: string | null;
+  logoUrl: string | null;
 }
 
 export interface Quote {
@@ -270,6 +288,9 @@ export interface Quote {
   viewedAt: string | null;
   decidedAt: string | null;
   convertedJobId: string | null;
+  /** Shelf axis (mig 101), orthogonal to status: NULL = active, set = filed
+   *  under Closed/Archived. An accepted or declined quote can also be archived. */
+  archivedAt: string | null;
   // Phase-1 quote-header fields (migration 79)
   quoteType: 'service' | 'project';
   stage: string | null;
@@ -529,6 +550,13 @@ function rowToSettings(r: CommercialSettingsRow): CommercialSettings {
     defaultLabourOverhead: Number(r.default_labour_overhead ?? 0),
     minMarkupPct: Number(r.min_markup_pct ?? 0.25),
     quoteTerms: r.quote_terms ?? null,
+    printTagline: r.print_tagline ?? null,
+    recLicence: r.rec_licence ?? null,
+    contactPhone: r.contact_phone ?? null,
+    contactPhoneAlt: r.contact_phone_alt ?? null,
+    contactEmail: r.contact_email ?? null,
+    website: r.website ?? null,
+    logoUrl: r.logo_url ?? null,
     proposalFooter: r.proposal_footer ?? null,
   };
 }
@@ -557,6 +585,7 @@ function rowToQuote(r: QuoteRow, items?: QuoteItem[]): Quote {
     viewedAt: r.viewed_at,
     decidedAt: r.decided_at,
     convertedJobId: r.converted_job_id,
+    archivedAt: r.archived_at ?? null,
     quoteType: (r.quote_type as 'service' | 'project') ?? 'service',
     stage: r.stage ?? null,
     costCentre: r.cost_centre ?? null,
@@ -721,6 +750,13 @@ export async function updateCommercialSettings(
   if (patch.minMarkupPct !== undefined) update.min_markup_pct = patch.minMarkupPct;
   if (patch.quoteTerms !== undefined) update.quote_terms = patch.quoteTerms;
   if (patch.proposalFooter !== undefined) update.proposal_footer = patch.proposalFooter;
+  if (patch.printTagline !== undefined) update.print_tagline = patch.printTagline;
+  if (patch.recLicence !== undefined) update.rec_licence = patch.recLicence;
+  if (patch.contactPhone !== undefined) update.contact_phone = patch.contactPhone;
+  if (patch.contactPhoneAlt !== undefined) update.contact_phone_alt = patch.contactPhoneAlt;
+  if (patch.contactEmail !== undefined) update.contact_email = patch.contactEmail;
+  if (patch.website !== undefined) update.website = patch.website;
+  if (patch.logoUrl !== undefined) update.logo_url = patch.logoUrl;
   let { data, error } = await supabase
     .from('commercial_settings')
     .update(update)
@@ -728,13 +764,36 @@ export async function updateCommercialSettings(
     .select('*')
     .single();
   // Pre-migration fallbacks: retry without columns the database doesn't have
-  // yet (mig 94 floor, mig 97 terms/footer) so every OTHER setting still saves.
-  const LATE_COLUMNS = ['min_markup_pct', 'quote_terms', 'proposal_footer'] as const;
-  for (const col of LATE_COLUMNS) {
-    if (error && col in update && (error.code === 'PGRST204' || new RegExp(col, 'i').test(error.message ?? ''))) {
-      delete update[col];
-      ({ data, error } = await supabase.from('commercial_settings').update(update).eq('id', 1).select('*').single());
+  // yet (mig 94 floor, mig 97 terms/footer, mig 100 print identity) so every
+  // OTHER setting still saves. PostgREST names the missing column in its
+  // PGRST204 message ("Could not find the 'print_tagline' column …") — strip
+  // EXACTLY the column each error names, never a different late column, so a
+  // pre-mig-100 save can't silently drop floor/terms edits whose columns exist.
+  const LATE_COLUMNS = [
+    'min_markup_pct', 'quote_terms', 'proposal_footer',
+    'print_tagline', 'rec_licence', 'contact_phone', 'contact_phone_alt',
+    'contact_email', 'website', 'logo_url',
+  ] as const;
+  let retriesLeft = LATE_COLUMNS.length;
+  while (error && retriesLeft-- > 0) {
+    const errMsg = error.message ?? '';
+    const named = LATE_COLUMNS.find(
+      (col) => col in update && new RegExp(`'${col}'`, 'i').test(errMsg),
+    );
+    if (named) {
+      delete update[named];
+    } else if (error.code === 'PGRST204') {
+      // Message didn't name a column we sent (older PostgREST wording) —
+      // last resort: strip every late column in one go so the rest still saves.
+      let any = false;
+      for (const col of LATE_COLUMNS) {
+        if (col in update) { delete update[col]; any = true; }
+      }
+      if (!any) break;
+    } else {
+      break; // a different error — surface it, don't mask it
     }
+    ({ data, error } = await supabase.from('commercial_settings').update(update).eq('id', 1).select('*').single());
   }
   if (error) throw error;
   return rowToSettings(data as CommercialSettingsRow);
@@ -905,6 +964,37 @@ export async function setQuoteStatus(
   const { data, error } = await supabase
     .from('quotes')
     .update(patch)
+    .eq('id', id)
+    .select('*')
+    .single();
+  if (error) throw error;
+  return rowToQuote(data as QuoteRow);
+}
+
+// ---------------------------------------------------------------------------
+// Quotes — archive (shelf axis, orthogonal to status; mig 101)
+// ---------------------------------------------------------------------------
+
+/** File a quote out of the working register into Closed/Archived. Preserves
+ *  status (won/lost is not destroyed) — the quote just leaves the active views. */
+export async function archiveQuote(id: string): Promise<Quote> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { data, error } = await supabase
+    .from('quotes')
+    .update({ archived_at: new Date().toISOString() })
+    .eq('id', id)
+    .select('*')
+    .single();
+  if (error) throw error;
+  return rowToQuote(data as QuoteRow);
+}
+
+/** Restore an archived quote to its status-derived working view. */
+export async function unarchiveQuote(id: string): Promise<Quote> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const { data, error } = await supabase
+    .from('quotes')
+    .update({ archived_at: null })
     .eq('id', id)
     .select('*')
     .single();
@@ -1432,6 +1522,16 @@ export async function createInvoiceFromJob(serviceJobId: string): Promise<Invoic
   const job = await getServiceJob(serviceJobId);
   if (!job) throw new Error("Service job not found: " + serviceJobId);
 
+  // Double-invoice guard (mig 103): a prepaid job already carries its upfront
+  // invoice, and any job invoiced once shouldn't be silently invoiced again
+  // from the "From job" picker. Voided invoices don't count (re-invoicing after
+  // a void is legitimate). Surfaces as a toast in the caller.
+  const priorInvoices = (await listInvoices({ serviceJobId })).filter((inv) => inv.status !== "voided");
+  if (priorInvoices.length > 0) {
+    const n = priorInvoices[0].number ? ` (${priorInvoices[0].number})` : "";
+    throw new Error(`This job already has an invoice${n}. Void it before raising another.`);
+  }
+
   const invoice = await createInvoice({
     customerId: job.customerId,
     clientName: job.clientName,
@@ -1519,6 +1619,55 @@ export async function createInvoiceFromJob(serviceJobId: string): Promise<Invoic
     await recomputeInvoiceTotals(invoice.id);
   }
 
+  return (await getInvoice(invoice.id)) as Invoice;
+}
+
+/**
+ * Raise the upfront invoice for a PREPAID job at creation (mig 103).
+ * - Idempotent: if the job already has an invoice, returns it rather than
+ *   creating a second (the creation-side double-invoice guard).
+ * - If the job was converted from a quote, delegates to createInvoiceFromJob so
+ *   the invoice carries the real scope + approved variations.
+ * - Otherwise (a fresh prepaid job with no source quote) createInvoiceFromJob
+ *   would produce a $0 invoice, so build a single line from the job's
+ *   contract_value instead. The job's status is deliberately NOT touched — a
+ *   prepaid job keeps working on the active board.
+ */
+export async function createPrepaidInvoiceForJob(serviceJobId: string): Promise<Invoice> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+
+  const existing = await listInvoices({ serviceJobId });
+  if (existing.length > 0) {
+    return (await getInvoice(existing[0].id)) as Invoice;
+  }
+
+  // A quote-backed job has real scope — reuse the one-invoice builder.
+  const source = await getQuoteForJob(serviceJobId);
+  if (source) return createInvoiceFromJob(serviceJobId);
+
+  // Fresh prepaid job: one line from the agreed contract value.
+  const job = await getServiceJob(serviceJobId);
+  if (!job) throw new Error('Service job not found: ' + serviceJobId);
+  const invoice = await createInvoice({
+    customerId: job.customerId,
+    clientName: job.clientName,
+    propertyId: job.propertyId,
+    serviceJobId,
+    jobRef: job.title,
+  });
+  const amount = job.contractValue ?? 0;
+  const { error: itemErr } = await supabase.from('customer_invoice_items').insert({
+    invoice_id: invoice.id,
+    kind: 'custom',
+    description: `Prepaid — ${job.title}`,
+    qty: 1,
+    unit: 'ea',
+    unit_price_ex_gst: amount,
+    cost_price_ex_gst: null,
+    sort_order: 0,
+  });
+  if (itemErr) throw itemErr;
+  await recomputeInvoiceTotals(invoice.id);
   return (await getInvoice(invoice.id)) as Invoice;
 }
 

@@ -44,7 +44,7 @@ export function SupabaseStatus() {
 
   const palette = (() => {
     switch (health.kind) {
-      case 'checking':     return 'border-slate-200 bg-slate-50 text-slate-500';
+      case 'checking':     return 'border-[#E6E1D4] bg-[#FAF8F2] text-[#6B6B6B]';
       case 'unconfigured': return 'border-amber-200 bg-amber-50 text-amber-700';
       case 'ok':           return 'border-emerald-200 bg-emerald-50 text-emerald-700';
       case 'error':        return 'border-red-200 bg-red-50 text-red-700';

@@ -8,6 +8,7 @@ import Layout from './components/layout/Layout';
 import Login from './pages/Login';
 import RequireAuth from './components/RequireAuth';
 import QuickActionsSidebar from './components/layout/QuickActionsSidebar';
+import { GlobalCreateModals } from './components/layout/GlobalCreateModals';
 import { Toaster } from './components/ui/Toaster';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { pageTransition } from './lib/motion/variants';
@@ -36,7 +37,8 @@ const Safety         = lazyWithRetry(() => import('./pages/Safety'));
 const Admin          = lazyWithRetry(() => import('./pages/Admin'));
 const BootstrapAdmin = lazyWithRetry(() => import('./pages/admin/BootstrapAdmin'));
 const Pricing        = lazyWithRetry(() => import('./pages/Pricing'));
-const RoleHome         = lazyWithRetry(() => import('./pages/home/RoleHome'));
+// RoleHome (the Welcome deck) retired from routing in P9.B — component kept
+// on disk until the P9.F cleanup; /home now redirects like the index route.
 const RoleHomeRedirect = lazyWithRetry(() => import('./pages/home/RoleHomeRedirect'));
 const SupplierWorkspace = lazyWithRetry(() => import('./pages/supplier/SupplierWorkspace'));
 const SponsorCockpit     = lazyWithRetry(() => import('./pages/sponsor/SponsorCockpit'));
@@ -49,6 +51,9 @@ const JobsHub            = lazyWithRetry(() => import('./pages/jobs/JobsHub'));
 // Swap the import path to either to fall back. Route element below is unchanged.
 const CustomerPortal     = lazyWithRetry(() => import('./pages/customer/CustomerDashboard'));
 const Sales              = lazyWithRetry(() => import('./pages/sales/Sales'));
+const QuotesHub          = lazyWithRetry(() => import('./pages/sales/QuotesHub'));
+const InvoicesHub        = lazyWithRetry(() => import('./pages/sales/InvoicesHub'));
+const CataloguePage      = lazyWithRetry(() => import('./pages/sales/CataloguePage'));
 const Stock              = lazyWithRetry(() => import('./pages/stock/StockHub'));
 
 // Route-chunk fallback: a page-shaped skeleton (masthead band + content
@@ -107,10 +112,11 @@ function AppRoutes() {
             {/* Protected Routes */}
             <Route element={<RequireAuth />}>
               <Route path="/" element={<Layout />}>
-                {/* Smart redirect: field roles â†’ /home (editorial landing),
-                    admins / PMs â†’ /dashboard (data-dense panel). */}
+                {/* Smart redirect: every role lands on its real workspace
+                    (P9.B — the Welcome deck retired from routing; old /home
+                    links + PWA installs resolve through the same redirect). */}
                 <Route index element={<RoleHomeRedirect />} />
-                <Route path="home" element={<ErrorBoundary label="Home"><RoleHome /></ErrorBoundary>} />
+                <Route path="home" element={<RoleHomeRedirect />} />
                 <Route path="dashboard" element={<ErrorBoundary label="Dashboard"><Dashboard /></ErrorBoundary>} />
                 {/* Supplier cockpit â€” vendors land here (role-experiences). */}
                 <Route path="supplier" element={<ErrorBoundary label="Supplier"><SupplierWorkspace /></ErrorBoundary>} />
@@ -142,8 +148,11 @@ function AppRoutes() {
                 <Route path="maintenance" element={<Navigate to="/customers" replace />} />
                 <Route path="customers" element={<ErrorBoundary label="Customers"><Maintenance /></ErrorBoundary>} />
                 <Route path="jobs" element={<ErrorBoundary label="Jobs"><JobsHub /></ErrorBoundary>} />
-                {/* Catalogue folded into Sales (Service Quotes) as a tab. Redirect preserves old links. */}
-                <Route path="catalogue" element={<Navigate to="/sales?tab=catalogue" replace />} />
+                {/* SimPro-style split: Quotes / Invoices / Catalogue are their
+                    own areas now. /sales is a redirect shell for legacy links. */}
+                <Route path="quotes" element={<ErrorBoundary label="Quotes"><QuotesHub /></ErrorBoundary>} />
+                <Route path="invoices" element={<ErrorBoundary label="Invoices"><InvoicesHub /></ErrorBoundary>} />
+                <Route path="catalogue" element={<ErrorBoundary label="Catalogue"><CataloguePage /></ErrorBoundary>} />
                 <Route path="sales" element={<ErrorBoundary label="Sales"><Sales /></ErrorBoundary>} />
                 <Route path="stock" element={<ErrorBoundary label="Stock"><Stock /></ErrorBoundary>} />
                 {/* Review queue is now a Gantt tab; redirect preserves any
@@ -190,6 +199,10 @@ function App() {
         <BrowserRouter>
           {isAuthenticated && <QuickActionsSidebar />}
           <AppRoutes />
+          {/* App-level create switchboard — sits OUTSIDE AppRoutes' per-route
+              transform so the bare-`fixed` quote wizard anchors to the viewport,
+              and opens from the sidebar mega-menus via the createModal store. */}
+          {isAuthenticated && <GlobalCreateModals />}
 
           {/* Notification Toast */}
           {notification && (

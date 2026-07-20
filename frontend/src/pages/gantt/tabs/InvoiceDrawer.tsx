@@ -12,6 +12,8 @@ import {
 } from '../store';
 import { useProjectActivity, ACTIVITY_VERBS } from '../lib/useProjectActivity';
 import MotionDrawer from '../../../components/ui/MotionDrawer';
+import { cn } from '../../../lib/cn';
+import { inputField } from '../components/ledger';
 import type { Invoice, InvoiceStatus, Order, Warranty } from '../types';
 
 interface InvoiceDrawerProps {
@@ -29,11 +31,14 @@ const STATUS_OPTS: { value: InvoiceStatus; label: string }[] = [
   { value: 'disputed', label: 'Disputed' },
 ];
 
+// Warm-ledger tone map — matches the same-domain precedent in
+// ReportsTab.tsx STATUS_BADGE (paid=sage, pending=amber, overdue=red);
+// disputed takes the orange tone to stay distinct from both.
 const STATUS_BADGE: Record<InvoiceStatus, string> = {
-  pending:   'border-blue-200 bg-blue-50 text-blue-700',
-  paid:      'border-emerald-200 bg-emerald-50 text-emerald-700',
-  overdue:   'border-red-200 bg-red-50 text-red-700',
-  disputed:  'border-amber-200 bg-amber-50 text-amber-700',
+  pending:   'border-[#F0D5A0] bg-[#F9EFD9] text-[#C8841E]',
+  paid:      'border-[#A8D0B8] bg-[#E5F2EA] text-[#246F47]',
+  overdue:   'border-[#F0BFBF] bg-[#FBE5E5] text-[#C44545]',
+  disputed:  'border-[#E5C8A8] bg-[#F4E9DB] text-[#A35C2B]',
 };
 
 const fmtUSD = (n: number) =>
@@ -83,6 +88,13 @@ export default function InvoiceDrawer({
     setConfirmDelete(false);
     setPaying(false);
   }, [isOpen, invoice?.id]);
+
+  // E8 busy-guard: closing is a no-op while the mark-paid write is in flight
+  // (exemplar: MaterialsTab price dialog).
+  const requestClose = () => {
+    if (paying) return;
+    onClose();
+  };
 
   if (!isOpen || !invoice) return null;
 
@@ -135,19 +147,19 @@ export default function InvoiceDrawer({
   return (
     <MotionDrawer
       open={isOpen}
-      onClose={onClose}
+      onClose={requestClose}
       sizeClass="sm:w-[520px] lg:w-[600px]"
       ariaLabel="Invoice"
     >
         {/* Mobile drag handle */}
         <div className="flex justify-center pt-2 sm:hidden">
-          <span className="h-1 w-10 rounded-full bg-slate-300" />
+          <span className="h-1 w-10 rounded-full bg-[#D8D2C4]" />
         </div>
 
         {/* Header */}
-        <header className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
+        <header className="flex items-start justify-between gap-3 border-b border-[#EFEBE0] px-5 py-4">
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-slate-500">
+            <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-[#6B6B6B]">
               Invoice
             </p>
             <input
@@ -156,18 +168,18 @@ export default function InvoiceDrawer({
               onBlur={() => commitField('invoiceNumber', (draft.invoiceNumber ?? '').trim() || invoice.invoiceNumber)}
               disabled={readOnly}
               placeholder="Invoice #"
-              className="mt-1 w-full border-0 bg-transparent font-mono text-base font-semibold text-slate-900 placeholder:text-slate-300 focus:outline-none"
+              className="mt-1 w-full border-0 bg-transparent font-mono text-base font-semibold text-[#1A1A1A] placeholder:text-[#C0BAB0] focus:outline-none"
             />
-            <p className="mt-1 text-sm text-slate-600">
+            <p className="mt-1 text-sm text-[#3A3A3A]">
               {order?.supplierName || 'Unknown supplier'}
-              {order && <span className="text-slate-400"> · {order.poNumber}</span>}
+              {order && <span className="text-[#A0A0A0]"> · {order.poNumber}</span>}
             </p>
           </div>
           <div className="flex flex-col items-end gap-2">
             <button
               type="button"
-              onClick={onClose}
-              className="flex h-9 w-9 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              onClick={requestClose}
+              className="grid min-h-11 min-w-11 place-items-center rounded-md text-[#A0A0A0] hover:bg-[#F0EDE4] hover:text-[#3A3A3A]"
               aria-label="Close"
             >
               <X className="h-4 w-4" />
@@ -182,7 +194,7 @@ export default function InvoiceDrawer({
         </header>
 
         {/* Sub-tab strip */}
-        <nav className="flex-shrink-0 border-b border-slate-100 px-2 py-2">
+        <nav className="flex-shrink-0 border-b border-[#EFEBE0] px-2 py-2">
           <div className="-mx-2 overflow-x-auto px-2">
             <div className="inline-flex items-center gap-1">
               {(['details', 'order', 'warranties', 'activity'] as SubTab[]).map((id) => {
@@ -201,7 +213,7 @@ export default function InvoiceDrawer({
                     type="button"
                     onClick={() => setActiveTab(id)}
                     className={`flex flex-shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                      isActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
+                      isActive ? 'bg-[#1A1A1A] text-white' : 'text-[#3A3A3A] hover:bg-[#F0EDE4]'
                     }`}
                   >
                     <Icon className="h-3.5 w-3.5" />
@@ -232,7 +244,7 @@ export default function InvoiceDrawer({
             <OrderPane order={order} />
           )}
           {activeTab === 'order' && !order && (
-            <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50/60 px-4 py-6 text-center text-sm text-slate-400">
+            <p className="rounded-lg border border-dashed border-[#E6E1D4] bg-[#FAF8F2]/60 px-4 py-6 text-center text-sm text-[#A0A0A0]">
               Original order is no longer available.
             </p>
           )}
@@ -249,9 +261,9 @@ export default function InvoiceDrawer({
         </div>
 
         {/* Footer */}
-        <footer className="flex flex-shrink-0 items-center justify-between gap-3 border-t border-slate-100 px-5 py-3">
+        <footer className="flex flex-shrink-0 items-center justify-between gap-3 border-t border-[#EFEBE0] px-5 py-3">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400">Status</span>
+            <span className="text-xs text-[#A0A0A0]">Status</span>
             <select
               value={invoice.status === 'overdue' ? 'pending' : invoice.status}
               onChange={(e) => {
@@ -260,7 +272,7 @@ export default function InvoiceDrawer({
                 else if (next !== 'paid') setInvoiceStatus(projectId, invoice.id, next);
               }}
               disabled={readOnly || paying}
-              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs"
+              className={cn(inputField, 'w-auto rounded-md px-2 py-1 text-xs')}
             >
               {STATUS_OPTS.map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
@@ -270,12 +282,12 @@ export default function InvoiceDrawer({
           {!readOnly && canDelete && (
             confirmDelete ? (
               <div className="flex items-center gap-2">
-                <span className="text-xs text-red-600">Delete?</span>
+                <span className="text-xs text-[#C44545]">Delete?</span>
                 <Button variant="outline" size="sm" onClick={() => setConfirmDelete(false)}>Cancel</Button>
                 <button
                   type="button"
                   onClick={() => { removeInvoice(projectId, invoice.id); onClose(); }}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
+                  className="inline-flex items-center gap-1.5 rounded-md bg-[#C44545] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#A93A3A]"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                   Confirm
@@ -285,7 +297,7 @@ export default function InvoiceDrawer({
               <button
                 type="button"
                 onClick={() => setConfirmDelete(true)}
-                className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-red-50 hover:text-red-600"
+                className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-[#6B6B6B] hover:bg-[#FBE5E5] hover:text-[#C44545]"
               >
                 <Trash2 className="h-3.5 w-3.5" />
                 Delete
@@ -375,18 +387,18 @@ function DetailsPane({
           disabled={readOnly}
           rows={2}
           placeholder="Anything to flag…"
-          className="block w-full rounded-md border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:bg-slate-50"
+          className={inputField}
         />
       </Field>
 
       {/* Mark-as-paid CTA */}
       {!isPaid && !readOnly && (
-        <div className="rounded-xl border-2 border-emerald-200 bg-emerald-50 p-4">
+        <div className="rounded-xl border-2 border-[#C8E0D2] bg-[#E1F3EA] p-4">
           <div className="mb-3 flex items-start gap-2">
-            <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-600" />
+            <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#2F8F5C]" />
             <div>
-              <p className="text-sm font-semibold text-emerald-900">Mark as paid</p>
-              <p className="mt-0.5 text-xs text-emerald-800/80">
+              <p className="text-sm font-semibold text-[#246F47]">Mark as paid</p>
+              <p className="mt-0.5 text-xs text-[#246F47]/80">
                 Records the payment date and{' '}
                 {warrantiesToCreate > 0 ? (
                   <>spawns <strong>{warrantiesToCreate}</strong> warrant{warrantiesToCreate === 1 ? 'y' : 'ies'} from line items with coverage.</>
@@ -414,7 +426,7 @@ function DetailsPane({
       )}
 
       {isPaid && invoice.paidDate && (
-        <div className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+        <div className="rounded-md bg-[#E1F3EA] px-3 py-2 text-sm text-[#246F47]">
           <CheckCircle2 className="mr-1.5 inline h-3.5 w-3.5" />
           Paid on <strong>{format(parseISO(invoice.paidDate), 'MMMM d, yyyy')}</strong>
         </div>
@@ -428,15 +440,15 @@ function OrderPane({ order }: { order: Order }) {
 
   return (
     <div className="space-y-3">
-      <div className="rounded-lg border border-slate-200 bg-white p-3">
+      <div className="rounded-lg border border-[#E6E1D4] bg-white p-3">
         <div className="flex items-baseline justify-between">
-          <span className="font-mono text-[11px] text-slate-700">{order.poNumber}</span>
+          <span className="font-mono text-[11px] text-[#3A3A3A]">{order.poNumber}</span>
           <Badge variant="outline" className="text-[10px] uppercase tracking-wider">
             {order.status}
           </Badge>
         </div>
-        <p className="mt-1 font-medium text-slate-900">{order.supplierName}</p>
-        <p className="mt-1 text-[11px] text-slate-500">
+        <p className="mt-1 font-medium text-[#1A1A1A]">{order.supplierName}</p>
+        <p className="mt-1 text-[11px] text-[#6B6B6B]">
           Ordered {format(parseISO(order.orderedDate), 'MMM d, yyyy')}
           {order.expectedDelivery && (
             <> · ETA {format(parseISO(order.expectedDelivery), 'MMM d')}</>
@@ -445,31 +457,31 @@ function OrderPane({ order }: { order: Order }) {
       </div>
 
       <div>
-        <h4 className="mb-2 text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
+        <h4 className="mb-2 text-[11px] font-medium uppercase tracking-[0.2em] text-[#6B6B6B]">
           Line items ({order.lineItems.length})
         </h4>
-        <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
+        <ul className="divide-y divide-[#EFEBE0] rounded-lg border border-[#E6E1D4]">
           {order.lineItems.map((li) => (
             <li key={li.id} className="flex items-start gap-3 px-3 py-2.5">
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-slate-900">{li.description}</p>
-                <p className="text-[11px] text-slate-500">
+                <p className="truncate text-sm font-medium text-[#1A1A1A]">{li.description}</p>
+                <p className="text-[11px] text-[#6B6B6B]">
                   {li.qty} {li.unit}
                   {(li.warrantyMonths ?? 0) > 0 && (
-                    <> · <span className="text-emerald-700">{li.warrantyMonths}mo warranty</span></>
+                    <> · <span className="text-[#246F47]">{li.warrantyMonths}mo warranty</span></>
                   )}
                 </p>
               </div>
-              <span className="flex-shrink-0 tabular-nums text-sm text-slate-700">
+              <span className="flex-shrink-0 tabular-nums text-sm text-[#3A3A3A]">
                 {fmtUSD(li.qty * li.unitCost)}
               </span>
             </li>
           ))}
         </ul>
-        <div className="mt-2 flex items-baseline justify-between rounded-lg bg-slate-50 px-3 py-2">
-          <span className="text-xs text-slate-600">Order total</span>
+        <div className="mt-2 flex items-baseline justify-between rounded-lg bg-[#FAF8F2] px-3 py-2">
+          <span className="text-xs text-[#6B6B6B]">Order total</span>
           <span
-            className="tabular-nums text-base font-semibold text-slate-900"
+            className="tabular-nums text-base font-semibold text-[#1A1A1A]"
             style={{ fontFamily: "'Fraunces', Georgia, serif" }}
           >
             {fmtUSD(total)}
@@ -491,10 +503,10 @@ function WarrantiesPane({
 
   if (linked.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/60 px-4 py-6 text-center">
-        <ShieldCheck className="mx-auto mb-2 h-5 w-5 text-slate-400" />
-        <p className="text-sm font-medium text-slate-600">No warranties spawned yet</p>
-        <p className="mt-1 text-xs text-slate-500">
+      <div className="rounded-lg border border-dashed border-[#E6E1D4] bg-[#FAF8F2]/60 px-4 py-6 text-center">
+        <ShieldCheck className="mx-auto mb-2 h-5 w-5 text-[#A0A0A0]" />
+        <p className="text-sm font-medium text-[#3A3A3A]">No warranties spawned yet</p>
+        <p className="mt-1 text-xs text-[#6B6B6B]">
           Marking this invoice paid creates warranty rows for any line items
           on the parent order with coverage months.
         </p>
@@ -507,14 +519,14 @@ function WarrantiesPane({
       {linked.map((w) => {
         const li = order?.lineItems.find((l) => l.id === w.lineItemId);
         return (
-          <li key={w.id} className="rounded-lg border border-slate-200 p-3">
+          <li key={w.id} className="rounded-lg border border-[#E6E1D4] p-3">
             <div className="flex items-baseline justify-between gap-2">
-              <p className="font-medium text-slate-900">{w.description}</p>
-              <span className="text-[11px] tabular-nums text-slate-500">
+              <p className="font-medium text-[#1A1A1A]">{w.description}</p>
+              <span className="text-[11px] tabular-nums text-[#6B6B6B]">
                 {format(parseISO(w.startDate), 'MMM yyyy')} → {format(parseISO(w.expiryDate), 'MMM yyyy')}
               </span>
             </div>
-            <p className="mt-1 text-[11px] text-slate-500">
+            <p className="mt-1 text-[11px] text-[#6B6B6B]">
               {w.supplierName}
               {li && <> · {li.qty} {li.unit}</>}
             </p>
@@ -534,7 +546,7 @@ function ActivityPane({ invoice, projectId }: { invoice: Invoice; projectId: str
 
   if (invoiceEvents.length === 0) {
     return (
-      <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50/60 px-4 py-6 text-center text-sm text-slate-400">
+      <p className="rounded-lg border border-dashed border-[#E6E1D4] bg-[#FAF8F2]/60 px-4 py-6 text-center text-sm text-[#A0A0A0]">
         No activity recorded yet. Mark paid → it logs here.
       </p>
     );
@@ -544,16 +556,16 @@ function ActivityPane({ invoice, projectId }: { invoice: Invoice; projectId: str
     <ul className="space-y-3">
       {invoiceEvents.map((e) => (
         <li key={e.id} className="flex items-start gap-3">
-          <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-slate-50">
-            <Calendar className="h-3.5 w-3.5 text-slate-500" />
+          <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#F0EDE4]">
+            <Calendar className="h-3.5 w-3.5 text-[#6B6B6B]" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm text-slate-800">
+            <p className="text-sm text-[#3A3A3A]">
               <span className="font-medium">{e.actorName}</span>{' '}
-              <span className="text-slate-500">{ACTIVITY_VERBS[e.kind]}</span>{' '}
+              <span className="text-[#6B6B6B]">{ACTIVITY_VERBS[e.kind]}</span>{' '}
               {e.targetLabel}
             </p>
-            <p className="text-[10px] text-slate-400">
+            <p className="text-[10px] text-[#A0A0A0]">
               {format(parseISO(e.timestamp), 'MMM d, h:mm a')}
             </p>
           </div>
@@ -566,7 +578,7 @@ function ActivityPane({ invoice, projectId }: { invoice: Invoice; projectId: str
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-medium text-slate-600">{label}</span>
+      <span className="mb-1 block text-xs font-medium text-[#6B6B6B]">{label}</span>
       {children}
     </label>
   );

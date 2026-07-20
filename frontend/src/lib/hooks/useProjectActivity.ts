@@ -29,6 +29,7 @@ export function useProjectActivity(projectId: string, opts: Options = {}): Activ
   const tasks       = useFeatureStore((s) => s.tasks);
   const comments    = useFeatureStore((s) => s.comments);
   const photos      = useAppStore((s) => s.photos);
+  const users       = useAppStore((s) => s.users);
   const orders      = useGanttSideStore((s) => s.orders);
   const deliveries  = useGanttSideStore((s) => s.deliveries);
   const invoices    = useGanttSideStore((s) => s.invoices);
@@ -39,6 +40,20 @@ export function useProjectActivity(projectId: string, opts: Options = {}): Activ
   return useMemo(() => {
     const projectTasks = tasks.filter((t) => t.projectId === projectId);
     const taskById = new Map(projectTasks.map((t) => [t.id, t]));
+
+    // Actor names, resolved: some sources store a raw user id (photos'
+    // uploadedBy), others already store a display NAME (deliveries'
+    // receivedBy is free text from the wizard). Resolve ids through the users
+    // map; pass real names straight through; only an unresolvable UUID reads
+    // as "Someone" — the feed never prints a 36-character code as a person.
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const userById = new Map(users.map((u) => [u.id, u.fullName]));
+    const nameFor = (v: string | null | undefined): string => {
+      if (!v) return 'Someone';
+      const resolved = userById.get(v);
+      if (resolved) return resolved;
+      return UUID_RE.test(v) ? 'Someone' : v;
+    };
 
     // Build per-source arrays separately so we can cap each before merging.
     const taskEvents: ActivityEvent[] = [];
@@ -65,7 +80,7 @@ export function useProjectActivity(projectId: string, opts: Options = {}): Activ
         id: `photo_upload:${p.id}:${p.uploadedAt}`,
         kind: 'photo_upload',
         actorId: p.uploadedBy,
-        actorName: p.uploadedBy,
+        actorName: nameFor(p.uploadedBy),
         targetLabel: taskName ? `Photo on ${taskName}` : `Photo: ${p.filename ?? p.id}`,
         targetTabId: 'uploads',
         targetEntityId: p.id,
@@ -143,7 +158,7 @@ export function useProjectActivity(projectId: string, opts: Options = {}): Activ
         id: `delivery_received:${d.id}`,
         kind: 'delivery_received',
         actorId: d.receivedBy,
-        actorName: d.receivedBy,
+        actorName: nameFor(d.receivedBy),
         targetLabel: `Delivery received — ${d.items.length} line${d.items.length === 1 ? '' : 's'}`,
         targetTabId: 'deliveries',
         targetEntityId: d.id,
@@ -172,7 +187,7 @@ export function useProjectActivity(projectId: string, opts: Options = {}): Activ
         id: `punch_item_added:${p.id}`,
         kind: 'punch_item_added',
         actorId: p.createdBy,
-        actorName: p.createdBy,
+        actorName: nameFor(p.createdBy),
         targetLabel: `Punch: ${p.text}`,
         targetTabId: 'punch_list',
         targetEntityId: p.id,
@@ -183,7 +198,7 @@ export function useProjectActivity(projectId: string, opts: Options = {}): Activ
           id: `punch_item_closed:${p.id}`,
           kind: 'punch_item_closed',
           actorId: p.createdBy,
-          actorName: p.createdBy,
+          actorName: nameFor(p.createdBy),
           targetLabel: `Closed: ${p.text}`,
           targetTabId: 'punch_list',
           targetEntityId: p.id,
@@ -199,7 +214,7 @@ export function useProjectActivity(projectId: string, opts: Options = {}): Activ
         id: `diary_entry:${e.id}`,
         kind: 'diary_entry',
         actorId: e.createdBy,
-        actorName: e.createdBy,
+        actorName: nameFor(e.createdBy),
         targetLabel: `Site diary — ${e.personnel.length} crew · ${headcount}h`,
         targetTabId: 'site_diary',
         targetEntityId: e.id,
@@ -240,7 +255,7 @@ export function useProjectActivity(projectId: string, opts: Options = {}): Activ
     ];
 
     return sortDescBy(merged, 'timestamp').slice(0, limit);
-  }, [projectId, limit, tasks, comments, photos, orders, deliveries, invoices, diary, punch, incidents]);
+  }, [projectId, limit, tasks, comments, photos, users, orders, deliveries, invoices, diary, punch, incidents]);
 }
 
 function sortDescBy(events: ActivityEvent[], key: 'timestamp'): ActivityEvent[] {

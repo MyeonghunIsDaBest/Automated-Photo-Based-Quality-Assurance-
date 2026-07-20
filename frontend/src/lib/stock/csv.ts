@@ -54,3 +54,42 @@ export function parseStockCountCsv(text: string): StockCountParse {
   });
   return { rows, errors };
 }
+
+export interface StockCountMatch {
+  matched: Array<{ materialId: string; qty: number }>;
+  /** References that resolved to no catalogue item — listed, never dropped silently. */
+  unmatched: string[];
+}
+
+/** Resolve parsed count rows against the catalogue: case-insensitive exact SKU
+ *  match first, exact name second (the same contract as the reorder-rule CSV
+ *  import). Later duplicate refs for the same item overwrite earlier ones —
+ *  the last count on the sheet wins. Pure; single-fork testable. */
+export function matchStockCounts(
+  rows: StockCountRow[],
+  items: Array<{ id: string; sku: string | null; name: string }>,
+): StockCountMatch {
+  const bySku = new Map<string, string>();
+  const byName = new Map<string, string>();
+  for (const it of items) {
+    if (it.sku) bySku.set(it.sku.trim().toLowerCase(), it.id);
+    byName.set(it.name.trim().toLowerCase(), it.id);
+  }
+
+  const qtyById = new Map<string, number>();
+  const unmatched: string[] = [];
+  for (const row of rows) {
+    const key = row.ref.trim().toLowerCase();
+    const id = bySku.get(key) ?? byName.get(key);
+    if (id === undefined) {
+      unmatched.push(row.ref);
+    } else {
+      qtyById.set(id, row.qty);
+    }
+  }
+
+  return {
+    matched: [...qtyById.entries()].map(([materialId, qty]) => ({ materialId, qty })),
+    unmatched,
+  };
+}

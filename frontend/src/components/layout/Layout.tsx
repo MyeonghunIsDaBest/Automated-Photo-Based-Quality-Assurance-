@@ -3,6 +3,7 @@ import { Outlet, Navigate, useLocation } from 'react-router-dom';
 import AppSidebar from './AppSidebar';
 import TopBar from './TopBar';
 import BottomTabBar from './BottomTabBar';
+import ReconnectionPill from './ReconnectionPill';
 import MissingEnvBanner from './MissingEnvBanner';
 import { ErrorBoundary } from '../ui/ErrorBoundary';
 import { useAppStore } from '../../store';
@@ -93,8 +94,17 @@ export default function Layout() {
       ) : (
         <div className="flex min-h-screen">
           <AppSidebar />
-          <div className="flex min-h-screen min-w-0 flex-1 flex-col">
+          {/* overflow-x-clip: a regression guard — one too-wide element inside
+              a page must clip at the viewport, never drag the whole app
+              sideways (which also slides the sticky phone TopBar off-screen).
+              `clip` (not `hidden`) so no scroll container is created and
+              position:sticky keeps working against the window. */}
+          <div className="flex min-h-screen min-w-0 flex-1 flex-col overflow-x-clip">
             <TopBar />
+            {/* Desktop connection status — the top bar is phone-only now. */}
+            <div className="pointer-events-none fixed right-4 top-4 z-40 hidden md:block print:hidden [&>*]:pointer-events-auto">
+              <ReconnectionPill />
+            </div>
             <main className="min-w-0 flex-1 pb-[calc(var(--bottom-nav-h,0px)+env(safe-area-inset-bottom))] md:pb-0">
               <ErrorBoundary key={location.pathname} label={`Page · ${location.pathname}`}>
                 <Outlet />

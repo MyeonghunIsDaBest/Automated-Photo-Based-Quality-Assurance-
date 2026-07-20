@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Sparkles, ArrowRight, Loader2 } from 'lucide-react';
 import { askProject, AskProjectUnavailable } from '../../lib/api/askProject';
+import { FRAUNCES } from '../../pages/gantt/components/ledger';
 
 // Dashboard "Ask anything" widget (Tier-3 #14). Was a decorative box with a
 // fake mic button; now a real single-turn project Q&A that calls the
@@ -42,9 +43,13 @@ export default function AskAnythingCard({ projectId }: { projectId: string }) {
   };
 
   return (
-    <section className="relative flex flex-col overflow-hidden rounded-[14px] bg-[#1A1A1A] p-5 text-white">
-      <div aria-hidden className="pointer-events-none absolute -right-16 -top-20 h-44 w-44 rounded-full bg-[#2F8F5C]/20 blur-3xl" />
-      <div className="relative mb-3 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.18em]" style={{ color: '#A8D0B8' }}>
+    <section className="relative flex flex-col overflow-hidden rounded-[16px] bg-[#1A1A1A] p-5 text-white">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -right-10 -top-12 h-[150px] w-[150px] rounded-full"
+        style={{ background: 'radial-gradient(circle, rgba(47,143,92,0.35), transparent 70%)' }}
+      />
+      <div className="relative mb-3 flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-[0.1em]" style={{ color: '#A8D0B8' }}>
         <Sparkles className="h-3 w-3" />
         Ask anything
       </div>
@@ -79,16 +84,16 @@ export default function AskAnythingCard({ projectId }: { projectId: string }) {
             </motion.p>
           ) : (
             <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <p className="text-2xl font-medium leading-tight" style={{ fontFamily: "'Fraunces', Georgia, serif" }}>
+              <p className="text-[17px] font-medium leading-snug" style={{ fontFamily: FRAUNCES }}>
                 What changed on site today?
               </p>
-              <div className="mt-3 flex flex-wrap gap-1.5">
+              <div className="mt-3 flex flex-col gap-1.5">
                 {SUGGESTIONS.map((s) => (
                   <button
                     key={s}
                     type="button"
                     onClick={() => { setQuestion(s); void ask(s); }}
-                    className="rounded-full border border-white/15 px-2.5 py-1 text-[11px] text-[#D8D2C4] transition-colors hover:border-white/30 hover:text-white"
+                    className="rounded-[10px] border border-white/10 bg-white/5 px-2.5 py-1.5 text-left text-[11.5px] text-[#EFEBE0] transition-colors hover:bg-white/10"
                   >
                     {s}
                   </button>
@@ -109,7 +114,7 @@ export default function AskAnythingCard({ projectId }: { projectId: string }) {
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           placeholder="Ask about this project…"
-          className="h-9 w-full rounded-full border border-white/10 bg-white/5 px-3 pr-9 text-xs text-white placeholder:text-[#A0A0A0] focus:border-[#A8D0B8] focus:outline-none"
+          className="h-9 w-full rounded-full border border-white/15 bg-white/[0.07] px-3.5 pr-9 text-xs text-white placeholder:text-[#A0A0A0] focus:border-[#A8D0B8] focus:outline-none"
         />
         <button
           type="submit"

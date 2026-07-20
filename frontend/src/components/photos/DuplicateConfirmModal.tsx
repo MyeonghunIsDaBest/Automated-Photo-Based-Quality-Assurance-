@@ -46,7 +46,7 @@ export default function DuplicateConfirmModal({
         </div>
       }
     >
-      <p className="text-sm leading-relaxed text-slate-600">
+      <p className="text-sm leading-relaxed text-[#6B6B6B]">
         Found {duplicates.length} photo{duplicates.length === 1 ? '' : 's'} in this project with
         a near-identical perceptual hash. Re-uploading will run a fresh AI analysis and create
         a new gallery entry. <em>Skip</em> if it's the same shot you've already filed.
@@ -57,7 +57,7 @@ export default function DuplicateConfirmModal({
           <DupRow key={photo.id} photo={photo} distance={distance} />
         ))}
         {duplicates.length > MAX_THUMBS && (
-          <li className="rounded-md border border-dashed border-slate-200 px-3 py-2 text-center text-xs text-slate-500">
+          <li className="rounded-md border border-dashed border-[#E6E1D4] px-3 py-2 text-center text-xs text-[#6B6B6B]">
             + {duplicates.length - MAX_THUMBS} more
           </li>
         )}
@@ -88,8 +88,8 @@ function DupRow({ photo, distance }: { photo: PhotoRow; distance: number }) {
     'bg-amber-100 text-amber-700';
 
   return (
-    <li className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-2">
-      <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center overflow-hidden rounded-md bg-slate-100">
+    <li className="flex items-center gap-3 rounded-lg border border-[#E6E1D4] bg-white p-2">
+      <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center overflow-hidden rounded-md bg-[#F0EDE4]">
         {thumbUrl && !thumbErr ? (
           <img
             src={thumbUrl}
@@ -98,12 +98,12 @@ function DupRow({ photo, distance }: { photo: PhotoRow; distance: number }) {
             onError={() => setThumbErr(true)}
           />
         ) : (
-          <ImageOff className="h-5 w-5 text-slate-400" aria-hidden />
+          <ImageOff className="h-5 w-5 text-[#A0A0A0]" aria-hidden />
         )}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-slate-900">{photo.filename}</p>
-        <p className="truncate text-xs text-slate-500">
+        <p className="truncate text-sm font-medium text-[#1A1A1A]">{photo.filename}</p>
+        <p className="truncate text-xs text-[#6B6B6B]">
           {photo.uploaded_at ? new Date(photo.uploaded_at).toLocaleDateString() : '—'}
           {photo.task_id ? ' · attached to a task' : ' · unattached'}
         </p>

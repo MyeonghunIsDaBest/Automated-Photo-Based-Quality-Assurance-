@@ -11,7 +11,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { supabase, supabaseConfigured } from '../supabase';
-import { getCompanyTotals } from './stock';
+import { getCompanyTotals, listStockLocations } from './stock';
 
 const NOT_CONFIGURED = new Error('Supabase is not configured.');
 
@@ -378,11 +378,30 @@ export interface LowStockItem {
 }
 
 /** Items at or below their minimum (enabled rules only), with the qty needed to
- *  reach target. Drives the low-stock dashboard. */
+ *  reach target. Drives the low-stock dashboard.
+ *
+ *  Preferred-wholesaler precedence: the rule's own supplier wins; when the rule
+ *  has none, the material's supplier (set by the catalogue import / material
+ *  form) is used — so a wholesaler-linked import groups restock POs correctly
+ *  without hand-setting hundreds of rules. The rules editor still overrides. */
 export async function getLowStock(): Promise<LowStockItem[]> {
   if (!supabaseConfigured()) return [];
   const [totals, rules] = await Promise.all([getCompanyTotals(), listReorderRules()]);
   const totalById = new Map(totals.map((t) => [t.materialId, t]));
+
+  // Fallback supplier ids — one slim query over materials that HAVE a supplier.
+  const materialSupplier = new Map<string, string>();
+  if (rules.some((r) => r.reorderEnabled && r.supplierId === null)) {
+    const { data } = await supabase
+      .from('materials')
+      .select('id, supplier_id')
+      .not('supplier_id', 'is', null);
+    for (const raw of data ?? []) {
+      const r = raw as { id: string; supplier_id: string | null };
+      if (r.supplier_id) materialSupplier.set(r.id, r.supplier_id);
+    }
+  }
+
   const out: LowStockItem[] = [];
   for (const rule of rules) {
     if (!rule.reorderEnabled) continue;
@@ -398,11 +417,155 @@ export async function getLowStock(): Promise<LowStockItem[]> {
       minQty: rule.minQty,
       targetQty: rule.targetQty,
       needed: Math.max(0, Math.round((rule.targetQty - total) * 100) / 100),
-      supplierId: rule.supplierId,
+      supplierId: rule.supplierId ?? materialSupplier.get(rule.materialId) ?? null,
       costPrice: t?.costPrice ?? null,
     });
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// ---------------------------------------------------------------------------
+// Per-LOCATION minimums (migration 99) — "does THIS building/van hold enough?"
+//
+// Additive to the company rules above, never merged with them: a below-min
+// FACTORY/WAREHOUSE row suggests a PURCHASE to that location; a below-min
+// van/storage/site row suggests a TRANSFER from the factory. Nothing automatic.
+// ---------------------------------------------------------------------------
+
+interface LocationReorderRuleRow {
+  location_id: string;
+  material_id: string;
+  min_qty: number;
+  target_qty: number;
+}
+
+export interface LocationReorderRule {
+  locationId: string;
+  materialId: string;
+  minQty: number;
+  targetQty: number;
+}
+
+export async function listLocationReorderRules(locationId?: string): Promise<LocationReorderRule[]> {
+  if (!supabaseConfigured()) return [];
+  let q = supabase.from('stock_location_reorder_rules').select('location_id, material_id, min_qty, target_qty');
+  if (locationId) q = q.eq('location_id', locationId);
+  const { data, error } = await q;
+  if (error) throw error;
+  return ((data ?? []) as LocationReorderRuleRow[]).map((r) => ({
+    locationId: r.location_id,
+    materialId: r.material_id,
+    minQty: Number(r.min_qty),
+    targetQty: Number(r.target_qty),
+  }));
+}
+
+export async function upsertLocationReorderRule(
+  locationId: string,
+  materialId: string,
+  patch: { minQty?: number; targetQty?: number },
+): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const uid = (await supabase.auth.getUser()).data.user?.id ?? null;
+  const { error } = await supabase
+    .from('stock_location_reorder_rules')
+    .upsert(
+      {
+        location_id: locationId,
+        material_id: materialId,
+        ...(patch.minQty !== undefined && { min_qty: patch.minQty }),
+        ...(patch.targetQty !== undefined && { target_qty: patch.targetQty }),
+        created_by: uid,
+      },
+      { onConflict: 'location_id,material_id' },
+    );
+  if (error) throw error;
+}
+
+export type ShortfallAction = 'order' | 'transfer';
+
+export interface LocationShortfall {
+  locationId: string;
+  locationName: string;
+  locationType: string;
+  /** factory/warehouse → 'order' (buy to this location); van/storage/site →
+   *  'transfer' (move from the factory). */
+  action: ShortfallAction;
+  materialId: string;
+  name: string;
+  sku: string | null;
+  unit: string;
+  onHand: number;
+  minQty: number;
+  targetQty: number;
+  /** Qty to reach target (or min when no target is set), clamped ≥ 0. */
+  suggestedQty: number;
+  /** Transfer rows only: what the factory currently holds — honesty about
+   *  whether the suggested move is even coverable. Null on order rows. */
+  factoryOnHand: number | null;
+}
+
+/** PURE — exported for single-fork tests. Rules for inactive/missing locations
+ *  are ignored; a material with no level row at its ruled location counts as 0. */
+export function computeLocationShortfalls(
+  rules: LocationReorderRule[],
+  locations: Array<{ id: string; name: string; type: string; isActive: boolean }>,
+  totals: Array<{ materialId: string; name: string; sku: string | null; unit: string; byLocation: Array<{ locationId: string; qty: number }> }>,
+): LocationShortfall[] {
+  const locById = new Map(locations.map((l) => [l.id, l]));
+  const factory = locations.find((l) => l.type === 'factory' && l.isActive) ?? null;
+
+  const qtyByLocMat = new Map<string, number>();
+  const meta = new Map<string, { name: string; sku: string | null; unit: string }>();
+  for (const t of totals) {
+    meta.set(t.materialId, { name: t.name, sku: t.sku, unit: t.unit });
+    for (const bl of t.byLocation) {
+      qtyByLocMat.set(`${bl.locationId}:${t.materialId}`, bl.qty);
+    }
+  }
+
+  const out: LocationShortfall[] = [];
+  for (const rule of rules) {
+    const loc = locById.get(rule.locationId);
+    if (!loc || !loc.isActive) continue;
+    if (rule.minQty <= 0) continue; // zeroed rule = removed
+    const onHand = qtyByLocMat.get(`${rule.locationId}:${rule.materialId}`) ?? 0;
+    if (onHand >= rule.minQty) continue;
+    const m = meta.get(rule.materialId);
+    const action: ShortfallAction = loc.type === 'factory' ? 'order' : 'transfer';
+    const goal = rule.targetQty > 0 ? rule.targetQty : rule.minQty;
+    out.push({
+      locationId: loc.id,
+      locationName: loc.name,
+      locationType: loc.type,
+      action,
+      materialId: rule.materialId,
+      name: m?.name ?? '(item)',
+      sku: m?.sku ?? null,
+      unit: m?.unit ?? 'ea',
+      onHand,
+      minQty: rule.minQty,
+      targetQty: rule.targetQty,
+      suggestedQty: Math.max(0, Math.round((goal - onHand) * 100) / 100),
+      factoryOnHand: action === 'transfer'
+        ? (factory ? (qtyByLocMat.get(`${factory.id}:${rule.materialId}`) ?? 0) : null)
+        : null,
+    });
+  }
+  return out.sort((a, b) => a.locationName.localeCompare(b.locationName) || a.name.localeCompare(b.name));
+}
+
+/** Every ruled location currently below one of its minimums, with the
+ *  type-appropriate suggested action. Renders beside getLowStock's company
+ *  list on the Restock tab — the two are never merged. */
+export async function getLocationShortfalls(): Promise<LocationShortfall[]> {
+  if (!supabaseConfigured()) return [];
+  const [rules, locations, totals] = await Promise.all([
+    listLocationReorderRules(),
+    listStockLocations(),
+    getCompanyTotals(),
+  ]);
+  return computeLocationShortfalls(rules, locations, totals);
 }
 
 /** Which items are already on an OPEN restock PO (suggested/draft/sent/partial):

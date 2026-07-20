@@ -18,6 +18,8 @@ import { useProjectConfig } from '../../../lib/hooks/useProjectConfig';
 import { useTaskAiSignal } from '../../../lib/hooks/useTaskAiSignal';
 import ProgressionBreakdown from '../../../components/progression/ProgressionBreakdown';
 import MotionDrawer from '../../../components/ui/MotionDrawer';
+import { cn } from '../../../lib/cn';
+import { inputField } from '../components/ledger';
 import type { ProjectConfig } from '../../../types';
 
 interface TaskDrawerProps {
@@ -64,6 +66,9 @@ export default function TaskDrawer({
   const [activeTab, setActiveTab] = useState<SubTab>('details');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Mirrors PhotosPane's upload `busy` flag so the drawer-level close guard
+  // can see it (the state itself stays inside the pane).
+  const [uploadBusy, setUploadBusy] = useState(false);
 
   // Per-project config drives the progression UI mode (manual slider vs.
   // signal-driven breakdown) and whether the manager force-floor is allowed.
@@ -74,9 +79,6 @@ export default function TaskDrawer({
   // commits don't race on stale React state.
   const latestTaskRef = useRef<Task | null>(task);
   useEffect(() => { latestTaskRef.current = task; }, [task]);
-
-  // Restore focus to whatever opened the drawer.
-  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
 
   // Reset state when the drawer opens or the task identity changes.
   useEffect(() => {
@@ -114,30 +116,13 @@ export default function TaskDrawer({
     setConfirmDelete(false);
   }, [isOpen, task?.id]);
 
-  // Body scroll lock + focus restore.
-  useEffect(() => {
-    if (!isOpen) return;
-    previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = prevOverflow;
-      previouslyFocusedRef.current?.focus?.();
-    };
-  }, [isOpen]);
-
-  // Escape to close.
-  useEffect(() => {
-    if (!isOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [isOpen, onClose]);
+  // Scroll lock, Esc-to-close, and focus restore all live in MotionDrawer.
+  // Busy guard: Esc / backdrop / X no-op while a save or photo upload is in
+  // flight so the write can't be orphaned mid-drawer-close.
+  const guardedClose = useCallback(() => {
+    if (saving || uploadBusy) return;
+    onClose();
+  }, [saving, uploadBusy, onClose]);
 
   // Auto-save in edit mode. In create mode, the user clicks Save explicitly.
   // Uses latestTaskRef so concurrent commits don't drop earlier field changes.
@@ -193,7 +178,7 @@ export default function TaskDrawer({
   return (
     <MotionDrawer
       open={isOpen}
-      onClose={onClose}
+      onClose={guardedClose}
       // Clicking a sub-task surfaces the editor as a centered popup — feels
       // more "open this thing for a moment" than a persistent side panel,
       // and matches the PhaseEditModal pattern used elsewhere in the Gantt.
@@ -202,9 +187,9 @@ export default function TaskDrawer({
       ariaLabel="Task"
     >
         {/* Header */}
-        <header className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
+        <header className="flex items-start justify-between gap-3 border-b border-[#EFEBE0] px-5 py-4">
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-slate-500">
+            <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-[#6B6B6B]">
               {isCreate ? 'New task' : 'Task'}
             </p>
             {isCreate ? (
@@ -213,7 +198,7 @@ export default function TaskDrawer({
                 value={draft.name ?? ''}
                 onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
                 placeholder="Task name…"
-                className="mt-1 w-full border-0 bg-transparent text-lg font-semibold text-slate-900 placeholder:text-slate-300 focus:outline-none"
+                className="mt-1 w-full border-0 bg-transparent text-lg font-semibold text-[#1A1A1A] placeholder:text-[#D8D2C4] focus:outline-none"
                 autoFocus
               />
             ) : (
@@ -228,14 +213,14 @@ export default function TaskDrawer({
                   setDraft((d) => ({ ...d, name: trimmed }));
                 }}
                 disabled={readOnly}
-                className="mt-1 w-full border-0 bg-transparent text-lg font-semibold text-slate-900 focus:outline-none disabled:text-slate-700"
+                className="mt-1 w-full border-0 bg-transparent text-lg font-semibold text-[#1A1A1A] focus:outline-none disabled:text-[#3A3A3A]"
               />
             )}
           </div>
           <button
             type="button"
-            onClick={onClose}
-            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 active:bg-slate-200"
+            onClick={guardedClose}
+            className="grid min-h-11 min-w-11 flex-shrink-0 place-items-center rounded-md text-[#A0A0A0] hover:bg-[#F0EDE4] hover:text-[#3A3A3A] active:bg-[#E6E1D4]"
             aria-label="Close"
           >
             <X className="h-4 w-4" />
@@ -244,7 +229,7 @@ export default function TaskDrawer({
 
         {/* Sub-tab strip */}
         {!isCreate && (
-          <nav className="flex-shrink-0 border-b border-slate-100 px-2 py-2" aria-label="Task sections">
+          <nav className="flex-shrink-0 border-b border-[#EFEBE0] px-2 py-2" aria-label="Task sections">
             <div className="-mx-2 overflow-x-auto px-2">
               <div className="inline-flex items-center gap-1" role="tablist">
                 {TABS.map((t) => {
@@ -259,8 +244,8 @@ export default function TaskDrawer({
                       onClick={() => setActiveTab(t.id)}
                       className={`flex flex-shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
                         isActive
-                          ? 'bg-slate-900 text-white'
-                          : 'text-slate-600 hover:bg-slate-100'
+                          ? 'bg-[#1A1A1A] text-white'
+                          : 'text-[#3A3A3A] hover:bg-[#F0EDE4]'
                       }`}
                     >
                       <Icon className="h-3.5 w-3.5" />
@@ -291,7 +276,12 @@ export default function TaskDrawer({
             <ChecklistPane taskId={task.id} phase={task.phase} readOnly={readOnly} />
           )}
           {!isCreate && activeTab === 'photos' && task && (
-            <PhotosPane task={task} projectId={projectId} currentUser={currentUser} />
+            <PhotosPane
+              task={task}
+              projectId={projectId}
+              currentUser={currentUser}
+              onBusyChange={setUploadBusy}
+            />
           )}
           {!isCreate && activeTab === 'drawings' && task && (
             <TaskDrawingsPane
@@ -304,10 +294,10 @@ export default function TaskDrawer({
         </div>
 
         {/* Footer */}
-        <footer className="flex flex-shrink-0 items-center justify-between gap-3 border-t border-slate-100 px-5 py-3">
+        <footer className="flex flex-shrink-0 items-center justify-between gap-3 border-t border-[#EFEBE0] px-5 py-3">
           {isCreate ? (
             <>
-              <span className="text-xs text-slate-400">Saving creates the Gantt bar.</span>
+              <span className="text-xs text-[#A0A0A0]">Saving creates the Gantt bar.</span>
               <div className="flex items-center gap-2">
                 <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
                 <Button onClick={handleCreate} disabled={saving || !draft.name?.trim()}>
@@ -317,20 +307,20 @@ export default function TaskDrawer({
             </>
           ) : (
             <>
-              <span className="text-xs text-slate-400" aria-live="polite">
+              <span className="text-xs text-[#A0A0A0]" aria-live="polite">
                 {saving ? 'Saving…' : 'Auto-saves on blur'}
               </span>
               {!readOnly && canDelete && task && (
                 confirmDelete ? (
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-red-600">Delete this task?</span>
+                    <span className="text-xs text-[#C44545]">Delete this task?</span>
                     <Button variant="outline" size="sm" onClick={() => setConfirmDelete(false)}>
                       Cancel
                     </Button>
                     <button
                       type="button"
                       onClick={async () => { await onDelete(task.id); onClose(); }}
-                      className="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 active:bg-red-800"
+                      className="inline-flex items-center gap-1.5 rounded-md bg-[#C44545] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#B03D3D] active:bg-[#9A3535]"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                       Confirm
@@ -340,7 +330,7 @@ export default function TaskDrawer({
                   <button
                     type="button"
                     onClick={() => setConfirmDelete(true)}
-                    className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-red-50 hover:text-red-600"
+                    className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-[#6B6B6B] hover:bg-[#FBE5E5] hover:text-[#C44545]"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                     Delete task
@@ -419,7 +409,7 @@ function DetailsPane({
           value={draft.phase ?? DEFAULT_PHASE}
           onChange={(e) => commitField('phase', e.target.value as ConstructionPhase)}
           disabled={readOnly}
-          className="block w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm capitalize shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:bg-slate-50"
+          className={cn(inputField, 'capitalize')}
         >
           {PHASES.map((p) => (
             <option key={p} value={p}>{p}</option>
@@ -450,7 +440,7 @@ function DetailsPane({
         </Field>
       </div>
       {dateError && (
-        <p className="-mt-3 flex items-center gap-1 text-xs text-red-600">
+        <p className="-mt-3 flex items-center gap-1 text-xs text-[#C44545]">
           <AlertCircle className="h-3 w-3" />
           {dateError}
         </p>
@@ -465,7 +455,7 @@ function DetailsPane({
             commitField('zoneId', (v || undefined) as Task['zoneId']);
           }}
           disabled={readOnly}
-          className="block w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:bg-slate-50"
+          className={inputField}
         >
           <option value="">Project-wide</option>
           {zones.map((z) => (
@@ -479,7 +469,7 @@ function DetailsPane({
           value={draft.status ?? 'not_started'}
           onChange={(e) => commitField('status', e.target.value as Task['status'])}
           disabled={readOnly}
-          className="block w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm capitalize shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:bg-slate-50"
+          className={cn(inputField, 'capitalize')}
         >
           <option value="not_started">Not started</option>
           <option value="in_progress">In progress</option>
@@ -504,14 +494,14 @@ function DetailsPane({
             }}
             targetPhotos={projectConfig.targetPhotosPerTask}
           />
-          <p className="mt-1 text-[11px] text-slate-500">
+          <p className="mt-1 text-[11px] text-[#6B6B6B]">
             AI signal: {aiSignal.sampleSize === 0
               ? 'no qualifying analyses yet'
               : `${aiSignal.signalPct}% across ${aiSignal.sampleSize} analyses`}
             {aiSignal.lastAnalysedAt && ` · last ${format(parseISO(aiSignal.lastAnalysedAt), 'MMM d, h:mm a')}`}
           </p>
           {progressionMode === 'full_auto' && (
-            <p className="mt-1 text-[11px] text-slate-500">
+            <p className="mt-1 text-[11px] text-[#6B6B6B]">
               Full-auto mode — progress is derived from the signals above. Manual override is disabled for this project.
             </p>
           )}
@@ -521,7 +511,7 @@ function DetailsPane({
       {showSlider && (
         <Field label={`${sliderLabelPrefix} — ${draft.percentComplete ?? 0}%`}>
           {!isCreate && isOwner && (
-            <p className="mb-1.5 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700 ring-1 ring-amber-200">
+            <p className="mb-1.5 inline-flex items-center gap-1 rounded-full bg-[#F9EFD9] px-2 py-0.5 text-[10px] font-medium text-[#9A6B12] ring-1 ring-[#F0D5A8]">
               <Lock className="h-3 w-3" />
               Override · bypasses AI signal
             </p>
@@ -539,7 +529,7 @@ function DetailsPane({
             onKeyUp={(e) => !isCreate && commitPercent((e.target as HTMLInputElement).value)}
             onBlur={(e) => !isCreate && commitPercent(e.target.value)}
             disabled={readOnly}
-            className="w-full accent-emerald-600"
+            className="w-full accent-[#2F8F5C]"
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={draft.percentComplete ?? 0}
@@ -553,13 +543,13 @@ function DetailsPane({
             className="group relative"
             title="Progress is owner-only. It moves automatically from AI analyses, photo coverage, and checklist completion."
           >
-            <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+            <div className="h-2 overflow-hidden rounded-full bg-[#F0EDE4]">
               <div
-                className="h-2 rounded-full bg-emerald-500 transition-all"
+                className="h-2 rounded-full bg-[#2F8F5C] transition-all"
                 style={{ width: `${task.percentComplete}%` }}
               />
             </div>
-            <p className="mt-1.5 flex items-center gap-1 text-[11px] text-slate-500">
+            <p className="mt-1.5 flex items-center gap-1 text-[11px] text-[#6B6B6B]">
               <Lock className="h-3 w-3" />
               Owner-only override. Progress is derived from AI confidence, photos, and checklist.
             </p>
@@ -568,14 +558,14 @@ function DetailsPane({
       )}
 
       {!isCreate && task && (
-        <div className="grid grid-cols-2 gap-3 rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
+        <div className="grid grid-cols-2 gap-3 rounded-lg bg-[#FAF8F2] px-3 py-2 text-[11px] text-[#6B6B6B]">
           <div>
-            <p className="font-medium uppercase tracking-wider text-slate-400">Photos</p>
-            <p className="mt-0.5 tabular-nums text-slate-700">{task.photoCount}</p>
+            <p className="font-medium uppercase tracking-wider text-[#A0A0A0]">Photos</p>
+            <p className="mt-0.5 tabular-nums text-[#3A3A3A]">{task.photoCount}</p>
           </div>
           <div>
-            <p className="font-medium uppercase tracking-wider text-slate-400">Updated</p>
-            <p className="mt-0.5 text-slate-700">
+            <p className="font-medium uppercase tracking-wider text-[#A0A0A0]">Updated</p>
+            <p className="mt-0.5 text-[#3A3A3A]">
               {task.lastUpdated ? format(parseISO(task.lastUpdated), 'MMM d, h:mm a') : '—'}
             </p>
           </div>
@@ -627,13 +617,13 @@ function ChecklistPane({
       {items.length > 0 && (
         <div>
           <div className="mb-1 flex items-baseline justify-between">
-            <p className="text-xs font-medium text-slate-500">
+            <p className="text-xs font-medium text-[#6B6B6B]">
               {done} of {items.length} done
             </p>
-            <span className="tabular-nums text-xs text-slate-500">{pct}%</span>
+            <span className="tabular-nums text-xs text-[#6B6B6B]">{pct}%</span>
           </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
-            <div className="h-1.5 rounded-full bg-emerald-500 transition-all" style={{ width: `${pct}%` }} />
+          <div className="h-1.5 overflow-hidden rounded-full bg-[#F0EDE4]">
+            <div className="h-1.5 rounded-full bg-[#2F8F5C] transition-all" style={{ width: `${pct}%` }} />
           </div>
         </div>
       )}
@@ -654,7 +644,7 @@ function ChecklistPane({
 
       {!readOnly && relevantTemplates.length > 0 && (
         <div className="flex items-center gap-2">
-          <label htmlFor="checklist-template" className="whitespace-nowrap text-xs font-medium text-slate-500">
+          <label htmlFor="checklist-template" className="whitespace-nowrap text-xs font-medium text-[#6B6B6B]">
             Apply template
           </label>
           <select
@@ -664,7 +654,7 @@ function ChecklistPane({
               if (e.target.value) applyTemplate(e.target.value);
               e.target.value = '';
             }}
-            className="flex-1 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-700 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            className={cn(inputField, 'flex-1 px-2 py-1.5 text-[#3A3A3A]')}
           >
             <option value="">Choose a template…</option>
             {relevantTemplates.map((t) => (
@@ -677,29 +667,29 @@ function ChecklistPane({
       )}
 
       {items.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50/60 px-4 py-6 text-center text-sm text-slate-400">
+        <p className="rounded-lg border border-dashed border-[#E6E1D4] bg-[#FAF8F2]/60 px-4 py-6 text-center text-sm text-[#A0A0A0]">
           No sub-steps yet. Break this task down for cleaner tracking.
         </p>
       ) : (
         <ul className="space-y-1">
           {items.map((item) => (
-            <li key={item.id} className="group flex items-center gap-3 rounded-md px-2 py-1.5 hover:bg-slate-50">
+            <li key={item.id} className="group flex items-center gap-3 rounded-md px-2 py-1.5 hover:bg-[#FAF8F2]">
               <input
                 type="checkbox"
                 checked={item.done}
                 onChange={() => toggleItem(item.id)}
                 disabled={readOnly}
-                className="h-4 w-4 cursor-pointer accent-emerald-600"
+                className="h-4 w-4 cursor-pointer accent-[#2F8F5C]"
                 aria-label={item.text}
               />
-              <span className={`flex-1 text-sm ${item.done ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
+              <span className={`flex-1 text-sm ${item.done ? 'text-[#A0A0A0] line-through' : 'text-[#3A3A3A]'}`}>
                 {item.text}
               </span>
               {!readOnly && (
                 <button
                   type="button"
                   onClick={() => removeItem(item.id)}
-                  className="invisible inline-flex h-7 w-7 items-center justify-center rounded text-slate-400 hover:bg-red-50 hover:text-red-500 group-hover:visible focus:visible"
+                  className="invisible inline-flex h-7 w-7 items-center justify-center rounded text-[#A0A0A0] hover:bg-[#FBE5E5] hover:text-[#C44545] group-hover:visible focus:visible"
                   aria-label={`Remove ${item.text}`}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -719,11 +709,13 @@ function ChecklistPane({
 // progress hooks downstream can pick it up). Documents (PDF/DOCX) belong on
 // the Plans tab and are routed via Files; the helper text reflects that.
 function PhotosPane({
-  task, projectId, currentUser,
+  task, projectId, currentUser, onBusyChange,
 }: {
   task: Task;
   projectId: string;
   currentUser: User | null;
+  /** Mirrors the upload `busy` flag up to the drawer's close guard. */
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const storePhotos = useAppStore((s) => s.photos);
   const taskPhotos = useMemo(
@@ -748,6 +740,7 @@ function PhotosPane({
       return;
     }
     setBusy(true);
+    onBusyChange?.(true);
     setError(null);
     try {
       for (const file of Array.from(files)) {
@@ -768,6 +761,7 @@ function PhotosPane({
       setError(e instanceof Error ? e.message : 'Upload failed.');
     } finally {
       setBusy(false);
+      onBusyChange?.(false);
       if (inputRef.current) inputRef.current.value = '';
     }
   };
@@ -782,7 +776,7 @@ function PhotosPane({
             type="button"
             onClick={triggerPicker}
             disabled={busy}
-            className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-200 px-4 py-5 text-sm text-slate-600 transition-colors hover:border-emerald-400 hover:bg-emerald-50/40 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-[#E6E1D4] px-4 py-5 text-sm text-[#3A3A3A] transition-colors hover:border-[#2F8F5C] hover:bg-[#E1F3EA]/40 hover:text-[#1A1A1A] disabled:cursor-not-allowed disabled:opacity-60"
           >
             <UploadIcon className="h-4 w-4" />
             {busy ? 'Uploading…' : 'Upload photo or video'}
@@ -795,24 +789,24 @@ function PhotosPane({
             onChange={(e) => handleFiles(e.target.files)}
             className="hidden"
           />
-          <p className="mt-1.5 text-[10px] text-slate-400">
+          <p className="mt-1.5 text-[10px] text-[#A0A0A0]">
             Images and videos attach to this task. For PDFs / docs, use the Plans tab.
           </p>
           {error && (
-            <p className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+            <p className="mt-2 rounded-md border border-[#F0C9C9] bg-[#FBE5E5] px-3 py-2 text-xs text-[#C44545]">
               {error}
             </p>
           )}
         </div>
       ) : (
-        <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-          <Lock className="h-3.5 w-3.5 text-slate-400" />
+        <div className="flex items-center gap-2 rounded-md border border-[#E6E1D4] bg-[#FAF8F2] px-3 py-2 text-xs text-[#6B6B6B]">
+          <Lock className="h-3.5 w-3.5 text-[#A0A0A0]" />
           Your role can view photos but not upload to this task.
         </div>
       )}
 
       {totalCount === 0 ? (
-        <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50/60 px-4 py-6 text-center text-sm text-slate-400">
+        <p className="rounded-lg border border-dashed border-[#E6E1D4] bg-[#FAF8F2]/60 px-4 py-6 text-center text-sm text-[#A0A0A0]">
           No photos yet. Upload one against this task and the bar advances automatically.
         </p>
       ) : (
@@ -823,7 +817,7 @@ function PhotosPane({
               href={p.url ?? '#'}
               target="_blank"
               rel="noopener noreferrer"
-              className="group relative aspect-square overflow-hidden rounded-md bg-slate-100"
+              className="group relative aspect-square overflow-hidden rounded-md bg-[#F0EDE4]"
             >
               {p.url ? (
                 <img
@@ -834,7 +828,7 @@ function PhotosPane({
                 />
               ) : (
                 <div className="flex h-full w-full items-center justify-center">
-                  <ImageIcon className="h-6 w-6 text-slate-300" />
+                  <ImageIcon className="h-6 w-6 text-[#D8D2C4]" />
                 </div>
               )}
               <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-2">
@@ -850,7 +844,7 @@ function PhotosPane({
               href={p.storageUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="group relative aspect-square overflow-hidden rounded-md bg-slate-100"
+              className="group relative aspect-square overflow-hidden rounded-md bg-[#F0EDE4]"
             >
               <img
                 src={p.thumbnailUrl ?? p.storageUrl}
@@ -876,7 +870,7 @@ function PhotosPane({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-medium text-slate-600">{label}</span>
+      <span className="mb-1 block text-xs font-medium text-[#6B6B6B]">{label}</span>
       {children}
     </label>
   );

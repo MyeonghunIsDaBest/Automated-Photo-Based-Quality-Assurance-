@@ -4096,3 +4096,203 @@ Research-first phase, done to the edge of the externals. No code shipped — the
 - **Costing redesign after critique**: the "valuation adjustment movement" idea from v1 was proven unimplementable (would corrupt tallies or no-op); v2 instead re-costs receipts only when the invoice confirms before receive, routes post-receive deltas to the exceptions queue, and adds the real fix — a confirm-time "update material cost" toggle, since the catalogue master cost is what actually drives valuation AND future job costing. Job POs: recommended model = receipts stock the job's **site location** (P5 synergy) and job cost stays usage-only, making double-counting structurally impossible; SimPro-style cost-at-invoice offered to Luke as the priced alternative.
 - **Phase re-split** (the critique showed the queue + memory were hiding a monster): P7.1a lib → P7.1b manual-match UI → P7.1c memory+queue → P7.2 ledger rework (2–3 sessions, honestly).
 - Interview pack (11 questions incl. pack sizes) + sample checklist ready for Jordan to run with Luke. Roadmap doc banner updated.
+
+---
+
+## 15 July 2026 — Daily report (plain English, for Luke)
+
+**Headline:** Two big pieces of work today. First, the daily overview screen ("the dashboard" — the first thing the office sees each morning) got its full redesign. Second, and much bigger, the whole **Stock & Inventory** side of the app was rebuilt around *your actual stock list* so every stock feature now lives where you'd expect it and actually does the job. Everything is finished and tested on our side. **Nothing is switched on for the real team yet** — it's sitting ready for a final review before we turn it on.
+
+### 1. The morning dashboard — redesigned
+The overview screen now reads like one clean page instead of a pile of boxes. "What's happening on site", "how the schedule's tracking", the weather, who's clocked in, the budget snapshot, and a single **Updates** panel that merges "what the team did" with "what's new in the app" behind one toggle. We also added a small touch we think earns its keep: the activity list now quietly marks **"you were last here…"**, so when someone opens it in the morning they can see at a glance what changed while they were away. One old box that showed made-up demo numbers was removed — we don't show numbers we can't stand behind.
+
+### 2. Stock & Inventory — the big one, built around your real list
+You gave us your stock list (312 items). We built the whole flow around getting it in and keeping it honest:
+
+- **Your item list imports cleanly.** All 312 items load in one go. The spreadsheet now has proper columns for the wholesaler and their item code, so the "Supplier 10023756"-style codes that were buried in the descriptions now sit in their own tidy column — ready to link each item to the wholesaler it comes from.
+- **Prices are honest.** Every item currently has our cost but no sell price yet, so the app clearly shows the *auto-calculated* sell (cost plus the standard markup) in light grey — you can tell at a glance which prices are yours and which are the formula. And there's a new one-click **"Price from cost"** button to set real sell prices in bulk whenever you're ready, which will never overwrite a price you've already set by hand.
+- **Purchase orders work properly now.** Creating an order is a clean pop-up: start typing to find an item, a job, or a wholesaler (no more scrolling giant lists), set the quantity and cost, see the running order total, and pick a "needed by" date that carries through to the email and printout. You can even add a new wholesaler on the spot without leaving the order.
+- **Nothing runs out unnoticed — per location.** This is the part you asked for: the **warehouse, each van, and every storage spot can now have its own minimum stock levels**. If the *warehouse itself* runs low it suggests a purchase order straight to it — even when the company total looks fine because the stock is all sitting out in the vans. If a *van* runs low it suggests a top-up transfer from the factory instead of a purchase. The system suggests; a person always decides.
+- **Everything's where you'd look for it.** The minimum-levels settings moved out of the buried "Settings" tab and onto the **Restock** page, right next to the low-stock list they control.
+- **The map actually works.** You can now pin the warehouse (and vans and sites) on a map, tapping the map fills in the address automatically, there's a **Directions** button that opens Google Maps, and a single map view shows every location at once.
+- **Stock-takes can be done by spreadsheet.** Download a count sheet, walk the shelves filling it in, upload it back — the app shows you exactly what's changing before anything is saved.
+
+### What we need from you (Luke)
+1. **The wholesaler names** behind those account codes (e.g. is "10023756" AWM, Rexel, etc.?). Once you tell us, one re-import links every item to its wholesaler automatically.
+2. **Six prices to confirm** — a handful of items in your list looked off (flagged "CONFIRM" in the file); we just need a yes/no on those.
+3. **Your fixed sell prices** whenever you have them — optional, since the app already quotes at cost-plus-markup in the meantime.
+
+### Status & next step
+All of the above is built and passing our internal checks, but **held back from the live team pending a review pass**. Once that's done and the two small database upgrades are applied, it goes live. After that we move on to making the Jobs board and quotes screens work smoothly on phones.
+
+---
+
+## 16–17 July 2026 — Daily report (plain English, for Luke)
+
+**Headline:** Two fronts today. First, the app now genuinely works **on phones** — the Jobs board was rebuilt for touch, and the mobile bugs Jordan found testing on a real phone (missing top bar, squashed dashboard) were tracked to their root causes and fixed. Second, our printed **quotes and invoices now wear the real Casone branding** — the template your graphic designer created is coded into the app. Everything is built and has been through a hard review; as always it's **held back from the live team** until Jordan gives the word.
+
+### 1. The Jobs board works on phones now
+The six-column job board was built for a mouse — on a phone, dragging a card simply never worked (touch screens don't fire the same events), and six columns don't fit a phone screen anyway. Now:
+
+- On a phone you see **one clean column at a time**, with a strip of **status chips** across the top (each showing a live count and its colour dot) — tap a chip, see that column. It snaps and scrolls like a native app, not a shrunk desktop page.
+- Every card gets a **"Move" button** that opens a bottom sheet listing the six statuses. It runs through exactly the same rules as desktop drag — same confirmations, same date prompt, and moves that aren't allowed show *why* instead of just refusing.
+- Touch-screen **tablets** (iPads etc.) get the Move button too, since drag doesn't fire there either. The desktop drag experience is untouched — we verified zero changes inside the drag machinery.
+- A deep review pass (17 independent checks) caught 14 issues before any user ever saw them — the biggest: the phone Move button could have quietly *un-cancelled* a cancelled job straight into "Paid". All fixed.
+
+### 2. The phone bugs from Jordan's real-device testing
+Jordan's screenshots showed the top bar vanishing and the dashboard not fitting the screen. We found the single root cause: one over-wide element was silently making the whole page wider than the screen, which slides the top bar off the side. That's now fixed **and fenced** — the app shell has a guard so no page can ever push itself wider than the screen again. Along the way:
+
+- The dashboard's activity feed now shows **real names** ("Marcus logged a delivery") instead of the unhelpful "Someone", and its styling matches the rest of the app.
+- The little **"Reconnecting…" pill** in the top bar is honest now: it only appears for a genuinely dropped live connection (or when the phone itself is offline), instead of crying wolf over things that were never going to connect.
+
+### 3. Quotes & invoices in the real Casone brand
+The designer's artwork is now the actual template the app prints:
+
+- **Page one reads instantly as Casone**: logo top-left, the big orange quote number top-right, navy section headings, the peach table header with striped rows, the solid-orange "Total (inc GST)" band, and the branded footer — the orange contact band (email / website / phone) plus the navy COMMERCIAL · RESIDENTIAL · INDUSTRIAL strip. The invoice wears the identical skin, so a customer sees one brand from quote to bill.
+- **Nothing is hard-coded.** ABN, REC licence, both phone numbers, the sales email, website, tagline, and logo all live in an editable "Print identity" section in Settings — pre-filled with Casone's real details from the artwork. Change a phone number once, every future document picks it up.
+- Browsers normally strip background colours when printing to PDF — we've forced the coloured bands to survive, and if the logo file ever fails to load, the header falls back to a clean CASONE wordmark instead of a broken-image icon.
+- All the maths, cost-centre rules, and who-may-see-costs behaviour are untouched — this was a re-skin, not a rewrite.
+
+### The safety net did its job
+After building, we ran a 12-agent adversarial review over everything above. Every confirmed finding was fixed the same day — the biggest save: a fallback for older databases would have **silently discarded settings edits** (including the pricing floor) on every save until the new database upgrade was applied. The full automated type-check across the app passes clean.
+
+### What we need
+- **Jordan**: apply the small database upgrade **#100** (plus 98–99 from the stock work, still pending) · a phone re-test pass on the dashboard + Jobs board · a print-to-PDF check in Chrome/Edge/Firefox · paste the designer's logo file link into Sales → Settings → Print identity.
+- **The designer**: the crisp logo file, then a final match-check of our coded document against the artwork.
+- **Luke** (unchanged from last report): the wholesaler names behind the account codes, and the six "CONFIRM" prices.
+
+### Status & next step
+Built, hard-reviewed, checks green, held uncommitted per the no-push rule. Next up: **Phase D** — the quotes screens on phones, plus the formal print-to-PDF quality gate.
+
+---
+
+## 17 July 2026 — Daily report (plain English, for Luke): quotes now work on phones
+
+**Headline:** The whole quoting side of the app is now phone-friendly — building a quote, editing its lines, browsing the item pickers, and the materials catalogue all work by thumb on a phone, and printing to PDF is now safe from **every** route (the Print button, the browser's own print, a phone's share sheet). Twenty-two changes, built and then put through a hard independent review that caught eleven real problems — including two that genuinely mattered — all fixed the same day. As always, **held back from the live team** until Jordan gives the word.
+
+### What changed, in plain terms
+- **Editing a quote on a phone actually works now.** The old screen was a wide desktop table you had to scroll sideways; each line is now a clean tappable card, and tapping one opens a bottom sheet with big finger-sized fields for description, quantity, and price — plus manager-only cost and markup that customers can never see. Moving a line up/down, switching its cost centre, and deleting it all live in that sheet at proper thumb sizes. Under the hood it saves through exactly the same path as the desktop table, so there's one behaviour, not two.
+- **Creating a quote on a phone stopped being a wrestle.** The New Quote window used to cram its title and four buttons onto one line; on a phone the buttons now sit in a bar at the bottom under your thumb, and every tab, checkbox, and chip is big enough to hit.
+- **The item pickers are thumb-ready.** Add buttons, favourite stars, and quantity boxes across all five pickers (Stock, Catalogue, Pre-Builds, Take Off, One-Offs) grew to proper touch size on phones — while the office keyboard shortcuts (arrow keys + Enter to add) are untouched.
+- **The quotes list and the materials catalogue got the same phone treatment** — tidy stacked rows on a phone, and the row menus now float above the page instead of being cut off. The catalogue also only draws the first 60 rows until you ask for more, so it stays quick when the full 312-item list lands.
+- **Printing is now armoured.** Before, the page only cleaned itself up when you used the app's own Print button — printing with Ctrl+P (or from a phone) would put the sidebar and menus on top of the quote. Now every route to paper produces the branded document, long quotes break cleanly across pages, and open pop-ups/toasts can never appear on a PDF.
+- **Every remaining old-style pop-up** (invoice creation, CSV export, delete confirmations, the material form) was moved onto the app's one shared dialog system — so they all close on Escape, handle keyboard focus properly, and **cannot be dismissed while they're mid-save**.
+
+### The safety net earned its keep today
+An independent five-angle review of all of the above confirmed eleven real problems before any user saw them. The two that mattered most:
+1. **Our internal prices nearly printed on customer quotes.** The new print protection was accidentally strong enough to force the hidden manager-only Cost and Markup columns back onto the page when printing via Ctrl+P. A customer would have seen our buy prices and margins, line by line. Caught and fixed.
+2. **iPhones could silently lose an edit.** Tap a price, type a new number, tap "Done" — on an iPhone the app never received the "finished typing" signal, so the sheet closed without saving while claiming "saves automatically". Every close path now saves the field first.
+The other nine: voided invoices printing washed-out grey, error messages hiding behind the edit sheet, dismissing a row menu accidentally opening the editor, a stacked pop-up losing its dimming (a stray click could wipe two half-typed forms), bulk-pricing with an empty markup box writing zero-profit prices, and four smaller polish/safety items. All fixed, and the full type-check passes clean.
+
+### What we need
+- **Jordan**: the Phase C phone pass from yesterday's list, plus the new **D23** — one end-to-end quote on a real phone: create it in the wizard → add lines from Stock/Catalogue → edit/reorder/delete via the sheet → print to PDF from the phone. And still pending: migrations 98–100 applied, the designer's logo file, the print match-check.
+- **Luke** (unchanged): the wholesaler names behind the account codes, and the six "CONFIRM" prices.
+
+### Status & next step
+No database changes this time — frontend only, so nothing for Jordan to apply for this phase. All work uncommitted per the no-push rule. Next in the programme: **Phase E** — unifying the remaining drawers onto the warm-ledger design (with **Phase G**, the customer portal's phone navigation, able to run alongside).
+
+---
+
+## 17 July 2026 — Daily report (plain English, for Luke): one look across the whole app + the customer portal on phones
+
+**Headline:** A big consistency and clean-up pass. The app had two visual "accents" living side by side — the warm cream-and-ink look we've been rolling out, and an older cold-grey look still lurking inside a lot of the pop-up panels and the project screens. Today we swept the cold grey out so the whole app reads as one product, tidied up how those pop-ups behave, and — separately — gave the **customer portal** working navigation on a phone (it had none below a certain screen size). All frontend, no database changes, and **held back from the live team** until Jordan says go.
+
+### What changed, in plain terms
+- **One consistent look, everywhere.** We counted 985 cold-grey styling instances across 106 files and cleared all but a deliberate handful (an old component set that's being deleted next phase, the marketing page, and six dead files below). The busiest panels — the Service Job drawer, and the project-side Order / Invoice / Task / Site-Diary / Delivery drawers — now match the warm look of the boards around them, and every status badge (draft / sent / paid / overdue and so on) uses the same shared colour system, so "paid" looks the same whether you see it in a list, a drawer, or on the dashboard.
+- **The pop-ups behave properly now.** A batch of older hand-built pop-ups (create-invoice, phase-edit, activity detail, the order builder, the AI photo-review panel, the "new work" creator) were moved onto the app's one shared dialog system — so they all close on Escape, handle keyboard focus correctly, and **can't be dismissed while they're mid-save**. We also removed some duplicated plumbing that had two pieces of code fighting over the same Escape key.
+- **Customer portal works on a phone.** Below a certain width the portal used to hide its sidebar and leave the customer with *no way to get around* — no menu, no way to reach Settings or Sign Out. It now has a proper bottom tab bar in the portal's own navy styling (Overview, Projects, Invoices, Documents, Account), and the Account tab brings back Settings and Sign Out. The content was re-padded so nothing hides behind the new bar.
+- **Six dead files found.** Along the way we found six components the app no longer uses at all (two old task pop-ups, an unused punch-list screen and its two panels, a superseded "What's new" card). They're verified unreachable and ready to delete — **but deleting files is a decision I'm leaving to Jordan**, so they're sitting untouched until he says the word. They cause no harm where they are.
+
+### The review, and what it caught
+Our automated review runs a fleet of independent checkers over a change this size. Today it hit a usage cap on the first go, so I ran the highest-risk checks by hand (and fixed a nested-Escape bug and three missed screens); then the full fleet ran on the retry and confirmed the rest. It gave the change a clean bill on consistency of behaviour, the customer-portal tabs, and the app-wide sweep, and flagged five things — all fixed the same session:
+- **The important one:** pressing Escape to dismiss the Sparky assistant (inside a site-diary entry) would also have closed the whole diary entry underneath it and thrown away what you'd typed. Escape there now closes only Sparky.
+- The same kind of slip in the Service Job screen: Escape inside the small "Set Financials" pop-up would have closed the entire job drawer. It now closes just the pop-up.
+- An invoice marked "disputed" showed one colour in the list and another in its detail panel — aligned.
+- An order "draft" badge and the customer portal's "Account" button each had a minor highlight/colour inconsistency — both tidied.
+
+The full type-check passed clean four times across the session. Two small pre-existing colour touch-ups were noted for the next phase rather than expanded into this one.
+
+### What we need
+- **Jordan**: a yes/no on deleting the six dead files (harmless either way); the customer-portal phone pass (**G5** — tabs, Settings/Sign-Out reachable, dev switch on top at phone width); plus everything still pending from earlier phases (migrations 98–100, the designer's logo, the print match-check, the phone quote run-through).
+- **Luke** (unchanged): the wholesaler names behind the account codes, and the six "CONFIRM" prices.
+
+### Status & next step
+Frontend only — nothing for Jordan to apply. All uncommitted per the no-push rule. Immediate next step: re-run the full fleet review after the usage cap resets; then the programme moves to **Phase F** — deleting the now-unused editorial component kit (the "old cold-grey look" set) once nothing depends on it.
+
+---
+
+## 17 July 2026 — Daily report (plain English, for Luke): Jobs and Quotes are now separate, SimPro-style
+
+**Headline:** We restructured the app to match how SimPro is laid out — **Jobs and Quotes are now their own separate areas** instead of Quotes being buried inside the Jobs screen. Invoices and the parts Catalogue got their own areas too. And the sidebar now has **hover menus**: point at Jobs, Quotes, or Invoices and a panel opens showing the sub-lists (Open, Pending, Paid, and so on) plus one-click "Create new" buttons. Everything is built, type-checked, and put through a hard review; **held back from the live team** until Jordan applies three small database upgrades and does a pass.
+
+### What changed, in plain terms
+- **Quotes is its own place now** (`/quotes`), with SimPro's sub-lists: Open, Progress, Approved, Complete, and Closed/Archived. A quote can now be **filed away ("archived")** without losing whether it was won or lost.
+- **Invoices is its own place** (`/invoices`): Open, Overdue, Paid, Draft, and Variations.
+- **Catalogue is its own place** (`/catalogue`) — the parts & labour master, reachable directly since both quoting and stock use it.
+- **The old "Sales" screen still works** — every old link quietly forwards to the right new place, so nothing anyone had bookmarked breaks.
+- **The Jobs board dropped its Quotes tab** (quotes live in their own area now) and kept Board / Projects / Sim-Pro.
+- **Sidebar hover menus** on Jobs, Quotes, and Invoices — each opens a two-column panel (jump to a sub-list on the left, "Create new" on the right). On a phone the same panel opens as a tap-up sheet. Per Jordan's tweak, the Jobs menu is trimmed to Job Board / Pending / In progress / Complete / Invoiced / Archived / Projects, and its create actions are Service job / Project job / Gantt project.
+- **New job options are real, not cosmetic:** the New Job form now lets you mark a job as a **subcontractor** job (with the sub's name), tag it as **project** work, or mark it **prepaid** — a prepaid job raises its invoice on the spot.
+
+### The review caught six things — all fixed
+An independent five-angle review confirmed the Sales→Quotes/Invoices forwarding, the permission gates, and the new billing logic were all clean, and flagged six fixable issues — every one fixed the same session. The one that mattered most: a **prepaid job could have been invoiced a second time** at completion (the customer would get two bills) — the invoicing step now refuses to raise a second invoice when one already exists. The others were menu items that didn't do anything on repeat clicks, a duplicated filter row, and a couple of stale links — all closed. The full type-check passes clean.
+
+### What we need
+- **Jordan:** apply database upgrades **101, 102, 103** (quote archive, contractor flag, prepaid flag), then walk the flows on desktop + phone. Two honest notes: (a) the Jobs "Pending/In-progress/Complete/Invoiced" menu items now focus that one column — a light version of filtering; (b) the "archive a quote" button isn't wired to a screen yet (the plumbing is in), so quotes can't actually be archived by a user until that button lands.
+- **Luke** (unchanged): the wholesaler names + the six "CONFIRM" prices.
+
+### Status & next step
+Built, reviewed, type-check green, held uncommitted per the no-push rule. This was the big SimPro-alignment push; smaller follow-ups (the archive button, full kanban filtering, the flyout's keyboard focus) are noted for later.
+
+---
+
+## 17 July 2026 — Daily report (plain English, for Luke): the Stock "Overview" is now a real overview
+
+**Headline:** The Stock **Overview** screen used to greet anyone with an empty stock list by showing a "Let's get your stock counted" **to-do checklist** — instead of an actual overview. That's fine for day one, but it made the page look like a helper rather than the dashboard it's meant to be. Now the overview always shows the real thing — the headline numbers plus a **breakdown by warehouse** (the factory and each van) — and the old checklist has become a **"Setup guide" button** a new starter can open any time. While in there we also fixed two nagging layout problems: the **empty gap in the sidebar** and a **dead scroll strip at the bottom of pages on phones**. All built, type-checked clean, and held back per the no-push rule.
+
+### What changed, in plain terms
+- **The Overview is an overview again.** Even before a single item is counted, the page shows the real layout — total items, units on hand, stock value, number of locations — with honest zeros, rather than hiding all that behind a checklist.
+- **New "Warehouses" panel.** A tidy card that breaks stock down **by location** — the factory and each van — showing how many units, how many different items, and how much stock value sits in each. Empty vans show a clean "0" instead of disappearing, so nothing looks missing.
+- **A friendlier empty screen.** When nothing's been counted yet, the page shows a calm "Nothing counted yet" note with two buttons — open the setup guide, or jump straight to counting the factory — instead of a search bar and a blank table.
+- **The setup checklist is now a pop-up helper.** The original three-step "get your stock counted" guide still exists, but as a **Setup guide button** at the top of the Overview. A new team member can reopen the walk-through whenever they like, and tapping any step both takes them there and closes the pop-up.
+- **Sidebar gap fixed.** There was a stubborn empty space in the left menu between the last item and the notifications/profile block at the bottom. The menu now flows naturally from top to bottom with the spare room sitting quietly at the very bottom of the rail — no more hole in the middle. This was one shared menu, so it's fixed on **every** screen at once.
+- **Phone "dead scroll" fixed.** On phones, several pages could be scrolled down about an inch past their content into empty space — caused by the page reserving a full screen's height *underneath* the phone's top bar. Five screens (Stock, Jobs, Quotes, Invoices, Catalogue) were corrected to match the Dashboard, which never had the problem.
+
+### A note on safety
+Nothing about how stock is actually tracked was touched — the counts, the van tallies, the live updates all work exactly as before. The new Warehouses panel is just a **read-only view** that adds up numbers the app already had. The two link fixes point the setup steps at the new standalone Catalogue page instead of the old Sales redirect.
+
+### What we need
+- **Jordan:** a quick pass — open Stock with an empty list (you should see the real overview and the gentle prompt, not the old checklist), tap **Setup guide** to confirm the pop-up opens and a step both navigates and closes it, and check that the sidebar has no gap and phones have no empty strip under any page.
+- Nothing to apply in the database for this one — it's all screen work.
+
+### Status & next step
+Frontend only, no database changes, all uncommitted per the no-push rule; the full type-check passed clean. This closes the "make Stock read like the rest of the product" thread and clears the two layout gremlins that were showing up across the app.
+
+---
+
+## 17 July 2026 — Daily report (plain English, for Luke): the imported stock list now pages, and locations can be tidied up
+
+**Headline:** Now that the stock list is imported, the Stock **Overview** shows it **10 items to a page** with Next / Prev buttons — same feel as the Service Jobs board — so a long wholesaler list isn't one giant scroll. And each **location card** (vans, sites, storage) now has a small **remove** button so a location added by mistake can be archived or deleted. Because deleting a location is a serious, permanent action, we put guards on it — both in the screen and on the server — so real stock can never be wiped by accident. Built, type-checked, and put through an independent multi-angle review that caught two genuine "you could lose stock" traps, both fixed before this note.
+
+### What changed, in plain terms
+- **The Overview list is paged, 10 at a time.** A footer shows "1–10 of 240 items · Page 1 of 24" with Prev / Next. Pressing Next is instant — it's just showing the next slice of the list already loaded, not re-downloading anything. Changing a filter or the search jumps you back to page 1.
+- **Grouped view is unchanged.** If you tick "Group by category" you still see the whole list organised by category (paging across categories would look odd) — the pager only shows in the normal flat list.
+- **Location cards can be removed.** Each van / site / storage card has a small trash button in the corner. It opens a confirm box with two clear choices:
+  - **Archive** — hides the location but keeps all its stock and history (reversible; you can reactivate it later). This is the everyday "get it off my list" action.
+  - **Delete** — permanently removes it. This is **only offered when the location holds no stock**; if it still has stock, the box tells you to move or use the stock first (or just archive it).
+- **The factory can't be removed.** It's the anchor every other location and delivery is measured from — it has no trash button, and the server refuses to delete it even if something tried.
+
+### The review, and the two traps it caught
+An independent review ran four checkers over the change (pagination, delete-safety, on-screen behaviour, and knock-on effects), and every flag was double-checked before we acted. It confirmed **eight** issues; the two that mattered were both about *losing stock*, and both are fixed:
+- **"Net-zero" trap:** if a van held, say, +6 of one item and −6 of another (which the app allows when someone over-issues), the totals cancel to zero — the old check would have called the van "empty" and let it be deleted, taking the real +6 with it. Fixed: we now count *how many items have a tally*, not the sum of quantities.
+- **"Bad connection" trap:** the delete button's "is it empty?" check relied on a figure fetched from the server; if that one fetch failed, every location briefly looked empty and deletable. Fixed: the **server itself now refuses** to delete any location that still holds stock, so a screen glitch can't cause a bad delete.
+- Three smaller polish items were also fixed (a one-frame flicker in the pager when the list shrinks; the confirm box could clip its buttons at very large text sizes; and keyboard focus was left stranded after a delete). One tiny cosmetic note (the trash icon is a touch small) was left as-is — it's the same size as the existing directions button and a mis-tap only opens the read-only detail, nothing destructive.
+
+The full type-check passed clean twice — once after the build and again after the fixes.
+
+### What we need
+- **Jordan:** a quick pass once you're in — page through the imported list on the Overview, then on Locations try deleting an empty test van (should vanish), try deleting one that still holds stock (should be blocked, offering Archive), and confirm the factory has no remove button.
+- Nothing to apply in the database — the manager permissions already allowed this, so there's no migration for it.
+
+### Status & next step
+Frontend plus one small server function, no database change, all uncommitted per the no-push rule; type-check green. This rounds out the stock screens now that real data is loaded.

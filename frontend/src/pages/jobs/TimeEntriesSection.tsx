@@ -14,6 +14,8 @@ import {
   type ServiceJobTimeEntry,
 } from '../../lib/api/serviceJobs';
 import { listLabourRates, type LabourRate } from '../../lib/api/labourRates';
+import { inputField } from '../gantt/components/ledger';
+import { cn } from '../../lib/cn';
 import type { Profile } from '../../types';
 
 interface Props {
@@ -123,24 +125,24 @@ export function TimeEntriesSection({
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between">
-        <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+        <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6B6B6B]">
           Time Entries
         </label>
-        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700">
+        <span className="inline-flex items-center gap-1 rounded-full bg-[#F0EDE4] px-2.5 py-0.5 text-[11px] font-semibold text-[#3A3A3A]">
           <Clock className="h-3 w-3" />
           {total} h total
         </span>
       </div>
 
       {deleteError && (
-        <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+        <p className="rounded-md border border-[#F0C8C8] bg-[#FBE5E5] px-3 py-2 text-xs text-[#C44545]">
           {deleteError}
         </p>
       )}
 
       {/* Entry list */}
       {entries.length === 0 ? (
-        <p className="text-[11px] text-slate-400">No time logged yet.</p>
+        <p className="text-[11px] text-[#A0A0A0]">No time logged yet.</p>
       ) : (
         <div className="space-y-1.5">
           {entries.map((entry) => {
@@ -154,26 +156,26 @@ export function TimeEntriesSection({
             return (
               <div
                 key={entry.id}
-                className="flex items-start gap-2 rounded-md border border-slate-200 bg-white px-3 py-2"
+                className="flex items-start gap-2 rounded-md border border-[#E6E1D4] bg-white px-3 py-2"
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-[12px] font-semibold text-slate-900 truncate">
+                    <span className="text-[12px] font-semibold text-[#1A1A1A] truncate">
                       {techName}
                     </span>
-                    <span className="text-[11px] text-slate-500">·</span>
-                    <span className="text-[11px] text-slate-600">{entry.date}</span>
-                    <span className="ml-auto text-[12px] font-semibold text-slate-900 flex-shrink-0">
+                    <span className="text-[11px] text-[#6B6B6B]">·</span>
+                    <span className="text-[11px] text-[#6B6B6B]">{entry.date}</span>
+                    <span className="ml-auto text-[12px] font-semibold text-[#1A1A1A] flex-shrink-0">
                       {entry.hours} h
                     </span>
                   </div>
                   {entry.note && (
-                    <p className="mt-0.5 text-[11px] text-slate-500 line-clamp-2">
+                    <p className="mt-0.5 text-[11px] text-[#6B6B6B] line-clamp-2">
                       {entry.note}
                     </p>
                   )}
                   {entry.role && (
-                    <p className="mt-0.5 text-[10px] font-medium text-slate-400 uppercase tracking-[0.08em]">
+                    <p className="mt-0.5 text-[10px] font-medium text-[#A0A0A0] uppercase tracking-[0.08em]">
                       {entry.role}
                     </p>
                   )}
@@ -183,7 +185,7 @@ export function TimeEntriesSection({
                     type="button"
                     onClick={() => void handleDelete(entry.id)}
                     disabled={deletingId === entry.id}
-                    className="flex-shrink-0 rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                    className="flex-shrink-0 rounded p-1 text-[#A0A0A0] hover:bg-[#FBE5E5] hover:text-[#C44545] disabled:opacity-50"
                     aria-label="Delete time entry"
                   >
                     {deletingId === entry.id ? (
@@ -201,8 +203,8 @@ export function TimeEntriesSection({
 
       {/* Add form (workers + managers) */}
       {canLog && (
-        <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-2.5 space-y-2">
-          <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-[0.1em]">
+        <div className="rounded-md border border-dashed border-[#D8D2C4] bg-[#FAF8F2] px-3 py-2.5 space-y-2">
+          <p className="text-[11px] font-semibold text-[#6B6B6B] uppercase tracking-[0.1em]">
             Log time
           </p>
 
@@ -211,7 +213,7 @@ export function TimeEntriesSection({
             <select
               value={formUserId}
               onChange={(e) => setFormUserId(e.target.value)}
-              className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs bg-white"
+              className={inputField}
               aria-label="Select technician"
             >
               <option value="">My entry (myself)</option>
@@ -229,16 +231,16 @@ export function TimeEntriesSection({
 
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block mb-0.5 text-[10px] font-medium text-slate-500">Date</label>
+              <label className="block mb-0.5 text-[10px] font-medium text-[#6B6B6B]">Date</label>
               <input
                 type="date"
                 value={formDate}
                 onChange={(e) => setFormDate(e.target.value)}
-                className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs"
+                className={inputField}
               />
             </div>
             <div>
-              <label className="block mb-0.5 text-[10px] font-medium text-slate-500">Hours</label>
+              <label className="block mb-0.5 text-[10px] font-medium text-[#6B6B6B]">Hours</label>
               <input
                 type="number"
                 inputMode="decimal"
@@ -247,29 +249,29 @@ export function TimeEntriesSection({
                 value={formHours}
                 onChange={(e) => setFormHours(e.target.value)}
                 placeholder="0.25"
-                className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs text-right"
+                className={cn(inputField, 'text-right tabular-nums')}
               />
             </div>
           </div>
 
           <div>
-            <label className="block mb-0.5 text-[10px] font-medium text-slate-500">Note (optional)</label>
+            <label className="block mb-0.5 text-[10px] font-medium text-[#6B6B6B]">Note (optional)</label>
             <input
               type="text"
               value={formNote}
               onChange={(e) => setFormNote(e.target.value)}
               placeholder="e.g. Board installation, rough-in"
-              className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs"
+              className={inputField}
             />
           </div>
 
           {labourRates.length > 0 && (
             <div>
-              <label className="block mb-0.5 text-[10px] font-medium text-slate-500">Role (optional)</label>
+              <label className="block mb-0.5 text-[10px] font-medium text-[#6B6B6B]">Role (optional)</label>
               <select
                 value={formRole}
                 onChange={(e) => setFormRole(e.target.value)}
-                className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs bg-white"
+                className={inputField}
                 aria-label="Select role"
               >
                 <option value="">{"-- role --"}</option>
@@ -281,7 +283,7 @@ export function TimeEntriesSection({
           )}
 
           {saveError && (
-            <p className="text-[11px] text-red-600">{saveError}</p>
+            <p className="text-[11px] text-[#C44545]">{saveError}</p>
           )}
 
           <div className="flex justify-end">

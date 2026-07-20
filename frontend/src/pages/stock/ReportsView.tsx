@@ -7,7 +7,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Loader2, Download } from "lucide-react";
 
-import { cardShell, StatusPill, inputField, FRAUNCES, type ToneKey } from "../gantt/components/ledger";
+import { cardShell, StatusPill, TONE, FRAUNCES, type ToneKey } from "../gantt/components/ledger";
+import { cn } from "../../lib/cn";
 import {
   listMovements, listStockLocations, getCompanyTotals,
   type MovementView, type MovementReason, type StockLocation, type CompanyTotal,
@@ -33,6 +34,19 @@ const OTHER_GROUP = "Other";
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString();
 const today = () => new Date().toISOString().slice(0, 10);
 const daysAgo = (n: number) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+
+// ── Mock-aligned chrome (test.html reports tab) ──────────────────────────────
+// 16px cards, 10.5px uppercase eyebrow headers, rounded-full ghost CSV pills,
+// 10px uppercase table header cells over 12.5px body rows.
+const card16 = cn(cardShell, "rounded-[16px]");
+const eyebrowLabel = "text-[10.5px] font-bold uppercase tracking-[0.1em] text-[#6B6B6B]";
+const filterLabel = "mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-[#6B6B6B]";
+const filterInput =
+  "rounded-[10px] border border-[#E6E1D4] bg-white px-3 py-2 text-[13px] text-[#1A1A1A] focus:border-[#2F8F5C] focus:outline-none focus:ring-1 focus:ring-[#2F8F5C]";
+const csvBtn =
+  "inline-flex items-center gap-1.5 rounded-full border border-[#E6E1D4] bg-white px-3 py-1.5 text-[11.5px] font-semibold text-[#3A3A3A] transition-colors hover:border-[#A0A0A0] hover:bg-[#FAF8F2]";
+const th = "px-[18px] py-[9px] text-[10px] font-bold uppercase tracking-[0.06em] text-[#6B6B6B]";
+const cardHead = "flex items-center justify-between gap-3 border-b border-[#E6E1D4] px-[18px] py-3.5";
 
 export default function ReportsView() {
   const [movements, setMovements] = useState<MovementView[]>([]);
@@ -175,24 +189,24 @@ export default function ReportsView() {
   }
 
   if (loading) {
-    return <div className={`flex items-center gap-2 px-5 py-8 text-sm text-[#A0A0A0] ${cardShell}`}><Loader2 className="h-4 w-4 animate-spin" /> Loading reports…</div>;
+    return <div className={cn(card16, "flex items-center gap-2 px-5 py-8 text-sm text-[#A0A0A0]")}><Loader2 className="h-4 w-4 animate-spin" /> Loading reports…</div>;
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {/* Filters */}
-      <div className="flex flex-wrap items-end gap-2">
-        <label><span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">From</span>
-          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={`${inputField} w-40`} /></label>
-        <label><span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">To</span>
-          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={`${inputField} w-40`} /></label>
-        <label><span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Location</span>
-          <select value={locationId} onChange={(e) => setLocationId(e.target.value)} className={`${inputField} w-44`}>
+      <div className="flex flex-wrap items-end gap-4">
+        <label><span className={filterLabel}>From</span>
+          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={cn(filterInput, "w-40")} /></label>
+        <label><span className={filterLabel}>To</span>
+          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={cn(filterInput, "w-40")} /></label>
+        <label><span className={filterLabel}>Location</span>
+          <select value={locationId} onChange={(e) => setLocationId(e.target.value)} className={cn(filterInput, "w-44")}>
             <option value="">All locations</option>
             {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select></label>
-        <label><span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Type</span>
-          <select value={reason} onChange={(e) => setReason(e.target.value as "" | MovementReason)} className={`${inputField} w-40`}>
+        <label><span className={filterLabel}>Type</span>
+          <select value={reason} onChange={(e) => setReason(e.target.value as "" | MovementReason)} className={cn(filterInput, "w-40")}>
             <option value="">All types</option>
             {REASON_KEYS.map((r) => <option key={r} value={r}>{REASON[r].label}</option>)}
           </select></label>
@@ -200,8 +214,8 @@ export default function ReportsView() {
       </div>
 
       {/* Trend */}
-      <div className={`px-5 py-4 ${cardShell}`}>
-        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6B6B6B]">Daily movement volume</p>
+      <div className={cn(card16, "p-5")}>
+        <p className={cn(eyebrowLabel, "mb-4")}>Daily movement volume</p>
         {trend.length === 0 ? (
           <p className="py-8 text-center text-sm text-[#A0A0A0]">No movements in this range.</p>
         ) : (
@@ -210,28 +224,28 @@ export default function ReportsView() {
       </div>
 
       {/* Cost by job + valuation */}
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <div>
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6B6B6B]">Materials cost by job</p>
-            <button type="button" onClick={exportByJob} className="inline-flex items-center gap-1 rounded-md border border-[#E6E1D4] bg-white px-2 py-1 text-[11px] font-semibold text-[#3A3A3A] hover:bg-[#FAF8F2]"><Download className="h-3 w-3" /> CSV</button>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className={cn(card16, "overflow-hidden")}>
+          <div className={cardHead}>
+            <span className={eyebrowLabel}>Materials cost by job</span>
+            <button type="button" onClick={exportByJob} className={csvBtn}><Download className="h-3.5 w-3.5" /> CSV</button>
           </div>
-          <div className={`overflow-x-auto ${cardShell}`}>
-            <table className="min-w-full text-sm">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-[12.5px]">
               <thead>
                 <tr className="border-b border-[#E6E1D4] bg-[#FAF8F2]">
-                  <th className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Job</th>
-                  <th className="w-20 px-4 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Lines</th>
-                  <th className="w-32 px-4 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Cost</th>
+                  <th className={cn(th, "text-left")}>Job</th>
+                  <th className={cn(th, "w-20 text-right")}>Lines</th>
+                  <th className={cn(th, "w-32 text-right")}>Cost</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#EFEBE0]">
-                {byJob.length === 0 && <tr><td colSpan={3} className="px-4 py-8 text-center text-sm text-[#A0A0A0]">No materials used on jobs in this range.</td></tr>}
+                {byJob.length === 0 && <tr><td colSpan={3} className="px-[18px] py-8 text-center text-[13px] text-[#A0A0A0]">No materials used on jobs in this range.</td></tr>}
                 {byJob.map((j) => (
-                  <tr key={j.label} className="hover:bg-[#FAF8F2]">
-                    <td className="px-4 py-2.5 text-[#1A1A1A]">{j.label}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-[#6B6B6B]">{j.lines}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-[#1A1A1A]">{fmtMoney(j.cost)}</td>
+                  <tr key={j.label} className="transition-colors hover:bg-[#FAF8F2]">
+                    <td className="px-[18px] py-[11px] font-medium text-[#1A1A1A]">{j.label}</td>
+                    <td className="px-[18px] py-[11px] text-right tabular-nums text-[#6B6B6B]">{j.lines}</td>
+                    <td className="px-[18px] py-[11px] text-right tabular-nums font-semibold text-[#1A1A1A]">{fmtMoney(j.cost)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -239,35 +253,35 @@ export default function ReportsView() {
           </div>
         </div>
 
-        <div>
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6B6B6B]">Stock value by category</p>
-            <button type="button" onClick={exportValuation} className="inline-flex items-center gap-1 rounded-md border border-[#E6E1D4] bg-white px-2 py-1 text-[11px] font-semibold text-[#3A3A3A] hover:bg-[#FAF8F2]"><Download className="h-3 w-3" /> CSV</button>
+        <div className={cn(card16, "overflow-hidden")}>
+          <div className={cardHead}>
+            <span className={eyebrowLabel}>Stock value by category</span>
+            <button type="button" onClick={exportValuation} className={csvBtn}><Download className="h-3.5 w-3.5" /> CSV</button>
           </div>
-          <div className={`overflow-x-auto ${cardShell}`}>
-            <table className="min-w-full text-sm">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-[12.5px]">
               <thead>
                 <tr className="border-b border-[#E6E1D4] bg-[#FAF8F2]">
-                  <th className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Category</th>
-                  <th className="w-20 px-4 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Items</th>
-                  <th className="w-32 px-4 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Value</th>
+                  <th className={cn(th, "text-left")}>Category</th>
+                  <th className={cn(th, "w-20 text-right")}>Items</th>
+                  <th className={cn(th, "w-32 text-right")}>Value</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#EFEBE0]">
-                {valuation.rows.length === 0 && <tr><td colSpan={3} className="px-4 py-8 text-center text-sm text-[#A0A0A0]">No stock on hand yet.</td></tr>}
+                {valuation.rows.length === 0 && <tr><td colSpan={3} className="px-[18px] py-8 text-center text-[13px] text-[#A0A0A0]">No stock on hand yet.</td></tr>}
                 {valuation.rows.map((r) => (
-                  <tr key={r.cat} className="hover:bg-[#FAF8F2]">
-                    <td className="px-4 py-2.5 text-[#1A1A1A]">{r.cat}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-[#6B6B6B]">{r.items}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-[#3A3A3A]">{fmtMoney(r.value)}</td>
+                  <tr key={r.cat} className="transition-colors hover:bg-[#FAF8F2]">
+                    <td className="px-[18px] py-[11px] font-medium text-[#1A1A1A]">{r.cat}</td>
+                    <td className="px-[18px] py-[11px] text-right tabular-nums text-[#6B6B6B]">{r.items}</td>
+                    <td className="px-[18px] py-[11px] text-right tabular-nums text-[#3A3A3A]">{fmtMoney(r.value)}</td>
                   </tr>
                 ))}
               </tbody>
               {valuation.rows.length > 0 && (
                 <tfoot>
                   <tr className="border-t border-[#E6E1D4] bg-[#FAF8F2]">
-                    <td className="px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]" colSpan={2}>Total</td>
-                    <td className="px-4 py-2 text-right tabular-nums font-semibold text-[#1A1A1A]" style={{ fontFamily: FRAUNCES }}>{fmtMoney(valuation.totalValue)}</td>
+                    <td className="px-[18px] py-2 text-right text-[10px] font-bold uppercase tracking-[0.06em] text-[#6B6B6B]" colSpan={2}>Total</td>
+                    <td className="px-[18px] py-2 text-right text-[14px] tabular-nums font-semibold text-[#1A1A1A]" style={{ fontFamily: FRAUNCES }}>{fmtMoney(valuation.totalValue)}</td>
                   </tr>
                 </tfoot>
               )}
@@ -278,23 +292,25 @@ export default function ReportsView() {
 
       {/* Top used items */}
       {topUsed.length > 0 && (
-        <div>
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6B6B6B]">Most-used items (this range)</p>
-          <div className={`overflow-x-auto ${cardShell}`}>
-            <table className="min-w-full text-sm">
+        <div className={cn(card16, "overflow-hidden")}>
+          <div className={cardHead}>
+            <span className={eyebrowLabel}>Most-used items (this range)</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-[12.5px]">
               <thead>
                 <tr className="border-b border-[#E6E1D4] bg-[#FAF8F2]">
-                  <th className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Item</th>
-                  <th className="w-28 px-4 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Units used</th>
-                  <th className="w-28 px-4 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Cost</th>
+                  <th className={cn(th, "text-left")}>Item</th>
+                  <th className={cn(th, "w-28 text-right")}>Units used</th>
+                  <th className={cn(th, "w-28 text-right")}>Cost</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#EFEBE0]">
                 {topUsed.map((t) => (
-                  <tr key={t.name} className="hover:bg-[#FAF8F2]">
-                    <td className="px-4 py-2.5 text-[#1A1A1A]">{t.name}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-[#3A3A3A]">{fmtQty(t.units)} <span className="text-[11px] text-[#A0A0A0]">{t.unit}</span></td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-[#6B6B6B]">{fmtMoney(Math.round(t.cost * 100) / 100)}</td>
+                  <tr key={t.name} className="transition-colors hover:bg-[#FAF8F2]">
+                    <td className="px-[18px] py-[11px] font-medium text-[#1A1A1A]">{t.name}</td>
+                    <td className="px-[18px] py-[11px] text-right tabular-nums text-[#3A3A3A]">{fmtQty(t.units)} <span className="text-[11px] text-[#A0A0A0]">{t.unit}</span></td>
+                    <td className="px-[18px] py-[11px] text-right tabular-nums text-[#6B6B6B]">{fmtMoney(Math.round(t.cost * 100) / 100)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -304,43 +320,43 @@ export default function ReportsView() {
       )}
 
       {/* Movement history */}
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6B6B6B]">Movement history</p>
-          <button type="button" onClick={exportMovements} className="inline-flex items-center gap-1 rounded-md border border-[#E6E1D4] bg-white px-2 py-1 text-[11px] font-semibold text-[#3A3A3A] hover:bg-[#FAF8F2]"><Download className="h-3 w-3" /> CSV</button>
+      <div className={cn(card16, "overflow-hidden")}>
+        <div className={cardHead}>
+          <span className={eyebrowLabel}>Movement history</span>
+          <button type="button" onClick={exportMovements} className={csvBtn}><Download className="h-3.5 w-3.5" /> CSV</button>
         </div>
-        <div className={`overflow-x-auto ${cardShell}`}>
-          <table className="min-w-full text-sm">
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-[12.5px]">
             <thead>
               <tr className="border-b border-[#E6E1D4] bg-[#FAF8F2]">
-                <th className="w-24 px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Date</th>
-                <th className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Item</th>
-                <th className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Location</th>
-                <th className="w-28 px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Reason</th>
-                <th className="w-24 px-4 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wider text-[#6B6B6B]">Qty</th>
+                <th className={cn(th, "w-24 text-left")}>Date</th>
+                <th className={cn(th, "text-left")}>Item</th>
+                <th className={cn(th, "text-left")}>Location</th>
+                <th className={cn(th, "w-28 text-left")}>Reason</th>
+                <th className={cn(th, "w-24 text-right")}>Qty</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#EFEBE0]">
               {movements.length === 0 && (
-                <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-[#A0A0A0]">No stock movements match these filters.</td></tr>
+                <tr><td colSpan={5} className="px-[18px] py-8 text-center text-[13px] text-[#A0A0A0]">No stock movements match these filters.</td></tr>
               )}
               {movements.map((m) => {
                 const r = REASON[m.reason];
                 const up = m.qtyDelta >= 0;
                 return (
-                  <tr key={m.id} className="hover:bg-[#FAF8F2]">
-                    <td className="px-4 py-2.5 text-[#6B6B6B]">{fmtDate(m.createdAt)}</td>
-                    <td className="px-4 py-2.5 text-[#1A1A1A]">{m.name}</td>
-                    <td className="px-4 py-2.5 text-[#3A3A3A]">{m.locationName}</td>
-                    <td className="px-4 py-2.5"><StatusPill tone={r.tone}>{r.label}</StatusPill></td>
-                    <td className={`px-4 py-2.5 text-right tabular-nums ${up ? "text-[#246F47]" : "text-[#C44545]"}`}>{up ? "+" : ""}{fmtQty(m.qtyDelta)} <span className="text-[11px] text-[#A0A0A0]">{m.unit}</span></td>
+                  <tr key={m.id} className="transition-colors hover:bg-[#FAF8F2]">
+                    <td className="px-[18px] py-[11px] text-[#A0A0A0]">{fmtDate(m.createdAt)}</td>
+                    <td className="px-[18px] py-[11px] text-[#1A1A1A]">{m.name}</td>
+                    <td className="px-[18px] py-[11px] text-[#3A3A3A]">{m.locationName}</td>
+                    <td className="px-[18px] py-[11px]"><StatusPill tone={r.tone}>{r.label}</StatusPill></td>
+                    <td className="px-[18px] py-[11px] text-right tabular-nums font-semibold" style={{ color: up ? TONE.emerald.fg : TONE.red.fg }}>{up ? "+" : ""}{fmtQty(m.qtyDelta)} <span className="text-[11px] font-normal text-[#A0A0A0]">{m.unit}</span></td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
         </div>
-        <p className="mt-2 text-[11px] text-[#A0A0A0]">Showing up to 500 movements for the selected range.</p>
+        <p className="px-[18px] py-2.5 text-[11px] text-[#A0A0A0]">Showing up to 500 movements for the selected range.</p>
       </div>
     </div>
   );

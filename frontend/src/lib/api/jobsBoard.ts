@@ -61,6 +61,13 @@ export interface BoardCard {
   /** Service cards only: a variation is SENT and awaiting the customer's yes —
    *  upsell money in flight. */
   variationPending?: boolean;
+  /** Service cards only: external-subcontractor job (mig 102) — drives the
+   *  Contractor sub-view/badge. */
+  isContractor?: boolean;
+  contractorName?: string | null;
+  /** Service cards only: customer paid upfront (mig 103) — drives the Prepaid
+   *  sub-view/badge. */
+  prepaid?: boolean;
 }
 
 export type DropResult =
@@ -440,6 +447,9 @@ export async function fetchBoardCards(
           simproStage:  stageFor(job.externalRef),
           kind:         job.kind,
           variationPending: sentVariationJobIds.has(job.id),
+          isContractor: job.isContractor,
+          contractorName: job.contractorName,
+          prepaid:      job.prepaid,
         });
       }
       continue;
@@ -459,6 +469,9 @@ export async function fetchBoardCards(
       simproStage:  stageFor(job.externalRef),
       kind:         job.kind,
       variationPending: sentVariationJobIds.has(job.id),
+      isContractor: job.isContractor,
+      contractorName: job.contractorName,
+      prepaid:      job.prepaid,
     });
   }
 
