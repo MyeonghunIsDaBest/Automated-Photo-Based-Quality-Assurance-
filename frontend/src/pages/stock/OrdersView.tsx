@@ -5,7 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Plus, Trash2, X, Search } from "lucide-react";
+import { Loader2, Plus, Trash2, X, Search, Upload } from "lucide-react";
 
 import { Toaster, type ToastState } from "../../components/ui/Toaster";
 import MotionDrawer from "../../components/ui/MotionDrawer";
@@ -23,6 +23,7 @@ import { listServiceJobs } from "../../lib/api/serviceJobs";
 import { listSimproJobs } from "../../lib/api/simproJobs";
 import { fmtMoney } from "../../lib/format";
 import PurchaseOrderDrawer from "./PurchaseOrderDrawer";
+import InvoiceImportModal from "./InvoiceImportModal";
 
 const PO_TONE: Record<POStatus, ToneKey> = { suggested: "amber", draft: "slate", sent: "sage", partial: "amber", received: "sage", cancelled: "red" };
 const PO_STATUSES: POStatus[] = ["suggested", "draft", "sent", "partial", "received", "cancelled"];
@@ -36,6 +37,7 @@ export default function OrdersView() {
   const [loading, setLoading] = useState(true);
   const [selectedPoId, setSelectedPoId] = useState<string | null>(null);
   const [newOpen, setNewOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [toast, setToast] = useState<ToastState>(null);
   const [statusFilter, setStatusFilter] = useState<POStatus | null>(null);
   const [kindFilter, setKindFilter] = useState<POKind | null>(null);
@@ -74,8 +76,18 @@ export default function OrdersView() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-[#6B6B6B]">Purchase orders</p>
-        <button type="button" onClick={() => setNewOpen(true)} className={btnPrimary}><Plus className="h-4 w-4" /> New purchase order</button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={() => setImportOpen(true)} className={btnGhost}><Upload className="h-4 w-4" /> Import invoice</button>
+          <button type="button" onClick={() => setNewOpen(true)} className={btnPrimary}><Plus className="h-4 w-4" /> New purchase order</button>
+        </div>
       </div>
+
+      {/* P7.1b — wholesaler invoice upload → match preview → confirm */}
+      <InvoiceImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onDone={(m) => { setToast({ message: m, type: "success" }); void refetch(); }}
+      />
 
       {/* Filters + search */}
       <div className="flex flex-wrap items-center gap-2">

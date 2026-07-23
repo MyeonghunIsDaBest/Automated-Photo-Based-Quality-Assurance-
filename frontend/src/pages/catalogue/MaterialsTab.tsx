@@ -16,8 +16,8 @@
 //   • skeleton initial load, error-retry panel, friendly empty state
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Plus, RefreshCw, ToggleLeft, ToggleRight, Search } from "lucide-react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Plus, RefreshCw, ToggleLeft, ToggleRight, Search, ChevronDown, ChevronRight } from "lucide-react";
 
 import { cardShell, btnPrimary, btnGhost } from "../gantt/components/ledger";
 import MotionDrawer from "../../components/ui/MotionDrawer";
@@ -115,6 +115,14 @@ export default function MaterialsTab({ onWritten }: Props) {
   const [includeInactive, setIncludeInactive] = useState(false);
   // Rows past RENDER_CAP stay out of the DOM until the footer toggle expands.
   const [expanded, setExpanded]           = useState(false);
+  // Grouped drop-down view (Luke's "drop-down boxes" — the quote picker's
+  // Group→Subgroup tree, brought to the admin list as collapsible sections).
+  // Persisted like the picker's stocked-only toggle; groups default collapsed
+  // so a 300-row catalogue opens as a scannable list of sections.
+  const [grouped, setGrouped] = useState<boolean>(() => {
+    try { return localStorage.getItem("casone.materials.grouped") === "1"; } catch { return false; }
+  });
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
 
   const [modal, setModal]                 = useState<MaterialFormInitial | null>(null);
 
@@ -167,6 +175,47 @@ export default function MaterialsTab({ onWritten }: Props) {
     stockFilter === "stocked" ? materials.filter((m) => m.isStockItem)
     : stockFilter === "oneoff" ? materials.filter((m) => !m.isStockItem)
     : materials;
+
+  // Grouped view: category → rows, "Other" (uncategorised) always last —
+  // the OTHER_GROUP convention from the stock overview and the quote picker.
+  const GROUP_OTHER = "Other";
+  const groupedRows = useMemo(() => {
+    if (!grouped) return [];
+    const by = new Map<string, Material[]>();
+    for (const m of shown) {
+      const g = m.category?.trim() || GROUP_OTHER;
+      const arr = by.get(g);
+      if (arr) arr.push(m); else by.set(g, [m]);
+    }
+    return [...by.entries()]
+      .sort((a, b) => (a[0] === GROUP_OTHER ? 1 : b[0] === GROUP_OTHER ? -1 : a[0].localeCompare(b[0])))
+      .map(([group, items]) => ({ group, items }));
+  }, [grouped, shown]);
+  // A live search auto-opens every group (the Take-Off accordion precedent) —
+  // a match hidden behind a collapsed header reads as "not found".
+  const searchOpensAll = debouncedSearch.trim() !== "";
+  const isGroupOpen = (g: string) => searchOpensAll || openGroups.has(g);
+  function toggleGroup(g: string) {
+    // During a live search every group is force-open (searchOpensAll) — a click
+    // would visibly do nothing while silently mutating the open/closed memory,
+    // leaving surprise state when the search clears. Ignore it.
+    if (searchOpensAll) return;
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(g)) next.delete(g); else next.add(g);
+      return next;
+    });
+  }
+  function toggleGrouped() {
+    // Collapsed sections hide rows but a bulk selection would stay armed against
+    // the now-invisible rows — clear it, matching the Esc bail-out philosophy.
+    setSelected(new Set());
+    setGrouped((v) => {
+      const next = !v;
+      try { localStorage.setItem("casone.materials.grouped", next ? "1" : "0"); } catch { /* private mode */ }
+      return next;
+    });
+  }
 
   function toggleSelected(id: string) {
     setSelected((prev) => {
@@ -508,6 +557,20 @@ export default function MaterialsTab({ onWritten }: Props) {
           ))}
         </div>
 
+        {/* Grouped drop-down view toggle (Luke's "drop-down boxes") */}
+        <button
+          type="button"
+          onClick={toggleGrouped}
+          className="flex items-center gap-1.5 text-xs font-medium text-[#6B6B6B] hover:text-[#1A1A1A]"
+        >
+          {grouped ? (
+            <ToggleRight className="h-4 w-4 text-[#2F8F5C]" />
+          ) : (
+            <ToggleLeft className="h-4 w-4" />
+          )}
+          Grouped
+        </button>
+
         {/* Include inactive toggle */}
         <button
           type="button"
@@ -579,7 +642,7 @@ export default function MaterialsTab({ onWritten }: Props) {
           </>
         }
         footer={
-          !loading && shown.length > RENDER_CAP ? (
+          !loading && (grouped ? searchOpensAll : true) && shown.length > RENDER_CAP ? (
             <div className="flex justify-center border-t border-[#E6E1D4] px-4 py-2.5">
               <button
                 type="button"
@@ -607,8 +670,8 @@ export default function MaterialsTab({ onWritten }: Props) {
           </div>
         )}
 
-        {!loading &&
-          shown.slice(0, expanded ? undefined : RENDER_CAP).map((m) => (
+        {!loading && (() => {
+          const renderRow = (m: Material) => (
             <RegisterRow
               key={m.id}
               className={!m.isActive ? "opacity-50" : undefined}
@@ -688,7 +751,45 @@ export default function MaterialsTab({ onWritten }: Props) {
                 <RowMenu items={rowMenuItems(m)} label={`Actions for ${m.name}`} />
               </span>
             </RegisterRow>
-          ))}
+          );
+          // Flat view — the original list, DOM-capped behind "Show all N".
+          if (!grouped) return shown.slice(0, expanded ? undefined : RENDER_CAP).map(renderRow);
+          // Grouped drop-down view — collapsible category sections ("Other"
+          // last); a live search auto-opens every section. Collapsed sections
+          // keep the DOM small, but a SEARCH opens everything at once — so the
+          // RENDER_CAP applies across groups while searching (same "Show all"
+          // footer as the flat view), or a broad one-letter search would mount
+          // the whole 300-row catalogue in one commit.
+          let budget = expanded || !searchOpensAll ? Number.POSITIVE_INFINITY : RENDER_CAP;
+          return groupedRows.map(({ group, items }) => {
+            const open = isGroupOpen(group);
+            const groupStocked = items.filter((i) => i.isStockItem).length;
+            const renderItems = !open ? [] : budget === Number.POSITIVE_INFINITY ? items : items.slice(0, Math.max(0, budget));
+            if (open && budget !== Number.POSITIVE_INFINITY) budget = Math.max(0, budget - renderItems.length);
+            return (
+              <Fragment key={group}>
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(group)}
+                  aria-expanded={open}
+                  className="flex min-h-11 w-full items-center gap-1.5 bg-[#FAF8F2] px-3 py-1.5 text-left transition-colors hover:bg-[#F0EDE4]"
+                >
+                  {open ? (
+                    <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[#A0A0A0]" />
+                  ) : (
+                    <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[#A0A0A0]" />
+                  )}
+                  <span className="min-w-0 truncate text-[11px] font-semibold uppercase tracking-wider text-[#6B6B6B]">{group}</span>
+                  <span className="rounded-full bg-[#E6E1D4] px-1.5 text-[11px] font-semibold tabular-nums text-[#6B6B6B]">{items.length}</span>
+                  {groupStocked > 0 && (
+                    <span className="text-[10.5px] text-[#A0A0A0]">{groupStocked} stocked</span>
+                  )}
+                </button>
+                {open && renderItems.map(renderRow)}
+              </Fragment>
+            );
+          });
+        })()}
       </Register>
 
       {/* Modal */}

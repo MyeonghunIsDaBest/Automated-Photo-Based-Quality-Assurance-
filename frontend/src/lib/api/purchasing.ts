@@ -12,6 +12,7 @@
 
 import { supabase, supabaseConfigured } from '../supabase';
 import { getCompanyTotals, listStockLocations } from './stock';
+import type { OpenPoItem, SupplierSkuEntry, MatchedInvoiceLine } from '../purchasing/invoiceMatch';
 
 const NOT_CONFIGURED = new Error('Supabase is not configured.');
 
@@ -791,4 +792,247 @@ export async function createSupplierInvoice(input: CreateSupplierInvoiceInput): 
 /** Sum of a PO's ordered lines (qty × unit cost) — for the invoice match check. */
 export function poOrderedTotal(items: PurchaseOrderItem[]): number {
   return Math.round(items.reduce((s, i) => s + i.qtyOrdered * (i.unitCost ?? 0), 0) * 100) / 100;
+}
+
+// ─── Wholesaler invoice lines (P7.1b, migration 104) ────────────────────────────
+// Line-level ingestion on top of the mig-89 header: the upload screen parses a
+// CSV (lib/purchasing/invoiceCsv), plans a match (lib/purchasing/invoiceMatch),
+// and this section supplies the matcher's inputs + persists the confirmed plan.
+
+/** The supplier's learned code memory (mig 98) — feeds the matcher's pack-factor
+ *  resolution. Missing table (pre-mig-98) degrades to "no memory". */
+/** Error codes meaning "the table isn't there" (pre-migration): PostgREST's
+ *  schema-cache misses (PGRST205, and PGRST200 for a missing embed) plus raw
+ *  Postgres 42P01. ONLY these may degrade to empty — a transient network/5xx
+ *  error must throw, or a blip would silently switch off the over-invoice guard
+ *  and drop learned pack factors for the whole preview. */
+function isMissingRelation(error: unknown): boolean {
+  const code = (error as { code?: string } | null)?.code;
+  return code === '42P01' || code === 'PGRST205' || code === 'PGRST200';
+}
+
+export async function listSupplierSkusForSupplier(supplierId: string): Promise<SupplierSkuEntry[]> {
+  if (!supabaseConfigured()) return [];
+  const { data, error } = await supabase
+    .from('supplier_skus')
+    .select('supplier_sku, material_id, qty_multiplier')
+    .eq('supplier_id', supplierId);
+  if (error) {
+    if (isMissingRelation(error)) return []; // pre-mig-98 → no memory
+    throw error;
+  }
+  return (data ?? []).map((r) => ({
+    supplierSku: String((r as { supplier_sku: string }).supplier_sku),
+    materialId: String((r as { material_id: string }).material_id),
+    qtyMultiplier: Number((r as { qty_multiplier: number }).qty_multiplier) || 1,
+  }));
+}
+
+/** The "remember this code" teach write — upserts one supplier-SKU mapping.
+ *  Substitutions deliberately do NOT call this (one-delivery-only). */
+export async function upsertSupplierSku(
+  supplierId: string,
+  supplierSku: string,
+  materialId: string,
+  qtyMultiplier = 1,
+): Promise<void> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const uid = (await supabase.auth.getUser()).data.user?.id ?? null;
+  const { error } = await supabase
+    .from('supplier_skus')
+    .upsert(
+      {
+        supplier_id: supplierId,
+        supplier_sku: supplierSku,
+        material_id: materialId,
+        qty_multiplier: qtyMultiplier,
+        learned_by: uid,
+      },
+      { onConflict: 'supplier_id,supplier_sku' },
+    );
+  if (error) throw error;
+}
+
+/** Statuses that count a PO as "open" for invoice matching — ordered but not
+ *  finished. Suggested (never sent) / received / cancelled don't take invoices. */
+const OPEN_PO_STATUSES: POStatus[] = ['draft', 'sent', 'partial'];
+
+/** The matcher's PO-side input: every open PO line for this supplier, with our
+ *  material SKU/name and — crucially — how much of each line has ALREADY been
+ *  invoiced (Σ persisted allocated lines), so part shipments and re-uploads can
+ *  never over-invoice. Pre-mig-104 the lines table is missing: the sums read as
+ *  0, which is safe because the confirm WRITE fails loudly before any damage. */
+export async function listOpenPoItemsForSupplier(supplierId: string): Promise<OpenPoItem[]> {
+  if (!supabaseConfigured()) return [];
+  const { data, error } = await supabase
+    .from('purchase_orders')
+    .select('id, number, status, purchase_order_items(id, material_id, description, qty_ordered, unit_cost, sort_order), suppliers(name)')
+    .eq('supplier_id', supplierId)
+    .in('status', OPEN_PO_STATUSES)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+
+  type Raw = {
+    id: string; number: string;
+    purchase_order_items: Array<{ id: string; material_id: string | null; description: string | null; qty_ordered: number; unit_cost: number | null; sort_order: number }>;
+  };
+  const pos = (data ?? []) as unknown as Raw[];
+
+  // Our-material metadata for sku/name (the matcher's our-SKU + fuzzy steps).
+  const materialIds = [...new Set(pos.flatMap((p) => p.purchase_order_items.map((i) => i.material_id)).filter((x): x is string => !!x))];
+  const matMeta = new Map<string, { sku: string | null; name: string | null }>();
+  if (materialIds.length > 0) {
+    const { data: mats } = await supabase.from('materials').select('id, sku, name').in('id', materialIds);
+    for (const m of (mats ?? []) as Array<{ id: string; sku: string | null; name: string | null }>) {
+      matMeta.set(m.id, { sku: m.sku, name: m.name });
+    }
+  }
+
+  // Already-invoiced quantities per PO line (allocated lines carry po_item_id;
+  // freight/credit/overflow rows don't). ONLY a missing table (pre-mig-104)
+  // degrades to zeros — the confirm write fails loudly first in that state.
+  // Any OTHER read error throws: a transient failure silently reading as
+  // "never invoiced" would disable the over-invoice guard for the preview.
+  const poItemIds = pos.flatMap((p) => p.purchase_order_items.map((i) => i.id));
+  const invoicedSoFar = new Map<string, number>();
+  if (poItemIds.length > 0) {
+    const { data: lines, error: linesErr } = await supabase
+      .from('supplier_invoice_lines')
+      .select('po_item_id, qty')
+      .in('po_item_id', poItemIds);
+    if (linesErr && !isMissingRelation(linesErr)) throw linesErr;
+    if (!linesErr) {
+      for (const l of (lines ?? []) as Array<{ po_item_id: string | null; qty: number | null }>) {
+        if (!l.po_item_id || l.qty == null) continue;
+        invoicedSoFar.set(l.po_item_id, (invoicedSoFar.get(l.po_item_id) ?? 0) + Number(l.qty));
+      }
+    }
+  }
+
+  const out: OpenPoItem[] = [];
+  for (const p of pos) {
+    for (const i of [...p.purchase_order_items].sort((a, b) => a.sort_order - b.sort_order)) {
+      if (!i.material_id) continue; // free-text lines can't be matched by material
+      const meta = matMeta.get(i.material_id);
+      out.push({
+        poItemId: i.id,
+        poId: p.id,
+        poNumber: p.number,
+        materialId: i.material_id,
+        sku: meta?.sku ?? null,
+        name: meta?.name ?? i.description,
+        qtyOrdered: Number(i.qty_ordered),
+        qtyInvoicedSoFar: Math.round((invoicedSoFar.get(i.id) ?? 0) * 100) / 100,
+        unitCost: i.unit_cost != null ? Number(i.unit_cost) : 0,
+      });
+    }
+  }
+  return out;
+}
+
+export interface ConfirmInvoicePlanInput {
+  supplierId: string;
+  number: string;
+  invoiceDate: string | null;
+  /** Header amount ex-GST as typed from the paper invoice. */
+  subtotalExGst: number;
+  gstAmount: number | null;
+  notes?: string | null;
+  /** The reviewed plan lines (manual fixes applied). */
+  lines: MatchedInvoiceLine[];
+}
+
+/** Persist a confirmed match plan: header + every line with its match status.
+ *  Header status: every line matched (or accepted freight) → 'matched'; any open
+ *  variance/unmatched → 'disputed'. The mig-104 unique index refuses duplicate
+ *  invoice numbers per supplier; surfaced as a friendly error. No client-side
+ *  transaction exists, so a failed line insert rolls the header back manually. */
+export async function createSupplierInvoiceWithLines(input: ConfirmInvoicePlanInput): Promise<SupplierInvoice> {
+  if (!supabaseConfigured()) throw NOT_CONFIGURED;
+  const uid = (await supabase.auth.getUser()).data.user?.id ?? null;
+
+  // Freight never disputes an invoice; variances, unmatched lines, and credit
+  // lines (returns needing manual reconciliation) do.
+  const hasProblem = input.lines.some((l) =>
+    l.matchStatus === 'unmatched' || l.matchStatus === 'price_variance' || l.matchStatus === 'qty_variance' || l.matchStatus === 'credit');
+
+  const { data: header, error: headErr } = await supabase
+    .from('supplier_invoices')
+    .insert({
+      supplier_id: input.supplierId,
+      po_id: null, // set after we know the dominant PO (needs the po_item → po map)
+      number: input.number,
+      invoice_date: input.invoiceDate,
+      amount: input.subtotalExGst,
+      subtotal_ex_gst: input.subtotalExGst,
+      gst_amount: input.gstAmount,
+      status: hasProblem ? 'disputed' : 'matched',
+      notes: input.notes ?? null,
+      created_by: uid,
+    })
+    .select('*')
+    .single();
+  if (headErr) {
+    if ((headErr as { code?: string }).code === '23505') {
+      throw new Error(`Invoice ${input.number} is already recorded for this supplier.`);
+    }
+    if ((headErr as { code?: string }).code === 'PGRST204') {
+      throw new Error('The invoice-lines upgrade (migration 104) is not applied yet — apply it in Supabase, then retry.');
+    }
+    throw headErr;
+  }
+  const invoice = rowToSupplierInvoice(header as SupplierInvoiceRow);
+
+  const rows = input.lines.map((l, idx) => ({
+    invoice_id: invoice.id,
+    po_item_id: l.poItemId,
+    material_id: l.materialId,
+    supplier_sku: l.supplierSku,
+    description: l.description,
+    qty: l.qty,
+    unit_price: l.unitPrice,
+    line_total: l.lineTotal,
+    match_status: l.matchStatus,
+    note: l.note,
+    sort_order: idx,
+  }));
+  const { error: linesErr } = await supabase.from('supplier_invoice_lines').insert(rows);
+  if (linesErr) {
+    // Manual rollback — a header without its lines would silently pass future
+    // duplicate checks while carrying no allocation records. The delete itself
+    // is CHECKED: if it also fails (same outage), the stranded header must be
+    // named NOW — otherwise every retry hits the duplicate guard with a
+    // misleading "already recorded" while no allocation lines exist.
+    const { error: rollbackErr } = await supabase.from('supplier_invoices').delete().eq('id', invoice.id);
+    if (rollbackErr) {
+      throw new Error(
+        `Invoice ${input.number} was recorded WITHOUT its lines (the save failed midway and cleanup also failed). ` +
+        `Delete invoice ${input.number} for this supplier, then re-import.`,
+      );
+    }
+    if (isMissingRelation(linesErr)) {
+      throw new Error('The invoice-lines table (migration 104) is missing — apply it in Supabase, then retry.');
+    }
+    throw linesErr;
+  }
+
+  // Primary-PO header pointer = the PO with the most allocated lines (real
+  // attribution lives per line; best-effort, failure is non-fatal).
+  try {
+    const itemIds = [...new Set(input.lines.map((l) => l.poItemId).filter((x): x is string => !!x))];
+    if (itemIds.length > 0) {
+      const { data: items } = await supabase.from('purchase_order_items').select('id, po_id').in('id', itemIds);
+      const poIdByItem = new Map<string, string>();
+      for (const it of (items ?? []) as Array<{ id: string; po_id: string }>) poIdByItem.set(it.id, it.po_id);
+      const counts = new Map<string, number>();
+      for (const l of input.lines) {
+        const poId = l.poItemId ? poIdByItem.get(l.poItemId) : undefined;
+        if (poId) counts.set(poId, (counts.get(poId) ?? 0) + 1);
+      }
+      const dominant = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+      if (dominant) await supabase.from('supplier_invoices').update({ po_id: dominant }).eq('id', invoice.id);
+    }
+  } catch { /* pointer only — the per-line links are authoritative */ }
+
+  return invoice;
 }
